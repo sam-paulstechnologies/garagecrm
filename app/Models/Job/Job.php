@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Models\Job;
 
@@ -11,6 +11,7 @@ use App\Models\User;
 
 class Job extends Model
 {
+    protected $table = 'jobsheets';
     use HasFactory, BelongsToCompany, SoftDeletes;
 
     protected $table = 'jobs';
@@ -23,7 +24,7 @@ class Job extends Model
         'company_id',
     ];
 
-    // 🔗 Relationships
+    // ðŸ”— Relationships
     public function client()
     {
         return $this->belongsTo(Client::class);
@@ -34,3 +35,4 @@ class Job extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 }
+
