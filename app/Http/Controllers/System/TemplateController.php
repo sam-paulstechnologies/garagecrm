@@ -5,7 +5,7 @@ namespace App\Http\Controllers\System;
 use App\Models\Template;
 use Illuminate\Http\Request;
 
-class TemplateController extends Controller
+class TemplateController extends \App\Http\Controllers\Controller
 {
     public function index()
     {
