@@ -1,0 +1,3 @@
+name,email,phone,whatsapp,dob,gender,address,city,state,postal_code,country,source,status,notes,is_vip,preferred_channel,created_at,updated_at,is_archived
+John Doe,stan@example.com,12345678,12345678,1/1/1990,male,123 Main St,Dubai,Dubai,500080,UAE,excel,active,Imported via Excel,0,phone,12:31.0,12:31.0,0
+Jane Smith,samson@example.com,9876543,9876543,5/15/1985,female,456 Elm St,Abu Dhabi,Abu Dhabi,11111,UAE,excel,active,First time import,1,whatsapp,12:31.0,12:31.0,0

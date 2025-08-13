@@ -1,0 +1,5 @@
+use App\Http\Controllers\JobController;
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/jobs', [JobController::class, 'index'])->name('jobs.index');
+});

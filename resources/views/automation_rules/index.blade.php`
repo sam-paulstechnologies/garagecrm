@@ -1,0 +1,5 @@
+use App\Http\Controllers\AutomationRuleController;
+
+Route::middleware(['auth'])->group(function () {
+    Route::resource('automation_rules', AutomationRuleController::class);
+});
