@@ -22,21 +22,51 @@ use App\Http\Controllers\Admin\{
 };
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
+use App\Http\Controllers\PasswordForceController;
 
-Route::middleware(['web', 'auth'])->prefix('admin')->as('admin.')->group(function () {
+/*
+|--------------------------------------------------------------------------
+| Force Password Change (accessible after login but BEFORE admin area)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['web', 'auth', 'active'])->group(function () {
+    Route::get('password/force',  [PasswordForceController::class, 'edit'])->name('password.force.edit');
+    Route::post('password/force', [PasswordForceController::class, 'update'])->name('password.force.update');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+| 'active' + 'force_password' protect the admin area.
+*/
+Route::middleware(['web', 'auth', 'active', 'force_password'])
+    ->prefix('admin')
+    ->as('admin.')
+    ->group(function () {
+
+    // Constrain common route parameters (prevents 'archived' being swallowed by {booking})
+    Route::pattern('booking', '[0-9]+');
+    Route::pattern('client', '[0-9]+');
+    Route::pattern('job', '[0-9]+');
+    Route::pattern('opportunity', '[0-9]+');
+    Route::pattern('invoice', '[0-9]+');
+    Route::pattern('user', '[0-9]+');
+    Route::pattern('garage', '[0-9]+');
 
     // 🔷 Dashboard
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // 🔷 Calendar
+    // 🔷 Calendar (full view + JSON feed)
     Route::get('calendar', [CalendarController::class, 'index'])->name('calendar.index');
+    Route::get('calendar/events', [CalendarController::class, 'events'])->name('calendar.events'); // ← add this
 
     // 🔷 Profile
     Route::get('profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    // 🔷 Clients (Custom routes must come before the resource route!)
+    // 🔷 Clients (custom routes BEFORE resource)
     Route::get('clients/archived', [ClientController::class, 'archived'])->name('clients.archived');
     Route::post('clients/{client}/archive', [ClientController::class, 'archive'])->name('clients.archive');
     Route::post('clients/{client}/restore', [ClientController::class, 'restore'])->name('clients.restore');
@@ -60,28 +90,38 @@ Route::middleware(['web', 'auth'])->prefix('admin')->as('admin.')->group(functio
     // 🔷 Leads
     Route::resource('leads', LeadController::class);
 
-    // 🔷 Opportunities
+    // 🔷 Opportunities (custom BEFORE resource)
     Route::get('opportunities/archived', [OpportunityController::class, 'archived'])->name('opportunities.archived');
-    Route::put('opportunities/{id}/restore', [OpportunityController::class, 'restore'])->name('opportunities.restore');
+    Route::put('opportunities/{opportunity}/restore', [OpportunityController::class, 'restore'])->name('opportunities.restore');
     Route::resource('opportunities', OpportunityController::class);
 
-    // 🔷 Bookings
-    Route::resource('bookings', BookingController::class);
-    Route::put('bookings/{id}/archive', [BookingController::class, 'archive'])->name('bookings.archive');
-    Route::put('bookings/{id}/restore', [BookingController::class, 'restore'])->name('bookings.restore');
+    // 🔷 Bookings (custom BEFORE resource to avoid 404/swallowing)
     Route::get('bookings/archived', [BookingController::class, 'archived'])->name('bookings.archived');
+    Route::put('bookings/{booking}/archive', [BookingController::class, 'archive'])->name('bookings.archive');
+    Route::put('bookings/{booking}/restore', [BookingController::class, 'restore'])->name('bookings.restore');
+    Route::resource('bookings', BookingController::class);
 
-    // 🔷 Jobs
+    // 🔷 Jobs (custom BEFORE resource)
+    Route::get('jobs/archived', [JobController::class, 'archived'])->name('jobs.archived');
+    Route::post('jobs/{job}/archive', [JobController::class, 'archive'])->name('jobs.archive');
+    Route::post('jobs/{job}/restore', [JobController::class, 'restore'])->name('jobs.restore');
     Route::resource('jobs', JobController::class);
 
-    // 🔷 Invoices
+    // 🔷 AJAX helper (Jobs by Client for invoice create/edit)
+    Route::get('ajax/jobs-by-client/{client}', [InvoiceController::class, 'jobsByClient'])->name('ajax.jobs-by-client');
+
+    // 🔷 Invoices 
     Route::resource('invoices', InvoiceController::class);
+    Route::get('invoices/{invoice}/download', [InvoiceController::class, 'download'])->name('invoices.download');
+    Route::get('invoices/{invoice}/view', [InvoiceController::class, 'view'])->name('invoices.view');
 
     // 🔷 Communication Logs
     Route::resource('communications', CommunicationController::class)->except(['show']);
 
     // 🔷 Users
     Route::resource('users', UserController::class);
+    Route::patch('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
+    Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.resetPassword');
 
     // 🔷 Garages
     Route::resource('garages', GarageController::class);
@@ -100,4 +140,3 @@ Route::middleware(['web', 'auth'])->prefix('admin')->as('admin.')->group(functio
     // 🔷 Health Check
     Route::get('/example', fn () => response()->json(['message' => 'Garage CRM API is working!']));
 });
- 

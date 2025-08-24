@@ -29,7 +29,7 @@
         <select name="client_id" class="form-input w-full" required>
             <option value="">-- Select Client --</option>
             @foreach($clients as $client)
-                <option value="{{ $client->id }}" {{ old('client_id') == $client->id ? 'selected' : '' }}>
+                <option value="{{ $client->id }}" @selected(old('client_id') == $client->id)>
                     {{ $client->name }} ({{ $client->email }})
                 </option>
             @endforeach
@@ -40,9 +40,9 @@
         <label class="block font-medium text-sm text-gray-700">Type</label>
         <select name="type" class="form-input w-full" required>
             <option value="">-- Select Type --</option>
-            <option value="Email" {{ old('type') == 'Email' ? 'selected' : '' }}>Email</option>
-            <option value="Call" {{ old('type') == 'Call' ? 'selected' : '' }}>Call</option>
-            <option value="WhatsApp" {{ old('type') == 'WhatsApp' ? 'selected' : '' }}>WhatsApp</option>
+            <option value="Email"     @selected(old('type') == 'Email')>Email</option>
+            <option value="Call"      @selected(old('type') == 'Call')>Call</option>
+            <option value="WhatsApp"  @selected(old('type') == 'WhatsApp')>WhatsApp</option>
         </select>
     </div>
 
@@ -57,7 +57,7 @@
     </div>
 
     <div class="flex items-center">
-        <input type="checkbox" name="follow_up_required" class="form-checkbox" {{ old('follow_up_required') ? 'checked' : '' }}>
+        <input type="checkbox" name="follow_up_required" class="form-checkbox" @checked(old('follow_up_required'))>
         <label class="ml-2 text-sm text-gray-700">Follow-up Required</label>
     </div>
 

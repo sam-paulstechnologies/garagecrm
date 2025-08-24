@@ -21,10 +21,12 @@
             <tbody>
                 @foreach($communications as $comm)
                     <tr class="border-t">
-                        <td class="px-4 py-2">{{ $comm->communication_date->format('d M Y H:i') }}</td>
+                        <td class="px-4 py-2">
+                            {{ optional($comm->communication_date)->format('d M Y H:i') ?? '—' }}
+                        </td>
                         <td class="px-4 py-2">{{ $comm->client->name ?? 'N/A' }}</td>
-                        <td class="px-4 py-2">{{ $comm->communication_type }}</td>
-                        <td class="px-4 py-2">{{ Str::limit($comm->content, 50) }}</td>
+                        <td class="px-4 py-2">{{ $comm->type }}</td>
+                        <td class="px-4 py-2">{{ \Illuminate\Support\Str::limit($comm->content, 50) }}</td>
                     </tr>
                 @endforeach
             </tbody>

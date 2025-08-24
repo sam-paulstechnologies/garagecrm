@@ -28,7 +28,11 @@
             <tr class="border-t">
                 <td class="px-4 py-2">{{ $user->name }}</td>
                 <td>{{ $user->email }}</td>
-                <td><span class="px-2 py-1 rounded bg-blue-100 text-blue-800">{{ ucfirst($user->role) }}</span></td>
+                <td>
+                    <span class="px-2 py-1 rounded bg-blue-100 text-blue-800">
+                        {{ ucfirst($user->role) }}
+                    </span>
+                </td>
                 <td>
                     <form action="{{ route('admin.users.toggleStatus', $user) }}" method="POST">
                         @csrf
@@ -42,14 +46,16 @@
                     <!-- Edit -->
                     <a href="{{ route('admin.users.edit', $user) }}" class="btn btn-sm btn-warning">Edit</a>
 
-                    <!-- Reset Password (standard POST) -->
-                    <form action="{{ route('admin.users.resetPassword', $user) }}" method="POST">
+                    <!-- Reset Password -->
+                    <form action="{{ route('admin.users.resetPassword', $user) }}" method="POST"
+                          onsubmit="return confirm('Reset password for {{ $user->name }}?')">
                         @csrf
                         <button type="submit" class="btn btn-sm btn-dark">Reset Password</button>
                     </form>
 
                     <!-- Delete -->
-                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this user?')">
+                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
+                          onsubmit="return confirm('Are you sure you want to delete this user?')">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="btn btn-sm btn-danger">Delete</button>

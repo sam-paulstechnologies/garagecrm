@@ -15,6 +15,9 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    /** Single source of truth for allowed roles */
+    public const ROLES = ['admin', 'manager', 'mechanic', 'receptionist', 'supervisor'];
+
     protected $fillable = [
         'name',
         'email',
@@ -23,7 +26,8 @@ class User extends Authenticatable
         'password',
         'company_id',
         'garage_id',
-        'status',
+        'status',                // 1 = active, 0 = inactive
+        'must_change_password',  // optional column
     ];
 
     protected $hidden = [
@@ -33,13 +37,15 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'status'            => 'integer',
+        'must_change_password' => 'boolean',
     ];
 
-    // 🔒 Auto-hash password when set
+    // 🔒 Auto-hash password when set. Do NOT Hash::make() before setting.
     protected function password(): Attribute
     {
         return Attribute::make(
-            set: fn($value) => Hash::make($value),
+            set: fn ($value) => Hash::make($value),
         );
     }
 

@@ -1,61 +1,95 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container max-w-xl mx-auto">
-    <h2 class="text-xl font-bold mb-4">Create Invoice</h2>
+<div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
+  <h2 class="text-xl font-semibold mb-4">Create Invoice</h2>
 
-    {{-- Show validation errors --}}
-    @if ($errors->any())
-        <div class="bg-red-100 text-red-800 p-3 mb-4 rounded border border-red-300">
-            <ul class="list-disc list-inside">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+  @if($errors->any())
+    <div class="mb-4 p-3 bg-red-100 text-red-800 rounded">
+      <ul class="list-disc list-inside">
+        @foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach
+      </ul>
+    </div>
+  @endif
 
-    <form action="{{ route('admin.invoices.store') }}" method="POST">
-        @csrf
+  <form method="POST" action="{{ route('admin.invoices.store') }}" enctype="multipart/form-data" class="space-y-4">
+    @csrf
 
-        <div class="mb-4">
-            <label for="client_id" class="block mb-1">Client</label>
-            <select name="client_id" id="client_id" class="w-full border px-3 py-2 rounded">
-                @foreach($clients as $client)
-                    <option value="{{ $client->id }}">{{ $client->name }}</option>
-                @endforeach
-            </select>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Client *</label>
+      <select id="client_id" name="client_id" class="w-full border rounded p-2" required>
+        <option value="">-- Select Client --</option>
+        @foreach($clients as $c)
+          <option value="{{ $c->id }}">{{ $c->name }} — {{ $c->phone }}</option>
+        @endforeach
+      </select>
+    </div>
 
-        <div class="mb-4">
-            <label for="job_id" class="block mb-1">Job</label>
-            <select name="job_id" id="job_id" class="w-full border px-3 py-2 rounded">
-                @foreach($jobs as $job)
-                    <option value="{{ $job->id }}">{{ $job->description }}</option>
-                @endforeach
-            </select>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Job (optional)</label>
+      <select id="job_id" name="job_id" class="w-full border rounded p-2">
+        <option value="">-- Select Job (optional) --</option>
+        {{-- will populate via JS after client pick --}}
+      </select>
+      <p class="text-xs text-gray-500 mt-1">No jobs? Leave blank to create a standalone invoice.</p>
+    </div>
 
-        <div class="mb-4">
-            <label for="amount" class="block mb-1">Amount</label>
-            <input type="number" step="0.01" name="amount" id="amount" class="w-full border px-3 py-2 rounded" required>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Amount *</label>
+      <input type="number" name="amount" step="0.01" class="w-full border rounded p-2" required>
+    </div>
 
-        <div class="mb-4">
-            <label for="status" class="block mb-1">Status</label>
-            <select name="status" id="status" class="w-full border px-3 py-2 rounded">
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-            </select>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Status *</label>
+      <select name="status" class="w-full border rounded p-2" required>
+        <option value="pending" selected>Pending</option>
+        <option value="paid">Paid</option>
+        <option value="overdue">Overdue</option>
+      </select>
+    </div>
 
-        <div class="mb-4">
-            <label for="due_date" class="block mb-1">Due Date</label>
-            <input type="date" name="due_date" id="due_date" class="w-full border px-3 py-2 rounded" required>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Due Date</label>
+      <input type="date" name="due_date" class="w-full border rounded p-2">
+    </div>
 
-        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Create</button>
-    </form>
+    <div>
+      <label class="block text-sm font-medium">Invoice File (PDF/Image)</label>
+      <input type="file" name="invoice_file" class="w-full border rounded p-2" accept=".pdf,.jpg,.jpeg,.png,.webp">
+    </div>
+
+    <button class="bg-blue-600 text-white px-4 py-2 rounded">Create</button>
+  </form>
 </div>
+
+<script>
+(function(){
+  const clientSelect = document.getElementById('client_id');
+  const jobSelect = document.getElementById('job_id');
+
+  const urlTemplate = @json(route('admin.ajax.jobs-by-client', ['client' => 'CLIENT_ID']));
+
+  async function loadJobs(clientId) {
+    jobSelect.innerHTML = '<option value="">Loading…</option>';
+    if (!clientId) { jobSelect.innerHTML = '<option value="">-- Select Job (optional) --</option>'; return; }
+    try {
+      const res = await fetch(urlTemplate.replace('CLIENT_ID', clientId), { headers: {'X-Requested-With': 'XMLHttpRequest'} });
+      const jobs = await res.json();
+      if (!Array.isArray(jobs) || jobs.length === 0) {
+        jobSelect.innerHTML = '<option value="">No jobs found</option>';
+        return;
+      }
+      jobSelect.innerHTML = '<option value="">-- Select Job (optional) --</option>';
+      jobs.forEach(j => {
+        const label = `#${j.id} • ${(j.job_code||'')} • ${j.status}`;
+        jobSelect.add(new Option(label, j.id));
+      });
+    } catch (e) {
+      jobSelect.innerHTML = '<option value="">Failed to load jobs</option>';
+    }
+  }
+
+  clientSelect.addEventListener('change', e => loadJobs(e.target.value));
+})();
+</script>
 @endsection

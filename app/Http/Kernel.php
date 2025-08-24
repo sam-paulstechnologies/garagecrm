@@ -24,7 +24,6 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-
         'api' => [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             'throttle:api',
@@ -32,7 +31,8 @@ class Kernel extends HttpKernel
         ],
     ];
 
-    protected $routeMiddleware = [
+    /** ✅ Laravel 10+ */
+    protected $middlewareAliases = [
         'auth'             => \App\Http\Middleware\Authenticate::class,
         'auth.basic'       => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
         'cache.headers'    => \Illuminate\Http\Middleware\SetCacheHeaders::class,
@@ -43,7 +43,12 @@ class Kernel extends HttpKernel
         'throttle'         => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified'         => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
 
-        // ✅ Custom Role Middleware
+        // Custom
         'role'             => \App\Http\Middleware\RoleMiddleware::class,
+        'active'           => \App\Http\Middleware\EnsureUserIsActive::class,
+        'force_password'   => \App\Http\Middleware\ForcePasswordChange::class,
     ];
+
+    /** 🧯 Back‑compat; safe to keep empty */
+    protected $routeMiddleware = [];
 }

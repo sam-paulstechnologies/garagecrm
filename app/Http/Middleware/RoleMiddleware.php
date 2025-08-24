@@ -8,13 +8,26 @@ use Illuminate\Support\Facades\Auth;
 
 class RoleMiddleware
 {
-    public function handle(Request $request, Closure $next, $role)
+    /**
+     * Usage:
+     *  ->middleware('role:admin')                // single
+     *  ->middleware('role:admin,manager')        // multiple
+     */
+    public function handle(Request $request, Closure $next, ...$roles)
     {
         if (!Auth::check()) {
             return redirect('/login');
         }
 
-        if (Auth::user()->role !== $role) {
+        $userRole = Auth::user()->role;
+
+        // If middleware is used without arguments, just pass through.
+        if (empty($roles)) {
+            return $next($request);
+        }
+
+        // Support Laravel's "role:admin,manager" signature (roles already split by framework)
+        if (!in_array($userRole, $roles, true)) {
             abort(403, 'Unauthorized');
         }
 

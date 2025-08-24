@@ -1,3 +1,4 @@
+@php use Illuminate\Support\Str; @endphp
 @extends('layouts.app')
 
 @section('content')
@@ -41,12 +42,27 @@
                     <td class="border px-4 py-2">{{ number_format($invoice->amount, 2) }}</td>
                     <td class="border px-4 py-2 capitalize">{{ $invoice->status }}</td>
                     <td class="border px-4 py-2">{{ $invoice->due_date }}</td>
-                    <td class="border px-4 py-2 flex gap-2">
-                        <a href="{{ route('admin.invoices.show', $invoice->id) }}" class="text-blue-600 hover:underline">View</a>
-                        <a href="{{ route('admin.invoices.download', $invoice->id) }}" class="text-purple-600 hover:underline">PDF</a>
-                        <form method="POST" action="{{ route('admin.invoices.destroy', $invoice->id) }}" onsubmit="return confirm('Archive this invoice?')">
+                    <td class="border px-4 py-2 flex flex-wrap gap-3">
+                        <a href="{{ route('admin.invoices.show', $invoice) }}" class="text-blue-600 hover:underline">View</a>
+                        <a href="{{ route('admin.invoices.edit', $invoice) }}" class="text-indigo-600 hover:underline">Edit</a>
+
+                        @if($invoice->file_path)
+                            <a href="{{ route('admin.invoices.download', $invoice) }}" class="text-purple-700 hover:underline">Download</a>
+
+                            @php
+                                $isPdf = Str::startsWith($invoice->file_type ?? '', 'application/pdf')
+                                    || Str::endsWith(strtolower($invoice->file_path), '.pdf');
+                            @endphp
+                            @if($isPdf)
+                                <a href="{{ route('admin.invoices.view', $invoice) }}" class="text-gray-700 hover:underline">View PDF</a>
+                            @endif
+                        @else
+                            <span class="text-gray-500">No file</span>
+                        @endif
+
+                        <form method="POST" action="{{ route('admin.invoices.destroy', $invoice) }}" onsubmit="return confirm('Archive this invoice?')" class="inline">
                             @csrf @method('DELETE')
-                            <button class="text-red-600 hover:underline">Archive</button>
+                            <button type="submit" class="text-red-600 hover:underline">Archive</button>
                         </form>
                     </td>
                 </tr>

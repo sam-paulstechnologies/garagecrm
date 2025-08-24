@@ -14,27 +14,21 @@ class Invoice extends Model
     use HasFactory, BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
+        'company_id',
         'client_id',
         'job_id',
+        'file_path',
+        'file_type',
+        'extracted_text',   // keep nullable for future OCR
         'amount',
-        'status',
+        'status',           // enum: pending, paid, overdue
         'due_date',
-        'company_id',
     ];
 
-    protected $dates = [
-        'due_date',
-        'deleted_at',
+    protected $casts = [
+        'due_date' => 'date',
     ];
 
-    // 🔗 Relationships
-    public function client()
-    {
-        return $this->belongsTo(Client::class);
-    }
-
-    public function job()
-    {
-        return $this->belongsTo(Job::class);
-    }
+    public function client() { return $this->belongsTo(Client::class); }
+    public function job()    { return $this->belongsTo(Job::class); }
 }

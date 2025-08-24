@@ -1,19 +1,18 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="max-w-4xl mx-auto mt-8 bg-white p-6 rounded shadow">
-    <h2 class="text-xl font-semibold mb-6">Create Booking</h2>
-
-    <form method="POST" action="{{ route('admin.bookings.store') }}">
-        @include('admin.bookings.partials.form', [
-            'booking' => new \App\Models\Tenant\Booking,
-            'clients' => $clients,
-            'opportunities' => $opportunities,
-            'users' => $users,
-            'vehicleMakes' => $vehicleMakes,
-            'vehicleModels' => $vehicleModels,
-            'isEdit' => false
-        ])
-    </form>
+<div class="max-w-3xl mx-auto p-6 bg-white rounded-lg shadow mt-6">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">Create Booking</h1>
+    @include('admin.bookings.partials.form', [
+        'action'        => route('admin.bookings.store'),
+        'isEdit'        => false,
+        'booking'       => null,
+        'clients'       => $clients,
+        'opportunities' => $opportunities,
+        'vehicles'      => $vehicles,
+        'users'         => $users,
+        'vehicleMakes'  => $vehicleMakes,
+        'vehicleModels' => $vehicleModels,
+    ])
 </div>
 @endsection
