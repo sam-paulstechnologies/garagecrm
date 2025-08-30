@@ -1,70 +1,52 @@
-name: Deploy Laravel to Azure Web App - app-sayaraforce
+name: Deploy Laravel to Azure App Service
 
 on:
   push:
     branches: [ "main" ]
 
-env:
-  AZURE_WEBAPP_NAME: app-sayaraforce
-  PHP_VERSION: "8.2"
-
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup PHP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, bcmath, curl, gd, intl, pdo, pdo_mysql, zip
-          tools: composer:v2
+          php-version: '8.2'
+          extensions: mbstring, intl, pdo_mysql, bcmath, gd, curl, zip, xml
           coverage: none
 
-      - name: Validate composer.json
-        run: composer validate --no-check-publish
-
-      - name: Cache Composer packages
+      - name: Cache Composer dependencies
         uses: actions/cache@v4
         with:
-          path: vendor
+          path: ~/.composer/cache/files
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
-      - name: Install PHP dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+      - name: Install dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
-      - name: Prepare writable dirs
+      - name: Build front-end (if applicable)
         run: |
-          mkdir -p storage/framework/{cache,data,sessions,testing,views}
-          mkdir -p bootstrap/cache
-          chmod -R 0777 storage bootstrap/cache
+          if [ -f package.json ]; then
+            corepack enable
+            npm ci
+            npm run build || npm run prod || true
+          fi
 
-      - name: Archive app
+      - name: Prepare Laravel app
         run: |
-          zip -r app.zip . -x '*.git*' 'node_modules/*' 'tests/*'
+          php artisan config:clear || true
+          php artisan route:clear || true
+          php artisan view:clear || true
+          rm -f .env   # don’t overwrite the Azure environment
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: laravel-app
-          path: app.zip
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: laravel-app
-          path: .
-      - name: Unzip
-        run: unzip -o app.zip
       - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v2
+        uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          app-name: 'app-sayaraforce'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           package: .
