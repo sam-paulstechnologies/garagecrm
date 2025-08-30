@@ -26,6 +26,12 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
+      # 🔧 create the paths Laravel needs so Composer scripts don't fail
+      - name: Create Laravel directories
+        run: |
+          mkdir -p storage/framework/{cache,sessions,views}
+          mkdir -p bootstrap/cache
+
       - name: Install dependencies
         run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
@@ -42,7 +48,7 @@ jobs:
           php artisan config:clear || true
           php artisan route:clear || true
           php artisan view:clear || true
-          rm -f .env   # don’t overwrite the Azure environment
+          rm -f .env   # we use Azure App Settings instead
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
