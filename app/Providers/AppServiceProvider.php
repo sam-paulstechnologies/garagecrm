@@ -9,23 +9,16 @@ use App\View\Components\AppLayout;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
-        // Blade components
         Blade::component('app-layout', AppLayout::class);
 
-        // Force HTTPS when running in production behind Azure’s proxy
+        // Force HTTPS in production (behind Azure proxy)
         if (app()->environment('production')) {
             URL::forceScheme('https');
         }
