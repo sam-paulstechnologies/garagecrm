@@ -2,52 +2,44 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\WelcomeController;
 
-// Public welcome page
-Route::get('/', function () {
-    return view('welcome');
-});
+// HOME — Coming Soon (single root route)
+Route::view('/', 'coming-soon');
 
-// ✅ Public API test route
-Route::get('/test-connection', function () {
-    return response()->json(['message' => 'Garage CRM public API test working!']);
-});
+// Public API test
+Route::get('/test-connection', fn () =>
+    response()->json(['message' => 'Garage CRM public API test working!'])
+);
 
-// React app catch route for template module
-Route::get('/admin/templates/{any?}', function () {
-    return view('app'); // This should be your React container blade view
-})->where('any', '.*');
+// React app catch route for templates module
+Route::get('/admin/templates/{any?}', fn () => view('app'))
+    ->where('any', '.*');
 
 // Authenticated redirections
-Route::middleware('auth')->get('/dashboard', function () {
-    $user = Auth::user();
-    return match ($user->role) {
-        'admin'    => redirect()->route('admin.dashboard'),
-        'mechanic' => redirect()->route('mechanic.dashboard'),
-        'tenant'   => redirect()->route('tenant.dashboard'),
-        default    => abort(403, 'Unauthorized'),
-    };
-})->name('dashboard');
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', function () {
+        $user = Auth::user();
+        return match ($user->role) {
+            'admin'    => redirect()->route('admin.dashboard'),
+            'mechanic' => redirect()->route('mechanic.dashboard'),
+            'tenant'   => redirect()->route('tenant.dashboard'),
+            default    => abort(403, 'Unauthorized'),
+        };
+    })->name('dashboard');
 
-Route::middleware('auth')->get('/home', function () {
-    $user = Auth::user();
-    return match ($user->role) {
-        'admin'    => redirect()->route('admin.dashboard'),
-        'mechanic' => redirect()->route('mechanic.dashboard'),
-        'tenant'   => redirect()->route('tenant.dashboard'),
-        default    => abort(403, 'Unauthorized'),
-    };
-});
-
-Route::get('/', function () {
-    return view('coming-soon');   // resources/views/coming-soon.blade.php
+    Route::get('/home', function () {
+        $user = Auth::user();
+        return match ($user->role) {
+            'admin'    => redirect()->route('admin.dashboard'),
+            'mechanic' => redirect()->route('mechanic.dashboard'),
+            'tenant'   => redirect()->route('tenant.dashboard'),
+            default    => abort(403, 'Unauthorized'),
+        };
+    });
 });
 
 // Role test route
-Route::get('/test-role', function () {
-    return 'You have access!';
-})->middleware(['auth', 'role:admin']);
+Route::get('/test-role', fn () => 'You have access!')->middleware(['auth', 'role:admin']);
 
 // Load modular route files
 require __DIR__.'/auth.php';
