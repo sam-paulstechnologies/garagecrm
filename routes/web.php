@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,32 +25,29 @@ Route::get('/admin/templates/{any?}', fn () => view('app'))
 
 /*
 |--------------------------------------------------------------------------
-| Health / DB checks
+| Health (no DB)
 |--------------------------------------------------------------------------
+|
+| Keep a lightweight health endpoint so Azure App Service can probe the app.
+| It returns 200 "OK" without touching the database.
+| NOTE: If you want to protect it, you can set HEALTH_CHECK_TOKEN in App Settings
+| and send header X-Health-Token, but Azure Health Check can't add headers.
+| So leave HEALTH_CHECK_TOKEN unset if you use this for Health Check.
+|
 */
-
-// Lightweight DB ping (public for quick smoke test)
-// Remove or protect after UAT.
-Route::get('/db-ping', function () {
-    try {
-        DB::connection()->getPdo(); // forces connection
-        $db  = DB::getDatabaseName();
-        $ver = optional(DB::select('SELECT VERSION() AS v')[0])->v;
-
-        return response()->json([
-            'ok'       => true,
-            'database' => $db,
-            'version'  => $ver,
-        ]);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'ok'    => false,
-            'error' => $e->getMessage(),
-        ], 500);
+Route::get('/healthz', function (Request $request) {
+    $token = env('HEALTH_CHECK_TOKEN');
+    if ($token && $request->header('X-Health-Token') !== $token) {
+        abort(403);
     }
+    return response('OK', 200);
 });
 
-// Quick counts of key tables (behind auth)
+/*
+|--------------------------------------------------------------------------
+| Admin-only DB counts (kept)
+|--------------------------------------------------------------------------
+*/
 Route::get('/db-counts', function () {
     try {
         $counts = DB::selectOne("
@@ -70,7 +68,6 @@ Route::get('/db-counts', function () {
 | Authenticated redirects
 |--------------------------------------------------------------------------
 */
-
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', function () {
         $user = Auth::user();
