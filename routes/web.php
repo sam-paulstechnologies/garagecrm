@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
 
 /*
@@ -11,8 +12,12 @@ use Illuminate\Http\Request;
 |--------------------------------------------------------------------------
 */
 
-// HOME — Coming Soon (single root route)
-Route::view('/', 'coming-soon');
+// ▶ ROOT: send users to the app (dashboard if signed in, else login)
+Route::get('/', function () {
+    return auth()->check()
+        ? redirect()->route('dashboard')
+        : redirect('/login'); // or ->route('login') if named
+});
 
 // Public API test
 Route::get('/test-connection', fn () =>
@@ -28,11 +33,8 @@ Route::get('/admin/templates/{any?}', fn () => view('app'))
 | Health (no DB)
 |--------------------------------------------------------------------------
 |
-| Keep a lightweight health endpoint so Azure App Service can probe the app.
-| It returns 200 "OK" without touching the database.
-| NOTE: If you want to protect it, you can set HEALTH_CHECK_TOKEN in App Settings
-| and send header X-Health-Token, but Azure Health Check can't add headers.
-| So leave HEALTH_CHECK_TOKEN unset if you use this for Health Check.
+| Lightweight health endpoint for Azure App Service.
+| Optional token check using HEALTH_CHECK_TOKEN (leave unset for public).
 |
 */
 Route::get('/healthz', function (Request $request) {
@@ -45,7 +47,24 @@ Route::get('/healthz', function (Request $request) {
 
 /*
 |--------------------------------------------------------------------------
-| Admin-only DB counts (kept)
+| One-time Ops: clear caches to remove old "Coming Soon" route
+|--------------------------------------------------------------------------
+| 1) Set OPS_TOKEN in Azure App Settings (long random string)
+| 2) Hit /_ops/flush?t=YOUR_TOKEN once after deploy
+| 3) REMOVE this route after use
+*/
+Route::get('/_ops/flush', function (Request $r) {
+    $token = env('OPS_TOKEN');
+    abort_unless($token && hash_equals($token, (string) $r->query('t')), 403);
+
+    // Clear all Laravel caches
+    Artisan::call('optimize:clear');
+    return nl2br(e(Artisan::output() ?: 'Caches cleared'));
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin-only DB counts (optional)
 |--------------------------------------------------------------------------
 */
 Route::get('/db-counts', function () {
@@ -91,7 +110,8 @@ Route::middleware('auth')->group(function () {
 });
 
 // Role test route
-Route::get('/test-role', fn () => 'You have access!')->middleware(['auth', 'role:admin']);
+Route::get('/test-role', fn () => 'You have access!')
+    ->middleware(['auth', 'role:admin']);
 
 /*
 |--------------------------------------------------------------------------
