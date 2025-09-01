@@ -2,6 +2,13 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
+/*
+|--------------------------------------------------------------------------
+| Public / simple pages
+|--------------------------------------------------------------------------
+*/
 
 // HOME — Coming Soon (single root route)
 Route::view('/', 'coming-soon');
@@ -15,7 +22,55 @@ Route::get('/test-connection', fn () =>
 Route::get('/admin/templates/{any?}', fn () => view('app'))
     ->where('any', '.*');
 
-// Authenticated redirections
+/*
+|--------------------------------------------------------------------------
+| Health / DB checks
+|--------------------------------------------------------------------------
+*/
+
+// Lightweight DB ping (public for quick smoke test)
+// Remove or protect after UAT.
+Route::get('/db-ping', function () {
+    try {
+        DB::connection()->getPdo(); // forces connection
+        $db  = DB::getDatabaseName();
+        $ver = optional(DB::select('SELECT VERSION() AS v')[0])->v;
+
+        return response()->json([
+            'ok'       => true,
+            'database' => $db,
+            'version'  => $ver,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'ok'    => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
+// Quick counts of key tables (behind auth)
+Route::get('/db-counts', function () {
+    try {
+        $counts = DB::selectOne("
+            SELECT
+              (SELECT COUNT(*) FROM users)     AS users,
+              (SELECT COUNT(*) FROM clients)   AS clients,
+              (SELECT COUNT(*) FROM leads)     AS leads,
+              (SELECT COUNT(*) FROM bookings)  AS bookings
+        ");
+        return response()->json(['ok' => true, 'counts' => $counts]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
+})->middleware('auth');
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated redirects
+|--------------------------------------------------------------------------
+*/
+
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', function () {
         $user = Auth::user();
@@ -41,7 +96,11 @@ Route::middleware('auth')->group(function () {
 // Role test route
 Route::get('/test-role', fn () => 'You have access!')->middleware(['auth', 'role:admin']);
 
-// Load modular route files
+/*
+|--------------------------------------------------------------------------
+| Module route files
+|--------------------------------------------------------------------------
+*/
 require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
 require __DIR__.'/tenant.php';
