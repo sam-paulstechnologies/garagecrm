@@ -40,6 +40,10 @@ Route::middleware('auth')->get('/home', function () {
     };
 });
 
+Route::get('/', function () {
+    return view('coming-soon');   // resources/views/coming-soon.blade.php
+});
+
 // Role test route
 Route::get('/test-role', function () {
     return 'You have access!';
