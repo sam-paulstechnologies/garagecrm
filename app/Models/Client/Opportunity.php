@@ -2,15 +2,14 @@
 
 namespace App\Models\Client;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Models\Client\Client;
-use App\Models\Client\Lead;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Opportunity extends Model
 {
@@ -41,32 +40,72 @@ class Opportunity extends Model
         'other_model',
     ];
 
-    // 🔗 Relationships
-    public function client()         { return $this->belongsTo(Client::class); }
-    public function lead()           { return $this->belongsTo(Lead::class); }
-    public function assignedUser()   { return $this->belongsTo(User::class, 'assigned_to'); }
-    public function vehicle()        { return $this->belongsTo(Vehicle::class); }
-    public function vehicleMake()    { return $this->belongsTo(VehicleMake::class, 'vehicle_make_id'); }
-    public function vehicleModel()   { return $this->belongsTo(VehicleModel::class, 'vehicle_model_id'); }
+    /* -------------------------
+     | Relationships
+     ------------------------- */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
 
-    // 📌 Accessors & Mutators
-    public function getServiceTypeArrayAttribute()
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
+    /** Primary accessor used in controllers/partials */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to')
+            ->withDefault(['name' => 'Unassigned']);
+    }
+
+    /** Alias for UI that references owner() */
+    public function owner(): BelongsTo
+    {
+        return $this->assignee();
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(Vehicle::class);
+    }
+
+    public function vehicleMake(): BelongsTo
+    {
+        return $this->belongsTo(VehicleMake::class, 'vehicle_make_id');
+    }
+
+    public function vehicleModel(): BelongsTo
+    {
+        return $this->belongsTo(VehicleModel::class, 'vehicle_model_id');
+    }
+
+    /* -------------------------
+     | Accessors & Mutators
+     ------------------------- */
+    public function getServiceTypeArrayAttribute(): array
     {
         return explode(',', $this->service_type ?? '');
     }
 
-    public function setServiceTypeArrayAttribute($value)
+    public function setServiceTypeArrayAttribute($value): void
     {
         $this->attributes['service_type'] = is_array($value) ? implode(',', $value) : $value;
     }
 
-    // 🔍 Scopes
+    /* -------------------------
+     | Scopes
+     ------------------------- */
     public function scopeForCompany($query, $companyId)
     {
         return $query->where('company_id', $companyId);
     }
 
-    // 🚗 Optional: fallback to lead vehicle if set
+    /* -------------------------
+     | Convenience
+     ------------------------- */
+    /** Optional: fallback to lead vehicle if set */
     public function getDefaultVehicleAttribute()
     {
         return $this->lead?->vehicle ?? null;

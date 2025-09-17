@@ -8,7 +8,10 @@ use App\Models\Job\Invoice; // <-- for auto-create invoice
 use App\Models\Client\Client;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+
+// 🔔 Events
+use App\Events\JobCompleted;
 
 class JobController extends Controller
 {
@@ -76,9 +79,9 @@ class JobController extends Controller
             'assigned_to'        => ['nullable', 'exists:users,id'],
         ]);
 
-        $data['company_id'] = auth()->user()->company_id;
-        $data['job_code']   = $request->filled('job_code') ? $request->job_code : $this->nextJobCode();
-        $data['status']     = $data['status'] ?? 'pending';
+        $data['company_id']  = auth()->user()->company_id;
+        $data['job_code']    = $request->filled('job_code') ? $request->job_code : $this->nextJobCode();
+        $data['status']      = $data['status'] ?? 'pending';
         $data['is_archived'] = 0;
 
         if (empty($data['total_time_minutes']) && !empty($data['start_time']) && !empty($data['end_time'])) {
@@ -87,6 +90,26 @@ class JobController extends Controller
         }
 
         $job = Job::create($data);
+
+        // 🔹 Auto-create invoice if created as completed (edge case)
+        if ($job->status === 'completed' && !$job->invoice) {
+            Invoice::create([
+                'company_id' => $job->company_id,
+                'client_id'  => $job->client_id,
+                'job_id'     => $job->id,
+                'amount'     => 0,
+                'status'     => 'pending',
+                'due_date'   => now()->addDays(7),
+            ]);
+        }
+
+        // 🔔 Fire JobCompleted if created as completed
+        if ($job->status === 'completed') {
+            DB::afterCommit(function () use ($job) {
+                event(new JobCompleted($job->fresh()));
+            });
+        }
+
         return redirect()->route('admin.jobs.show', $job)->with('success', 'Job created successfully.');
     }
 
@@ -128,6 +151,8 @@ class JobController extends Controller
                 ->diffInMinutes(\Carbon\Carbon::parse($data['end_time']));
         }
 
+        $oldStatus = $job->status;
+
         $job->update($data);
 
         // 🔹 Auto-create invoice when job becomes completed
@@ -140,6 +165,13 @@ class JobController extends Controller
                 'status'     => 'pending',
                 'due_date'   => now()->addDays(7), // default
             ]);
+        }
+
+        // 🔔 Fire JobCompleted only when status transitioned to completed
+        if ($oldStatus !== 'completed' && $job->status === 'completed') {
+            DB::afterCommit(function () use ($job) {
+                event(new JobCompleted($job->fresh()));
+            });
         }
 
         return redirect()->route('admin.jobs.show', $job)->with('success', 'Job updated successfully.');
