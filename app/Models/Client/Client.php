@@ -4,10 +4,15 @@ namespace App\Models\Client;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+
+use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
 use App\Models\Shared\File;
 use App\Models\Client\Note;
-
-
+use App\Models\Vehicle\Vehicle;
+use App\Models\Job\Job;
+use App\Models\Job\Invoice;
+use App\Models\Job\JobDocument;
 
 class Client extends Model
 {
@@ -35,30 +40,54 @@ class Client extends Model
     ];
 
     protected $casts = [
-        'dob' => 'date',
-        'is_vip' => 'boolean',
+        'dob'         => 'date',
+        'is_vip'      => 'boolean',
         'is_archived' => 'boolean',
     ];
 
-    // Relationships
+    /* ---------------- Relations ---------------- */
+
     public function leads()
     {
-        return $this->hasMany(Lead::class);
+        return $this->hasMany(Lead::class, 'client_id', 'id');
     }
 
     public function opportunities()
     {
-        return $this->hasMany(Opportunity::class);
+        return $this->hasMany(Opportunity::class, 'client_id', 'id');
     }
 
     public function files()
     {
-        return $this->hasMany(File::class);
+        return $this->hasMany(File::class, 'client_id', 'id');
     }
 
     public function notes()
     {
-        return $this->hasMany(\App\Models\Client\Note::class);
+        return $this->hasMany(Note::class, 'client_id', 'id');
     }
 
+    /** 🚗 Client → Vehicles */
+    public function vehicles()
+    {
+        return $this->hasMany(Vehicle::class, 'client_id', 'id');
+    }
+
+    /** 🧾 Invoices linked to this client */
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class, 'client_id', 'id');
+    }
+
+    /** 🔧 Service Jobs linked to client */
+    public function jobs()
+    {
+        return $this->hasMany(Job::class, 'client_id', 'id');
+    }
+
+    /** 📄 Documents assigned to this client */
+    public function jobDocuments()
+    {
+        return $this->hasMany(JobDocument::class, 'client_id', 'id');
+    }
 }

@@ -1,6 +1,0 @@
-use App\Http\Controllers\CommunicationController;
-
-Route::middleware(['auth'])->group(function () {
-    Route::get('/communications/send', [CommunicationController::class, 'create'])->name('communications.create');
-    Route::post('/communications/send', [CommunicationController::class, 'send'])->name('communications.send');
-});

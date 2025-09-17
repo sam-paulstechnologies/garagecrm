@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\Traits\BelongsToCompany;
 use App\Models\Client\Client;
 use App\Models\Job\Job;
+use Illuminate\Support\Facades\Storage;
 
 class Invoice extends Model
 {
@@ -17,18 +18,73 @@ class Invoice extends Model
         'company_id',
         'client_id',
         'job_id',
-        'file_path',
-        'file_type',
-        'extracted_text',   // keep nullable for future OCR
+
+        // agreed additions
+        'source',         // 'generated' | 'upload'
+        'is_primary',     // bool
+        'number',
+        'invoice_date',
+        'currency',
+
+        // existing fields you already use
         'amount',
-        'status',           // enum: pending, paid, overdue
+        'status',         // enum: pending, paid, overdue
         'due_date',
+
+        // file + dedupe
+        'file_path',
+        'url',
+        'file_type',
+        'mime',
+        'size',
+        'hash',
+        'version',
+        'uploaded_by',
+
+        'extracted_text', // for OCR later
     ];
 
     protected $casts = [
-        'due_date' => 'date',
+        'is_primary'   => 'boolean',
+        'invoice_date' => 'date',
+        'due_date'     => 'date',
+        'amount'       => 'decimal:2',
     ];
 
-    public function client() { return $this->belongsTo(Client::class); }
-    public function job()    { return $this->belongsTo(Job::class); }
+    /* ---------------- Relations ---------------- */
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function job()
+    {
+        return $this->belongsTo(Job::class);
+    }
+
+    /* ---------------- Scopes ---------------- */
+
+    public function scopeForJob($q, $jobId)
+    {
+        return $q->where('job_id', $jobId);
+    }
+
+    public function scopePrimary($q)
+    {
+        return $q->where('is_primary', true);
+    }
+
+    /* ---------------- Accessors ---------------- */
+
+    public function getResolvedUrlAttribute(): ?string
+    {
+        if ($this->url) {
+            return $this->url;
+        }
+        if ($this->file_path) {
+            return Storage::disk('public')->url($this->file_path);
+        }
+        return null;
+    }
 }

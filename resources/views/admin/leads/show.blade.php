@@ -1,8 +1,9 @@
+{{-- resources/views/admin/leads/show.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
-<div class="max-w-5xl mx-auto px-6 py-8">
-    <div class="flex justify-between items-center mb-6">
+<div class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+    <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-gray-800">Lead Details</h1>
         <a href="{{ route('admin.leads.edit', $lead) }}" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded shadow">
             ✏️ Edit Lead
@@ -27,6 +28,24 @@
         <div class="p-4 text-sm text-gray-500">
             Created on: {{ $lead->created_at->format('d/m/Y, H:i') }}
         </div>
+    </div>
+
+    {{-- 🗨️ Communications --}}
+    <div class="bg-white p-6 rounded-lg shadow">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Communications</h2>
+            <a href="{{ route('admin.communications.create', ['lead_id' => $lead->id, 'client_id' => $lead->client_id]) }}"
+               class="text-sm text-blue-600 underline">Add Communication</a>
+        </div>
+
+        @php
+            $communications = \App\Models\Shared\Communication::where('company_id', company_id())
+                ->where('lead_id', $lead->id)
+                ->orderByDesc('communication_date')->orderByDesc('id')
+                ->paginate(10);
+        @endphp
+
+        @include('admin.communications._list', ['communications' => $communications])
     </div>
 </div>
 @endsection

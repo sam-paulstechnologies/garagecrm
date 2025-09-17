@@ -1,8 +1,9 @@
+{{-- resources/views/admin/opportunities/show.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
-<div class="max-w-5xl mx-auto px-6 py-8">
-    <div class="flex justify-between items-center mb-6">
+<div class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+    <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-gray-800">Opportunity Details</h1>
         <a href="{{ route('admin.opportunities.edit', $opportunity) }}" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded shadow">
             ✏️ Edit Opportunity
@@ -38,8 +39,6 @@
             <div><strong>Expected Duration (days):</strong> {{ $opportunity->expected_duration ?? '—' }}</div>
             <div><strong>Assigned To:</strong> {{ $opportunity->assignedUser->name ?? '—' }}</div>
             <div><strong>Source:</strong> {{ $opportunity->source ?? '—' }}</div>
-
-            <!-- ✅ Vehicle Make & Model with support for manual entry -->
             <div><strong>Vehicle Make:</strong>
                 @if($opportunity->vehicle_make_id)
                     {{ $opportunity->vehicleMake->name ?? '—' }}
@@ -49,7 +48,6 @@
                     —
                 @endif
             </div>
-
             <div><strong>Vehicle Model:</strong>
                 @if($opportunity->vehicle_model_id)
                     {{ $opportunity->vehicleModel->name ?? '—' }}
@@ -59,7 +57,6 @@
                     —
                 @endif
             </div>
-
             <div class="md:col-span-2"><strong>Notes:</strong> {{ $opportunity->notes ?? '—' }}</div>
             <div><strong>Created At:</strong> {{ $opportunity->created_at?->format('d M Y, h:i A') ?? '—' }}</div>
             <div><strong>Last Updated:</strong> {{ $opportunity->updated_at?->format('d M Y, h:i A') ?? '—' }}</div>
@@ -71,6 +68,26 @@
                 ← Back to List
             </a>
         </div>
+    </div>
+
+    {{-- 🗨️ Communications --}}
+    <div class="bg-white p-6 rounded-lg shadow">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Communications</h2>
+            <a href="{{ route('admin.communications.create', [
+                    'opportunity_id' => $opportunity->id,
+                    'client_id'      => $opportunity->client_id
+                ]) }}" class="text-sm text-blue-600 underline">Add Communication</a>
+        </div>
+
+        @php
+            $communications = \App\Models\Shared\Communication::where('company_id', company_id())
+                ->where('opportunity_id', $opportunity->id)
+                ->orderByDesc('communication_date')->orderByDesc('id')
+                ->paginate(10);
+        @endphp
+
+        @include('admin.communications._list', ['communications' => $communications])
     </div>
 </div>
 @endsection

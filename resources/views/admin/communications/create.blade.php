@@ -1,68 +1,59 @@
 @extends('layouts.app')
 
-@section('title', 'Log Communication')
-
 @section('content')
-<h1 class="text-2xl font-bold mb-6">Log Communication</h1>
+<div class="max-w-3xl mx-auto p-6">
+  <h1 class="text-2xl font-semibold mb-4">New Communication</h1>
 
-@if(session('success'))
-    <div class="mb-4 p-4 bg-green-100 text-green-800 rounded">
-        {{ session('success') }}
-    </div>
-@endif
-
-@if($errors->any())
-    <div class="mb-4 p-4 bg-red-100 text-red-800 rounded">
-        <ul class="list-disc list-inside">
-            @foreach($errors->all() as $error)
-                <li>- {{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-@endif
-
-<form method="POST" action="{{ route('admin.communications.store') }}" class="bg-white p-6 rounded shadow space-y-6">
+  <form method="post" action="{{ route('admin.communications.store') }}" class="bg-white p-6 rounded shadow space-y-4">
     @csrf
 
     <div>
-        <label class="block font-medium text-sm text-gray-700">Client</label>
-        <select name="client_id" class="form-input w-full" required>
-            <option value="">-- Select Client --</option>
-            @foreach($clients as $client)
-                <option value="{{ $client->id }}" @selected(old('client_id') == $client->id)>
-                    {{ $client->name }} ({{ $client->email }})
-                </option>
-            @endforeach
-        </select>
+      <label class="block text-sm font-medium mb-1">Client</label>
+      <select name="client_id" class="border rounded p-2 w-full" required>
+        <option value="">Select…</option>
+        @foreach($clients as $c)
+          <option value="{{ $c->id }}" @selected(($prefill['client_id'] ?? null) == $c->id)>{{ $c->name }}</option>
+        @endforeach
+      </select>
+      @error('client_id') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
+    </div>
+
+    <input type="hidden" name="company_id" value="{{ company_id() }}"/>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">Type</label>
+      <select name="type" class="border rounded p-2 w-full" required>
+        @foreach(['call','email','whatsapp'] as $t)
+          <option value="{{ $t }}" @selected(($prefill['type'] ?? null) === $t)>{{ ucfirst($t) }}</option>
+        @endforeach
+      </select>
+      @error('type') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
     </div>
 
     <div>
-        <label class="block font-medium text-sm text-gray-700">Type</label>
-        <select name="type" class="form-input w-full" required>
-            <option value="">-- Select Type --</option>
-            <option value="Email"     @selected(old('type') == 'Email')>Email</option>
-            <option value="Call"      @selected(old('type') == 'Call')>Call</option>
-            <option value="WhatsApp"  @selected(old('type') == 'WhatsApp')>WhatsApp</option>
-        </select>
+      <label class="block text-sm font-medium mb-1">Date & Time</label>
+      <input type="datetime-local" name="communication_date"
+             value="{{ old('communication_date') }}"
+             class="border rounded p-2 w-full" />
+      @error('communication_date') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
     </div>
 
     <div>
-        <label class="block font-medium text-sm text-gray-700">Communication Date</label>
-        <input type="datetime-local" name="communication_date" value="{{ old('communication_date') }}" class="form-input w-full" required>
+      <label class="block text-sm font-medium mb-1">Content / Notes</label>
+      <textarea name="content" rows="6" class="border rounded p-2 w-full">{{ old('content') }}</textarea>
+      @error('content') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
     </div>
 
-    <div>
-        <label class="block font-medium text-sm text-gray-700">Content</label>
-        <textarea name="content" class="form-input w-full" rows="4" required>{{ old('content') }}</textarea>
-    </div>
+    <label class="inline-flex items-center gap-2">
+      <input type="checkbox" name="follow_up_required" value="1" class="rounded"
+             @checked(old('follow_up_required')) />
+      <span>Follow-up required</span>
+    </label>
 
-    <div class="flex items-center">
-        <input type="checkbox" name="follow_up_required" class="form-checkbox" @checked(old('follow_up_required'))>
-        <label class="ml-2 text-sm text-gray-700">Follow-up Required</label>
+    <div class="pt-2">
+      <button class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+      <a href="{{ route('admin.communications.index') }}" class="px-4 py-2 bg-gray-100 rounded">Cancel</a>
     </div>
-
-    <div class="flex justify-end">
-        <button type="submit" class="btn btn-primary">Submit</button>
-    </div>
-</form>
+  </form>
+</div>
 @endsection

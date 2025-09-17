@@ -2,13 +2,14 @@
 
 namespace App\Models\Client;
 
+use App\Models\User;
+use App\Models\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
-use App\Models\Client\Client;
-use App\Models\Client\Communication;
-use App\Models\Client\Opportunity;
-use App\Models\Traits\BelongsToCompany;
 
 class Lead extends Model
 {
@@ -37,19 +38,46 @@ class Lead extends Model
         'score'             => 'integer',
     ];
 
-    // Relationships
-    public function client()
+    /* -------------------------
+     | Relationships
+     ------------------------- */
+    public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
     }
 
-    public function communications()
+    public function communications(): HasMany
     {
         return $this->hasMany(Communication::class);
     }
 
+    /** Lead owner/assignee (used in controllers/views) */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to')
+            ->withDefault(['name' => 'Unassigned']);
+    }
+
+    /** Optional: one opportunity created from this lead */
+    public function opportunity(): HasOne
+    {
+        return $this->hasOne(Opportunity::class);
+    }
+
+    /* -------------------------
+     | Scopes
+     ------------------------- */
+    public function scopeForCompany($query, $companyId)
+    {
+        return $query->where('company_id', $companyId);
+    }
+
+    /* -------------------------
+     | Domain logic
+     ------------------------- */
+
     /**
-     * Converts a lead into a client and creates an associated opportunity.
+     * Converts this lead to a client and creates an associated opportunity.
      */
     public function convertToClient(): ?Client
     {
@@ -64,28 +92,31 @@ class Lead extends Model
             ]);
 
             $this->client_id = $client->id;
-            $this->status = 'converted';
+            $this->status    = 'converted';
             $this->save();
 
             Opportunity::create([
-                'client_id'    => $client->id,
-                'lead_id'      => $this->id,
-                'status'       => 'new',
-                'company_id'   => $this->company_id,
-                'title'        => $this->name . ' Opportunity',
+                'client_id'  => $client->id,
+                'lead_id'    => $this->id,
+                'stage'      => 'new', // ✅ was 'status'
+                'company_id' => $this->company_id,
+                'title'      => $this->name . ' Opportunity',
+                'assigned_to'=> $this->assigned_to,
+                'source'     => $this->source,
+                'notes'      => $this->notes,
             ]);
 
             DB::commit();
             return $client;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            \Log::error('❌ Lead conversion failed: ' . $e->getMessage());
+            \Log::error('❌ Lead conversion failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Calculates a basic lead score.
+     * Calculates and persists a simple lead score.
      */
     public function calculateScore(): void
     {
