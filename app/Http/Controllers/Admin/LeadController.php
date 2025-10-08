@@ -6,41 +6,35 @@ use App\Http\Controllers\Controller;
 use App\Models\Client\Lead;
 use App\Models\Client\Client;
 use App\Models\Client\Opportunity;
+use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-
-// 🔔 Events
 use App\Events\LeadCreated;
 
 class LeadController extends Controller
 {
-    /**
-     * 📄 List leads with search, filters, and pagination
-     */
+    /** 📄 List leads with search, filters, and pagination */
     public function index(Request $request)
     {
         $companyId = auth()->user()->company_id;
 
         $q         = trim((string) $request->get('q', ''));
-        $status    = $request->get('status');           // e.g. new, attempting, qualified, converted, disqualified
-        $source    = $request->get('source');           // e.g. Website, WhatsApp, Referral
-        $assignee  = $request->get('assigned_to');      // user id
+        $status    = $request->get('status');
+        $source    = $request->get('source');
+        $assignee  = $request->get('assigned_to');
         $isHot     = $request->has('is_hot') ? (int) $request->boolean('is_hot') : null;
-        $order     = $request->get('order', 'latest');  // latest | score | last_contact
+        $order     = $request->get('order', 'latest');
 
         $leads = Lead::query()
-            ->with(['client:id,name,phone,email', 'assignee:id,name']) // assumes assignee() relation
+            ->with(['client:id,name,phone,email', 'assignee:id,name'])
             ->where('company_id', $companyId)
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    $sub->where('name', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('phone', 'like', "%{$q}%")
-                        ->orWhere('notes', 'like', "%{$q}%")
-                        ->orWhere('source', 'like', "%{$q}%");
-                });
-            })
+            ->when($q, fn($query) => $query->where(fn($sub) => $sub
+                ->where('name', 'like', "%{$q}%")
+                ->orWhere('email', 'like', "%{$q}%")
+                ->orWhere('phone', 'like', "%{$q}%")
+                ->orWhere('notes', 'like', "%{$q}%")
+                ->orWhere('source', 'like', "%{$q}%")))
             ->when($status, fn($q2) => $q2->where('status', $status))
             ->when($source, fn($q3) => $q3->where('source', $source))
             ->when($assignee, fn($q4) => $q4->where('assigned_to', $assignee))
@@ -54,20 +48,17 @@ class LeadController extends Controller
         return view('admin.leads.index', compact('leads', 'q', 'status', 'source', 'assignee', 'isHot', 'order'));
     }
 
-    /**
-     * ➕ Create form
-     */
+    /** ➕ Create form */
     public function create()
     {
         $clients = Client::where('company_id', auth()->user()->company_id)
             ->orderBy('name')
             ->get(['id','name','phone','email']);
+
         return view('admin.leads.create', compact('clients'));
     }
 
-    /**
-     * 💾 Store lead (auto-convert if status=qualified)
-     */
+    /** 💾 Store lead (auto-convert if status=qualified) */
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -88,33 +79,26 @@ class LeadController extends Controller
         $data['company_id'] = auth()->user()->company_id;
         $newStatus = strtolower((string) ($data['status'] ?? ''));
 
-        // We need $lead outside the transaction to fire the event after commit
         $lead = null;
 
         DB::transaction(function () use (&$lead, $data, $newStatus) {
-            // 1) Create lead
             $lead = Lead::create($data);
 
-            // compute score if your model provides it
             if (method_exists($lead, 'calculateScore')) {
                 $lead->calculateScore();
             }
 
-            // 2) If created as qualified, immediately convert
             if ($newStatus === 'qualified') {
                 $this->convertToOpportunity($lead);
             }
         });
 
-        // 🔔 Fire event AFTER the transaction commits (ensures DB state is saved)
         event(new LeadCreated($lead));
 
         return redirect()->route('admin.leads.index')->with('success', 'Lead created.');
     }
 
-    /**
-     * ✏️ Edit form
-     */
+    /** ✏️ Edit form */
     public function edit(Lead $lead)
     {
         $this->authorizeCompany($lead);
@@ -126,9 +110,7 @@ class LeadController extends Controller
         return view('admin.leads.edit', compact('lead', 'clients'));
     }
 
-    /**
-     * 🔁 Update lead (auto-convert when moving into qualified)
-     */
+    /** 🔁 Update lead (auto-convert when moving into qualified) */
     public function update(Request $request, Lead $lead)
     {
         $this->authorizeCompany($lead);
@@ -158,7 +140,6 @@ class LeadController extends Controller
                 $lead->calculateScore();
             }
 
-            // Transition into qualified → convert
             if ($oldStatus !== 'qualified' && $newStatus === 'qualified') {
                 $this->convertToOpportunity($lead);
             }
@@ -167,9 +148,7 @@ class LeadController extends Controller
         return redirect()->route('admin.leads.index')->with('success', 'Lead updated.');
     }
 
-    /**
-     * 🗑️ Delete (use SoftDeletes on model if you want to keep history)
-     */
+    /** 🗑️ Delete */
     public function destroy(Lead $lead)
     {
         $this->authorizeCompany($lead);
@@ -178,60 +157,57 @@ class LeadController extends Controller
         return redirect()->route('admin.leads.index')->with('success', 'Lead deleted.');
     }
 
-    /**
-     * 👁️ Show a single lead (with client/opportunity eager loads)
-     */
+    /** 👁️ Show a single lead (+ communications) */
     public function show(Lead $lead)
     {
         $this->authorizeCompany($lead);
 
         $lead->loadMissing([
             'client:id,name,phone,email',
-            'opportunity',              // if relation exists (lead hasOne opportunity)
+            'opportunity',
             'assignee:id,name',
         ]);
 
-        return view('admin.leads.show', compact('lead'));
+        $communications = Communication::query()
+            ->forCompany(auth()->user()->company_id)
+            ->where('lead_id', $lead->id)
+            ->orderByDesc('communication_date')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('admin.leads.show', compact('lead', 'communications'));
     }
 
-    /**
-     * ⭐ Toggle "hot" flag (AJAX or normal)
-     */
+    /** ⭐ Toggle "hot" flag (AJAX or normal) */
     public function toggleHot(Lead $lead)
     {
         $this->authorizeCompany($lead);
 
         $lead->update(['is_hot' => !$lead->is_hot]);
 
-        if (request()->expectsJson()) {
-            return response()->json(['is_hot' => (bool) $lead->is_hot]);
-        }
-        return back()->with('success', 'Lead hot flag updated.');
+        return request()->expectsJson()
+            ? response()->json(['is_hot' => (bool) $lead->is_hot])
+            : back()->with('success', 'Lead hot flag updated.');
     }
 
-    /**
-     * 👤 Assign/Reassign lead owner (AJAX or normal)
-     */
+    /** 👤 Assign/Reassign lead owner (AJAX or normal) */
     public function assign(Request $request, Lead $lead)
     {
         $this->authorizeCompany($lead);
 
         $data = $request->validate([
-            'assigned_to' => ['nullable','integer'], // validate existence in users table if you like
+            'assigned_to' => ['nullable','integer'],
         ]);
 
         $lead->update(['assigned_to' => $data['assigned_to'] ?? null]);
 
-        if ($request->expectsJson()) {
-            return response()->json(['assigned_to' => $lead->assigned_to]);
-        }
-        return back()->with('success', 'Lead assigned.');
+        return $request->expectsJson()
+            ? response()->json(['assigned_to' => $lead->assigned_to])
+            : back()->with('success', 'Lead assigned.');
     }
 
-    /**
-     * 🔄 Manual conversion endpoint (e.g., from UI button)
-     * Converts lead → ensures client → creates/gets opportunity → flips status to converted
-     */
+    /** 🔄 Manual conversion endpoint */
     public function convert(Lead $lead)
     {
         $this->authorizeCompany($lead);
@@ -240,46 +216,34 @@ class LeadController extends Controller
             $this->convertToOpportunity($lead);
         });
 
-        if (request()->expectsJson()) {
-            return response()->json(['message' => 'Lead converted.']);
-        }
-        return back()->with('success', 'Lead converted.');
+        return request()->expectsJson()
+            ? response()->json(['message' => 'Lead converted.'])
+            : back()->with('success', 'Lead converted.');
     }
 
-    /**
-     * ☎️ Touch last_contacted_at = now (AJAX or normal)
-     */
+    /** ☎️ Touch last_contacted_at = now (AJAX or normal) */
     public function touchContacted(Lead $lead)
     {
         $this->authorizeCompany($lead);
 
         $lead->update(['last_contacted_at' => now()]);
 
-        if (request()->expectsJson()) {
-            return response()->json(['last_contacted_at' => $lead->last_contacted_at]);
-        }
-        return back()->with('success', 'Last contacted time updated.');
+        return request()->expectsJson()
+            ? response()->json(['last_contacted_at' => $lead->last_contacted_at])
+            : back()->with('success', 'Last contacted time updated.');
     }
 
-    /**
-     * 🔐 Company guard
-     */
+    /** 🔐 Company guard */
     protected function authorizeCompany(Lead $lead): void
     {
         abort_if($lead->company_id !== auth()->user()->company_id, 403);
     }
 
-    /**
-     * 🧠 Core conversion logic (idempotent):
-     * - Ensure client exists (create if missing)
-     * - Create/get opportunity for this lead
-     * - Flip status to "converted"
-     */
+    /** 🧠 Core conversion logic */
     protected function convertToOpportunity(Lead $lead): void
     {
         $companyId = $lead->company_id;
 
-        // 1) Ensure client
         if (!$lead->client_id) {
             $client = Client::create([
                 'name'        => $lead->name,
@@ -294,23 +258,21 @@ class LeadController extends Controller
             $lead->save();
         }
 
-        // 2) Create or get an opportunity
         Opportunity::firstOrCreate(
             [
                 'company_id' => $companyId,
-                'lead_id'    => $lead->id, // if FK exists on opportunities
+                'lead_id'    => $lead->id,
             ],
             [
                 'client_id'   => $lead->client_id,
                 'title'       => 'Opportunity: ' . ($lead->name ?: 'New') . ' - ' . Str::limit(($lead->source ?? 'Lead'), 30),
-                'stage'       => 'new',       // default stage
-                'amount'      => 0,           // adjust/remove per schema
+                'stage'       => 'new',
+                'amount'      => 0,
                 'notes'       => $lead->notes,
                 'assigned_to' => $lead->assigned_to,
             ]
         );
 
-        // 3) Mark lead as converted
         $lead->status = 'converted';
         $lead->save();
     }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Note;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Imports\ClientImport;
@@ -222,8 +223,17 @@ class ClientController extends Controller
             'jobs'          => fn($q) => $q->latest('start_time'),
             'invoices'      => fn($q) => $q->latest(),
             'files',
-            'notes'         => fn($q) => $q->latest(), // you can limit to 3 in the view if you want
+            'notes'         => fn($q) => $q->latest(),
         ]);
+
+        // ---- Communications (moved out of Blade) ----
+        $communications = Communication::query()
+            ->forCompany(auth()->user()->company_id)
+            ->where('client_id', $client->id)
+            ->orderByDesc('communication_date')
+            ->orderByDesc('created_at')
+            ->paginate(10)
+            ->withQueryString();
 
         // ---- KPIs ----
         $lifetimeValue = (float) $client->invoices->sum(fn($inv) => (float) ($inv->total ?? $inv->amount ?? 0));
@@ -264,7 +274,7 @@ class ClientController extends Controller
             'profile_pct'  => $profilePct,
         ];
 
-        return view('admin.clients.show', compact('client', 'kpis'));
+        return view('admin.clients.show', compact('client', 'kpis', 'communications'));
     }
 
     /**
@@ -283,11 +293,10 @@ class ClientController extends Controller
             'client_id'   => $client->id,
             'content'     => $data['content'],
             'created_by'  => auth()->id(),
-            'author_name' => optional(auth()->user())->name, // optional: keeps name even if user is later deleted
+            'author_name' => optional(auth()->user())->name,
         ]);
 
         if ($request->expectsJson()) {
-            // return the freshest 3 for UI to refresh “Recent notes”
             $recent = $client->notes()
                 ->where('company_id', auth()->user()->company_id)
                 ->with(['creator:id,name'])
@@ -314,7 +323,7 @@ class ClientController extends Controller
 
         $notes = $client->notes()
             ->where('company_id', auth()->user()->company_id)
-            ->with(['creator:id,name'])   // creator() relation on Note
+            ->with(['creator:id,name'])
             ->latest()
             ->paginate(20)
             ->withQueryString();

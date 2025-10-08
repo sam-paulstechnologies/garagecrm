@@ -18,7 +18,9 @@ class Lead extends Model
     protected $fillable = [
         'name',
         'email',
+        'email_norm',      // 👈 NEW
         'phone',
+        'phone_norm',      // 👈 NEW
         'status',
         'source',
         'notes',
@@ -30,13 +32,46 @@ class Lead extends Model
         'company_id',
         'client_id',
         'score',
+        // 👇 Meta/external
+        'external_source',
+        'external_id',
+        'external_form_id',
+        'external_payload',
+        'external_received_at',
     ];
 
     protected $casts = [
-        'last_contacted_at' => 'datetime',
-        'is_hot'            => 'boolean',
-        'score'             => 'integer',
+        'last_contacted_at'    => 'datetime',
+        'is_hot'               => 'boolean',
+        'score'                => 'integer',
+        'external_payload'     => 'array',
+        'external_received_at' => 'datetime',
     ];
+
+    /* -------------------------
+     | Normalization helpers
+     ------------------------- */
+    public static function normalizeEmail(?string $email): ?string
+    {
+        $email = trim((string) $email);
+        return $email !== '' ? mb_strtolower($email) : null;
+    }
+
+    public static function normalizePhone(?string $phone): ?string
+    {
+        if ($phone === null) return null;
+        $digits = preg_replace('/\D+/', '', $phone);
+        return $digits !== '' ? $digits : null;
+    }
+
+    // Auto-fill normalized columns on save
+    protected static function booted(): void
+    {
+        static::saving(function (Lead $lead) {
+            $lead->email_norm = self::normalizeEmail($lead->email);
+            $lead->phone_norm = self::normalizePhone($lead->phone);
+        });
+    }
 
     /* -------------------------
      | Relationships
@@ -96,14 +131,14 @@ class Lead extends Model
             $this->save();
 
             Opportunity::create([
-                'client_id'  => $client->id,
-                'lead_id'    => $this->id,
-                'stage'      => 'new', // ✅ was 'status'
-                'company_id' => $this->company_id,
-                'title'      => $this->name . ' Opportunity',
-                'assigned_to'=> $this->assigned_to,
-                'source'     => $this->source,
-                'notes'      => $this->notes,
+                'client_id'   => $client->id,
+                'lead_id'     => $this->id,
+                'stage'       => 'new',
+                'company_id'  => $this->company_id,
+                'title'       => $this->name . ' Opportunity',
+                'assigned_to' => $this->assigned_to,
+                'source'      => $this->source,
+                'notes'       => $this->notes,
             ]);
 
             DB::commit();

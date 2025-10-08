@@ -14,27 +14,21 @@ class Vehicle extends Model
         'make_id',
         'model_id',
         'plate_number',
+        'vin', // ✓ VIN added
         'year',
         'color',
         'registration_expiry_date',
         'insurance_expiry_date',
     ];
 
-    /** ↩️ Vehicle → Client */
-    public function client(): BelongsTo
+    // Normalize VIN on write
+    public function setVinAttribute($value): void
     {
-        return $this->belongsTo(Client::class, 'client_id', 'id');
+        $v = is_string($value) ? strtoupper(trim($value)) : $value;
+        $this->attributes['vin'] = $v !== '' ? $v : null;
     }
 
-    /** 🔧 Make (catalog tables) */
-    public function make(): BelongsTo
-    {
-        return $this->belongsTo(VehicleMake::class, 'make_id');
-    }
-
-    /** 🔩 Model (catalog tables) */
-    public function model(): BelongsTo
-    {
-        return $this->belongsTo(VehicleModel::class, 'model_id');
-    }
+    public function client(): BelongsTo     { return $this->belongsTo(Client::class, 'client_id', 'id'); }
+    public function make(): BelongsTo       { return $this->belongsTo(VehicleMake::class, 'make_id'); }
+    public function model(): BelongsTo      { return $this->belongsTo(VehicleModel::class, 'model_id'); }
 }

@@ -56,7 +56,7 @@
                 ->paginate(10);
         @endphp
 
-        @include('admin.communications._list', ['communications' => $communications])
+       
     </div>
 
     {{-- 🆕 Documents (JobDocuments assigned to this client) --}}

@@ -1,18 +1,52 @@
+{{-- resources/views/admin/leads/index.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
 <div class="px-6 py-4">
-    <div class="flex justify-between items-center mb-6">
+    <div class="flex justify-between items-center mb-6 gap-2">
         <h2 class="text-2xl font-semibold text-gray-800">Lead Management</h2>
-        <a href="{{ route('admin.leads.create') }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow">
-            + Add Lead
-        </a>
+
+        <div class="flex items-center gap-2">
+            {{-- Import from Meta --}}
+            <form action="{{ route('admin.leads.import.meta') }}" method="POST" class="inline">
+                @csrf
+                {{-- Optional: allow overriding form id and limit from UI (hidden by default) --}}
+                {{-- <input type="text" name="meta_form_id" placeholder="Form ID (optional)" class="hidden"> --}}
+                {{-- <input type="text" name="meta_access_token" placeholder="Access Token (optional)" class="hidden"> --}}
+                <input type="hidden" name="limit" value="50">
+                <button type="submit"
+                        class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded shadow">
+                    Import from Meta
+                </button>
+            </form>
+            <a href="{{ route('admin.leads.duplicates.index') }}"
+   class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow">
+  View Duplicates
+</a>
+
+
+            {{-- Add Lead --}}
+            <a href="{{ route('admin.leads.create') }}"
+               class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow">
+                + Add Lead
+            </a>
+        </div>
     </div>
 
     @if(session('success'))
         <div class="mb-4 p-4 bg-green-100 border border-green-300 text-green-800 rounded">
             {{ session('success') }}
         </div>
+    @endif
+
+    @if(session('error'))
+        <div class="mb-4 p-4 bg-red-100 border border-red-300 text-red-800 rounded">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    @if(session('meta_output'))
+        <pre class="mb-4 p-3 rounded bg-slate-900 text-slate-100 text-xs overflow-auto">{{ session('meta_output') }}</pre>
     @endif
 
     <div class="overflow-x-auto bg-white shadow rounded-lg">
@@ -52,7 +86,7 @@
                             </span>
                         </td>
                         <td class="px-4 py-2">{{ $lead->source ?? '—' }}</td>
-                        <td class="px-4 py-2">{{ ucfirst($lead->preferred_channel) ?? '—' }}</td>
+                        <td class="px-4 py-2">{{ $lead->preferred_channel ? ucfirst($lead->preferred_channel) : '—' }}</td>
                         <td class="px-4 py-2">{{ $lead->is_hot ? 'Yes' : 'No' }}</td>
                         <td class="px-4 py-2">{{ $lead->score ?? 0 }}</td>
                         <td class="px-4 py-2">{{ $lead->lead_score_reason ?? '—' }}</td>

@@ -5,15 +5,13 @@ namespace App\Models\Shared;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Client\Client;
-use App\Models\Lead\Lead;
-use App\Models\Opportunity\Opportunity;
-use App\Models\Booking\Booking;
-use App\Models\Traits\BelongsToCompany; // remove if you don't use it
+use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
+use App\Models\Job\Booking;
 
 class Communication extends Model
 {
     use HasFactory;
-    use BelongsToCompany; // remove if unused
 
     protected $table = 'communications';
 

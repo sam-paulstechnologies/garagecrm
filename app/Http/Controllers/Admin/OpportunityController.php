@@ -9,29 +9,28 @@ use App\Models\Client\Lead;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
-use App\Models\Job\Booking; // ✅ correct Booking model
+use App\Models\Job\Booking;
+use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema; // used to detect schedule columns
+use Illuminate\Support\Facades\Schema;
 
 // 🔔 Events
 use App\Events\OpportunityStageChanged;
 
 class OpportunityController extends Controller
 {
-    /**
-     * 📄 List opportunities with search, filters, sorting, pagination
-     */
+    /** 📄 List opportunities with search, filters, sorting, pagination */
     public function index(Request $request)
     {
         $companyId = auth()->user()->company_id;
 
         $q        = trim((string) $request->get('q', ''));
-        $stage    = $request->get('stage');              // new|attempting_contact|appointment|offer|closed_won|closed_lost
+        $stage    = $request->get('stage');
         $source   = $request->get('source');
-        $assignee = $request->get('assigned_to');        // user id
-        $priority = $request->get('priority');           // low|medium|high
-        $order    = $request->get('order', 'latest');    // latest|value|next_follow_up|expected_close
+        $assignee = $request->get('assigned_to');
+        $priority = $request->get('priority');
+        $order    = $request->get('order', 'latest');
 
         $ops = Opportunity::query()
             ->with([
@@ -41,13 +40,10 @@ class OpportunityController extends Controller
                 'vehicleModel:id,name',
             ])
             ->where('company_id', $companyId)
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    $sub->where('title', 'like', "%{$q}%")
-                        ->orWhere('notes', 'like', "%{$q}%")
-                        ->orWhere('source', 'like', "%{$q}%");
-                });
-            })
+            ->when($q, fn($q1) => $q1->where(fn($w) => $w
+                ->where('title', 'like', "%{$q}%")
+                ->orWhere('notes', 'like', "%{$q}%")
+                ->orWhere('source', 'like', "%{$q}%")))
             ->when($stage, fn($q2) => $q2->where('stage', $stage))
             ->when($source, fn($q3) => $q3->where('source', $source))
             ->when($assignee, fn($q4) => $q4->where('assigned_to', $assignee))
@@ -59,20 +55,12 @@ class OpportunityController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.opportunities.index', [
-            'opportunities' => $ops,
-            'q'             => $q,
-            'stage'         => $stage,
-            'source'        => $source,
-            'assignee'      => $assignee,
-            'priority'      => $priority,
-            'order'         => $order,
-        ]);
+        return view('admin.opportunities.index', compact(
+            'ops','q','stage','source','assignee','priority','order'
+        ))->with('opportunities', $ops);
     }
 
-    /**
-     * 🗂️ Archived (soft-deleted) opportunities
-     */
+    /** 🗂️ Archived opportunities */
     public function archived(Request $request)
     {
         $companyId = auth()->user()->company_id;
@@ -99,25 +87,39 @@ class OpportunityController extends Controller
         return redirect()->route('admin.opportunities.index')->with('success', 'Opportunity restored.');
     }
 
-    /**
-     * ➕ Create form (company-scoped options)
-     */
+    /** ➕ Create form (company-scoped options) */
     public function create()
     {
         $companyId = auth()->user()->company_id;
 
         $clients  = Client::where('company_id', $companyId)->orderBy('name')->get(['id','name','phone','email']);
         $leads    = Lead::where('company_id', $companyId)->latest()->get(['id','name','email','phone']);
-        $vehicles = Vehicle::where('company_id', $companyId)->latest()->get(['id','client_id','plate_number','vin','company_id']);
-        $makes    = VehicleMake::orderBy('name')->get(['id','name']);
-        $models   = VehicleModel::orderBy('name')->get(['id','name','vehicle_make_id']);
+
+        // Vehicles: include VIN if present
+        $vehicleCols = Schema::hasColumn('vehicles', 'vin')
+            ? ['id','client_id','plate_number','vin','company_id']
+            : ['id','client_id','plate_number','company_id'];
+        $vehicles = Vehicle::where('company_id', $companyId)->latest()->get($vehicleCols);
+
+        $makes = VehicleMake::orderBy('name')->get(['id','name']);
+
+        // Models: cope with either `vehicle_make_id` OR `make_id`
+        if (Schema::hasColumn('vehicle_models', 'vehicle_make_id')) {
+            $models = VehicleModel::orderBy('name')->get(['id','name','vehicle_make_id']);
+        } elseif (Schema::hasColumn('vehicle_models', 'make_id')) {
+            // alias make_id → vehicle_make_id so views that expect that key keep working
+            $models = VehicleModel::select(['id','name', DB::raw('make_id as vehicle_make_id')])
+                ->orderBy('name')
+                ->get();
+        } else {
+            // fallback: at least provide id+name
+            $models = VehicleModel::orderBy('name')->get(['id','name']);
+        }
 
         return view('admin.opportunities.create', compact('clients', 'leads', 'vehicles', 'makes', 'models'));
     }
 
-    /**
-     * 💾 Store (optionally schedule Booking on Closed Won) + 🔔 fire stage-changed
-     */
+    /** 💾 Store (optionally schedule Booking on Closed Won) + 🔔 fire stage-changed */
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -142,9 +144,8 @@ class OpportunityController extends Controller
             'vehicle_model_id'    => ['nullable','exists:vehicle_models,id'],
             'other_make'          => ['nullable','string','max:255'],
             'other_model'         => ['nullable','string','max:255'],
-            // Booking popup
             'booking_date'        => ['nullable','date'],
-            'booking_time'        => ['nullable','string'], // "HH:MM"
+            'booking_time'        => ['nullable','string'],
         ], [
             'service_type.required_if' => 'Please select at least one service when marking the opportunity as Closed Won.',
         ]);
@@ -156,7 +157,6 @@ class OpportunityController extends Controller
         DB::transaction(function () use (&$opportunity, $data) {
             $opportunity = Opportunity::create($data);
 
-            // If Closed Won with booking info → create Booking
             if (
                 ($data['stage'] ?? null) === 'closed_won' &&
                 !empty($data['booking_date']) &&
@@ -166,10 +166,9 @@ class OpportunityController extends Controller
             }
         });
 
-        // 🔔 Fire "stage changed" only if it wasn't created as 'new'
         $newStage = $opportunity->stage;
         if ($newStage !== 'new') {
-            $oppId = $opportunity->id; // avoid stale ref in closure
+            $oppId = $opportunity->id;
             DB::afterCommit(function () use ($oppId, $newStage) {
                 $fresh = Opportunity::find($oppId);
                 event(new OpportunityStageChanged($fresh, 'new', $newStage));
@@ -187,27 +186,36 @@ class OpportunityController extends Controller
         return redirect()->route('admin.opportunities.index')->with('success', 'Opportunity created.');
     }
 
-    /**
-     * ✏️ Edit form
-     */
+    /** ✏️ Edit form */
     public function edit(Opportunity $opportunity)
     {
         $this->authorizeCompany($opportunity);
-
         $companyId = auth()->user()->company_id;
 
         $clients  = Client::where('company_id', $companyId)->orderBy('name')->get(['id','name','phone','email']);
         $leads    = Lead::where('company_id', $companyId)->latest()->get(['id','name','email','phone']);
-        $vehicles = Vehicle::where('company_id', $companyId)->latest()->get(['id','client_id','plate_number','vin','company_id']);
-        $makes    = VehicleMake::orderBy('name')->get(['id','name']);
-        $models   = VehicleModel::orderBy('name')->get(['id','name','vehicle_make_id']);
+
+        $vehicleCols = Schema::hasColumn('vehicles', 'vin')
+            ? ['id','client_id','plate_number','vin','company_id']
+            : ['id','client_id','plate_number','company_id'];
+        $vehicles = Vehicle::where('company_id', $companyId)->latest()->get($vehicleCols);
+
+        $makes = VehicleMake::orderBy('name')->get(['id','name']);
+
+        if (Schema::hasColumn('vehicle_models', 'vehicle_make_id')) {
+            $models = VehicleModel::orderBy('name')->get(['id','name','vehicle_make_id']);
+        } elseif (Schema::hasColumn('vehicle_models', 'make_id')) {
+            $models = VehicleModel::select(['id','name', DB::raw('make_id as vehicle_make_id')])
+                ->orderBy('name')
+                ->get();
+        } else {
+            $models = VehicleModel::orderBy('name')->get(['id','name']);
+        }
 
         return view('admin.opportunities.edit', compact('opportunity', 'clients', 'leads', 'vehicles', 'makes', 'models'));
     }
 
-    /**
-     * 🔁 Update (optionally schedule/update Booking on Closed Won) + 🔔 fire stage-changed
-     */
+    /** 🔁 Update (optionally schedule/update Booking on Closed Won) + 🔔 fire stage-changed */
     public function update(Request $request, Opportunity $opportunity)
     {
         $this->authorizeCompany($opportunity);
@@ -234,14 +242,11 @@ class OpportunityController extends Controller
             'vehicle_model_id'    => ['nullable','exists:vehicle_models,id'],
             'other_make'          => ['nullable','string','max:255'],
             'other_model'         => ['nullable','string','max:255'],
-            // Booking popup
             'booking_date'        => ['nullable','date'],
-            'booking_time'        => ['nullable','string'], // "HH:MM"
+            'booking_time'        => ['nullable','string'],
         ], [
             'service_type.required_if' => 'Please select at least one service when marking the opportunity as Closed Won.',
         ]);
-
-        $this->authorizeCompany($opportunity);
 
         $oldStage = $opportunity->stage;
 
@@ -257,7 +262,6 @@ class OpportunityController extends Controller
             }
         });
 
-        // 🔔 Fire only when actually changed
         $oppId = $opportunity->id;
         DB::afterCommit(function () use ($oppId, $oldStage) {
             $fresh = Opportunity::find($oppId);
@@ -277,9 +281,30 @@ class OpportunityController extends Controller
         return redirect()->route('admin.opportunities.index')->with('success', 'Opportunity updated.');
     }
 
-    /**
-     * ✅ Close Won helper (AJAX or normal) — optional booking + 🔔 stage-changed
-     */
+    /** 👁️ Show opportunity (and its communications) */
+    public function show(Opportunity $opportunity)
+    {
+        $this->authorizeCompany($opportunity);
+
+        $opportunity->loadMissing([
+            'client:id,name,phone,email',
+            'lead:id,name,email,phone,company_id',
+            'vehicleMake:id,name',
+            'vehicleModel:id,name',
+        ]);
+
+        $communications = Communication::query()
+            ->forCompany($opportunity->company_id)
+            ->where('opportunity_id', $opportunity->id)
+            ->orderByDesc('communication_date')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('admin.opportunities.show', compact('opportunity', 'communications'));
+    }
+
+    /** ✅ Close Won helper */
     public function closeWon(Request $request, Opportunity $opportunity)
     {
         $this->authorizeCompany($opportunity);
@@ -320,15 +345,12 @@ class OpportunityController extends Controller
             event(new OpportunityStageChanged($fresh, $oldStage, 'closed_won'));
         });
 
-        if ($request->expectsJson()) {
-            return response()->json(['message' => 'Opportunity marked as Closed Won.']);
-        }
-        return back()->with('success', 'Opportunity marked as Closed Won.');
+        return $request->expectsJson()
+            ? response()->json(['message' => 'Opportunity marked as Closed Won.'])
+            : back()->with('success', 'Opportunity marked as Closed Won.');
     }
 
-    /**
-     * ❌ Close Lost helper (AJAX or normal) + 🔔 stage-changed
-     */
+    /** ❌ Close Lost helper */
     public function closeLost(Request $request, Opportunity $opportunity)
     {
         $this->authorizeCompany($opportunity);
@@ -353,15 +375,12 @@ class OpportunityController extends Controller
             event(new OpportunityStageChanged($fresh, $oldStage, 'closed_lost'));
         });
 
-        if ($request->expectsJson()) {
-            return response()->json(['message' => 'Opportunity marked as Closed Lost.']);
-        }
-        return back()->with('success', 'Opportunity marked as Closed Lost.');
+        return $request->expectsJson()
+            ? response()->json(['message' => 'Opportunity marked as Closed Lost.'])
+            : back()->with('success', 'Opportunity marked as Closed Lost.');
     }
 
-    /**
-     * 📆 Touch next follow-up (defaults to +2 days if not provided)
-     */
+    /** 📆 Touch next follow-up */
     public function touchFollowUp(Request $request, Opportunity $opportunity)
     {
         $this->authorizeCompany($opportunity);
@@ -374,24 +393,19 @@ class OpportunityController extends Controller
             'next_follow_up' => $data['next_follow_up'] ?? now()->addDays(2),
         ]);
 
-        if ($request->expectsJson()) {
-            return response()->json(['next_follow_up' => $opportunity->next_follow_up]);
-        }
-        return back()->with('success', 'Next follow-up updated.');
+        return $request->expectsJson()
+            ? response()->json(['next_follow_up' => $opportunity->next_follow_up])
+            : back()->with('success', 'Next follow-up updated.');
     }
 
-    /**
-     * 🔐 Company guard
-     */
+    /** 🔐 Company guard */
     protected function authorizeCompany(Opportunity $opportunity): void
     {
         abort_if($opportunity->company_id !== auth()->user()->company_id, 403);
     }
 
     /**
-     * 🧩 Booking upsert that works with either schema:
-     *   - single datetime column: bookings.scheduled_at
-     *   - split date/time: bookings.booking_date, bookings.booking_time
+     * 🧩 Booking upsert (scheduled_at or booking_date/booking_time)
      */
     protected function createOrUpdateBookingForOpportunity(Opportunity $opportunity, array $data): void
     {
@@ -407,7 +421,6 @@ class OpportunityController extends Controller
             'assigned_to'  => $data['assigned_to'] ?? $opportunity->assigned_to,
         ];
 
-        // Set schedule
         if (Schema::hasColumn('bookings', 'scheduled_at')) {
             $payload['scheduled_at'] = ($data['booking_date'] ?? '') . ' ' . ($data['booking_time'] ?? '') . ':00';
         } else {

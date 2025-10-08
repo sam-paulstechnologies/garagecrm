@@ -10,12 +10,12 @@ use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
-
-use App\Models\Job\Job; // Adjust if Job lives elsewhere
+use App\Models\Job\Job;
 
 class BookingController extends Controller
 {
@@ -77,7 +77,6 @@ class BookingController extends Controller
             'status'                => 'nullable|string|max:40',
         ]);
 
-        // Walk-in client creation
         if (empty($data['client_id'])) {
             $client = Client::create([
                 'company_id' => $companyId,
@@ -87,7 +86,6 @@ class BookingController extends Controller
             $data['client_id'] = $client->id;
         }
 
-        // Compute expected close if not provided
         if (empty($data['expected_close_date']) && !empty($data['date']) && !empty($data['expected_duration'])) {
             $data['expected_close_date'] = Carbon::parse($data['date'])
                 ->addDays((int) $data['expected_duration'])
@@ -98,7 +96,6 @@ class BookingController extends Controller
         $data['pickup_required'] = $request->boolean('pickup_required');
         $data['is_archived']     = false;
 
-        // Normalize status slug (let DB default if empty)
         $status = $request->filled('status')
             ? strtolower(str_replace([' ', '-'], '_', trim($request->input('status'))))
             : null;
@@ -108,10 +105,8 @@ class BookingController extends Controller
             unset($data['status']);
         }
 
-        // Keep original date for slot checks + potential job creation
         $slotDateForCheck = $data['date'];
 
-        // Map to actual DB date column
         if (Schema::hasColumn('bookings', 'booking_date')) {
             $data['booking_date'] = $data['date'];
             unset($data['date']);
@@ -135,11 +130,20 @@ class BookingController extends Controller
         return redirect()->route('admin.bookings.index')->with('success', 'Booking created.');
     }
 
-    /** Show one booking */
+    /** Show one booking (+ communications) */
     public function show(Booking $booking)
     {
         $this->authorizeBooking($booking);
-        return view('admin.bookings.show', compact('booking'));
+
+        $communications = Communication::query()
+            ->forCompany(auth()->user()->company_id)
+            ->where('booking_id', $booking->id)
+            ->orderByDesc('communication_date')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('admin.bookings.show', compact('booking', 'communications'));
     }
 
     /** Edit form */
@@ -251,7 +255,7 @@ class BookingController extends Controller
         return redirect()->route('admin.bookings.index')->with('success', 'Booking deleted.');
     }
 
-    /** Archive (implicit model binding) */
+    /** Archive */
     public function archive(Booking $booking)
     {
         $this->authorizeBooking($booking);
@@ -261,7 +265,7 @@ class BookingController extends Controller
         return redirect()->route('admin.bookings.index')->with('success', 'Booking archived.');
     }
 
-    /** Restore (implicit model binding) */
+    /** Restore */
     public function restore(Booking $booking)
     {
         $this->authorizeBooking($booking);
@@ -289,10 +293,7 @@ class BookingController extends Controller
         abort_if($booking->company_id !== auth()->user()->company_id, 403);
     }
 
-    /**
-     * Create a Job when status becomes vehicle_received.
-     * We intentionally do NOT set jobs.status here; let DB default handle it.
-     */
+    /** Create a Job when status becomes vehicle_received */
     private function createJobFromBooking(Booking $booking, array $data): void
     {
         $lookup = [
