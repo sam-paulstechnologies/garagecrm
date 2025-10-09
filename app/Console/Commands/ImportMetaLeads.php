@@ -13,33 +13,91 @@ use Illuminate\Support\Facades\Cache;
 class ImportMetaLeads extends Command
 {
     protected $signature = 'leads:import-meta
-                            {--company= : Company ID (default: first company)}
+                            {--company= : Company ID (omit to run for ALL companies)}
                             {--limit=50 : Per-page fetch size}';
 
     protected $description = 'Import leads from Meta Lead Ads into GarageCRM';
 
     public function handle(): int
     {
-        $this->info('Starting Meta lead import...');
+        $limit     = max(1, (int) $this->option('limit'));
+        $companyId = $this->option('company');
 
-        $companyId = (int)($this->option('company') ?: (Company::query()->value('id') ?? 0));
-        if (!$companyId) {
-            $this->error('No company found. Use --company=<id>.');
-            return self::FAILURE;
+        // ── Single company (explicit) ──────────────────────────────────────────────
+        if ($companyId) {
+            $companyId = (int) $companyId;
+            $this->info("Starting Meta lead import for company #{$companyId} (limit={$limit})");
+
+            try {
+                $count = $this->runForCompany($companyId, $limit);
+                Cache::put("meta_import:company:{$companyId}:last_run_at", now()->toDateTimeString(), 86400);
+                Cache::put("meta_import:company:{$companyId}:last_count", (int) $count, 86400);
+                Cache::forget("meta_import:company:{$companyId}:last_error");
+
+                $this->info("Meta import complete for company #{$companyId}. Imported {$count} lead(s).");
+                return self::SUCCESS;
+            } catch (\Throwable $e) {
+                $msg = "Meta import failed for company #{$companyId}: {$e->getMessage()}";
+                $this->error($msg);
+                Cache::put("meta_import:company:{$companyId}:last_error", $msg, 86400);
+                return self::FAILURE;
+            }
         }
 
-        $store  = new SettingsStore($companyId);
-        $token  = $this->decryptIfNeeded($store->get('meta.access_token'));
-        $apiVer = $store->get('meta.api_version', 'v19.0');
+        // ── All companies (default) ───────────────────────────────────────────────
+        $this->info('No company specified — importing for ALL companies…');
+
+        $overall = 0;
+        $hadError = false;
+
+        $companies = Company::query()->select('id', 'name')->get();
+        if ($companies->isEmpty()) {
+            $this->warn('No companies found. Nothing to import.');
+            return self::SUCCESS;
+        }
+
+        foreach ($companies as $company) {
+            try {
+                $this->line("→ Importing for company #{$company->id} ({$company->name}) …");
+                $count = $this->runForCompany((int) $company->id, $limit);
+                $overall += $count;
+
+                Cache::put("meta_import:company:{$company->id}:last_run_at", now()->toDateTimeString(), 86400);
+                Cache::put("meta_import:company:{$company->id}:last_count", (int) $count, 86400);
+                Cache::forget("meta_import:company:{$company->id}:last_error");
+
+                $this->line("✔ Company #{$company->id}: imported {$count} lead(s).");
+            } catch (\Throwable $e) {
+                $hadError = true;
+                $msg = "Failed for company #{$company->id}: {$e->getMessage()}";
+                $this->error($msg);
+                \Log::error('[Meta Import] '.$msg, ['company_id' => $company->id, 'trace' => $e->getTraceAsString()]);
+                Cache::put("meta_import:company:{$company->id}:last_error", $msg, 86400);
+            }
+        }
+
+        $this->info("Meta import completed for all companies. Total imported: {$overall}.");
+
+        return $hadError ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Run the import for a single company and return # of leads imported.
+     */
+    private function runForCompany(int $companyId, int $limit): int
+    {
+        $store   = new SettingsStore($companyId);
+        $token   = $this->decryptIfNeeded($store->get('meta.access_token'));
+        $apiVer  = $store->get('meta.api_version', 'v19.0');
         $formAny = $store->get('meta.form_ids') ?? $store->get('meta.form_id');
         $formIds = $this->normalizeFormIds($formAny);
 
         if (!$token || empty($formIds)) {
-            $this->error('Missing Meta settings. Need meta.access_token and meta.form_ids/meta.form_id in Admin → Settings.');
-            return self::FAILURE;
+            throw new \RuntimeException(
+                'Missing Meta settings. Need meta.access_token and meta.form_ids/meta.form_id in Admin → Settings.'
+            );
         }
 
-        $limit  = max(1, (int)$this->option('limit'));
         $verify = env('CURL_CA_BUNDLE', true);
 
         $client = new Client([
@@ -48,26 +106,32 @@ class ImportMetaLeads extends Command
             'verify'   => $verify,
         ]);
 
-        $total = 0;
+        $importedTotal = 0;
 
-        try {
-            foreach ($formIds as $formId) {
-
-                // 🧠 Prevent overlapping imports for same form
+        foreach ($formIds as $formId) {
+            // Best-effort lock to avoid overlapping for the same form
+            $lock = null;
+            try {
                 $lock = Cache::lock("meta-import:{$companyId}:{$formId}", 55);
-                if (! $lock->get()) {
+                if (method_exists($lock, 'get') && ! $lock->get()) {
                     $this->warn("Skipped form {$formId}: import already running.");
                     continue;
                 }
+            } catch (\Throwable $e) {
+                // If store doesn’t support locks, proceed without blocking
+            }
 
-                try {
-                    $this->line("→ Fetching leads for form {$formId} ...");
+            try {
+                $this->line("   → Fetching leads for form {$formId} …");
 
-                    $total += $this->fetchAllLeadsForForm($client, $token, $formId, $limit, function ($lead) use ($companyId, $formId) {
+                $importedTotal += $this->fetchAllLeadsForForm(
+                    $client,
+                    $token,
+                    $formId,
+                    $limit,
+                    function (array $lead) use ($companyId, $formId) {
                         $externalId   = $lead['id'];
-                        $createdAt    = $lead['created_time'] ?? null;
                         $fieldDataArr = $lead['field_data'] ?? [];
-
                         $fields = [];
                         foreach ($fieldDataArr as $f) {
                             $fields[$f['name']] = $f['values'][0] ?? null;
@@ -91,22 +155,17 @@ class ImportMetaLeads extends Command
                             ]
                         );
 
-                        $this->line("   Imported Meta lead {$externalId}");
-                    });
+                        $this->line("      Imported Meta lead {$externalId}");
+                    }
+                );
 
-                    $this->line("✔ Form {$formId}: imported {$total} lead(s) so far.");
-                } finally {
-                    optional($lock)->release();
-                }
+                $this->line("   ✔ Form {$formId}: cumulative imported {$importedTotal}.");
+            } finally {
+                try { optional($lock)->release(); } catch (\Throwable $e) { /* ignore */ }
             }
-
-            $this->info("Meta import complete. Total imported: {$total}.");
-            return self::SUCCESS;
-
-        } catch (\Throwable $e) {
-            $this->error("Meta import failed: {$e->getMessage()}");
-            return self::FAILURE;
         }
+
+        return $importedTotal;
     }
 
     /** Normalize meta.form_ids/meta.form_id into an array. */
@@ -117,17 +176,17 @@ class ImportMetaLeads extends Command
 
         if (is_string($value)) {
             $t = trim($value);
-            if ($t !== '' && $t[0] === '[') {
+            if ($t !== '' && str_starts_with($t, '[')) {
                 $decoded = json_decode($t, true);
                 if (is_array($decoded)) return array_values(array_filter(array_map('trim', $decoded)));
             }
             return array_values(array_filter(array_map('trim', explode(',', $t))));
         }
 
-        return [trim((string)$value)];
+        return [trim((string) $value)];
     }
 
-    /** If value looks like a Laravel Crypt payload, decrypt it; otherwise return as-is. */
+    /** Decrypt if the string looks like a Laravel Crypt payload; else return as-is. */
     private function decryptIfNeeded($value): ?string
     {
         if (!is_string($value) || $value === '') return $value;
@@ -138,12 +197,15 @@ class ImportMetaLeads extends Command
                 return Crypt::decryptString($value);
             }
         } catch (\Throwable $e) {
-            // Treat as plain if decryption fails
+            // treat as plain if decryption fails
         }
         return $value;
     }
 
-    /** Fetch all leads for a form (handles pagination) and call $onLead for each. */
+    /**
+     * Fetch all leads (handles pagination) and call $onLead for each.
+     * Returns number of leads processed.
+     */
     private function fetchAllLeadsForForm(Client $client, string $token, string $formId, int $limit, \Closure $onLead): int
     {
         $count = 0;
@@ -158,14 +220,14 @@ class ImportMetaLeads extends Command
             if ($after) $query['after'] = $after;
 
             $resp    = $client->get("{$formId}/leads", ['query' => $query]);
-            $payload = json_decode((string)$resp->getBody(), true);
+            $payload = json_decode((string) $resp->getBody(), true);
 
             foreach ($payload['data'] ?? [] as $lead) {
                 $onLead($lead);
                 $count++;
             }
-            $after = $payload['paging']['cursors']['after'] ?? null;
 
+            $after = $payload['paging']['cursors']['after'] ?? null;
         } while ($after);
 
         return $count;

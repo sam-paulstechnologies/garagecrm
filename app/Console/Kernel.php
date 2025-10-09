@@ -19,13 +19,12 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      */
-    protected function schedule(Schedule $schedule): void
-    {
-        // ⏱️ Reconcile Meta leads periodically (safety net for webhooks)
-        $schedule->command('leads:import-meta')
-            ->everyFifteenMinutes() // change to ->hourly() if you prefer
-            ->withoutOverlapping()
-            ->onOneServer()
-            ->runInBackground();
-    }
+    // app/Console/Kernel.php
+    protected function schedule(\Illuminate\Console\Scheduling\Schedule $schedule): void
+        {
+            $schedule->command('leads:import-meta')
+                ->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->runInBackground();
+        }
 }
