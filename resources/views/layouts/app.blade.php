@@ -11,11 +11,13 @@
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-    <!-- Vite + Alpine -->
-    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
+    <!-- Vite (React/JS entry will import CSS) -->
+    @viteReactRefresh
+    @vite(['resources/js/app.jsx'])
+
+    <!-- Alpine (optional) -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-    <!-- 📌 Additional Styles -->
     @stack('styles')
 </head>
 <body class="font-sans antialiased bg-gray-100">
@@ -38,7 +40,6 @@
         </main>
     </div>
 
-    <!-- 📌 Additional Scripts -->
     @stack('scripts')
 </body>
 </html>

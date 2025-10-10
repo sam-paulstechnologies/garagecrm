@@ -47,28 +47,62 @@
                     <!-- Communication Dropdown -->
                     <div x-data="{ commOpen: false }" class="relative">
                         <button
-                            @click="commOpen = !commOpen"
                             type="button"
+                            @click="commOpen = !commOpen"
                             class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-indigo-600 focus:outline-none"
                         >
                             <span>Communication</span>
-                            <svg class="ml-1 w-4 h-4 transform transition-transform duration-200" :class="{ 'rotate-180': commOpen }"
-                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg class="ml-1 w-4 h-4 transform transition-transform duration-200"
+                                 :class="{ 'rotate-180': commOpen }"
+                                 xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M19 9l-7 7-7-7" />
+                                      d="M19 9l-7 7-7-7"/>
                             </svg>
                         </button>
 
                         <div
+                            x-cloak
                             x-show="commOpen"
-                            @click.away="commOpen = false"
+                            @click.outside="commOpen = false"
                             x-transition:enter="transition ease-out duration-200"
                             x-transition:enter-start="opacity-0 scale-95"
                             x-transition:enter-end="opacity-100 scale-100"
-                            x-transition:leave="transition ease-in duration-75"
+                            x-transition:leave="transition ease-in duration-100"
                             x-transition:leave-start="opacity-100 scale-100"
                             x-transition:leave-end="opacity-0 scale-95"
-                            class="absolute left-0 mt-2 w-56 bg-white border rounded shadow-lg z-50"
+                            class="absolute left-0 mt-2 w-64 bg-white border rounded shadow-lg z-50 py-2"
+                            role="menu" aria-orientation="vertical" tabindex="-1"
+                        >
+                            <div class="px-4 py-2 text-xs text-gray-400">WhatsApp</div>
+
+                            <a href="{{ route('admin.whatsapp.templates.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.templates.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Templates
+                            </a>
+
+                            <a href="{{ route('admin.whatsapp.campaigns.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.campaigns.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Campaigns
+                            </a>
+
+                            <a href="{{ route('admin.communication.logs') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.communication.logs') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Message Logs
+                            </a>
+
+                            <div class="my-2 border-t"></div>
+
+                            <div class="px-4 py-2 text-xs text-gray-400">Settings</div>
+
+                            <a href="{{ route('admin.settings.index', ['tab' => 'communication']) }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"
+                               role="menuitem">
+                                Providers & Webhooks
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -78,14 +112,14 @@
             <div class="hidden sm:flex sm:items-center sm:ms-6">
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150">
+                        <button
+                            class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150">
                             <div>{{ Auth::user()->name }}</div>
                             <div class="ms-1">
-                                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 20 20">
+                                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd"
-                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                        clip-rule="evenodd" />
+                                          d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                          clip-rule="evenodd"/>
                                 </svg>
                             </div>
                         </button>
@@ -95,8 +129,6 @@
                         <x-dropdown-link :href="route('admin.profile.edit')">
                             {{ __('Profile') }}
                         </x-dropdown-link>
-
-                    
 
                         <x-dropdown-link :href="route('admin.plans.index')">
                             {{ __('Subscription Plan') }}

@@ -1,15 +1,25 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import '../css/app.css';
+import './bootstrap';
 
-// ✅ FullCalendar CDN-based includes for use in non-React DOM (e.g., Blade)
-import 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css';
-import 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js';
+import { createInertiaApp } from '@inertiajs/react';
+import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import { createRoot } from 'react-dom/client';
 
-// ✅ Test React root (you can remove or replace later)
-const root = document.getElementById('react-root');
+const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
-if (root) {
-  ReactDOM.createRoot(root).render(
-    <h1 style={{ color: 'green' }}>✅ React via Laravel + Vite is working!</h1>
-  );
-}
+createInertiaApp({
+    title: (title) => `${title} - ${appName}`,
+    resolve: (name) =>
+        resolvePageComponent(
+            `./Pages/${name}.jsx`,
+            import.meta.glob('./Pages/**/*.jsx'),
+        ),
+    setup({ el, App, props }) {
+        const root = createRoot(el);
+
+        root.render(<App {...props} />);
+    },
+    progress: {
+        color: '#4B5563',
+    },
+});

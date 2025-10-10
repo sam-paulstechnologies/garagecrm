@@ -3,27 +3,15 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Third Party Services
-    |--------------------------------------------------------------------------
-    */
-
-    'postmark' => [
-        'token' => env('POSTMARK_TOKEN'),
-    ],
-
-    'resend' => [
-        'key' => env('RESEND_KEY'),
-    ],
-
-    'ses' => [
+    // --- Mail / Slack (unchanged) ---
+    'postmark' => ['token' => env('POSTMARK_TOKEN')],
+    'resend'   => ['key' => env('RESEND_KEY')],
+    'ses'      => [
         'key'    => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
-
-    'slack' => [
+    'slack'    => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel'              => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
@@ -32,67 +20,60 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | WhatsApp Providers (Meta / Twilio / Gupshup)
+    | WhatsApp (SaaS-friendly)
     |--------------------------------------------------------------------------
-    | Select provider via WHATSAPP_PROVIDER=meta|twilio|gupshup
+    | Provider chosen via WHATSAPP_PROVIDER=twilio|meta|gupshup
+    | All credentials come from env (tenant data like phone numbers/templates
+    | should live in DB, not here).
     */
     'whatsapp' => [
         'provider' => env('WHATSAPP_PROVIDER', 'twilio'),
 
-        // Meta (Cloud API)
-        'meta' => [
-            'phone_id' => env('WHATSAPP_META_PHONE_ID'),
-            'token'    => env('WHATSAPP_META_ACCESS_TOKEN', env('WHATSAPP_ACCESS_TOKEN')), // fallback
-            'graph'    => env('WHATSAPP_GRAPH_BASE', 'https://graph.facebook.com/v20.0'),
-        ],
-
-        // Verify webhook token
-        'verify_token' => env('WHATSAPP_VERIFY_TOKEN', 'supersecret'),
-
-        // Twilio
+        // Twilio (account-level creds only)
         'twilio' => [
-            'from'  => env('TWILIO_WHATSAPP_FROM'),
             'sid'   => env('TWILIO_SID'),
             'token' => env('TWILIO_TOKEN'),
+            'from'  => env('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
+            // base URI kept configurable just in case
+            'base_uri' => env('TWILIO_API_BASE', 'https://api.twilio.com'),
         ],
 
-        // Gupshup
+        // Meta Cloud API (account-level; per-tenant phone_id/token live in DB if needed)
+        'meta' => [
+            'graph'     => env('WHATSAPP_GRAPH_BASE', 'https://graph.facebook.com'),
+            'version'   => env('WHATSAPP_GRAPH_VERSION', 'v20.0'),
+            // Optional app-level token (NOT tenant page tokens)
+            'token'     => env('WHATSAPP_META_ACCESS_TOKEN'),
+            // Webhook verify
+            'verify_token' => env('WHATSAPP_VERIFY_TOKEN', 'supersecret'),
+        ],
+
+        // Gupshup (account-level)
         'gupshup' => [
-            'app' => env('GUPSHUP_APPNAME'),
-            'key' => env('GUPSHUP_APIKEY'),
+            'app'      => env('GUPSHUP_APPNAME'),
+            'key'      => env('GUPSHUP_APIKEY'),
+            'base_uri' => env('GUPSHUP_API_BASE', 'https://api.gupshup.io'),
         ],
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Meta Lead Ads (SaaS-friendly, app-level only)
+    | Meta Lead Ads (SaaS-friendly)
     |--------------------------------------------------------------------------
-    | Per-tenant Page tokens + Form IDs are stored in DB (e.g., meta_pages).
-    | Do NOT put per-tenant tokens in .env for SaaS.
+    | Tenant-specific page tokens / form ids must be in DB.
     */
     'meta' => [
         'app_id'        => env('META_APP_ID'),
         'app_secret'    => env('META_APP_SECRET'),
         'verify_token'  => env('META_VERIFY_TOKEN', env('WHATSAPP_VERIFY_TOKEN', 'supersecret')),
-        'graph_version' => env('META_GRAPH_VERSION', 'v19.0'),
         'graph_base'    => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
-
-        // Deprecated (kept here as reference; do not use for SaaS):
-        // 'access_token'  => env('META_ACCESS_TOKEN'),
-        // 'form_id'       => env('META_FORM_ID'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v19.0'),
     ],
 
     'leads' => [
-        // Consider same person (email/phone) a duplicate within this window (days)
         'dedupe_days' => env('LEADS_DEDUPE_DAYS', 30),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | cURL / SSL CA bundle (used by HTTP requests)
-    |--------------------------------------------------------------------------
-    | Guarantees both web + CLI use the same certificate file.
-    */
+    // Shared cURL CA bundle (CLI + FPM) – optional
     'curl_ca_bundle' => env('CURL_CA_BUNDLE', 'C:/php/extras/ssl/cacert.pem'),
-
 ];

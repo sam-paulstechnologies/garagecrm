@@ -1,23 +1,15 @@
 <?php
 
+// routes/api.php
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\TemplateController;
+use App\Http\Controllers\Api\WhatsAppTemplateApiController;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-| These routes are stateless. CSRF is not applied to API routes.
-| Inbound WhatsApp (Twilio) webhooks are defined in routes/web.php.
-|--------------------------------------------------------------------------
-*/
+Route::middleware(['auth:sanctum'])->group(function () {
+  Route::get('/whatsapp/templates', [WhatsAppTemplateApiController::class, 'index']);
+  Route::post('/whatsapp/templates', [WhatsAppTemplateApiController::class, 'store']);
+  Route::get('/whatsapp/templates/{id}', [WhatsAppTemplateApiController::class, 'show']);
+  Route::put('/whatsapp/templates/{id}', [WhatsAppTemplateApiController::class, 'update']);
+  Route::delete('/whatsapp/templates/{id}', [WhatsAppTemplateApiController::class, 'destroy']);
 
-/** Admin template endpoints (API) */
-Route::prefix('admin')->name('api.admin.')->group(function () {
-    Route::get('/templates', [TemplateController::class, 'index'])->name('templates.index');
-    Route::get('/templates/{template}', [TemplateController::class, 'show'])->name('templates.show');
-    Route::post('/templates', [TemplateController::class, 'store'])->name('templates.store');
+  Route::post('/whatsapp/templates/{id}/preview', [WhatsAppTemplateApiController::class, 'preview']);
 });
-
-/** Simple health check */
-Route::get('/ping', fn () => response()->json(['pong' => true]))->name('api.ping');

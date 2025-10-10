@@ -48,6 +48,13 @@ class RouteServiceProvider extends ServiceProvider
                     ->group($webPath);
             }
 
+            // Public webhooks (Twilio, etc.)
+            $webhooksPath = base_path('routes/webhooks.php');
+            if (is_file($webhooksPath)) {
+                Route::middleware('web')
+                    ->group($webhooksPath);
+            }
+
             // Admin routes (do NOT re-prefix/name inside routes/admin.php)
             $adminPath = base_path('routes/admin.php');
             if (is_file($adminPath)) {
@@ -55,6 +62,16 @@ class RouteServiceProvider extends ServiceProvider
                     ->prefix('admin')
                     ->as('admin.')
                     ->group($adminPath);
+            }
+
+            // Admin WhatsApp routes (isolated file)
+            // NOTE: Do NOT add prefix('admin') or ->name() inside routes/admin_whatsapp.php.
+            $adminWhatsAppPath = base_path('routes/admin_whatsapp.php');
+            if (is_file($adminWhatsAppPath)) {
+                Route::middleware(['web', 'auth', 'active', 'force_password'])
+                    ->prefix('admin')
+                    ->as('admin.')
+                    ->group($adminWhatsAppPath);
             }
         });
     }

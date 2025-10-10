@@ -13,12 +13,23 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Run Meta lead import every hour
+        // Meta Lead import (adjust company/limit via App Settings if needed)
         $schedule->command('leads:import-meta --company=1 --limit=50')
-         ->everyFifteenMinutes()
-         ->withoutOverlapping()
-         ->sendOutputTo(storage_path('logs/meta_cron.log'));
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->sendOutputTo(storage_path('logs/meta_cron.log'));
 
+        // Journeys: wake enrollments whose WAIT step is due
+        $schedule->command('journeys:wake')
+            ->everyFiveMinutes()
+            ->withoutOverlapping()
+            ->sendOutputTo(storage_path('logs/journeys_wake.log'));
+
+        // Campaigns: dispatch queued/scheduled WhatsApp sends
+        $schedule->command('campaigns:dispatch --limit=200')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->sendOutputTo(storage_path('logs/campaigns_dispatch.log'));
     }
 
     /**

@@ -20,7 +20,8 @@ use App\Http\Controllers\Admin\{
     CalendarController,
     LeadImportController,
     LeadDuplicateController,
-    ConnectFacebookController
+    ConnectFacebookController,
+    TemplateController
 };
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
@@ -169,7 +170,8 @@ Route::prefix('meta')->name('meta.')->group(function () {
 });
 
 
-
+Route::get('templates/{template}/preview', [TemplateController::class, 'preview'])
+            ->name('templates.preview');
 
 /** Back-compat: old company settings URLs */
 Route::get('settings/company', fn () => redirect()->route('admin.settings.index'))->name('settings.company.edit');
@@ -188,3 +190,5 @@ Route::post('ajax/find-or-create-vehicle', [VehicleController::class, 'findOrCre
 
 /** Health check */
 Route::get('example', fn () => response()->json(['message' => 'Garage CRM API is working!']));
+
+require __DIR__.'/admin_whatsapp.php';
