@@ -6,20 +6,20 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        // 👇 Skip migration if the table already exists
+        if (Schema::hasTable('job_documents')) {
+            return;
+        }
+
         Schema::create('job_documents', function (Blueprint $table) {
             $table->id();
+            // Add columns here if you have them in your schema
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('job_documents');
