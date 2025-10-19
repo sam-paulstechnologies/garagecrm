@@ -1,16 +1,27 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Webhook\TwilioWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
 
 /*
 |--------------------------------------------------------------------------
-| Public Webhooks
+| Public Webhooks (stateless - API middleware)
 |--------------------------------------------------------------------------
-| These endpoints must be publicly accessible to providers like Twilio.
-| Keep them minimal, verified (e.g., signing checks if you add later),
-| and outside auth middleware.
+| Accept GET for provider console checks; POST for real payloads.
 */
 
-Route::post('webhooks/twilio/whatsapp', [TwilioWhatsAppWebhookController::class, 'handle'])
-    ->name('webhooks.twilio.whatsapp');
+// ---------- Twilio WhatsApp ----------
+Route::match(['GET','POST'], 'webhooks/twilio/whatsapp', [TwilioWhatsAppWebhookController::class, 'handle'])
+    ->name('webhooks.twilio.whatsapp')
+    ->middleware('throttle:120,1');
+
+Route::match(['GET','POST'], 'webhooks/twilio/whatsapp/status', [TwilioWhatsAppWebhookController::class, 'status'])
+    ->name('webhooks.twilio.whatsapp.status')
+    ->middleware('throttle:240,1');
+
+// ---------- Meta WhatsApp ----------
+Route::get('webhooks/meta/whatsapp',  [MetaWhatsAppWebhookController::class, 'verify']);
+Route::post('webhooks/meta/whatsapp', [MetaWhatsAppWebhookController::class, 'handle'])
+    ->name('whatsapp.webhook.meta')
+    ->middleware('throttle:120,1');

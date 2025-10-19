@@ -18,9 +18,9 @@ class Lead extends Model
     protected $fillable = [
         'name',
         'email',
-        'email_norm',      // 👈 NEW
+        'email_norm',
         'phone',
-        'phone_norm',      // 👈 NEW
+        'phone_norm',
         'status',
         'source',
         'notes',
@@ -32,7 +32,7 @@ class Lead extends Model
         'company_id',
         'client_id',
         'score',
-        // 👇 Meta/external
+        // external/meta
         'external_source',
         'external_id',
         'external_form_id',
@@ -64,27 +64,33 @@ class Lead extends Model
         return $digits !== '' ? $digits : null;
     }
 
-    // Auto-fill normalized columns on save
+    // Auto-fill normalized columns on save AND fire triggers on create
     protected static function booted(): void
     {
         static::saving(function (Lead $lead) {
             $lead->email_norm = self::normalizeEmail($lead->email);
             $lead->phone_norm = self::normalizePhone($lead->phone);
         });
+
+        // 🔔 When a lead is created, run the trigger engine
+        static::created(function (Lead $lead) {
+            try {
+                app(\App\Services\Marketing\TriggerEngine::class)->runForLead($lead);
+            } catch (\Throwable $e) {
+                \Log::error('TriggerEngine failed for lead.created: '.$e->getMessage(), [
+                    'lead_id' => $lead->id,
+                    'trace'   => $e->getTraceAsString(),
+                ]);
+            }
+        });
     }
 
     /* -------------------------
      | Relationships
      ------------------------- */
-    public function client(): BelongsTo
-    {
-        return $this->belongsTo(Client::class);
-    }
+    public function client(): BelongsTo { return $this->belongsTo(Client::class); }
 
-    public function communications(): HasMany
-    {
-        return $this->hasMany(Communication::class);
-    }
+    public function communications(): HasMany { return $this->hasMany(Communication::class); }
 
     /** Lead owner/assignee (used in controllers/views) */
     public function assignee(): BelongsTo
@@ -94,10 +100,7 @@ class Lead extends Model
     }
 
     /** Optional: one opportunity created from this lead */
-    public function opportunity(): HasOne
-    {
-        return $this->hasOne(Opportunity::class);
-    }
+    public function opportunity(): HasOne { return $this->hasOne(Opportunity::class); }
 
     /* -------------------------
      | Scopes
@@ -111,9 +114,6 @@ class Lead extends Model
      | Domain logic
      ------------------------- */
 
-    /**
-     * Converts this lead to a client and creates an associated opportunity.
-     */
     public function convertToClient(): ?Client
     {
         try {
@@ -135,7 +135,7 @@ class Lead extends Model
                 'lead_id'     => $this->id,
                 'stage'       => 'new',
                 'company_id'  => $this->company_id,
-                'title'       => $this->name . ' Opportunity',
+                'title'       => $this->name.' Opportunity',
                 'assigned_to' => $this->assigned_to,
                 'source'      => $this->source,
                 'notes'       => $this->notes,
@@ -150,9 +150,6 @@ class Lead extends Model
         }
     }
 
-    /**
-     * Calculates and persists a simple lead score.
-     */
     public function calculateScore(): void
     {
         $score = 0;

@@ -18,6 +18,7 @@ use App\Http\Requests\UpdateJobRequest;
 use App\Http\Requests\UploadJobDocumentRequest;
 use App\Services\DocumentUploadService;
 use App\Services\JobNumberService;
+use App\Services\WhatsApp\SendWhatsAppMessage;
 
 // Events
 use App\Events\JobCompleted;
@@ -237,5 +238,39 @@ class JobController extends Controller
         ]);
 
         return back()->with('success', 'Job card uploaded.');
+    }
+
+    /* ---------- NEW: Save a visit schedule & send WA confirmation ---------- */
+    public function setSchedule(Request $request, Job $job)
+    {
+        $this->authorizeCompany($job);
+
+        $data = $request->validate([
+            'start_at' => 'required|date',           // visit datetime
+            'location' => 'nullable|string|max:160', // optional branch/address
+        ]);
+
+        // Persist date/time on Job (adjust if you use another table/column)
+        $job->update([
+            'scheduled_at' => $data['start_at'],
+            'location'     => $data['location'] ?? $job->location,
+        ]);
+
+        // WhatsApp confirmation to client
+        if ($job->client && $job->client->phone_norm) {
+            (new SendWhatsAppMessage())->fireEvent(
+                (int)($job->company_id ?? 1),
+                'schedule.confirmed',
+                $job->client->phone_norm,
+                [
+                    'name'     => $job->client->name,
+                    'date'     => \Carbon\Carbon::parse($data['start_at'])->format('d M Y'),
+                    'time'     => \Carbon\Carbon::parse($data['start_at'])->format('g:i A'),
+                    'location' => $data['location'] ?? 'our garage',
+                ]
+            );
+        }
+
+        return back()->with('success', 'Schedule saved and confirmation sent.');
     }
 }

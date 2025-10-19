@@ -16,6 +16,9 @@ use App\Mail\BrandedNotification;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
 use App\Http\Controllers\Webhooks\MetaWebhookController;
+use App\Jobs\TestQueueJob;
+use App\Jobs\FailingJob;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -197,8 +200,7 @@ Route::get('/dev/mail-preview', function () {
 |--------------------------------------------------------------------------
 | Add signature verification later as needed.
 */
-Route::post('/webhooks/twilio/whatsapp', [TwilioWhatsAppWebhookController::class, 'handle'])
-    ->name('webhooks.twilio.whatsapp');
+
 
 Route::post('/webhooks/email/inbound',   [EmailInboundWebhookController::class, 'handle'])
     ->name('webhooks.email.inbound');
@@ -220,6 +222,18 @@ Route::get('/my/followups', function () {
 
 Route::get('/_phpinfo', fn () => phpinfo());
 
+Route::get('/debug/dispatch-delayed', function () {
+    $marker = now()->format('Ymd_His');
+    TestQueueJob::dispatch('Sam (delayed)', $marker)->delay(now()->addSeconds(5));
+    return "Dispatched delayed job. Watch the worker ~5s later.";
+});
+
+Route::get('/debug/dispatch-failing', function () {
+    FailingJob::dispatch();
+    return 'Dispatched FailingJob.';
+});
+
+
 /*
 |--------------------------------------------------------------------------
 | Module route files
@@ -230,4 +244,6 @@ require __DIR__.'/auth.php';
 // require __DIR__.'/admin.php';
 require __DIR__.'/tenant.php';
 require __DIR__.'/mechanic.php';
-require __DIR__.'/whatsapp.php'; // keep outbound/test WA routes only
+require __DIR__.'/whatsapp.php'; 
+//require __DIR__.'/admin/queue.php';
+

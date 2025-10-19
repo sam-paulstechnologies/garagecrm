@@ -8,12 +8,10 @@ class VerifyCsrfToken extends Middleware
 {
     /**
      * The URIs that should be excluded from CSRF verification.
-     *
-     * You can use wildcards like 'webhooks/*' if you prefer.
      */
     protected $except = [
-        'webhooks/twilio/whatsapp',
-        'webhooks/email/inbound',
-        // 'webhooks/*', // <- alternative wildcard
+        'webhooks/twilio/*',
+        'webhooks/email/*',
+        // 'webhooks/meta/*', // (not needed since we’re on api middleware, but harmless)
     ];
 }

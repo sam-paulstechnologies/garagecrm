@@ -10,7 +10,6 @@ use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Events\LeadCreated;
 
 class LeadController extends Controller
 {
@@ -93,7 +92,8 @@ class LeadController extends Controller
             }
         });
 
-        event(new LeadCreated($lead));
+        // 🔔 Do NOT fire another event; Lead::booted()->created already triggers campaign/WA flow
+        // event(new LeadCreated($lead)); // removed
 
         return redirect()->route('admin.leads.index')->with('success', 'Lead created.');
     }
@@ -187,7 +187,7 @@ class LeadController extends Controller
         $lead->update(['is_hot' => !$lead->is_hot]);
 
         return request()->expectsJson()
-            ? response()->json(['is_hot' => (bool) $lead->is_hot])
+            ? response()->json(['is_hot' => (bool)$lead->is_hot])
             : back()->with('success', 'Lead hot flag updated.');
     }
 

@@ -1,43 +1,40 @@
 <?php
-// app/Console/Kernel.php
 
-namespace App\Console;
+namespace App\Providers;
 
-use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
-class Kernel extends ConsoleKernel
+class EventServiceProvider extends ServiceProvider
 {
-    /**
-     * Define the application's command schedule.
-     */
-    protected function schedule(Schedule $schedule): void
-    {
-        // Meta Lead import (adjust company/limit via App Settings if needed)
-        $schedule->command('leads:import-meta --company=1 --limit=50')
-            ->everyFifteenMinutes()
-            ->withoutOverlapping()
-            ->sendOutputTo(storage_path('logs/meta_cron.log'));
+    protected $listen = [
+        // Your unified notification + journey
+        \App\Events\LeadCreated::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+            \App\Listeners\StartJourneyForLead::class,
+            // NEW: Welcome + 20-min follow-up
+            \App\Listeners\Lead\LeadWelcomeAndFollowup::class,
+        ],
 
-        // Journeys: wake enrollments whose WAIT step is due
-        $schedule->command('journeys:wake')
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->sendOutputTo(storage_path('logs/journeys_wake.log'));
+        \App\Events\OpportunityStatusUpdated::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+        ],
 
-        // Campaigns: dispatch queued/scheduled WhatsApp sends
-        $schedule->command('campaigns:dispatch --limit=200')
-            ->everyMinute()
-            ->withoutOverlapping()
-            ->sendOutputTo(storage_path('logs/campaigns_dispatch.log'));
-    }
+        \App\Events\BookingStatusUpdated::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+        ],
 
-    /**
-     * Register the commands for the application.
-     */
-    protected function commands(): void
-    {
-        // automatically loads all artisan commands in app/Console/Commands/
-        $this->load(__DIR__.'/Commands');
-    }
+        \App\Events\JobCompleted::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+            // NEW: fire 'job.done.feedback'
+            \App\Listeners\Job\JobCompletedFeedback::class,
+        ],
+
+        // Backward compat (optional)
+        \App\Events\OpportunityStageChanged::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+        ],
+    ];
+
+    public function boot(): void {}
+    public function shouldDiscoverEvents(): bool { return false; }
 }

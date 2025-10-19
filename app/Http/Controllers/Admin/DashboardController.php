@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Job\Booking;
-use App\Models\Job\Job;
 use App\Models\Job\Invoice;
 use App\Models\Client\Opportunity;
 use App\Models\Client\CommunicationLog;
@@ -18,7 +17,13 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $companyId = auth()->user()->company_id;
+        $user = auth()->user();
+        if (!$user) {
+            // Extra guard to avoid "Attempt to read property 'company_id' on null"
+            return redirect()->route('login');
+        }
+
+        $companyId = (int) $user->company_id;
 
         $stats = [
             'total_users' => User::where('company_id', $companyId)->count(),
@@ -26,15 +31,19 @@ class DashboardController extends Controller
             'total_leads' => Lead::where('company_id', $companyId)->count(),
             'revenue_this_month' => Invoice::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
                 ->sum('amount'),
             'bookings_this_month' => Booking::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
                 ->count(),
             'new_clients_this_month' => Client::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
                 ->count(),
             'new_leads_this_month' => Lead::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
                 ->count(),
         ];
 
@@ -57,7 +66,7 @@ class DashboardController extends Controller
         $recentOpportunities = Opportunity::with('client')
             ->where('company_id', $companyId)->latest()->take(5)->get();
 
-        // ✅ Fixed column: booking_date
+        // ✅ Booking start date column fixed (booking_date)
         $calendarBookings = Booking::with('client')
             ->where('company_id', $companyId)
             ->where('status', 'confirmed')
@@ -88,8 +97,8 @@ class DashboardController extends Controller
 
         $smartKPIs = [
             'pending_bookings' => $pendingBookings,
-            'unpaid_invoices' => $unpaidInvoices,
-            'followups_due' => $followUpsDue,
+            'unpaid_invoices'  => $unpaidInvoices,
+            'followups_due'    => $followUpsDue,
         ];
 
         return view('admin.dashboard.index', compact(

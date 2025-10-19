@@ -74,7 +74,8 @@
                             class="absolute left-0 mt-2 w-64 bg-white border rounded shadow-lg z-50 py-2"
                             role="menu" aria-orientation="vertical" tabindex="-1"
                         >
-                            <div class="px-4 py-2 text-xs text-gray-400">WhatsApp</div>
+                            <!-- WhatsApp Section -->
+                            <div class="px-4 py-2 text-xs text-gray-400">WhatsApp Automation</div>
 
                             <a href="{{ route('admin.whatsapp.templates.index') }}"
                                class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.templates.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
@@ -82,26 +83,44 @@
                                 Templates
                             </a>
 
-                            <a href="{{ route('admin.whatsapp.campaigns.index') }}"
-                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.campaigns.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                            <a href="{{ route('admin.marketing.campaigns.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.marketing.campaigns.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
                                role="menuitem">
                                 Campaigns
                             </a>
 
-                            <a href="{{ route('admin.communication.logs') }}"
-                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.communication.logs') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                            <a href="{{ route('admin.marketing.triggers.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.marketing.triggers.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Triggers
+                            </a>
+
+                            <!-- 🔁 Updated to use MessageLogController / message_logs -->
+                            <a href="{{ route('admin.whatsapp.logs.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.logs.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
                                role="menuitem">
                                 Message Logs
                             </a>
 
+                            <a href="{{ route('admin.whatsapp.performance.index') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.performance.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Performance Dashboard
+                            </a>
+
+                            <a href="{{ route('admin.whatsapp.settings.edit') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.whatsapp.settings.*') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
+                               role="menuitem">
+                                Settings
+                            </a>
+
                             <div class="my-2 border-t"></div>
 
-                            <div class="px-4 py-2 text-xs text-gray-400">Settings</div>
-
-                            <a href="{{ route('admin.settings.index', ['tab' => 'communication']) }}"
-                               class="block px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"
+                            <div class="px-4 py-2 text-xs text-gray-400">Email & Others</div>
+                            <a href="{{ route('admin.communication.logs') }}"
+                               class="block px-4 py-2 text-sm hover:bg-gray-100 {{ request()->routeIs('admin.communication.logs') ? 'text-indigo-600 font-medium' : 'text-gray-700' }}"
                                role="menuitem">
-                                Providers & Webhooks
+                                Email / SMS Logs
                             </a>
                         </div>
                     </div>

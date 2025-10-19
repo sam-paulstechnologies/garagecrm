@@ -21,26 +21,43 @@ class WhatsAppTemplateController extends Controller
     }
 
     public function index(Request $request)
-    {
-        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
+{
+    $q = \App\Models\WhatsApp\WhatsAppTemplate::query()->latest('updated_at');
 
-        $templates = WhatsAppTemplate::query()
-            ->where('company_id', $companyId)
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $q->where(function ($w) use ($request) {
-                    $w->where('name', 'like', '%'.$request->q.'%')
-                      ->orWhere('provider_template', 'like', '%'.$request->q.'%');
-                });
-            })
-            ->orderByDesc('id')
-            ->paginate(20);
-
-        return view('admin.whatsapp.templates.index', compact('templates'));
+    if ($s = trim($request->get('q', ''))) {
+        $q->where(function ($w) use ($s) {
+            $w->where('name', 'like', "%{$s}%")
+              ->orWhere('language', 'like', "%{$s}%")
+              ->orWhere('category', 'like', "%{$s}%");
+        });
     }
+
+    if ($status = $request->get('status')) {
+        $q->where('status', $status);
+    }
+
+    if ($cat = $request->get('category')) {
+        $q->where('category', $cat);
+    }
+
+    $templates = $q->paginate(20)->withQueryString();
+
+    // Populate filter dropdowns
+    $categories = \App\Models\WhatsApp\WhatsAppTemplate::query()
+        ->select('category')->whereNotNull('category')->where('category','<>','')
+        ->distinct()->orderBy('category')->pluck('category');
+
+    return view('admin.whatsapp.templates.index', compact('templates','categories'));
+}
 
     public function create()
     {
         return view('admin.whatsapp.templates.create');
+    }
+
+    public function show(\App\Models\WhatsApp\WhatsAppTemplate $template)
+    {
+        return view('admin.whatsapp.templates.show', compact('template'));
     }
 
     public function store(StoreTemplateRequest $request)

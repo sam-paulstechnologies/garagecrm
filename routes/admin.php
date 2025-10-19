@@ -131,12 +131,27 @@ Route::get('communications/followups',                  [CommunicationController
 Route::patch('communications/{communication}/complete', [CommunicationController::class, 'complete'])->name('communications.complete');
 Route::get('communications/export/csv',                 [CommunicationController::class, 'exportCsv'])->name('communications.export.csv');
 
+/** 🔁 Back-compat alias for old dashboard link:
+ *  admin.communication.logs  →  admin.communications.index
+ */
+Route::get('communication/logs', function () {
+    return redirect()->route('admin.communications.index');
+})->name('communication.logs');
+
 /** Client-scoped Communications */
 Route::get('clients/{client}/communications',  [CommunicationController::class, 'indexForClient'])->name('clients.communications.index');
 Route::post('clients/{client}/communications', [CommunicationController::class, 'storeForClient'])->name('clients.communications.store');
 
 /** AJAX badges/widgets */
 Route::get('ajax/communications/due-count', [CommunicationController::class, 'dueCount'])->name('ajax.communications.due-count');
+
+// inside the same file (already under admin + auth)
+Route::prefix('marketing')->name('marketing.')->group(function () {
+    Route::resource('campaigns', \App\Http\Controllers\Admin\Marketing\CampaignController::class);
+    Route::resource('triggers',  \App\Http\Controllers\Admin\Marketing\TriggerController::class)->except(['show']);
+    Route::post('campaigns/{campaign}/activate', [\App\Http\Controllers\Admin\Marketing\CampaignController::class,'activate'])->name('campaigns.activate');
+    Route::post('campaigns/{campaign}/pause',    [\App\Http\Controllers\Admin\Marketing\CampaignController::class,'pause'])->name('campaigns.pause');
+});
 
 /** Users */
 Route::resource('users', UserController::class);
@@ -169,9 +184,8 @@ Route::prefix('meta')->name('meta.')->group(function () {
     Route::post('disconnect',   [\App\Http\Controllers\Admin\MetaConnectController::class, 'disconnect'])->name('disconnect');
 });
 
-
 Route::get('templates/{template}/preview', [TemplateController::class, 'preview'])
-            ->name('templates.preview');
+    ->name('templates.preview');
 
 /** Back-compat: old company settings URLs */
 Route::get('settings/company', fn () => redirect()->route('admin.settings.index'))->name('settings.company.edit');
@@ -191,4 +205,4 @@ Route::post('ajax/find-or-create-vehicle', [VehicleController::class, 'findOrCre
 /** Health check */
 Route::get('example', fn () => response()->json(['message' => 'Garage CRM API is working!']));
 
-require __DIR__.'/admin_whatsapp.php';
+//  require __DIR__.'/admin_whatsapp.php';
