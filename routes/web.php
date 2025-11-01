@@ -1,5 +1,4 @@
 <?php
-// routes/web.php
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
@@ -7,6 +6,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
+
+use App\Http\Middleware\VerifyCsrfToken;
 
 use App\Http\Controllers\PasswordForceController;
 use App\Http\Controllers\WhatsAppSendController;
@@ -16,36 +17,25 @@ use App\Mail\BrandedNotification;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
 use App\Http\Controllers\Webhooks\MetaWebhookController;
+
 use App\Jobs\TestQueueJob;
 use App\Jobs\FailingJob;
 
-
 /*
 |--------------------------------------------------------------------------
-| Public / simple pages
+| Root Redirect
 |--------------------------------------------------------------------------
 */
-
-// ▶ ROOT: send users to the app (dashboard if signed in, else login)
 Route::get('/', function () {
     return auth()->check()
         ? redirect()->route('dashboard')
-        : redirect('/login'); // or ->route('login') if named
+        : redirect('/login');
 });
-
-// Public API test
-Route::get('/test-connection', fn () =>
-    response()->json(['message' => 'Garage CRM public API test working!'])
-);
 
 /*
 |--------------------------------------------------------------------------
-| Health (no DB)
+| Health Check
 |--------------------------------------------------------------------------
-|
-| Lightweight health endpoint for Azure App Service.
-| Optional token check using HEALTH_CHECK_TOKEN (leave unset for public).
-|
 */
 Route::get('/healthz', function (Request $request) {
     $token = env('HEALTH_CHECK_TOKEN');
@@ -57,11 +47,8 @@ Route::get('/healthz', function (Request $request) {
 
 /*
 |--------------------------------------------------------------------------
-| One-time Ops: clear caches after deploy
+| One-Time Cache Clear (Ops)
 |--------------------------------------------------------------------------
-| 1) Set OPS_TOKEN in Azure App Settings (long random string)
-| 2) Hit /_ops/flush?t=YOUR_TOKEN once after deploy
-| 3) REMOVE this route after use
 */
 Route::get('/_ops/flush', function (Request $r) {
     $token = env('OPS_TOKEN');
@@ -73,7 +60,7 @@ Route::get('/_ops/flush', function (Request $r) {
 
 /*
 |--------------------------------------------------------------------------
-| Admin-only DB counts (optional)
+| DB Counts (for quick admin metrics)
 |--------------------------------------------------------------------------
 */
 Route::get('/db-counts', function () {
@@ -93,9 +80,8 @@ Route::get('/db-counts', function () {
 
 /*
 |--------------------------------------------------------------------------
-| Force Password Change (after login, BEFORE admin area)
+| Force Password Change
 |--------------------------------------------------------------------------
-| These should NOT be under the /admin prefix.
 */
 Route::middleware(['web', 'auth', 'active'])->group(function () {
     Route::get('password/force',  [PasswordForceController::class, 'edit'])->name('password.force.edit');
@@ -104,7 +90,7 @@ Route::middleware(['web', 'auth', 'active'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Authenticated redirects
+| Dashboard Redirects
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
@@ -118,40 +104,23 @@ Route::middleware('auth')->group(function () {
         };
     })->name('dashboard');
 
-    Route::get('/home', function () {
-        $user = Auth::user();
-        return match ($user->role) {
-            'admin'    => redirect()->route('admin.dashboard'),
-            'mechanic' => redirect()->route('mechanic.dashboard'),
-            'tenant'   => redirect()->route('tenant.dashboard'),
-            default    => abort(403, 'Unauthorized'),
-        };
-    });
+    Route::get('/home', fn () => redirect()->route('dashboard'));
 });
 
 /*
 |--------------------------------------------------------------------------
-| Dev / utility endpoints (WhatsApp + Mail)
+| WhatsApp & Mail Test Utilities
 |--------------------------------------------------------------------------
 */
 Route::post('/whatsapp/send', [WhatsAppSendController::class, 'send']);
-
-Route::get('/test-role', fn () => 'You have access!')
-    ->middleware(['auth', 'role:admin']);
 
 Route::get('/wa-test', function (TwilioWhatsApp $wa) {
     return $wa->send('+971586934377', 'Hello from GarageCRM 👋');
 });
 
-/*
-|--------------------------------------------------------------------------
-| Email test & preview
-|--------------------------------------------------------------------------
-*/
 Route::get('/test-mail', function () {
     try {
         $to = env('DEV_TEST_EMAIL', 'youraddress@example.com');
-
         $user = (object)['email' => $to, 'name' => 'Sam'];
         $lead = (object)['id' => 123];
 
@@ -168,12 +137,9 @@ Route::get('/test-mail', function () {
             'outro'    => 'You can reply to this email if you have questions.',
         ]));
 
-        return '✅ Test email sent (sync). Check your destination inbox/log.';
+        return '✅ Test email sent successfully!';
     } catch (\Throwable $e) {
-        return response(
-            "❌ Mail send failed: ".$e->getMessage()."\n\nFile: ".$e->getFile().":".$e->getLine(),
-            500
-        );
+        return response("❌ Mail failed: ".$e->getMessage(), 500);
     }
 });
 
@@ -183,45 +149,52 @@ Route::get('/mail-debug', function () {
         'config_default' => config('mail.default'),
         'from'           => config('mail.from'),
         'mailer_smtp'    => config('mail.mailers.smtp'),
+        'app_url'        => config('app.url'),
     ]);
 });
 
-// In-browser preview of the email HTML (no sending)
-Route::get('/dev/mail-preview', function () {
-    if (!app()->isLocal() && !app()->environment(['local', 'development'])) {
-        abort(403);
-    }
-    return view('dev.mail-preview');
-});
+/*
+|--------------------------------------------------------------------------
+| Twilio WhatsApp Webhooks (CSRF disabled)
+|--------------------------------------------------------------------------
+*/
+Route::match(['GET','POST','HEAD'], '/webhooks/twilio/whatsapp',
+    [TwilioWhatsAppWebhookController::class, 'handle']
+)->withoutMiddleware(VerifyCsrfToken::class)
+ ->name('webhooks.twilio.whatsapp');
+
+Route::match(['GET','POST','HEAD'], '/webhooks/twilio/whatsapp/status',
+    [TwilioWhatsAppWebhookController::class, 'status']
+)->withoutMiddleware(VerifyCsrfToken::class)
+ ->name('webhooks.twilio.whatsapp.status');
+
+/* 👇 alias route name Twilio service expects */
+Route::match(['GET','POST','HEAD'], '/webhooks/twilio/status',
+    [TwilioWhatsAppWebhookController::class, 'status']
+)->withoutMiddleware(VerifyCsrfToken::class)
+ ->name('webhooks.twilio.status');
+
+Route::get('/webhooks/twilio/ping', fn() => 'pong')->withoutMiddleware(VerifyCsrfToken::class);
 
 /*
 |--------------------------------------------------------------------------
-| Webhooks (Inbound)
+| Email & Meta Webhooks
 |--------------------------------------------------------------------------
-| Add signature verification later as needed.
 */
-
-
-Route::post('/webhooks/email/inbound',   [EmailInboundWebhookController::class, 'handle'])
+Route::post('/webhooks/email/inbound', [EmailInboundWebhookController::class, 'handle'])
+    ->withoutMiddleware(VerifyCsrfToken::class)
     ->name('webhooks.email.inbound');
 
-// ✅ Meta Lead Ads webhooks (verify + receive)
 Route::get('/webhooks/meta/leads',  [MetaWebhookController::class, 'verify']);
-Route::post('/webhooks/meta/leads', [MetaWebhookController::class, 'handle'])->name('webhooks.meta.leads');
+Route::post('/webhooks/meta/leads', [MetaWebhookController::class, 'handle'])
+    ->withoutMiddleware(VerifyCsrfToken::class)
+    ->name('webhooks.meta.leads');
 
 /*
 |--------------------------------------------------------------------------
-| Optional: quick redirect to admin follow-ups for signed-in users
+| Debug & Job Test Routes
 |--------------------------------------------------------------------------
 */
-Route::get('/my/followups', function () {
-    return Auth::user()?->role === 'admin'
-        ? redirect()->route('admin.communications.followups')
-        : abort(403);
-})->middleware('auth')->name('my.followups');
-
-Route::get('/_phpinfo', fn () => phpinfo());
-
 Route::get('/debug/dispatch-delayed', function () {
     $marker = now()->format('Ymd_His');
     TestQueueJob::dispatch('Sam (delayed)', $marker)->delay(now()->addSeconds(5));
@@ -233,17 +206,28 @@ Route::get('/debug/dispatch-failing', function () {
     return 'Dispatched FailingJob.';
 });
 
+Route::get('/_phpinfo', fn () => phpinfo());
 
 /*
 |--------------------------------------------------------------------------
-| Module route files
+| Include other module route files
 |--------------------------------------------------------------------------
 */
 require __DIR__.'/auth.php';
-// DO NOT require admin.php here; RouteServiceProvider loads it with the admin stack.
-// require __DIR__.'/admin.php';
 require __DIR__.'/tenant.php';
 require __DIR__.'/mechanic.php';
-require __DIR__.'/whatsapp.php'; 
-//require __DIR__.'/admin/queue.php';
+require __DIR__.'/whatsapp.php';
 
+/*
+|--------------------------------------------------------------------------
+| Admin Feedback
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'active'])
+    ->prefix('admin')
+    ->as('admin.')
+    ->group(function () {
+        Route::get('feedback',        [\App\Http\Controllers\Admin\FeedbackController::class, 'index'])->name('feedback.index');
+        Route::get('feedback/create', [\App\Http\Controllers\Admin\FeedbackController::class, 'create'])->name('feedback.create');
+        Route::post('feedback',       [\App\Http\Controllers\Admin\FeedbackController::class, 'store'])->name('feedback.store');
+    });

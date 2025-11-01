@@ -12,7 +12,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Bind the AI NLP service so you can resolve it via app(NlpService::class)
+        $this->app->singleton(\App\Services\Ai\NlpService::class);
     }
 
     /**
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Keep your existing Vite prefetch settings
         Vite::prefetch(concurrency: 3);
     }
 }

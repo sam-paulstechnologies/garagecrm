@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\MessageLog; // unified logger
 use App\Models\Client\Lead;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Bus\Queueable;
@@ -13,48 +14,45 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
-use App\Support\MessageLog;
 
 class SendWhatsAppFromTemplate implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** Retry policy for transient failures */
     public $tries   = 3;
-    public $backoff = [10, 30, 60]; // seconds
+    public $backoff = [10, 30, 60];
 
     /**
-     * action:
-     *  - 'initial'           : first ACK to lead
-     *  - 'ask_vehicle_info'  : follow-up after delay
+     * $action:
+     *  - 'initial'       : first ACK to lead (will schedule a follow-up check)
+     *  - 'follow_up'     : ask for missing details ONLY if no inbound since 'initial'
+     *  - 'collect_vehicle': asking for make/model
+     *  - 'collect_timeslot': asking for date/time
+     *  - 'confirmed'     : booking confirmation
+     *  - 'reminder'      : booking reminder
+     *  - 'feedback'      : thank-you / feedback request
      */
     public string $action;
 
     public function __construct(
-        public int $companyId,
-        public int $leadId,
+        public int    $companyId,
+        public int    $leadId,
         public string $toNumberE164,
         public string $templateName,
-        public array $placeholders = [],
-        public array $links = [],
-        public array $context = [],
-        string $action = 'initial'
+        public array  $placeholders = [],
+        public array  $links = [],
+        public array  $context = [],
+        string        $action = 'initial'
     ) {
         $this->action = $action;
-
-        // Pin this job to DB driver + default queue
         $this->onConnection('database');
         $this->onQueue('default');
     }
 
-    /** Optional: protect from bursts & duplicate work per lead */
     public function middleware(): array
     {
         return [
-            // Prevent overlapping sends for the same lead for 2 minutes
             (new WithoutOverlapping("wa-send-{$this->leadId}"))->expireAfter(120),
-
-            // Simple global rate limit bucket (configure in cache)
             new RateLimited('wa-sends'),
         ];
     }
@@ -64,34 +62,49 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $ctx = array_merge($this->context, [
             'company_id' => $this->companyId,
             'lead_id'    => $this->leadId,
-            'job_id'     => $this->job?->getJobId(), // set only on worker
+            'action'     => $this->action, // <- always propagate action
         ]);
 
+        // De-dupe: include action and shorten window (2 minutes)
+        if ($this->isDuplicateRecently(
+            leadId:    $this->leadId,
+            template:  $this->templateName,
+            action:    $this->action,
+            minutes:   2
+        )) {
+            Log::info('[WA][Send] skipped duplicate', [
+                'lead_id'  => $this->leadId,
+                'template' => $this->templateName,
+                'action'   => $this->action,
+            ]);
+            return;
+        }
+
         $from = $this->getCompanyFromNumber($this->companyId);
-        $isSandbox = is_string($from) && str_contains($from, '+14155238886'); // Twilio sandbox number
+        $isSandbox = is_string($from) && str_contains($from, '+14155238886');
 
         try {
             if ($isSandbox) {
-                // Twilio sandbox doesn’t support business templates
-                $text = $this->action === 'initial'
-                    ? "Hey! 👋 We’ve received your details. Our manager will call you shortly."
-                    : "Could you please share your car’s *Make & Model*?";
+                // sandbox: render template as text and send
+                $text = $wa->assembleTemplateAsText($this->templateName, $this->placeholders, $this->links);
+                $res  = $wa->sendText($this->toNumberE164, $text, $ctx);
 
-                $res = $wa->sendText($this->toNumberE164, $text, $ctx);
-
-                // ✅ OUTBOUND LOG (sandbox) → message_logs
                 MessageLog::out([
                     'company_id'          => $this->companyId,
                     'lead_id'             => $this->leadId,
+                    'channel'             => 'whatsapp',
+                    'direction'           => 'out',
                     'to_number'           => $this->toNumberE164,
                     'from_number'         => $from ?: null,
-                    'template'            => null,
+                    'template'            => $this->templateName,
                     'body'                => $text,
-                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? ($res['messageSid'] ?? null)) : null,
-                    'provider_status'     => is_array($res) ? ($res['status'] ?? ($res['messageStatus'] ?? 'queued')) : 'queued',
-                    'meta'                => json_encode($res, JSON_UNESCAPED_UNICODE),
+                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? null) : null,
+                    'provider_status'     => is_array($res) ? ($res['status'] ?? 'queued') : 'queued',
+                    // Always include 'action' in meta for de-dupe by action
+                    'meta'                => array_merge(['action' => $this->action], is_array($res) ? $res : []),
                 ]);
             } else {
+                // live: template path (Meta/Twilio)
                 $res = $wa->sendTemplate(
                     toE164:       $this->toNumberE164,
                     templateName: $this->templateName,
@@ -100,17 +113,18 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                     context:      $ctx
                 );
 
-                // ✅ OUTBOUND LOG (business/templates) → message_logs
                 MessageLog::out([
                     'company_id'          => $this->companyId,
                     'lead_id'             => $this->leadId,
+                    'channel'             => 'whatsapp',
+                    'direction'           => 'out',
                     'to_number'           => $this->toNumberE164,
                     'from_number'         => $from ?: null,
                     'template'            => $this->templateName,
                     'body'                => null,
-                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? ($res['messageSid'] ?? null)) : null,
-                    'provider_status'     => is_array($res) ? ($res['status'] ?? ($res['messageStatus'] ?? 'queued')) : 'queued',
-                    'meta'                => json_encode($res, JSON_UNESCAPED_UNICODE),
+                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? null) : null,
+                    'provider_status'     => is_array($res) ? ($res['status'] ?? 'queued') : 'queued',
+                    'meta'                => array_merge(['action' => $this->action], is_array($res) ? $res : []),
                 ]);
             }
         } catch (\Throwable $e) {
@@ -118,58 +132,48 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 'company_id' => $this->companyId,
                 'lead_id'    => $this->leadId,
                 'template'   => $this->templateName,
+                'action'     => $this->action,
             ]);
-            // Let the queue retry; escalate in failed()
             throw $e;
         }
 
-        // Provider returned an app-level error?
-        if (isset($res) && is_array($res) && isset($res['error'])) {
-            throw new \RuntimeException((string) $res['error']);
-        }
-
-        // Success path
+        // Chain: schedule a follow-up (only from 'initial')
         if ($this->action === 'initial') {
-            try {
-                if ($lead = Lead::find($this->leadId)) {
-                    if (method_exists($lead, 'convertToClient')) {
-                        $lead->convertToClient();
-                    } else {
-                        $lead->status = 'converted';
-                        $lead->save();
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::error('[WA][Convert] '.$e->getMessage(), [
-                    'company_id' => $this->companyId,
-                    'lead_id'    => $this->leadId
-                ]);
-            }
-
-            // Schedule follow-up in 2 minutes asking for Make/Model
             self::dispatch(
                 companyId:    $this->companyId,
                 leadId:       $this->leadId,
                 toNumberE164: $this->toNumberE164,
-                templateName: 'visit_feedback_v1', // or 'ask_make_model'
+                templateName: 'ask_make_model_v1', // standardized name
                 placeholders: [],
                 links:        [],
-                context:      $ctx,
-                action:       'ask_vehicle_info'
-            )->delay(now()->addMinutes(2));
+                context:      array_merge($ctx, ['since' => now()->toDateTimeString()]),
+                action:       'follow_up'
+            )->delay(now()->addMinutes(10));
+        }
+
+        // If this is a follow-up, bail if user already replied since 'since'
+        if ($this->action === 'follow_up') {
+            $sinceStr = $this->context['since'] ?? null;
+            $since    = $sinceStr ? now()->parse($sinceStr) : now()->subMinutes(15);
+
+            if ($this->hasRecentInbound($this->leadId, $this->toNumberE164, $since)) {
+                Log::info('[WA][FollowUp] skipped — inbound already received', [
+                    'lead_id' => $this->leadId, 'since' => $since
+                ]);
+                return;
+            }
         }
     }
 
-    /** Called by the queue after all retries are exhausted */
     public function failed(\Throwable $e): void
     {
         Log::error('[WA][JobFailed] '.$e->getMessage(), [
             'company_id' => $this->companyId,
             'lead_id'    => $this->leadId,
             'template'   => $this->templateName,
+            'action'     => $this->action,
         ]);
 
-        // Best-effort manager notification
         try {
             $this->notifyManager(app(WhatsAppService::class), 'send_failed: '.$e->getMessage());
         } catch (\Throwable $e2) {
@@ -180,17 +184,55 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         }
     }
 
+    /* ==================== helpers ==================== */
+
+    protected function isDuplicateRecently(
+        int $leadId,
+        string $template,
+        ?string $action,
+        int $minutes = 2
+    ): bool {
+        try {
+            $q = DB::table('message_logs')
+                ->where('lead_id', $leadId)
+                ->where('direction', 'out')
+                ->where('channel', 'whatsapp')
+                ->where('template', $template)
+                ->where('created_at', '>=', now()->subMinutes($minutes));
+
+            // De-dupe by action if we have it in meta
+            if ($action) {
+                $q->where('meta->action', $action);
+            }
+
+            return $q->exists();
+        } catch (\Throwable $e) {
+            // If DB JSON path fails for any reason, fail-open (no dedupe)
+            Log::debug('[WA][Send] dedupe check failed: '.$e->getMessage());
+            return false;
+        }
+    }
+
+    protected function hasRecentInbound(int $leadId, string $toNumber, \DateTimeInterface $since): bool
+    {
+        $digits = preg_replace('/\D+/', '', $toNumber);
+
+        return DB::table('message_logs')
+            ->where('direction', 'in')
+            ->where(function ($q) use ($leadId, $digits) {
+                $q->where('lead_id', $leadId);
+                if ($digits !== '') {
+                    $q->orWhere('from_number', 'like', "%{$digits}%");
+                }
+            })
+            ->where('created_at', '>', $since)
+            ->exists();
+    }
+
     protected function notifyManager(WhatsAppService $wa, string $reason): void
     {
         $manager = $this->resolveManagerNumber();
-        if (!$manager) {
-            Log::warning('[WA] manager_number missing', [
-                'company_id' => $this->companyId,
-                'lead_id'    => $this->leadId,
-                'reason'     => $reason
-            ]);
-            return;
-        }
+        if (!$manager) return;
 
         try {
             $lead = Lead::find($this->leadId);
@@ -236,15 +278,12 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     private function getCompanyFromNumber(int $companyId): ?string
     {
         try {
-            // KV preferred
             $kv = DB::table('company_settings')
                 ->where('company_id', $companyId)
                 ->whereIn('key', ['twilio.whatsapp_from', 'twilio_whatsapp_from'])
                 ->value('value');
-
             if ($kv) return $kv;
 
-            // Column fallback (only if you have such a column)
             return DB::table('company_settings')
                 ->where('company_id', $companyId)
                 ->value('twilio_whatsapp_from');

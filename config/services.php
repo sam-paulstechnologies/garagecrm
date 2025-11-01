@@ -20,6 +20,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | OpenAI (for NLP/intent & entity extraction)
+    |--------------------------------------------------------------------------
+    */
+    'openai' => [
+        // kept here for convenience; NlpService also reads straight from env()
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'model'    => env('OPENAI_MODEL', 'gpt-5.1-mini'),
+        'api_key'  => env('OPENAI_API_KEY'),
+        // optional sane default timeout for HTTP calls (seconds)
+        'timeout'  => (int) env('OPENAI_TIMEOUT', 20),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | WhatsApp (SaaS-friendly)
     |--------------------------------------------------------------------------
     | Provider chosen via WHATSAPP_PROVIDER=twilio|meta|gupshup
@@ -31,20 +45,17 @@ return [
 
         // Twilio (account-level creds only)
         'twilio' => [
-            'sid'   => env('TWILIO_SID'),
-            'token' => env('TWILIO_TOKEN'),
-            'from'  => env('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
-            // base URI kept configurable just in case
+            'sid'      => env('TWILIO_SID'),
+            'token'    => env('TWILIO_TOKEN'),
+            'from'     => env('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
             'base_uri' => env('TWILIO_API_BASE', 'https://api.twilio.com'),
         ],
 
         // Meta Cloud API (account-level; per-tenant phone_id/token live in DB if needed)
         'meta' => [
-            'graph'     => env('WHATSAPP_GRAPH_BASE', 'https://graph.facebook.com'),
-            'version'   => env('WHATSAPP_GRAPH_VERSION', 'v20.0'),
-            // Optional app-level token (NOT tenant page tokens)
-            'token'     => env('WHATSAPP_META_ACCESS_TOKEN'),
-            // Webhook verify
+            'graph'        => env('WHATSAPP_GRAPH_BASE', 'https://graph.facebook.com'),
+            'version'      => env('WHATSAPP_GRAPH_VERSION', 'v20.0'),
+            'token'        => env('WHATSAPP_META_ACCESS_TOKEN'), // optional app-level token
             'verify_token' => env('WHATSAPP_VERIFY_TOKEN', 'supersecret'),
         ],
 

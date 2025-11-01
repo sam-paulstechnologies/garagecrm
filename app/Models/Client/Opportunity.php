@@ -43,15 +43,8 @@ class Opportunity extends Model
     /* -------------------------
      | Relationships
      ------------------------- */
-    public function client(): BelongsTo
-    {
-        return $this->belongsTo(Client::class);
-    }
-
-    public function lead(): BelongsTo
-    {
-        return $this->belongsTo(Lead::class);
-    }
+    public function client(): BelongsTo { return $this->belongsTo(Client::class); }
+    public function lead(): BelongsTo   { return $this->belongsTo(Lead::class); }
 
     /** Primary accessor used in controllers/partials */
     public function assignee(): BelongsTo
@@ -61,25 +54,11 @@ class Opportunity extends Model
     }
 
     /** Alias for UI that references owner() */
-    public function owner(): BelongsTo
-    {
-        return $this->assignee();
-    }
+    public function owner(): BelongsTo { return $this->assignee(); }
 
-    public function vehicle(): BelongsTo
-    {
-        return $this->belongsTo(Vehicle::class);
-    }
-
-    public function vehicleMake(): BelongsTo
-    {
-        return $this->belongsTo(VehicleMake::class, 'vehicle_make_id');
-    }
-
-    public function vehicleModel(): BelongsTo
-    {
-        return $this->belongsTo(VehicleModel::class, 'vehicle_model_id');
-    }
+    public function vehicle(): BelongsTo { return $this->belongsTo(Vehicle::class); }
+    public function vehicleMake(): BelongsTo { return $this->belongsTo(VehicleMake::class, 'vehicle_make_id'); }
+    public function vehicleModel(): BelongsTo { return $this->belongsTo(VehicleModel::class, 'vehicle_model_id'); }
 
     /* -------------------------
      | Accessors & Mutators
@@ -105,6 +84,24 @@ class Opportunity extends Model
     /* -------------------------
      | Convenience
      ------------------------- */
+    /** Safely set vehicle fields in one call */
+    public function setVehicle(?int $makeId, ?int $modelId, ?string $otherMake, ?string $otherModel): void
+    {
+        $this->vehicle_make_id  = $makeId   ?: $this->vehicle_make_id;
+        $this->vehicle_model_id = $modelId  ?: $this->vehicle_model_id;
+        $this->other_make       = $otherMake  ?: $this->other_make;
+        $this->other_model      = $otherModel ?: $this->other_model;
+    }
+
+    /** Human-readable label for UI */
+    public function getVehicleLabelAttribute(): ?string
+    {
+        $mk = $this->vehicleMake?->name ?? $this->other_make;
+        $md = $this->vehicleModel?->name ?? $this->other_model;
+        if (!$mk && !$md) return null;
+        return trim($mk.' '.$md);
+    }
+
     /** Optional: fallback to lead vehicle if set */
     public function getDefaultVehicleAttribute()
     {

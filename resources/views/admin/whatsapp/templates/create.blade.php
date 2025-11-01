@@ -8,9 +8,29 @@
     </div>
 
     @include('admin.whatsapp.templates.form', [
-        'mode' => 'create',
-        'template' => null,
+        'mode'      => 'create',
+        'action'    => route('admin.whatsapp.templates.store'),
+        'template'  => null,
         'variables' => old('variables', []),
     ])
 </div>
 @endsection
+
+@push('scripts')
+  @vite(['resources/js/app.jsx'])
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const el = document.getElementById('wa-template-editor');
+      if (el && window.mountWaTemplateEditor) {
+        // pass initial state for create
+        const initial = {
+          language: 'en',
+          status: 'active',
+          buttons: []
+        };
+        el.dataset.initial = JSON.stringify(initial);
+        window.mountWaTemplateEditor();
+      }
+    });
+  </script>
+@endpush

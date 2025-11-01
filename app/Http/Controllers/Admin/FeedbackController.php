@@ -4,70 +4,100 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Job\Job;
-use App\Models\Client\Client;
+use Illuminate\Support\Facades\DB;
 use App\Models\Company\CompanySetting;
+use App\Models\Bookings\Booking;   // if you have a Booking model
+use App\Models\Leads\Lead;         // if you have a Lead model
+use App\Models\Opportunities\Opportunity; // if present
 use App\Services\WhatsApp\SendWhatsAppMessage;
 
 class FeedbackController extends Controller
 {
+    public function index()
+    {
+        $companyId = (int)(auth()->user()->company_id ?? 0);
+
+        $rows = DB::table('feedback')
+            ->where('company_id', $companyId)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        return view('admin.feedback.index', compact('rows'));
+    }
+
+    public function create()
+    {
+        return view('admin.feedback.create');
+    }
+
     public function store(Request $r)
     {
         $data = $r->validate([
-            'job_id'    => 'nullable|integer',
-            'client_id' => 'nullable|integer',
-            'rating'    => 'required|integer|min:1|max:5',
-            'comments'  => 'nullable|string',
+            'booking_id'     => 'nullable|integer',
+            'lead_id'        => 'nullable|integer',
+            'opportunity_id' => 'nullable|integer',
+            'rating'         => 'required|integer|min:1|max:5',
+            'comment'        => 'nullable|string',
         ]);
 
-        $client = null;
-        $companyId = (int)(auth()->user()->company_id ?? 1);
+        $companyId = (int)(auth()->user()->company_id ?? 0) ?: 1;
 
-        if (!empty($data['job_id'])) {
-            $job = Job::with('client')->findOrFail($data['job_id']);
-            $this->authorizeCompanyJob($job);
-            $client = $job->client;
-            $companyId = (int)($job->company_id ?? $companyId);
-        } elseif (!empty($data['client_id'])) {
-            $client = Client::findOrFail($data['client_id']);
-            $this->authorizeCompanyClient($client);
-            $companyId = (int)($client->company_id ?? $companyId);
+        // Figure out a phone number to message (best-effort: try booking->client->phone_norm, then lead phone_norm)
+        $toPhone = null;
+        $clientName = null;
+
+        if (!empty($data['booking_id']) && class_exists(Booking::class)) {
+            if ($b = Booking::with('client')->find($data['booking_id'])) {
+                $this->abortIfWrongCompany($b->company_id, $companyId);
+                $toPhone   = $b->client->phone_norm ?? null;
+                $clientName= $b->client->name ?? null;
+            }
+        } elseif (!empty($data['lead_id']) && class_exists(Lead::class)) {
+            if ($l = Lead::with('client')->find($data['lead_id'])) {
+                $this->abortIfWrongCompany($l->company_id, $companyId);
+                $toPhone   = $l->phone_norm ?? ($l->client->phone_norm ?? null);
+                $clientName= $l->client->name ?? $l->name ?? null;
+            }
         }
 
-        // Optional persistence if you add a Feedback model/table
-        if (class_exists(\App\Models\Feedback::class)) {
-            \App\Models\Feedback::create([
-                'company_id' => $companyId,
-                'client_id'  => $client?->id,
-                'job_id'     => $data['job_id'] ?? null,
-                'rating'     => $data['rating'],
-                'comments'   => $data['comments'] ?? null,
-            ]);
-        }
+        // Persist feedback
+        DB::table('feedback')->insert([
+            'company_id'     => $companyId,
+            'booking_id'     => $data['booking_id'] ?? null,
+            'opportunity_id' => $data['opportunity_id'] ?? null,
+            'lead_id'        => $data['lead_id'] ?? null,
+            'rating'         => (int)$data['rating'],
+            'sentiment'      => $this->sentimentFromRating((int)$data['rating']),
+            'comment'        => $data['comment'] ?? null,
+            'source'         => 'admin',
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
 
-        if ($client && $client->phone_norm && $data['rating'] >= 4) {
+        // Positive? send review request
+        if ($toPhone && (int)$data['rating'] >= 4) {
             $set = CompanySetting::where('company_id', $companyId)->first();
-            (new SendWhatsAppMessage())->fireEvent(
+            $reviewLink = $set->google_review_link ?? 'https://google.com';
+
+            app(SendWhatsAppMessage::class)->fireEvent(
                 $companyId,
                 'feedback.positive.review',
-                $client->phone_norm,
-                [
-                    'name'        => $client->name,
-                    'review_link' => $set->google_review_link ?? 'https://google.com',
-                ]
+                $toPhone,
+                ['name' => $clientName ?: 'there', 'review_link' => $reviewLink]
             );
         }
 
-        return back()->with('success', 'Feedback recorded.');
+        return redirect()->route('admin.feedback.index')->with('success', 'Feedback recorded.');
     }
 
-    protected function authorizeCompanyJob(Job $job): void
+    private function sentimentFromRating(int $rating): string
     {
-        abort_if((int)$job->company_id !== (int)(auth()->user()->company_id ?? 0), 403);
+        return $rating >= 4 ? 'positive' : ($rating == 3 ? 'neutral' : 'negative');
     }
 
-    protected function authorizeCompanyClient(Client $client): void
+    private function abortIfWrongCompany($rowCompanyId, $authedCompanyId): void
     {
-        abort_if((int)$client->company_id !== (int)(auth()->user()->company_id ?? 0), 403);
+        abort_if((int)$rowCompanyId !== (int)$authedCompanyId, 403, 'Wrong company scope.');
     }
 }

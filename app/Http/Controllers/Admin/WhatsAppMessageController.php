@@ -12,10 +12,14 @@ class WhatsAppMessageController extends Controller
     {
         $q = WhatsAppMessage::query();
 
-        // optional filters
+        // filters
         if ($request->filled('status'))   $q->where('status', $request->status);
-        if ($request->filled('provider')) $q->where('provider', $request->provider);
-        if ($request->filled('to'))       $q->where('to_number', 'like', '%'.$request->to.'%');
+        if ($request->filled('provider')) $q->whereJsonContains('payload->provider', $request->provider);
+        if ($request->filled('to'))       $q->where('to', 'like', '%'.$request->to.'%');
+
+        // date range (created_at)
+        if ($request->filled('from'))     $q->where('created_at', '>=', $request->date('from')->startOfDay());
+        if ($request->filled('to'))       $q->where('created_at', '<=', $request->date('to')->endOfDay());
 
         $messages = $q->latest('id')->paginate(25)->withQueryString();
 
@@ -24,14 +28,13 @@ class WhatsAppMessageController extends Controller
 
     public function show(WhatsAppMessage $message)
     {
-        // If payload is a JSON string, decode for view
         $payload = is_array($message->payload) ? $message->payload : json_decode($message->payload ?? '[]', true);
         return view('admin.whatsapp.messages.show', compact('message','payload'));
     }
 
     public function retry(WhatsAppMessage $message)
     {
-        // TODO: dispatch a job to retry sending
+        // Wire your retry job here if/when needed
         // RetryWhatsAppMessage::dispatch($message->id);
 
         return back()->with('status', "Retry queued for message #{$message->id}");

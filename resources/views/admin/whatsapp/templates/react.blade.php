@@ -12,10 +12,10 @@
 @push('scripts')
   @vite('resources/js/app.jsx')
   <script>
-    // Example: hook save/preview to your API
+    // These listeners receive events dispatched from the React app.
     window.addEventListener('wa:save', async (e) => {
       const body = e.detail;
-      const res = await fetch('/api/whatsapp/templates', {
+      const res = await fetch(@json(route('api.whatsapp.templates.store') ?? '/api/whatsapp/templates'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         body: JSON.stringify(body),
@@ -24,8 +24,7 @@
     });
 
     window.addEventListener('wa:preview', async (e) => {
-      // Call your preview API or just show toast
-      alert('Local preview already visible on the right.');
+      alert('Local preview is shown on the right.');
     });
   </script>
 @endpush

@@ -6,8 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\WhatsApp\StoreTemplateRequest;
 use App\Http\Requests\Admin\WhatsApp\UpdateTemplateRequest;
 use App\Models\WhatsApp\WhatsAppTemplate;
-use App\Models\WhatsApp\WhatsAppMessage;
-use App\Services\TwilioWhatsApp;
+use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
@@ -15,47 +14,49 @@ class WhatsAppTemplateController extends Controller
 {
     public function __construct()
     {
-        // If you’ve got gates/policies, uncomment:
-        // $this->middleware('can:manage-whatsapp');
         $this->middleware(['auth']);
+        // $this->middleware('can:manage-whatsapp'); // enable if you have policies
     }
 
     public function index(Request $request)
-{
-    $q = \App\Models\WhatsApp\WhatsAppTemplate::query()->latest('updated_at');
+    {
+        $q = WhatsAppTemplate::query()->latest('updated_at');
 
-    if ($s = trim($request->get('q', ''))) {
-        $q->where(function ($w) use ($s) {
-            $w->where('name', 'like', "%{$s}%")
-              ->orWhere('language', 'like', "%{$s}%")
-              ->orWhere('category', 'like', "%{$s}%");
-        });
+        if ($s = trim($request->get('q', ''))) {
+            $q->where(function ($w) use ($s) {
+                $w->where('name', 'like', "%{$s}%")
+                  ->orWhere('language', 'like', "%{$s}%")
+                  ->orWhere('category', 'like', "%{$s}%");
+            });
+        }
+
+        if ($status = $request->get('status')) {
+            $q->where('status', $status);
+        }
+
+        if ($cat = $request->get('category')) {
+            $q->where('category', $cat);
+        }
+
+        $templates = $q->paginate(20)->withQueryString();
+
+        $categories = WhatsAppTemplate::query()
+            ->select('category')
+            ->whereNotNull('category')
+            ->where('category', '<>', '')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category');
+
+        return view('admin.whatsapp.templates.index', compact('templates', 'categories'));
     }
-
-    if ($status = $request->get('status')) {
-        $q->where('status', $status);
-    }
-
-    if ($cat = $request->get('category')) {
-        $q->where('category', $cat);
-    }
-
-    $templates = $q->paginate(20)->withQueryString();
-
-    // Populate filter dropdowns
-    $categories = \App\Models\WhatsApp\WhatsAppTemplate::query()
-        ->select('category')->whereNotNull('category')->where('category','<>','')
-        ->distinct()->orderBy('category')->pluck('category');
-
-    return view('admin.whatsapp.templates.index', compact('templates','categories'));
-}
 
     public function create()
     {
         return view('admin.whatsapp.templates.create');
     }
 
-    public function show(\App\Models\WhatsApp\WhatsAppTemplate $template)
+    public function show(WhatsAppTemplate $template)
     {
         return view('admin.whatsapp.templates.show', compact('template'));
     }
@@ -64,9 +65,19 @@ class WhatsAppTemplateController extends Controller
     {
         $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
 
+        // buttons may arrive as JSON or array
+        $buttons = $request->input('buttons', []);
+        if (is_string($buttons)) {
+            $decoded = json_decode($buttons, true);
+            $buttons = is_array($decoded) ? $decoded : [];
+        }
+
         $tpl = new WhatsAppTemplate($request->validated() + [
             'company_id' => $companyId,
-            'buttons'    => $request->input('buttons', []),
+            'buttons'    => $buttons,
+            'provider'   => $request->input('provider', config('services.whatsapp.provider', 'twilio')),
+            'status'     => $request->input('status', 'active'),
+            'language'   => $request->input('language', 'en'),
         ]);
 
         $tpl->variables = $tpl->extractVariables();
@@ -83,14 +94,19 @@ class WhatsAppTemplateController extends Controller
 
     public function update(UpdateTemplateRequest $request, WhatsAppTemplate $template)
     {
-        $template->fill($request->validated());
-        // buttons come as JSON string or array; normalize to array
+        $data = $request->validated();
+
         $buttons = $request->input('buttons');
         if (is_string($buttons)) {
             $decoded = json_decode($buttons, true);
             $buttons = is_array($decoded) ? $decoded : [];
         }
-        $template->buttons   = $buttons ?: [];
+        $data['buttons']  = $buttons ?: [];
+        $data['provider'] = $data['provider'] ?? $template->provider ?? config('services.whatsapp.provider', 'twilio');
+        $data['language'] = $data['language'] ?? $template->language ?? 'en';
+        $data['status']   = $data['status']   ?? $template->status   ?? 'active';
+
+        $template->fill($data);
         $template->variables = $template->extractVariables();
         $template->save();
 
@@ -105,7 +121,7 @@ class WhatsAppTemplateController extends Controller
             ->with('success', 'Template deleted.');
     }
 
-    /** Live preview: returns rendered header/body/footer as JSON (demo vars). */
+    /** Live preview: returns rendered header/body/footer as JSON with demo vars. */
     public function preview(Request $request, WhatsAppTemplate $template)
     {
         $demo = [];
@@ -122,59 +138,59 @@ class WhatsAppTemplateController extends Controller
         ]);
     }
 
-    /** Test-send a template to a phone number (+E164). */
-    public function testSend(Request $request, WhatsAppTemplate $template, TwilioWhatsApp $wa)
-{
-    $request->validate([
-        'to_phone' => ['required','regex:/^\+\d{8,20}$/'],
-    ]);
+    /**
+     * Test-send a template to a phone number (+E164).
+     * Uses the unified WhatsAppService which:
+     *  - picks provider per-tenant if configured
+     *  - logs to whatsapp_messages with the correct schema
+     */
+    public function testSend(Request $request, WhatsAppTemplate $template, WhatsAppService $wa)
+    {
+        $request->validate([
+            'to_phone'   => ['required','regex:/^\+\d{8,20}$/'],
+            'company_id' => ['nullable','integer'],
+            'lead_id'    => ['nullable','integer'],
+        ]);
 
-    // Collect placeholders from inputs, default to var name.
-    $vars = [];
-    foreach ($template->variables ?? [] as $v) {
-        $vars[$v] = (string) $request->input("vars.$v", $v);
+        // Build ordered params based on extracted variables
+        $params = [];
+        foreach ($template->variables ?? [] as $v) {
+            $params[] = (string) $request->input("vars.$v", $v);
+        }
+
+        // Optional links (as array or JSON)
+        $links = $request->input('links', []);
+        if (is_string($links)) {
+            $decoded = json_decode($links, true);
+            $links = is_array($decoded) ? $decoded : [];
+        }
+
+        $context = [
+            'company_id' => $request->input('company_id') ?? ($request->user()->company_id ?? null),
+            'lead_id'    => $request->input('lead_id'),
+        ];
+
+        // IMPORTANT:
+        // WhatsAppService expects the provider template name.
+        // For Meta: it's exactly the provider template name.
+        // For Twilio sandbox: it will fall back to a text library keyed by template name.
+        // We’ll prefer provider_template if present; else fallback to name.
+        $providerTemplateName = $template->provider_template ?: $template->name;
+
+        $res = $wa->sendTemplate(
+            toE164:       $request->input('to_phone'),
+            templateName: $providerTemplateName,
+            params:       $params,
+            links:        $links,
+            context:      $context
+        );
+
+        $failed = is_array($res) && isset($res['error']);
+
+        return back()->with($failed ? 'error' : 'success',
+            $failed ? ('Send failed: '.$res['error']) : 'Test message queued/sent.'
+        );
     }
-
-    // Twilio wants "whatsapp:+E164"
-    $to = 'whatsapp:' . $request->to_phone;
-
-    $res = $wa->sendTemplate(
-        $to,
-        $template->provider_template,        // provider template name (string)
-        $vars,
-        ['language' => $template->language]
-    );
-
-    $ok    = (bool) \Illuminate\Support\Arr::get($res, 'ok', false);
-    $error = \Illuminate\Support\Arr::get($res, 'error');
-
-    // Persist using your existing columns
-    \App\Models\WhatsApp\WhatsAppMessage::create([
-        'provider'     => 'twilio',
-        'direction'    => 'outbound',
-        'to_number'    => $request->to_phone,
-        'from_number'  => ltrim((string) config('services.twilio.whatsapp_from'), 'whatsapp:'),
-        'template'     => $template->provider_template, // store the template name
-        'payload'      => [
-            'placeholders' => $vars,
-            'language'     => $template->language,
-            // Include raw response if you like:
-            'provider_res' => $ok ? ['ok' => true] : ['ok'=>false, 'error'=>$error],
-        ],
-        'status'       => $ok ? 'queued' : 'failed',
-        'error_code'   => $ok ? null : 'provider_error',
-        'error_message'=> $ok ? null : (is_string($error) ? $error : json_encode($error)),
-        // Optional: relate to entities if you have them available here
-        // 'lead_id'       => $someLeadId ?? null,
-        // 'opportunity_id'=> null,
-        // 'job_id'        => null,
-    ]);
-
-    return back()->with($ok ? 'success' : 'error',
-        $ok ? 'Test message queued.' : ('Failed to queue: '.($error ?: 'unknown'))
-    );
-}
-
 
     private function renderVars(?string $text, array $vars): string
     {

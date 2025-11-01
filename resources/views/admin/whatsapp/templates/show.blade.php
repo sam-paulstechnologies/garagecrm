@@ -13,7 +13,7 @@
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900">WhatsApp Template</h1>
-            <p class="text-sm text-gray-500">Preview &amp; details for <span class="font-medium">{{ $template->name }}</span></p>
+            <p class="text-sm text-gray-500">Preview & details for <span class="font-medium">{{ $template->name }}</span></p>
         </div>
         <div class="flex gap-2">
             <a href="{{ route('admin.whatsapp.templates.edit', $template) }}"
@@ -25,7 +25,7 @@
 
     <form id="wa-template-form">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {{-- LEFT: read-only form --}}
+            {{-- LEFT: read-only details --}}
             <div class="bg-white rounded shadow p-4 space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -85,10 +85,9 @@
                 </div>
             </div>
 
-            {{-- RIGHT: WhatsApp-like Preview --}}
+            {{-- RIGHT: WhatsApp-like Preview (read-only render) --}}
             <div class="md:sticky md:top-4 h-fit">
                 <div class="rounded overflow-hidden shadow-lg border">
-                    {{-- WhatsApp Header --}}
                     <div class="bg-[#075E54] text-white px-4 py-2 flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <div class="w-8 h-8 rounded-full bg-gray-300"></div>
@@ -100,7 +99,6 @@
                         <span class="text-[10px] uppercase" id="pv-provider">TWILIO</span>
                     </div>
 
-                    {{-- Chat area --}}
                     <div class="p-4 min-h-[320px] relative overflow-y-auto"
                          style="background-color:#ECE5DD;background-image:
                             repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0, rgba(0,0,0,0.02) 2px, transparent 2px, transparent 8px),
@@ -129,7 +127,6 @@
     </form>
 </div>
 
-{{-- Same JS as edit preview --}}
 <script>
 (function(){
     const f = document.getElementById('wa-template-form');
@@ -154,9 +151,9 @@
 
     function render(text){
         if(!text) return '';
-        return text.replace(/@\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_,v)=>{
-            return (v in samples) ? samples[v] : '{{' + v + '}}';
-        });
+        let out = text.replace(/@\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,(_,v)=> (v in samples)?samples[v]:'{{'+v+'}}');
+        out = out.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,(_,v)=> (v in samples)?samples[v]:'{{'+v+'}}');
+        return out;
     }
 
     function parseButtons(){
@@ -190,12 +187,11 @@
         pvHeader.textContent = render(q('header')?.value || '');
         pvBody.textContent   = render(q('body')?.value || '');
         pvFooter.textContent = render(q('footer')?.value || '');
-        const prov = (q('provider')?.value || 'TWILIO').toString().toUpperCase();
-        pvProv.textContent   = prov;
+        pvProv.textContent   = (q('provider')?.value || 'TWILIO').toString().toUpperCase();
         drawButtons(parseButtons());
     }
 
-    update();
+    update(); // one-time for read-only
 })();
 </script>
 @endsection
