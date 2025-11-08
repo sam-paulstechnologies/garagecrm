@@ -12,9 +12,15 @@ class CompanySetting extends Model
         'company_id',
         'key',
         'value',
+        'group',
+        'is_encrypted',
+        'updated_by',
     ];
 
-    public $casts = [
-        'value' => 'string', // we’ll json_decode in the store
+    protected $casts = [
+        'value'       => 'string',
+        'is_encrypted'=> 'boolean',
+        'created_at'  => 'datetime',
+        'updated_at'  => 'datetime',
     ];
 }

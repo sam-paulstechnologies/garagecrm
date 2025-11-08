@@ -6,14 +6,15 @@ use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvi
 
 class EventServiceProvider extends ServiceProvider
 {
-    /**
-     * The event to listener mappings for the application.
-     *
-     * Keep this lean to avoid duplicate sends. Lead automation is already
-     * handled by Lead::booted()->created -> TriggerEngine.
-     */
     protected $listen = [
-        // Generic notifications you already rely on
+        // Your unified notification + journey
+        \App\Events\LeadCreated::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+            \App\Listeners\StartJourneyForLead::class,
+            // NEW: Welcome + 20-min follow-up
+            \App\Listeners\Lead\LeadWelcomeAndFollowup::class,
+        ],
+
         \App\Events\OpportunityStatusUpdated::class => [
             \App\Listeners\SendUnifiedNotification::class,
         ],
@@ -24,19 +25,17 @@ class EventServiceProvider extends ServiceProvider
 
         \App\Events\JobCompleted::class => [
             \App\Listeners\SendUnifiedNotification::class,
+            // NEW: fire 'job.done.feedback'
             \App\Listeners\Job\JobCompletedFeedback::class,
         ],
 
-        // Backward compatibility (optional)
+        // Backward compat (optional)
         \App\Events\OpportunityStageChanged::class => [
             \App\Listeners\SendUnifiedNotification::class,
         ],
     ];
 
-    public function boot(): void
-    {
-        //
-    }
+    public function boot(): void {}
 
     public function shouldDiscoverEvents(): bool
     {

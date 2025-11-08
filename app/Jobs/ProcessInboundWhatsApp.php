@@ -18,10 +18,20 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Jobs\SendWhatsAppFromTemplate;
 
+/**
+ * Inbound WhatsApp processor:
+ * - Logs inbound + AI analysis (linked to a conversation)
+ * - Confidence gate → manager handoff or state machine
+ * - Optional AI-first reply
+ * - Template fallbacks via SendWhatsAppFromTemplate job
+ * - Uses company_settings.ai.policy_reply on handoff when present
+ * - Manager alerts use business.manager_phone (fallback to whatsapp.manager_number)
+ */
 class ProcessInboundWhatsApp implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** Retry policy */
     public $tries   = 3;
     public $backoff = [5, 20, 60];
 
@@ -76,21 +86,54 @@ class ProcessInboundWhatsApp implements ShouldQueue
             [$propensity, $propensityReason] = [null, null];
         }
 
-        // Gate debug — helps verify AI-first conditions at runtime
-        $aiFirst   = filter_var(env('AI_FIRST_REPLY', false), FILTER_VALIDATE_BOOLEAN);
+        // ---------- Runtime switches ----------
+        $companyId = (int)($this->companyId ?? 1);
+        $aiFirstFromDb = $this->getCompanySetting($companyId, 'ai.first_reply');
+        $aiFirst = is_null($aiFirstFromDb)
+            ? filter_var(env('AI_FIRST_REPLY', false), FILTER_VALIDATE_BOOLEAN)
+            : filter_var($aiFirstFromDb, FILTER_VALIDATE_BOOLEAN);
+
+        $thresholdFromDb = $this->getCompanySetting($companyId, 'ai.confidence_threshold');
+        $threshold = is_null($thresholdFromDb)
+            ? (float) config('ai.confidence_threshold', (float) env('AI_CONFIDENCE_THRESHOLD', 0.60))
+            : (float) $thresholdFromDb;
+
+        // NOTE: aligned to policy_reply (not policy_text)
+        $policyText = trim((string) ($this->getCompanySetting($companyId, 'ai.policy_reply') ?? ''));
         $hasOpenAI = (bool) config('services.openai.api_key');
+
         Log::info('[AI][Gate]', [
             'aiFirst'   => $aiFirst,
             'hasOpenAI' => $hasOpenAI,
             'intent'    => $nlp['intent'] ?? null,
             'conf'      => $nlp['confidence'] ?? null,
+            'threshold' => $threshold,
+            'policy'    => $policyText ? 'yes' : 'no',
         ]);
 
-        // ---------- (B) Persist inbound with AI fields ----------
+        // ---------- (C) Resolve lead (earlier, so we can thread the conversation) ----------
+        $lead = null;
+        if ($this->leadId) {
+            $lead = Lead::find($this->leadId);
+        }
+        if (!$lead && $digits !== '') {
+            $q = Lead::query()->latest('id');
+            if ($companyId) $q->where('company_id', $companyId);
+            $lead = $q->where(function ($qq) use ($digits) {
+                $qq->where('phone_norm', $digits)
+                   ->orWhere('phone', 'like', "%{$digits}%");
+            })->first();
+        }
+
+        // Create/reuse a conversation before we persist inbound
+        $conversationId = $this->resolveConversation($companyId, $lead);
+
+        // ---------- (B) Persist inbound with AI fields (now includes conversation_id) ----------
         try {
             MessageLog::in([
-                'company_id'           => $this->companyId ?? 1,
-                'lead_id'              => $this->leadId,
+                'company_id'           => $companyId,
+                'lead_id'              => $lead?->id ?? $this->leadId,
+                'conversation_id'      => $conversationId,
                 'channel'              => 'whatsapp',
                 'to_number'            => $this->to,
                 'from_number'          => $fromE164,
@@ -98,7 +141,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'body'                 => $text,
                 'provider_message_id'  => $this->sid,
                 'provider_status'      => 'received',
-                'meta'                 => $this->payload,
+                'meta'                 => $this->payload ?: [],
 
                 'ai_analysis'          => $nlp,
                 'ai_propensity_score'  => $propensity,
@@ -108,29 +151,48 @@ class ProcessInboundWhatsApp implements ShouldQueue
             Log::error('[WhatsApp] inbound log insert failed', ['sid' => $this->sid, 'err' => $e->getMessage()]);
         }
 
-        // ---------- (C) Resolve lead ----------
-        $lead = null;
-        if ($this->leadId) {
-            $lead = Lead::find($this->leadId);
-        }
-        if (!$lead && $digits !== '') {
-            $q = Lead::query()->latest('id');
-            if ($this->companyId) {
-                $q->where('company_id', $this->companyId);
-            }
-            $lead = $q->where(function ($qq) use ($digits) {
-                $qq->where('phone_norm', $digits)
-                   ->orWhere('phone', 'like', "%{$digits}%");
-            })->first();
-        }
         if (!$lead || $text === '') {
+            // we still logged the message above; nothing further to do
             return;
         }
 
-        // Ensure base conversation_data structure (defensive for null/objects)
+        // Ensure base conversation_data structure
         $currentCd = $lead->conversation_data;
         if (!is_array($currentCd)) $currentCd = [];
         $lead->conversation_data = array_merge(['history' => []], $currentCd);
+
+        $leadId = (int) $lead->id;
+
+        // ========== LOW CONFIDENCE EARLY HANDOFF ==========
+        $conf = (float) ($nlp['confidence'] ?? 0.0);
+
+        if ($conf < $threshold) {
+            // If policy_reply set → send that instead of the handoff template
+            if ($policyText !== '') {
+                try {
+                    /** @var WhatsAppService $wa */
+                    $wa = app(WhatsAppService::class);
+                    $wa->sendText(
+                        toE164: $fromE164,
+                        body:   $policyText,
+                        context: ['company_id' => $companyId, 'lead_id' => $leadId],
+                    );
+                    $this->logOutboundPlain($companyId, $leadId, $conversationId, $fromE164, $policyText, [
+                        'action' => 'manager_handoff',
+                        'kind'   => 'policy_text'
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::error('[AI][PolicyReply] send failed, fallback to template', ['err' => $e->getMessage()]);
+                    $this->sendTpl($companyId, $leadId, $fromE164, 'visit_handoff_v1', [], action: 'manager_handoff');
+                }
+            } else {
+                $this->sendTpl($companyId, $leadId, $fromE164, 'visit_handoff_v1', [], action: 'manager_handoff');
+            }
+
+            $this->notifyManager($lead, $text);
+            Log::info('[AI] Low confidence handoff', ['lead_id' => $leadId, 'conf' => $conf, 'th' => $threshold]);
+            return;
+        }
 
         // ---------- (D) Update make/model on Lead/Opportunity ----------
         [$makeId, $modelId, $otherMake, $otherModel] = $this->resolveMakeModel($text);
@@ -168,29 +230,28 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 /** @var NlpService $ai */
                 $ai = app(NlpService::class);
                 $replyText = $ai->replyText(
-    from: $fromE164,
-    to:   $this->to,
-    body: $text,
-    extra: [
-        'lead' => [
-            'name'               => $lead->name,
-            'vehicle_make_id'    => $lead->vehicle_make_id,
-            'vehicle_model_id'   => $lead->vehicle_model_id,
-            'other_make'         => $lead->other_make,
-            'other_model'        => $lead->other_model,
-            'conversation_state' => $lead->conversation_state,
-        ],
-        'nlp'  => $nlp, // so reply knows what this message contained
-    ]
-);
-
+                    from: $fromE164,
+                    to:   $this->to,
+                    body: $text,
+                    extra: [
+                        'lead' => [
+                            'name'               => $lead->name,
+                            'vehicle_make_id'    => $lead->vehicle_make_id,
+                            'vehicle_model_id'   => $lead->vehicle_model_id,
+                            'other_make'         => $lead->other_make,
+                            'other_model'        => $lead->other_model,
+                            'conversation_state' => $lead->conversation_state,
+                        ],
+                        'nlp'  => $nlp,
+                    ]
+                );
 
                 /** @var WhatsAppService $wa */
                 $wa = app(WhatsAppService::class);
                 $wa->sendText(
                     toE164: $fromE164,
-                    body:   $replyText, // <-- fixed (was "text")
-                    context: ['company_id' => (int)($this->companyId ?? $lead->company_id ?? 1), 'lead_id' => (int)$lead->id],
+                    body:   $replyText,
+                    context: ['company_id' => (int)$companyId, 'lead_id' => (int)$lead->id],
                 );
 
                 Log::info('[AI][WA] AI-first reply sent', ['to' => $fromE164]);
@@ -201,22 +262,17 @@ class ProcessInboundWhatsApp implements ShouldQueue
         }
 
         // ---------- (E2) Conversation state machine + intent routing ----------
-        $companyId = (int)($this->companyId ?? $lead->company_id ?? 1);
-        $leadId    = (int)$lead->id;
-
         $state  = $this->normalizeState($lead->conversation_state);
         $intent = $this->resolveIntent($nlp, $text);
 
         if (!$sentOk) {
             if ($state === 'awaiting_vehicle') {
                 if ($makeId || $otherMake || $modelId || $otherModel) {
-                    // vehicle got captured → ask for timeslot
                     $this->sendTpl($companyId, $leadId, $fromE164, 'ask_preferred_time_v1', [
                         $lead->name ?: 'there',
                     ], action: 'collect_timeslot');
                     $this->updateState($lead, 'awaiting_timeslot');
                 } else {
-                    // ask again
                     $this->sendTpl($companyId, $leadId, $fromE164, 'ask_make_model_v1', action: 'collect_vehicle');
                 }
             } elseif ($state === 'awaiting_timeslot') {
@@ -239,7 +295,6 @@ class ProcessInboundWhatsApp implements ShouldQueue
                     ], action: 'collect_timeslot');
                 }
             } else {
-                // idle/null → new intent routing
                 if (in_array($intent, ['booking', 'reschedule'], true)) {
                     $needsMake  = empty($lead->vehicle_make_id)  && empty($lead->other_make);
                     $needsModel = empty($lead->vehicle_model_id) && empty($lead->other_model);
@@ -254,21 +309,33 @@ class ProcessInboundWhatsApp implements ShouldQueue
                         $this->updateState($lead, 'awaiting_timeslot');
                     }
                 } else {
-                    // Non-booking → generic acknowledgment (no clash with booking steps)
                     $this->sendTpl($companyId, $leadId, $fromE164, 'lead_acknowledgment_v2', action: 'initial');
                 }
             }
         }
 
-        // ---------- (F) Notify manager ----------
+        // ---------- (F) Notify manager (lightweight FYI) ----------
         if ($changed || mb_strlen($text) >= 2) {
             $this->notifyManager($lead, $text);
         }
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
+    /** Fetch a company setting value (string|null). */
+    protected function getCompanySetting(int $companyId, string $key): ?string
+    {
+        try {
+            $val = DB::table('company_settings')
+                ->where('company_id', $companyId)
+                ->where('key', $key)
+                ->value('value');
+
+            $val = is_string($val) ? trim($val) : null;
+            return $val !== '' ? $val : null;
+        } catch (\Throwable $e) {
+            Log::debug('[WA] getCompanySetting failed', ['key' => $key, 'company_id' => $companyId, 'err' => $e->getMessage()]);
+            return null;
+        }
+    }
 
     private function notifyManager(Lead $lead, string $reasonText): void
     {
@@ -302,26 +369,56 @@ class ProcessInboundWhatsApp implements ShouldQueue
                     context: ['company_id' => $lead->company_id, 'lead_id' => $lead->id]
                 );
             } else {
-                Log::warning('[WA] No manager_number in company_settings', ['company_id' => $lead->company_id]);
+                Log::warning('[WA] No manager phone configured', ['company_id' => $lead->company_id]);
             }
         } catch (\Throwable $e) {
             Log::error('[WA][ManagerHandOff] '.$e->getMessage(), ['lead_id' => $lead->id]);
         }
     }
 
+    /** Prefer business.manager_phone; fallback to whatsapp.manager_number for backward compatibility. */
     private function resolveManagerNumber(int $companyId): ?string
     {
-        try {
-            $val = DB::table('company_settings')
-                ->where('company_id', $companyId)
-                ->where('key', 'whatsapp.manager_number')
-                ->value('value');
+        $n = $this->getCompanySetting($companyId, 'business.manager_phone');
+        if (!$n) $n = $this->getCompanySetting($companyId, 'whatsapp.manager_number');
+        return $n;
+    }
 
-            $val = is_string($val) ? trim($val) : null;
-            return $val !== '' ? $val : null;
+    /** Log a plain text outbound when we bypass templates (policy_reply). */
+    private function logOutboundPlain(int $companyId, int $leadId, ?int $conversationId, string $toE164, string $text, array $meta = []): void
+    {
+        try {
+            if (method_exists(MessageLog::class, 'out')) {
+                MessageLog::out([
+                    'company_id'      => $companyId,
+                    'lead_id'         => $leadId,
+                    'conversation_id' => $conversationId,
+                    'channel'         => 'whatsapp',
+                    'to_number'       => $toE164,
+                    'from_number'     => $this->to,
+                    'template'        => null,
+                    'body'            => $text,
+                    'provider_status' => 'sent',
+                    'meta'            => $meta,
+                ]);
+                return;
+            }
+
+            MessageLog::create([
+                'company_id'      => $companyId,
+                'lead_id'         => $leadId,
+                'conversation_id' => $conversationId,
+                'direction'       => 'out',
+                'channel'         => 'whatsapp',
+                'to_number'       => $toE164,
+                'from_number'     => $this->to,
+                'template'        => null,
+                'body'            => $text,
+                'provider_status' => 'sent',
+                'meta'            => $meta,
+            ]);
         } catch (\Throwable $e) {
-            Log::error('[WA] resolveManagerNumber failed', ['company_id' => $companyId, 'err' => $e->getMessage()]);
-            return null;
+            Log::warning('[WA] outbound plain log failed: '.$e->getMessage());
         }
     }
 
@@ -343,9 +440,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 ->get()
                 ->first(fn($mm) => stripos($clean, $mm->name) !== false);
 
-            if ($modelHit) {
-                return [$makeHit->id, $modelHit->id, null, null];
-            }
+            if ($modelHit) return [$makeHit->id, $modelHit->id, null, null];
 
             $rest = trim(str_ireplace($makeHit->name, '', $clean));
             $tokens = preg_split('/[ ,\/\-]+/', $rest) ?: [];
@@ -419,19 +514,19 @@ class ProcessInboundWhatsApp implements ShouldQueue
             : 0.6;
 
         $sourceWeight = match (true) {
-            str_contains($source, 'google') || str_contains($source, 'ads')       => 0.9,
-            str_contains($source, 'website') || str_contains($source, 'webchat')  => 0.8,
+            str_contains($source, 'google') || str_contains($source, 'ads')         => 0.9,
+            str_contains($source, 'website') || str_contains($source, 'webchat')    => 0.8,
             str_contains($source, 'instagram') || str_contains($source, 'facebook') => 0.7,
-            str_contains($source, 'partner') || str_contains($source, 'referral') => 0.85,
+            str_contains($source, 'partner') || str_contains($source, 'referral')   => 0.85,
             default => 0.6,
         };
 
         $intentW = match ($intent) {
-            'booking', 'reschedule'          => 1.0,
-            'vehicle_info', 'price_quote'    => 0.75,
-            'greeting', 'thank_you', 'general_question' => 0.55,
-            'complaint'                       => 0.45,
-            default                           => 0.4,
+            'booking', 'reschedule'                      => 1.0,
+            'vehicle_info', 'price_quote'                => 0.75,
+            'greeting', 'thank_you', 'general_question'  => 0.55,
+            'complaint'                                   => 0.45,
+            default                                       => 0.4,
         };
 
         $sentBump  = $sent === 'positive' ? 0.08 : ($sent === 'negative' ? -0.08 : 0.0);
@@ -462,6 +557,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
         if ($hadBooking) $bits[] = 'open booking exists';
         if ($sent === 'positive') $bits[] = 'positive tone';
         if ($stageBump > 0) $bits[] = "stage {$stage}";
+
         if ($bits === []) $bits[] = 'low signal';
 
         return [$score, implode(', ', $bits)];
@@ -581,5 +677,36 @@ class ProcessInboundWhatsApp implements ShouldQueue
             context:      $context + ['company_id' => $companyId, 'lead_id' => $leadId],
             action:       $action
         );
+    }
+
+    /** Create or reuse a conversation for this lead/company */
+    private function resolveConversation(int $companyId, ?\App\Models\Client\Lead $lead): ?int
+    {
+        try {
+            $query = \App\Models\Conversation::query()->where('company_id', $companyId);
+
+            if ($lead && $lead->client_id) {
+                $query->where('client_id', $lead->client_id);
+            }
+
+            $conv = $query->orderByDesc('latest_message_at')->first();
+
+            if (!$conv) {
+                $conv = \App\Models\Conversation::create([
+                    'company_id'         => $companyId,
+                    'client_id'          => $lead?->client_id,
+                    'subject'            => $lead?->name ? ('Chat with ' . $lead->name) : 'WhatsApp Thread',
+                    'latest_message_at'  => now(),
+                    'is_whatsapp_linked' => 1,
+                ]);
+            } else {
+                $conv->update(['latest_message_at' => now(), 'is_whatsapp_linked' => 1]);
+            }
+
+            return $conv->id;
+        } catch (\Throwable $e) {
+            \Log::debug('[Chat] resolveConversation failed: ' . $e->getMessage());
+            return null;
+        }
     }
 }

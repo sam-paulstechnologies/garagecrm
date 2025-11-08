@@ -9,6 +9,9 @@
     <div>
         <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
         <p class="text-gray-600 mt-1">Welcome back, {{ auth()->user()->name }}!</p>
+
+        {{-- AI status badge --}}
+        @include('admin.dashboard.partials._ai_status')
     </div>
 
     {{-- Top Stat Cards (existing) --}}

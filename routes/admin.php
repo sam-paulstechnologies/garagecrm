@@ -20,8 +20,12 @@ use App\Http\Controllers\Admin\{
     CalendarController,
     LeadImportController,
     LeadDuplicateController,
-    ConnectFacebookController,
-    TemplateController
+    TemplateController,
+    AiSettingController,        // AI Control Center (edit/update)
+    BusinessProfileController,  // Business Profile & Escalation
+    AiPolicyController,         // AI Policy (intent matrix + policy reply)
+    AiInsightsController,       // AI Insights dashboard
+    ChatController              // Unified Chat UI
 };
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
@@ -45,7 +49,8 @@ Route::pattern('user',    '[0-9]+');
 Route::pattern('garage',  '[0-9]+');
 Route::pattern('vehicle', '[0-9]+');
 Route::pattern('communication', '[0-9]+');
-Route::pattern('lead',    '[0-9]+'); // ✅ ensure /leads/{lead} won’t catch “duplicates”
+Route::pattern('lead',    '[0-9]+');
+Route::pattern('chat',    '[0-9]+');
 
 /** Dashboard */
 Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -82,17 +87,20 @@ Route::prefix('clients/{client}/files')->name('clients.files.')->group(function 
     Route::delete('/{file}', [FileController::class, 'destroy'])->name('destroy');
 });
 
-/** Leads (customs BEFORE resource) */
-Route::get('leads/duplicates', [LeadDuplicateController::class, 'index'])
-    ->name('leads.duplicates.index');
+/** Leads — quick actions + Co-Pilot (BEFORE resource) */
+Route::patch('leads/{lead}/toggle-hot',     [LeadController::class, 'toggleHot'])->name('leads.toggleHot');
+Route::patch('leads/{lead}/assign',         [LeadController::class, 'assign'])->name('leads.assign');
+Route::post('leads/{lead}/convert',         [LeadController::class, 'convert'])->name('leads.convert');
+Route::patch('leads/{lead}/touch',          [LeadController::class, 'touchContacted'])->name('leads.touch');
 
-Route::post('leads/duplicates/settings', [LeadDuplicateController::class, 'updateWindow'])
-    ->name('leads.duplicates.update-window');
+Route::get( 'leads/{lead}/copilot/meta',            [LeadController::class, 'copilotMeta'])->name('leads.copilot.meta');
+Route::post('leads/{lead}/copilot/suggest-reply',   [LeadController::class, 'copilotSuggestReply'])->name('leads.copilot.suggest');
+Route::post('leads/{lead}/copilot/quick-booking',   [LeadController::class, 'copilotQuickBooking'])->name('leads.copilot.quick-booking');
+Route::post('leads/{lead}/copilot/followup',        [LeadController::class, 'copilotScheduleFollowup'])->name('leads.copilot.followup');
+Route::post('leads/{lead}/copilot/send-template',   [LeadController::class, 'copilotSendTemplate'])->name('leads.copilot.send-template');
 
-Route::post('leads/import/meta', [LeadImportController::class, 'importFromMeta'])
-    ->name('leads.import.meta');
-
-Route::resource('leads', LeadController::class); // keep LAST so it doesn't swallow custom paths
+/** Leads (resource LAST so it doesn't swallow customs) */
+Route::resource('leads', LeadController::class);
 
 /** Opportunities (customs BEFORE resource) */
 Route::get('opportunities/archived',              [OpportunityController::class, 'archived'])->name('opportunities.archived');
@@ -131,12 +139,9 @@ Route::get('communications/followups',                  [CommunicationController
 Route::patch('communications/{communication}/complete', [CommunicationController::class, 'complete'])->name('communications.complete');
 Route::get('communications/export/csv',                 [CommunicationController::class, 'exportCsv'])->name('communications.export.csv');
 
-/** 🔁 Back-compat alias for old dashboard link:
- *  admin.communication.logs  →  admin.communications.index
- */
-Route::get('communication/logs', function () {
-    return redirect()->route('admin.communications.index');
-})->name('communication.logs');
+/** Back-compat alias */
+Route::get('communication/logs', fn () => redirect()->route('admin.communications.index'))
+    ->name('communication.logs');
 
 /** Client-scoped Communications */
 Route::get('clients/{client}/communications',  [CommunicationController::class, 'indexForClient'])->name('clients.communications.index');
@@ -145,7 +150,7 @@ Route::post('clients/{client}/communications', [CommunicationController::class, 
 /** AJAX badges/widgets */
 Route::get('ajax/communications/due-count', [CommunicationController::class, 'dueCount'])->name('ajax.communications.due-count');
 
-// inside the same file (already under admin + auth)
+/** Marketing module */
 Route::prefix('marketing')->name('marketing.')->group(function () {
     Route::resource('campaigns', \App\Http\Controllers\Admin\Marketing\CampaignController::class);
     Route::resource('triggers',  \App\Http\Controllers\Admin\Marketing\TriggerController::class)->except(['show']);
@@ -161,21 +166,19 @@ Route::post('users/{user}/reset-password', [UserController::class, 'resetPasswor
 /** Garages */
 Route::resource('garages', GarageController::class);
 
-/** Settings – unified page + tests */
+/** Settings */
 Route::prefix('settings')->name('settings.')->group(function () {
     Route::get('/', [SettingsController::class, 'index'])->name('index');
     Route::put('/', [SettingsController::class, 'update'])->name('update');
 
-    // direct tests
-    Route::post('/test/meta',   [SettingsController::class, 'testMeta'])->name('test.meta');
-    Route::post('/test/twilio', [SettingsController::class, 'testTwilio'])->name('test.twilio');
-
-    // inline tests (save + test from the same form)
+    // tests
+    Route::post('/test/meta',          [SettingsController::class, 'testMeta'])->name('test.meta');
+    Route::post('/test/twilio',        [SettingsController::class, 'testTwilio'])->name('test.twilio');
     Route::post('/test/meta-inline',   [SettingsController::class, 'testMetaInline'])->name('test.meta.inline');
     Route::post('/test/twilio-inline', [SettingsController::class, 'testTwilioInline'])->name('test.twilio.inline');
 });
 
-// Admin Meta Connect
+/** Meta Connect */
 Route::prefix('meta')->name('meta.')->group(function () {
     Route::get('connect',       [\App\Http\Controllers\Admin\MetaConnectController::class, 'start'])->name('connect');
     Route::get('callback',      [\App\Http\Controllers\Admin\MetaConnectController::class, 'callback'])->name('callback');
@@ -184,10 +187,10 @@ Route::prefix('meta')->name('meta.')->group(function () {
     Route::post('disconnect',   [\App\Http\Controllers\Admin\MetaConnectController::class, 'disconnect'])->name('disconnect');
 });
 
-Route::get('templates/{template}/preview', [TemplateController::class, 'preview'])
-    ->name('templates.preview');
+/** Template preview */
+Route::get('templates/{template}/preview', [TemplateController::class, 'preview'])->name('templates.preview');
 
-/** Back-compat: old company settings URLs */
+/** Back-compat company settings URLs */
 Route::get('settings/company', fn () => redirect()->route('admin.settings.index'))->name('settings.company.edit');
 Route::put('settings/company', [SettingsController::class, 'update'])->name('settings.company.update');
 
@@ -202,7 +205,28 @@ Route::patch('vehicles/{vehicle}/renewals', [VehicleController::class, 'updateRe
 Route::get('ajax/models-by-make/{makeId}', [AjaxController::class, 'modelsByMake'])->name('ajax.models-by-make');
 Route::post('ajax/find-or-create-vehicle', [VehicleController::class, 'findOrCreate'])->name('ajax.find-or-create-vehicle');
 
+/** ★ AI (Control Center + Policy + Insights) */
+Route::prefix('ai')->name('ai.')->group(function () {
+    Route::get('/',        [AiSettingController::class, 'edit'])->name('edit');
+    Route::post('/',       [AiSettingController::class, 'update'])->name('update');
+
+    Route::get('/policy',  [AiPolicyController::class, 'edit'])->name('policy.edit');
+    Route::post('/policy', [AiPolicyController::class, 'update'])->name('policy.update');
+
+    Route::get('/insights', [AiInsightsController::class, 'index'])->name('insights');
+});
+
+/** ★ Business Profile & Escalation */
+Route::get('business',  [BusinessProfileController::class, 'edit'])->name('business.edit');
+Route::post('business', [BusinessProfileController::class, 'update'])->name('business.update');
+
+/** ★ Unified Chat (Conversations + Thread) */
+Route::prefix('chat')->name('chat.')->group(function () {
+    Route::get('/',                [ChatController::class, 'index'])->name('index');
+    Route::get('/{chat}',          [ChatController::class, 'show'])->name('show');
+    Route::get('/{chat}/messages', [ChatController::class, 'messages'])->name('messages'); // polling
+    Route::post('/{chat}/send',    [ChatController::class, 'send'])->name('send');        // human send
+});
+
 /** Health check */
 Route::get('example', fn () => response()->json(['message' => 'Garage CRM API is working!']));
-
-//  require __DIR__.'/admin_whatsapp.php';

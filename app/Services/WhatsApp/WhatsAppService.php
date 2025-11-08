@@ -10,6 +10,12 @@ use Illuminate\Support\Str;
 use App\Models\WhatsApp\WhatsAppMessage;
 use Twilio\Rest\Client as TwilioClient;
 
+/**
+ * Provider-agnostic WhatsApp sender.
+ * - sendTemplate(): Meta / Twilio / (stub) Gupshup
+ * - sendText(): direct Twilio text (useful for AI-first)
+ * - assembleTemplateAsText(): tiny library for Twilio text mode
+ */
 class WhatsAppService
 {
     protected string $provider;
@@ -71,10 +77,10 @@ class WhatsAppService
         if (!empty($params)) {
             $components[] = [
                 'type' => 'body',
-                'parameters' => array_map(
+                'parameters' => array_values(array_map(
                     fn($p) => ['type' => 'text', 'text' => (string)$p],
                     $params
-                ),
+                )),
             ];
         }
         if (!empty($links)) {
@@ -88,7 +94,7 @@ class WhatsAppService
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'       => $to,
+            'to'       => ltrim($to, '+'), // Graph expects digits only
             'type'     => 'template',
             'template' => [
                 'name'       => $template,
@@ -188,7 +194,7 @@ class WhatsAppService
             $msg = $client->messages->create($toWa, [
                 'from'           => $fromWa,
                 'body'           => $body,
-                'statusCallback' => route('webhooks.twilio.status'),
+                'statusCallback' => route('api.webhooks.twilio.whatsapp.status'),
             ]);
 
             $this->logWa(
@@ -278,7 +284,7 @@ class WhatsAppService
             $msg = $client->messages->create($toWa, [
                 'from'           => $fromWa,
                 'body'           => $body,
-                'statusCallback' => route('webhooks.twilio.status'),
+                'statusCallback' => route('api.webhooks.twilio.whatsapp.status'),
             ]);
 
             $this->logWa(
@@ -332,6 +338,10 @@ class WhatsAppService
             'manager_call_lead'      => "Heads up 👤 Lead needs attention: Name: {0}, Phone: {1}, Source: {2}. Reason: {3}",
             'booking_confirmation'   => "Your booking is confirmed for {0} ({1}). See you soon! 🚗",
             'visit_reminder_v1'      => "Reminder ⏰ Your booking is for {0} ({1}). Reply if you need to reschedule.",
+            // You can add v1 names too if you want them to print nicely via Twilio text:
+            'ask_make_model_v1'      => "Could you please share your car’s *Make & Model*?",
+            'ask_preferred_time_v1'  => "Thanks {0}! What date/time works best for your service?",
+            'booking_confirmed_v1'   => "Booking confirmed ✅ Ref {0} on {1} at {2}.",
         ];
 
         $body = $library[$template] ?? $template;

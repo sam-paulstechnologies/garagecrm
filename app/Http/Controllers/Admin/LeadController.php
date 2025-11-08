@@ -92,9 +92,6 @@ class LeadController extends Controller
             }
         });
 
-        // 🔔 Do NOT fire another event; Lead::booted()->created already triggers campaign/WA flow
-        // event(new LeadCreated($lead)); // removed
-
         return redirect()->route('admin.leads.index')->with('success', 'Lead created.');
     }
 
@@ -232,6 +229,122 @@ class LeadController extends Controller
             ? response()->json(['last_contacted_at' => $lead->last_contacted_at])
             : back()->with('success', 'Last contacted time updated.');
     }
+
+    // =========================
+    // 🔸 AI Co-Pilot Endpoints
+    // =========================
+
+    /** Get Co-Pilot meta (summary, intent, confidence, propensity, actions) */
+    public function copilotMeta(Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+        $svc = app(\App\Services\Ai\ActionSuggestService::class);
+        return response()->json($svc->forLead($lead));
+    }
+
+    /** Ask AI for a short suggested reply (based on last inbound + ai_analysis) */
+    public function copilotSuggestReply(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+
+        $lastIn = \App\Models\MessageLog::query()
+            ->where('lead_id', $lead->id)
+            ->where('company_id', $lead->company_id)
+            ->where('direction','in')
+            ->orderByDesc('id')->first();
+
+        $text  = $lastIn?->body ?? 'Hi';
+        $nlp   = $lastIn?->ai_analysis ?? [];
+
+        $reply = app(\App\Services\Ai\NlpService::class)->replyText(
+            $lastIn?->from_number ?? ($lead->phone ?? ''),
+            $lastIn?->to_number ?? '',
+            $text,
+            ['lead' => [
+                'name' => $lead->name,
+                'vehicle_make_id'  => $lead->vehicle_make_id ?? null,
+                'vehicle_model_id' => $lead->vehicle_model_id ?? null,
+                'other_make'       => $lead->other_make ?? null,
+                'other_model'      => $lead->other_model ?? null,
+                'conversation_state'=> $lead->conversation_state ?? null,
+            ], 'nlp' => $nlp]
+        );
+
+        return response()->json(['ok'=>true, 'reply'=>$reply]);
+    }
+
+    /** Create a quick booking (defaults to tomorrow 10:00) */
+    public function copilotQuickBooking(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+
+        $date = $request->input('date', now()->addDay()->format('Y-m-d'));
+        $time = $request->input('time', '10:00');
+
+        $dt = \Carbon\Carbon::parse("{$date} {$time}");
+
+        $booking = \App\Models\Job\Booking::create([
+            'company_id'   => $lead->company_id,
+            'lead_id'      => $lead->id,
+            'client_id'    => $lead->client_id,
+            'scheduled_at' => $dt,
+            'slot'         => ((int)$dt->format('H') >= 12) ? 'Afternoon' : 'Morning',
+            'status'       => 'Pending',
+            'notes'        => 'Quick booking from Co-Pilot',
+        ]);
+
+        return response()->json(['ok'=>true, 'booking_id'=>$booking->id]);
+    }
+
+    /** Schedule a follow-up reminder (no job enqueue here, echo plan) */
+    public function copilotScheduleFollowup(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+        $hours = max(1, (int)$request->input('hours', 24));
+        $lead->update(['last_contacted_at' => now()]);
+        return response()->json(['ok'=>true, 'scheduled_for'=> now()->addHours($hours)->toIso8601String()]);
+    }
+
+    /** Send a WhatsApp template (or free text when template='__free_text__') */
+    public function copilotSendTemplate(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+
+        $tpl  = (string) $request->input('template', 'lead_acknowledgment_v2');
+        $body = (string) $request->input('body', '');
+
+        if ($tpl === '__free_text__') {
+            // Log + send free text via your unified chat or WA service (simple fallback below):
+            \App\Jobs\SendWhatsAppFromTemplate::dispatch(
+                companyId:    $lead->company_id,
+                leadId:       $lead->id,
+                toNumberE164: $lead->phone ?? '',
+                templateName: '__free_text__',
+                placeholders: [],
+                links:        [],
+                context:      ['company_id'=>$lead->company_id, 'lead_id'=>$lead->id, 'body'=>$body],
+                action:       'copilot'
+            );
+            return response()->json(['ok'=>true]);
+        }
+
+        \App\Jobs\SendWhatsAppFromTemplate::dispatch(
+            companyId:    $lead->company_id,
+            leadId:       $lead->id,
+            toNumberE164: $lead->phone ?? '',
+            templateName: $tpl,
+            placeholders: [],
+            links:        [],
+            context:      ['company_id'=>$lead->company_id, 'lead_id'=>$lead->id],
+            action:       'copilot'
+        );
+
+        return response()->json(['ok'=>true]);
+    }
+
+    // =========================
+    // 🔒 Helpers
+    // =========================
 
     /** 🔐 Company guard */
     protected function authorizeCompany(Lead $lead): void

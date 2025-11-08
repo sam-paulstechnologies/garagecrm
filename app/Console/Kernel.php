@@ -1,40 +1,25 @@
 <?php
 
-namespace App\Providers;
+namespace App\Console;
 
-use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use App\Jobs\ComputeDailyAiMetrics;
 
-class EventServiceProvider extends ServiceProvider
+class Kernel extends ConsoleKernel
 {
-    protected $listen = [
-        // Your unified notification + journey
-        \App\Events\LeadCreated::class => [
-            \App\Listeners\SendUnifiedNotification::class,
-            \App\Listeners\StartJourneyForLead::class,
-            // NEW: Welcome + 20-min follow-up
-            \App\Listeners\Lead\LeadWelcomeAndFollowup::class,
-        ],
+    protected function schedule(Schedule $schedule): void
+    {
+        // Materialize yesterday’s metrics at 00:10 (or today if you prefer)
+        $schedule->job(new ComputeDailyAiMetrics(now()->toDateString()))
+            ->dailyAt('00:10')
+            ->onOneServer()
+            ->withoutOverlapping();
+    }
 
-        \App\Events\OpportunityStatusUpdated::class => [
-            \App\Listeners\SendUnifiedNotification::class,
-        ],
-
-        \App\Events\BookingStatusUpdated::class => [
-            \App\Listeners\SendUnifiedNotification::class,
-        ],
-
-        \App\Events\JobCompleted::class => [
-            \App\Listeners\SendUnifiedNotification::class,
-            // NEW: fire 'job.done.feedback'
-            \App\Listeners\Job\JobCompletedFeedback::class,
-        ],
-
-        // Backward compat (optional)
-        \App\Events\OpportunityStageChanged::class => [
-            \App\Listeners\SendUnifiedNotification::class,
-        ],
-    ];
-
-    public function boot(): void {}
-    public function shouldDiscoverEvents(): bool { return false; }
+    protected function commands(): void
+    {
+        $this->load(__DIR__ . '/Commands');
+        require base_path('routes/console.php');
+    }
 }

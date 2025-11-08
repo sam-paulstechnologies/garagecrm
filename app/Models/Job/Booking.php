@@ -13,6 +13,11 @@ class Booking extends Model
     protected $casts = [
         'pickup_required' => 'boolean',
         'is_archived'     => 'boolean',
+        'confirmed_at'    => 'datetime',
+        'completed_at'    => 'datetime',
+        'cancelled_at'    => 'datetime',
+        'state_changed_at'=> 'datetime',
+        'reminder_sent_at'=> 'datetime',
     ];
 
     protected $fillable = [
@@ -22,22 +27,36 @@ class Booking extends Model
         'vehicle_id',
         'name',
         'service_type',
+
         // one of these will exist in your schema:
         'date',
         'booking_date',
         'scheduled_at',
+
         // slot/time choice
         'slot',
         'assigned_to',
+
+        // pickup
         'pickup_required',
         'pickup_address',
         'pickup_contact_number',
+
+        // misc
         'notes',
         'expected_duration',
         'expected_close_date',
         'priority',
-        'status',        // ENUM of strings in your DB
+        'status',          // ENUM in DB
         'is_archived',
+
+        // Sprint-2 timeline stamps
+        'confirmed_at',
+        'completed_at',
+        'cancelled_at',
+        'state_changed_at',
+        'state_changed_by',
+        'reminder_sent_at',
     ];
 
     /* -------------------- Relationships -------------------- */
@@ -99,7 +118,6 @@ class Booking extends Model
         }
 
         // Ignore only cancelled/canceled bookings when checking availability
-        // (Your 'status' column is an ENUM of strings.)
         if (Schema::hasColumn('bookings', 'status')) {
             $q->where(function ($qq) {
                 $qq->whereNull('status')

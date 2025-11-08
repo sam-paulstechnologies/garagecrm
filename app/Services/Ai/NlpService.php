@@ -34,11 +34,11 @@ class NlpService
 
         // Known facts from DB (lead) – keep it lightweight
         $known = [
-            'name'            => $lead['name']            ?? null,
-            'make_id'         => $lead['vehicle_make_id'] ?? null,
-            'model_id'        => $lead['vehicle_model_id']?? null,
-            'other_make'      => $lead['other_make']      ?? null,
-            'other_model'     => $lead['other_model']     ?? null,
+            'name'               => $lead['name']            ?? null,
+            'make_id'            => $lead['vehicle_make_id'] ?? null,
+            'model_id'           => $lead['vehicle_model_id']?? null,
+            'other_make'         => $lead['other_make']      ?? null,
+            'other_model'        => $lead['other_model']     ?? null,
             'conversation_state' => $lead['conversation_state'] ?? null,
         ];
 
@@ -47,7 +47,7 @@ class NlpService
 
         // Capabilities / business rules
         $caps = [
-            'offer_pickup_drop' => false, // hard off per your request
+            'offer_pickup_drop' => false, // hard off
         ];
 
         $system = <<<SYS
@@ -67,7 +67,7 @@ SYS;
 
         // Summarize what we already know so the model doesn’t repeat questions
         $leadSummary = [];
-        if ($known['name'])       $leadSummary[] = "name={$known['name']}";
+        if ($known['name'])                           $leadSummary[] = "name={$known['name']}";
         if ($known['make_id'] || $known['other_make'])  $leadSummary[] = "make=known";
         if ($known['model_id'] || $known['other_model'])$leadSummary[] = "model=known";
         if ($known['conversation_state'])               $leadSummary[] = "state={$known['conversation_state']}";

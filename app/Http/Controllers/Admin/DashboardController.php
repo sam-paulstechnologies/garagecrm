@@ -21,16 +21,27 @@ class DashboardController extends Controller
     public function index()
     {
         $user = auth()->user();
-        if (!$user) {
-            // Guard to avoid "Attempt to read property 'company_id' on null"
-            return redirect()->route('login');
-        }
+        if (!$user) return redirect()->route('login');
 
         $companyId = (int) $user->company_id;
 
-        // ------------------------------
-        // High-level stats (existing)
-        // ------------------------------
+        // ---- AI Status for badge ----
+        $get = fn($k,$d=null) => DB::table('company_settings')
+            ->where('company_id',$companyId)->where('key',$k)->value('value') ?? $d;
+
+        $aiEnabled   = ($get('ai.enabled','0') === '1');
+        $aiThreshold = is_numeric($get('ai.confidence_threshold')) ? (float)$get('ai.confidence_threshold') : (float) env('AI_CONFIDENCE_THRESHOLD', 0.60);
+        $aiFirst     = ($get('ai.first_reply', '0') === '1');
+
+        $aiStatus = [
+            'enabled'   => $aiEnabled,
+            'threshold' => $aiThreshold,
+            'first'     => $aiFirst,
+            'label'     => $aiEnabled ? 'AI On' : 'AI Off',
+            'color'     => $aiEnabled ? '#10b981' : '#9ca3af',
+        ];
+
+        // ---- existing stats (unchanged) ----
         $stats = [
             'total_users' => User::where('company_id', $companyId)->count(),
             'total_clients' => Client::where('company_id', $companyId)->count(),
@@ -74,7 +85,6 @@ class DashboardController extends Controller
             ->where('company_id', $companyId)
             ->latest()->take(5)->get();
 
-        // Calendar events (confirmed bookings from today forward)
         $calendarBookings = Booking::with('client')
             ->where('company_id', $companyId)
             ->where('status', 'confirmed')
@@ -109,14 +119,11 @@ class DashboardController extends Controller
             'followups_due'    => $followUpsDue,
         ];
 
-        // ---------------------------------------------------------
-        // WhatsApp Intelligence (KPIs, Timeline, Due/Overdue, Health)
-        // ---------------------------------------------------------
-        $ackWindowMins = 20;   // after outbound, becomes "Due" if no inbound in X mins
-        $slaMins       = 120;  // becomes "Overdue" after SLA mins
-        $lookbackHours = 24;   // Due/Overdue lookback window
+        // ---- WhatsApp KPIs (your existing block) ----
+        $ackWindowMins = 20;
+        $slaMins       = 120;
+        $lookbackHours = 24;
 
-        // KPIs (Today)
         $waOutboundToday = WhatsAppMessage::forCompany($companyId)
             ->whereDate('created_at', now())
             ->where('direction', 'out');
@@ -128,37 +135,33 @@ class DashboardController extends Controller
         $waKpis = [
             'sent_today'      => (clone $waOutboundToday)->whereIn('status', ['sent', 'delivered', 'read', 'replied'])->count(),
             'delivered_today' => (clone $waOutboundToday)->where('status', 'delivered')->count(),
-            'replied_today'   => (clone $waInboundToday)->count(), // treat any inbound as a reply
+            'replied_today'   => (clone $waInboundToday)->count(),
             'failed_24h'      => WhatsAppMessage::forCompany($companyId)
                 ->where('status', 'failed')
                 ->where('created_at', '>=', now()->subDay())
                 ->count(),
         ];
 
-        // Timeline (latest 50)
         $waTimeline = WhatsAppMessage::forCompany($companyId)
             ->with(['template:id,name'])
             ->orderByDesc('created_at')
             ->limit(50)
             ->get(['id','direction','status','to','template_id','campaign_id','error_message','created_at']);
 
-        // Due / Overdue (derived: outbound with no subsequent inbound within windows)
         $baseOutbound = WhatsAppMessage::forCompany($companyId)
             ->where('direction', 'out')
             ->where('created_at', '>=', now()->subHours($lookbackHours));
 
-        $dueCount = (clone $baseOutbound)
-            ->whereRaw("
-                NOT EXISTS (
-                    SELECT 1 FROM whatsapp_messages wi
-                      WHERE wi.company_id = whatsapp_messages.company_id
-                        AND wi.direction = 'in'
-                        AND wi.`to` = whatsapp_messages.`to`
-                        AND wi.created_at BETWEEN whatsapp_messages.created_at
-                                             AND DATE_ADD(whatsapp_messages.created_at, INTERVAL ? MINUTE)
-                )
-            ", [$ackWindowMins])
-            ->count();
+        $dueCount = (clone $baseOutbound)->whereRaw("
+            NOT EXISTS (
+              SELECT 1 FROM whatsapp_messages wi
+               WHERE wi.company_id = whatsapp_messages.company_id
+                 AND wi.direction = 'in'
+                 AND wi.`to` = whatsapp_messages.`to`
+                 AND wi.created_at BETWEEN whatsapp_messages.created_at
+                                      AND DATE_ADD(whatsapp_messages.created_at, INTERVAL ? MINUTE)
+            )
+        ", [$ackWindowMins])->count();
 
         $overdueCount = (clone $baseOutbound)
             ->where('created_at', '<', now()->subMinutes($slaMins))
@@ -173,7 +176,6 @@ class DashboardController extends Controller
             ")
             ->count();
 
-        // Queue Health
         $failedJobsCount = DB::table('failed_jobs')->count();
 
         $waDashboard = [
@@ -197,7 +199,8 @@ class DashboardController extends Controller
             'unpaidInvoices',
             'followUpsDue',
             'smartKPIs',
-            'waDashboard'
+            'waDashboard',
+            'aiStatus' // <-- pass to view
         ));
     }
 }

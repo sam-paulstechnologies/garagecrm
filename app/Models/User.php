@@ -1,4 +1,4 @@
-<?php 
+<?php
 
 namespace App\Models;
 
@@ -8,14 +8,14 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\HasApiTokens;
 use App\Models\System\Company;
 use App\Models\System\Garage;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
-    /** Single source of truth for allowed roles */
     public const ROLES = ['admin', 'manager', 'mechanic', 'receptionist', 'supervisor'];
 
     protected $fillable = [
@@ -26,8 +26,8 @@ class User extends Authenticatable
         'password',
         'company_id',
         'garage_id',
-        'status',                // 1 = active, 0 = inactive
-        'must_change_password',  // optional column
+        'status',
+        'must_change_password',
     ];
 
     protected $hidden = [
@@ -36,20 +36,24 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'status'            => 'integer',
+        'email_verified_at'    => 'datetime',
+        'status'               => 'integer',
         'must_change_password' => 'boolean',
     ];
 
-    // 🔒 Auto-hash password when set. Do NOT Hash::make() before setting.
+    /**
+     * Automatically hash password when set (avoid double hashing)
+     */
     protected function password(): Attribute
     {
         return Attribute::make(
-            set: fn ($value) => Hash::make($value),
+            set: fn($value) => Hash::needsRehash($value)
+                ? Hash::make($value)
+                : $value,
         );
     }
 
-    // 🔗 Relationships
+    /** Relationships */
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
