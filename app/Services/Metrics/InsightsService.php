@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Metr ics;
+namespace App\Services\Metrics;
 
 use Illuminate\Support\Facades\DB;
 
