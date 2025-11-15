@@ -10,3 +10,5 @@
 .env.*
 .phpunit.result.cache
 /coverage
+/public/build/
+/backup.sql
