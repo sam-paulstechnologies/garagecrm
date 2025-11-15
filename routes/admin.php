@@ -21,11 +21,11 @@ use App\Http\Controllers\Admin\{
     LeadImportController,
     LeadDuplicateController,
     TemplateController,
-    AiSettingController,        // AI Control Center (edit/update)
-    BusinessProfileController,  // Business Profile & Escalation
-    AiPolicyController,         // AI Policy (intent matrix + policy reply)
-    AiInsightsController,       // AI Insights dashboard
-    ChatController              // Unified Chat UI
+    AiSettingController,
+    BusinessProfileController,
+    AiPolicyController,
+    AiInsightsController,
+    ChatController
 };
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
@@ -98,6 +98,10 @@ Route::post('leads/{lead}/copilot/suggest-reply',   [LeadController::class, 'cop
 Route::post('leads/{lead}/copilot/quick-booking',   [LeadController::class, 'copilotQuickBooking'])->name('leads.copilot.quick-booking');
 Route::post('leads/{lead}/copilot/followup',        [LeadController::class, 'copilotScheduleFollowup'])->name('leads.copilot.followup');
 Route::post('leads/{lead}/copilot/send-template',   [LeadController::class, 'copilotSendTemplate'])->name('leads.copilot.send-template');
+
+/** ★ Leads — Meta Import (fixes RouteNotFound) */
+Route::get('leads/import/meta',  [LeadImportController::class, 'showMetaForm'])->name('leads.import.meta');
+Route::post('leads/import/meta', [LeadImportController::class, 'importFromMeta'])->name('leads.import.meta.run');
 
 /** Leads (resource LAST so it doesn't swallow customs) */
 Route::resource('leads', LeadController::class);
@@ -186,6 +190,14 @@ Route::prefix('meta')->name('meta.')->group(function () {
     Route::post('refresh',      [\App\Http\Controllers\Admin\MetaConnectController::class, 'refresh'])->name('refresh');
     Route::post('disconnect',   [\App\Http\Controllers\Admin\MetaConnectController::class, 'disconnect'])->name('disconnect');
 });
+
+// ★ Lead Duplicates
+Route::get('leads/duplicates', [\App\Http\Controllers\Admin\LeadDuplicateController::class, 'index'])
+    ->name('leads.duplicates.index');
+
+Route::post('leads/duplicates/window', [\App\Http\Controllers\Admin\LeadDuplicateController::class, 'updateWindow'])
+    ->name('leads.duplicates.update-window');
+
 
 /** Template preview */
 Route::get('templates/{template}/preview', [TemplateController::class, 'preview'])->name('templates.preview');

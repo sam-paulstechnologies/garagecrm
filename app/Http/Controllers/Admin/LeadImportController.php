@@ -16,6 +16,29 @@ class LeadImportController extends Controller
 {
     public function __construct(private MetaLeadService $meta) {}
 
+    /**
+     * Show simple form for Meta import overrides (token, form id, limit).
+     * Route: GET admin/leads/import/meta  (admin.leads.import.meta)
+     */
+    public function showMetaForm(Request $request)
+    {
+        // Optionally prefill from SettingsStore
+        $companyId = (int) $request->user()->company_id;
+        $store     = new SettingsStore($companyId);
+
+        $prefill = [
+            'meta_access_token' => (string) $store->get('meta.access_token', config('services.meta.access_token', '')),
+            'meta_form_id'      => (string) $store->get('meta.form_id',     config('services.meta.form_id', '')),
+            'limit'             => 100,
+        ];
+
+        return view('admin.leads.import-meta', compact('prefill'));
+    }
+
+    /**
+     * Run Meta import (with optional overrides from the form).
+     * Route: POST admin/leads/import/meta  (admin.leads.import.meta.run)
+     */
     public function importFromMeta(Request $request)
     {
         $companyId = (int) $request->user()->company_id;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
-import AppLayout from '../../Layouts/AppLayout';
+import AppLayout from '../../../Layouts/AppLayout';
 
 export default function ToneStyleSafety({ config }) {
   const { data, setData, post, processing, recentlySuccessful } = useForm(config);
@@ -13,7 +13,9 @@ export default function ToneStyleSafety({ config }) {
     setStopWord('');
   };
   const removeStop = (i) => {
-    const next = [...data.stop_words]; next.splice(i, 1); setData('stop_words', next);
+    const next = [...data.stop_words];
+    next.splice(i, 1);
+    setData('stop_words', next);
   };
 
   const addTopic = () => {
@@ -22,7 +24,9 @@ export default function ToneStyleSafety({ config }) {
     setTopic('');
   };
   const removeTopic = (i) => {
-    const next = [...data.forbidden_topics]; next.splice(i, 1); setData('forbidden_topics', next);
+    const next = [...data.forbidden_topics];
+    next.splice(i, 1);
+    setData('forbidden_topics', next);
   };
 
   const onSubmit = (e) => {
@@ -30,14 +34,14 @@ export default function ToneStyleSafety({ config }) {
     post(route('admin.ai.tone.save'));
   };
 
-  const exampleInput = "hey can you pick up my car and also what’s the price?";
+  const exampleInput = 'hey can you pick up my car and also what’s the price?';
   const preview = (() => {
-    // ultra-light preview for length + tone only (no LLM call)
     let txt = exampleInput;
     if (data.tone_preset === 'professional') txt = txt.replace(/^hey/i, 'Hello');
     if (data.tone_preset === 'friendly') txt = txt.replace(/^hey/i, 'Hi');
     const max = Number(data.reply_length_limit || 480);
-    if (data.truncate_over_limit && txt.length > max) txt = txt.slice(0, max - 1) + '…';
+    if (data.truncate_over_limit && txt.length > max)
+      txt = txt.slice(0, max - 1) + '…';
     return txt;
   })();
 
@@ -52,7 +56,7 @@ export default function ToneStyleSafety({ config }) {
           <div>
             <label className="font-medium">Tone preset</label>
             <div className="mt-2 flex gap-4">
-              {['friendly','professional','custom'].map(opt => (
+              {['friendly', 'professional', 'custom'].map((opt) => (
                 <label key={opt} className="flex items-center gap-2">
                   <input
                     type="radio"
@@ -85,13 +89,17 @@ export default function ToneStyleSafety({ config }) {
                 min={100}
                 max={2000}
                 value={data.reply_length_limit}
-                onChange={(e) => setData('reply_length_limit', Number(e.target.value))}
+                onChange={(e) =>
+                  setData('reply_length_limit', Number(e.target.value))
+                }
               />
               <label className="mt-3 flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={!!data.truncate_over_limit}
-                  onChange={(e) => setData('truncate_over_limit', e.target.checked)}
+                  onChange={(e) =>
+                    setData('truncate_over_limit', e.target.checked)
+                  }
                 />
                 Truncate if over limit
               </label>
@@ -109,7 +117,10 @@ export default function ToneStyleSafety({ config }) {
                     max={120}
                     value={data.rate_limit?.per_minute}
                     onChange={(e) =>
-                      setData('rate_limit', { ...data.rate_limit, per_minute: Number(e.target.value) })
+                      setData('rate_limit', {
+                        ...data.rate_limit,
+                        per_minute: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -122,7 +133,10 @@ export default function ToneStyleSafety({ config }) {
                     max={240}
                     value={data.rate_limit?.burst}
                     onChange={(e) =>
-                      setData('rate_limit', { ...data.rate_limit, burst: Number(e.target.value) })
+                      setData('rate_limit', {
+                        ...data.rate_limit,
+                        burst: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -141,7 +155,11 @@ export default function ToneStyleSafety({ config }) {
                   value={stopWord}
                   onChange={(e) => setStopWord(e.target.value)}
                 />
-                <button type="button" className="px-3 py-2 bg-gray-900 text-white rounded" onClick={addStop}>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-gray-900 text-white rounded"
+                  onClick={addStop}
+                >
                   Add
                 </button>
               </div>
@@ -149,7 +167,11 @@ export default function ToneStyleSafety({ config }) {
                 {(data.stop_words || []).map((w, i) => (
                   <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
                     {w}{' '}
-                    <button type="button" className="ml-1 text-gray-500" onClick={() => removeStop(i)}>
+                    <button
+                      type="button"
+                      className="ml-1 text-gray-500"
+                      onClick={() => removeStop(i)}
+                    >
                       ×
                     </button>
                   </span>
@@ -160,7 +182,9 @@ export default function ToneStyleSafety({ config }) {
                 <input
                   type="checkbox"
                   checked={!!data.handoff_on_stop_word}
-                  onChange={(e) => setData('handoff_on_stop_word', e.target.checked)}
+                  onChange={(e) =>
+                    setData('handoff_on_stop_word', e.target.checked)
+                  }
                 />
                 Auto-handoff when a stop word appears
               </label>
@@ -175,7 +199,11 @@ export default function ToneStyleSafety({ config }) {
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                 />
-                <button type="button" className="px-3 py-2 bg-gray-900 text-white rounded" onClick={addTopic}>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-gray-900 text-white rounded"
+                  onClick={addTopic}
+                >
                   Add
                 </button>
               </div>
@@ -183,7 +211,11 @@ export default function ToneStyleSafety({ config }) {
                 {(data.forbidden_topics || []).map((w, i) => (
                   <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
                     {w}{' '}
-                    <button type="button" className="ml-1 text-gray-500" onClick={() => removeTopic(i)}>
+                    <button
+                      type="button"
+                      className="ml-1 text-gray-500"
+                      onClick={() => removeTopic(i)}
+                    >
                       ×
                     </button>
                   </span>
@@ -219,7 +251,9 @@ export default function ToneStyleSafety({ config }) {
             >
               Save
             </button>
-            {recentlySuccessful && <span className="text-green-600 text-sm">Saved ✓</span>}
+            {recentlySuccessful && (
+              <span className="text-green-600 text-sm">Saved ✓</span>
+            )}
           </div>
         </form>
       </div>
