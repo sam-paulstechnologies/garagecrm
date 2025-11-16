@@ -26,7 +26,7 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
-      # 🔧 create the paths Laravel needs so Composer scripts don't fail
+      # Laravel required folders
       - name: Create Laravel directories
         run: |
           mkdir -p storage/framework/{cache,sessions,views}
@@ -48,11 +48,16 @@ jobs:
           php artisan config:clear || true
           php artisan route:clear || true
           php artisan view:clear || true
-          rm -f .env   # we use Azure App Settings instead
+          rm -f .env   # we use Azure App Settings
 
-      - name: Deploy to Azure Web App
+      # 🔥 ZIP EVERYTHING including nginx.conf
+      - name: Create ZIP package
+        run: |
+          zip -r release.zip . -x "*.git*" -x "node_modules/*"
+
+      - name: Deploy to Azure Web App (Zip Deploy)
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'app-sayaraforce'
+          app-name: "app-sayaraforce"
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
-          package: .
+          package: release.zip
