@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
-use Illuminate\Support\Facades\Gate;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -13,7 +12,8 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        // 'App\Models\Model' => 'App\Policies\ModelPolicy',
+        // ==== AI + Chat / Conversations ====
+        \App\Models\Conversation::class => \App\Policies\ConversationPolicy::class,
     ];
 
     /**
@@ -23,6 +23,8 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
-        // Define Gates if needed
+        // If you want to add custom Gates later, add here.
+        //
+        // Gate::define('view-admin-panel', fn($user) => $user->role === 'admin');
     }
 }

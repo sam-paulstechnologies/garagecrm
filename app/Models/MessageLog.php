@@ -12,17 +12,17 @@ class MessageLog extends Model
         'company_id',
         'lead_id',
         'conversation_id',
+        'user_id',
 
-        'direction',            // 'in' | 'out'
-        'channel',              // 'whatsapp' | 'in_app'
-        'source',               // 'ai' | 'template' | 'human'
+        'direction',
+        'channel',
+        'source',
 
         'to_number',
         'from_number',
 
         'template',
         'template_id',
-
         'body',
         'provider_message_id',
         'provider_status',
@@ -30,8 +30,6 @@ class MessageLog extends Model
         'escalation_reason',
 
         'meta',
-
-        // AI fields
         'ai_analysis',
         'ai_confidence',
         'ai_intent',
@@ -39,6 +37,7 @@ class MessageLog extends Model
         'ai_propensity_reason',
 
         'read_at',
+        'is_ai',
     ];
 
     protected $casts = [
@@ -50,51 +49,74 @@ class MessageLog extends Model
         'read_at'              => 'datetime',
         'created_at'           => 'datetime',
         'updated_at'           => 'datetime',
+        'is_ai'                => 'boolean',
     ];
 
     protected static function booted(): void
     {
         static::creating(function (self $m) {
+            // Channel default
             $m->channel   = $m->channel ?: 'whatsapp';
+
+            // Direction normalisation
             $m->direction = strtolower($m->direction ?? 'in') === 'out' ? 'out' : 'in';
 
-            // normalize source
-            if (!in_array($m->source, ['ai','template','human'], true)) {
+            // Source default
+            if (!in_array($m->source, ['ai', 'template', 'human'], true)) {
                 $m->source = $m->direction === 'in' ? 'human' : null;
             }
 
-            // strip twilio prefix if present
+            // Strip "whatsapp:" prefix from numbers
             foreach (['to_number', 'from_number'] as $k) {
                 if (!empty($m->{$k})) {
                     $m->{$k} = preg_replace('/^whatsapp:/', '', $m->{$k});
                 }
             }
+
+            // If is_ai flag not set, infer from source
+            if ($m->is_ai === null) {
+                $m->is_ai = $m->source === 'ai';
+            }
         });
     }
 
-    // helpers
-    public static function in(array $attrs): self
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors / Mutators for from / to (virtual)
+    |--------------------------------------------------------------------------
+    | Lets the rest of the app use $log->from / $log->to while DB keeps
+    | from_number / to_number.
+    */
+
+    public function getFromAttribute()
     {
-        $attrs['direction'] = 'in';
-        if (empty($attrs['source'])) $attrs['source'] = 'human';
-        return static::create($attrs);
+        return $this->from_number;
     }
 
-    public static function out(array $attrs): self
+    public function setFromAttribute($value): void
     {
-        $attrs['direction'] = 'out';
-        return static::create($attrs);
+        $this->from_number = $value;
     }
 
-    // relations
-    public function lead()
+    public function getToAttribute()
     {
-        return $this->belongsTo(\App\Models\Client\Lead::class);
+        return $this->to_number;
     }
+
+    public function setToAttribute($value): void
+    {
+        $this->to_number = $value;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
 
     public function conversation()
     {
-        return $this->belongsTo(\App\Models\Conversation::class);
+        return $this->belongsTo(Conversation::class);
     }
 
     public function suggestions()
@@ -102,8 +124,22 @@ class MessageLog extends Model
         return $this->hasMany(\App\Models\AiSuggestion::class, 'message_log_id');
     }
 
-    // scopes
-    public function scopeForCompany($q, int $companyId) { return $q->where('company_id', $companyId); }
-    public function scopeInbound($q)  { return $q->where('direction', 'in'); }
-    public function scopeOutbound($q) { return $q->where('direction', 'out'); }
+    /*
+    |--------------------------------------------------------------------------
+    | API Shape for React Chat
+    |--------------------------------------------------------------------------
+    */
+
+    public function toChatPayload(): array
+    {
+        return [
+            'id'              => $this->id,
+            'direction'       => $this->direction,             // 'in' | 'out'
+            'body'            => $this->body,
+            'channel'         => $this->channel,
+            'is_ai'           => (bool) ($this->is_ai ?? ($this->source === 'ai')),
+            'created_at'      => optional($this->created_at)->toIso8601String(),
+            'provider_status' => $this->provider_status,
+        ];
+    }
 }

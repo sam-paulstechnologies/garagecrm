@@ -5,153 +5,183 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\MessageLog;
-use App\Models\Client\Lead;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class ChatController extends Controller
 {
-    /** List conversations (latest first) */
+    /**
+     * Inbox: list conversations, no active thread selected.
+     */
     public function index(Request $request)
     {
-        $companyId = (int) ($request->user()->company_id ?? 0);
+        $user      = $request->user();
+        $companyId = (int) $user->company_id;
+
+        $q        = trim((string) $request->get('q', ''));
+        $status   = $request->get('status');  // open / closed / all
+        $channel  = $request->get('channel'); // whatsapp / email (future)
+        $perPage  = 25;
 
         $conversations = Conversation::query()
             ->where('company_id', $companyId)
-            ->orderByDesc('latest_message_at')
-            ->orderByDesc('updated_at')
-            ->withCount([
-                // unread = inbound + read_at is NULL
-                'messages as unread_count' => function ($q) {
-                    $q->where('direction', 'in')->whereNull('read_at');
-                },
-            ])
-            ->paginate(20);
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('subject', 'like', "%{$q}%")
+                       ->orWhere('customer_name', 'like', "%{$q}%")
+                       ->orWhere('customer_phone', 'like', "%{$q}%");
+                });
+            })
+            ->when($status && $status !== 'all', function ($query) use ($status) {
+                $query->where('status', $status);
+            })
+            ->when($channel, function ($query) use ($channel) {
+                $query->where('channel', $channel);
+            })
+            ->orderByDesc('last_message_at')
+            ->paginate($perPage)
+            ->appends($request->query());
 
         return view('admin.chat.index', [
-            'conversations' => $conversations,
+            'conversations'        => $conversations,
+            'activeConversation'   => null,
+            'activeConversationId' => null,
+            'initialMessagesJson'  => json_encode([]),
         ]);
     }
 
-    /** Show a thread with the last N messages (and mark inbound as read) */
+    /**
+     * Inbox + selected conversation.
+     */
     public function show(Request $request, Conversation $chat)
     {
-        $this->authorizeCompany($request, $chat->company_id);
+        $user = $request->user();
+        $this->authorize('view', $chat);
+
+        $companyId = (int) $user->company_id;
+
+        $q       = trim((string) $request->get('q', ''));
+        $status  = $request->get('status');
+        $channel = $request->get('channel');
+        $perPage = 25;
+
+        $conversations = Conversation::query()
+            ->where('company_id', $companyId)
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('subject', 'like', "%{$q}%")
+                       ->orWhere('customer_name', 'like', "%{$q}%")
+                       ->orWhere('customer_phone', 'like', "%{$q}%");
+                });
+            })
+            ->when($status && $status !== 'all', function ($query) use ($status) {
+                $query->where('status', $status);
+            })
+            ->when($channel, function ($query) use ($channel) {
+                $query->where('channel', $channel);
+            })
+            ->orderByDesc('last_message_at')
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        // Last 100 messages
+        $messages = MessageLog::query()
+            ->where('conversation_id', $chat->id)
+            ->orderBy('id')
+            ->limit(100)
+            ->get()
+            ->map(fn (MessageLog $m) => $m->toChatPayload())
+            ->values()
+            ->all();
+
+        return view('admin.chat.index', [
+            'conversations'        => $conversations,
+            'activeConversation'   => $chat,
+            'activeConversationId' => $chat->id,
+            'initialMessagesJson'  => json_encode($messages),
+        ]);
+    }
+
+    /**
+     * JSON: messages for polling / refresh.
+     */
+    public function messages(Request $request, Conversation $chat)
+    {
+        $user = $request->user();
+        $this->authorize('view', $chat);
+
+        $sinceId = (int) $request->query('since_id', 0);
 
         $messages = MessageLog::query()
             ->where('conversation_id', $chat->id)
-            ->orderBy('created_at')
-            ->take(200)
-            ->get();
-
-        // mark inbound as read (requires read_at column)
-        MessageLog::where('conversation_id', $chat->id)
-            ->where('direction', 'in')
-            ->whereNull('read_at')
-            ->update(['read_at' => now()]);
-
-        return view('admin.chat.show', [
-            'conversation' => $chat,
-            'messages'     => $messages,
-            'csrf'         => csrf_token(),
-        ]);
-    }
-
-    /** Poll new messages (JSON) */
-    public function messages(Request $request, Conversation $chat)
-    {
-        $this->authorizeCompany($request, $chat->company_id);
-
-        $afterId = (int) $request->query('after_id', 0);
-
-        $rows = MessageLog::query()
-            ->where('conversation_id', $chat->id)
-            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
+            ->when($sinceId > 0, fn ($q) => $q->where('id', '>', $sinceId))
             ->orderBy('id')
             ->limit(200)
-            ->get([
-                'id',
-                'direction',
-                'source',
-                'body',
-                'created_at',
-                'provider_status',
-                'ai_intent',
-                'ai_confidence',
-            ]);
+            ->get()
+            ->map(fn (MessageLog $m) => $m->toChatPayload())
+            ->values()
+            ->all();
 
         return response()->json([
             'ok'       => true,
-            'messages' => $rows,
-            'now'      => now()->toISOString(),
+            'messages' => $messages,
         ]);
     }
 
-    /** Send a human message from the manager in the thread */
-    public function send(Request $request, Conversation $chat)
+    /**
+     * Send a human message from admin → customer (WhatsApp for now).
+     * NOTE: Expects { message: "text" } from React.
+     */
+    public function send(Request $request, Conversation $chat, WhatsAppService $whatsApp)
     {
-        $this->authorizeCompany($request, $chat->company_id);
+        $user = $request->user();
+        $this->authorize('reply', $chat);
 
         $data = $request->validate([
-            'body' => ['required', 'string', 'min:1', 'max:2000'],
+            'message' => ['required', 'string', 'max:1000'],
         ]);
 
-        // Prefer last inbound for destination number
-        $lastInbound = MessageLog::query()
-            ->where('conversation_id', $chat->id)
-            ->where('direction', 'in')
-            ->orderByDesc('id')
-            ->first();
+        $body = trim($data['message']);
 
-        $toE164 = $lastInbound?->from_number;
-        $leadId = $lastInbound?->lead_id;
-
-        // Fallback via the lead (if any)
-        if (!$toE164 && $leadId) {
-            $lead   = Lead::find($leadId);
-            $toE164 = $lead?->phone;
+        if ($body === '') {
+            return response()->json(['ok' => false, 'error' => 'Empty message'], 422);
         }
 
-        if (!$toE164) {
-            return response()->json([
-                'ok'    => false,
-                'error' => 'No recipient number found for this thread',
-            ], 422);
-        }
+        $to   = $chat->customer_phone; // assumed E164
+        $from = null;                  // pulled by WhatsAppService from settings
 
-        /** @var WhatsAppService $wa */
-        $wa = app(WhatsAppService::class);
-
-        // Send WA text
-        $wa->sendText($toE164, $data['body'], [
+        // Log locally first
+        $log = MessageLog::create([
             'company_id'      => $chat->company_id,
             'conversation_id' => $chat->id,
-        ]);
-
-        // Log out message for unified inbox
-        MessageLog::out([
-            'company_id'      => $chat->company_id,
-            'lead_id'         => $leadId,
-            'conversation_id' => $chat->id,
+            'lead_id'         => $chat->lead_id ?? null,
+            'user_id'         => $user->id,
+            'direction'       => 'out',
             'channel'         => 'whatsapp',
             'source'          => 'human',
-            'to_number'       => $toE164,
-            'from_number'     => $request->user()?->phone ?? null,
-            'body'            => $data['body'],
-            'provider_status' => 'sent',
+            'from'            => $from,
+            'to'              => $to,
+            'body'            => $body,
+            'is_ai'           => false,
         ]);
 
-        // bump conversation latest_message_at
-        $chat->update(['latest_message_at' => now()]);
+        // Fire to WhatsApp (Twilio / Meta chosen by WhatsAppService)
+        $waResp = $whatsApp->sendText($to, $body, [
+            'company_id'      => $chat->company_id,
+            'source'          => 'admin_chat',
+            'conversation_id' => $chat->id,
+        ]);
 
-        return response()->json(['ok' => true]);
-    }
+        // Update conversation summary
+        $chat->fill([
+            'last_message_at'      => now(),
+            'last_message_preview' => mb_substr($body, 0, 180),
+        ])->save();
 
-    /** Same-company guard */
-    private function authorizeCompany(Request $request, int $resourceCompanyId): void
-    {
-        $meCompany = (int) ($request->user()->company_id ?? 0);
-        abort_if($meCompany !== (int) $resourceCompanyId, 403, 'Forbidden');
+        return response()->json([
+            'ok'      => true,
+            'message' => $log->toChatPayload(),
+            'wa'      => $waResp,
+        ]);
     }
 }
