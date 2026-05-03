@@ -10,7 +10,7 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', env('TIMEZONE', 'Asia/Dubai')),
 
     'locale' => env('APP_LOCALE', 'en'),
 
@@ -37,11 +37,6 @@ return [
     |--------------------------------------------------------------------------
     | Autoloaded Service Providers
     |--------------------------------------------------------------------------
-    |
-    | The service providers listed here will be automatically loaded on the
-    | request to your application. Feel free to add your own services to
-    | this array to grant expanded functionality to your applications.
-    |
     */
 
     'providers' => [
@@ -73,7 +68,6 @@ return [
         Illuminate\View\ViewServiceProvider::class,
         App\Providers\ObserverServiceProvider::class,
 
-
         /*
         * Application Service Providers...
         */
@@ -81,7 +75,7 @@ return [
         App\Providers\AuthServiceProvider::class,
         // App\Providers\BroadcastServiceProvider::class,
         App\Providers\EventServiceProvider::class,
-        App\Providers\RouteServiceProvider::class, // ✅ DO NOT MISS THIS LINE
+        App\Providers\RouteServiceProvider::class,
     ],
 
 ];

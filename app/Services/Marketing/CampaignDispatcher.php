@@ -2,10 +2,14 @@
 
 namespace App\Services\Marketing;
 
-use App\Models\Marketing\{Campaign, CampaignEnrollment, CampaignLog};
+use App\Models\Marketing\Campaign;
+use App\Models\Marketing\CampaignEnrollment;
+use App\Models\Marketing\CampaignLog;
 use App\Models\WhatsApp\WhatsAppTemplate;
+use App\Models\Client\Lead;
 use App\Jobs\SendWhatsAppFromTemplate;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class CampaignDispatcher
 {
@@ -29,43 +33,84 @@ class CampaignDispatcher
     public function tick(CampaignEnrollment $enrollment): void
     {
         $campaign = $enrollment->campaign()->with('steps')->first();
-        $step     = $campaign->steps->firstWhere('step_order', $enrollment->current_step);
-        if (!$step) { $enrollment->update(['status' => 'completed']); return; }
+
+        if (!$campaign) {
+            return;
+        }
+
+        $step = $campaign->steps->firstWhere('step_order', $enrollment->current_step);
+
+        if (!$step) {
+            $enrollment->update(['status' => 'completed']);
+            return;
+        }
 
         switch ($step->action) {
+
             case 'send_template':
+
                 $tpl = WhatsAppTemplate::find($step->template_id);
+
                 if ($tpl) {
+
+                    $phone = $this->resolvePhone($enrollment);
+                    $leadId = $this->resolveLeadId($enrollment);
+
+                    if (!$phone || !$leadId) {
+                        Log::warning('[CampaignDispatcher] Missing phone or lead', [
+                            'enrollment_id' => $enrollment->id
+                        ]);
+                        return;
+                    }
+
                     SendWhatsAppFromTemplate::dispatch(
                         companyId:    $enrollment->company_id,
-                        templateId:   $tpl->id,
-                        toNumber:     $this->resolvePhone($enrollment),
-                        placeholders: $this->resolveVars($enrollment)
+                        leadId:       $leadId,
+                        toNumberE164: $phone,
+                        templateName: $tpl->name,
+                        placeholders: $this->resolveVars($enrollment),
+                        links:        [],
+                        context: [
+                            'campaign_id'   => $campaign->id,
+                            'enrollment_id' => $enrollment->id,
+                        ],
+                        action: 'campaign'
                     );
 
                     CampaignLog::create([
-                        'company_id'   => $enrollment->company_id,
-                        'campaign_id'  => $campaign->id,
-                        'enrollment_id'=> $enrollment->id,
-                        'message'      => "Sent template {$tpl->name}",
+                        'company_id'    => $enrollment->company_id,
+                        'campaign_id'   => $campaign->id,
+                        'enrollment_id' => $enrollment->id,
+                        'message'       => "Sent template {$tpl->name}",
                     ]);
                 }
+
                 $this->advance($enrollment, $campaign);
+
                 break;
+
 
             case 'wait':
+
                 $hours = (int) data_get($step->action_params, 'wait_hours', 24);
-                $enrollment->update(['next_run_at' => Carbon::now()->addHours($hours)]);
+
+                $enrollment->update([
+                    'next_run_at' => Carbon::now()->addHours($hours)
+                ]);
+
                 break;
 
+
             default:
+
                 $this->advance($enrollment, $campaign);
         }
     }
 
     protected function advance(CampaignEnrollment $enrollment, Campaign $campaign): void
     {
-        $next    = $enrollment->current_step + 1;
+        $next = $enrollment->current_step + 1;
+
         $hasNext = $campaign->steps->contains('step_order', $next);
 
         $enrollment->update([
@@ -75,30 +120,42 @@ class CampaignDispatcher
         ]);
     }
 
-    /** Resolve destination phone based on subject (Lead, later Client, etc.) */
     protected function resolvePhone(CampaignEnrollment $e): string
     {
         if (strtolower((string) $e->subject_type) === 'lead') {
-            $lead = \App\Models\Client\Lead::find($e->subject_id);
-            // Try phone first, then a whatsapp_number column if you use one
-            return $lead?->phone ?: ($lead?->whatsapp_number ?? '');
+
+            $lead = Lead::find($e->subject_id);
+
+            return $lead?->phone_norm ?: ($lead?->phone ?? '');
         }
+
         return '';
     }
 
-    /** Resolve template variables */
+    protected function resolveLeadId(CampaignEnrollment $e): ?int
+    {
+        if (strtolower((string) $e->subject_type) === 'lead') {
+            return $e->subject_id;
+        }
+
+        return null;
+    }
+
     protected function resolveVars(CampaignEnrollment $e): array
     {
         if (strtolower((string) $e->subject_type) === 'lead') {
-            $lead = \App\Models\Client\Lead::find($e->subject_id);
+
+            $lead = Lead::find($e->subject_id);
+
             return [
-                'name'        => $lead?->name ?: 'there',
-                'garage_name' => config('app.name', 'GarageCRM'),
+                $lead?->name ?: 'there',
+                config('app.name', 'GarageCRM'),
             ];
         }
+
         return [
-            'name'        => 'there',
-            'garage_name' => config('app.name', 'GarageCRM'),
+            'there',
+            config('app.name', 'GarageCRM'),
         ];
     }
 }

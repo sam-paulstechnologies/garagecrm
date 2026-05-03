@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\System\Company;
-use App\Models\System\Garage;
+use App\Models\Garage\Garage;
 
 class User extends Authenticatable
 {
@@ -37,23 +37,18 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at'    => 'datetime',
-        'status'               => 'integer',
+        'status'               => 'boolean',
         'must_change_password' => 'boolean',
     ];
 
-    /**
-     * Automatically hash password when set (avoid double hashing)
-     */
     protected function password(): Attribute
     {
         return Attribute::make(
-            set: fn($value) => Hash::needsRehash($value)
-                ? Hash::make($value)
-                : $value,
+            set: fn ($value) =>
+                Hash::needsRehash($value) ? Hash::make($value) : $value
         );
     }
 
-    /** Relationships */
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

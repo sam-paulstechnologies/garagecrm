@@ -2,7 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\Opportunity\Opportunity;
+use App\Models\Client\Opportunity;
 use App\Events\OpportunityStatusUpdated;
 
 class OpportunityObserver
@@ -12,10 +12,13 @@ class OpportunityObserver
 
     public function updated(Opportunity $opp): void
     {
-        $statusField = collect(self::STATUS_FIELDS)->first(fn($f) => $opp->isDirty($f) || $opp->wasChanged($f));
+        $statusField = collect(self::STATUS_FIELDS)->first(function ($f) use ($opp) {
+            return $opp->isDirty($f) || $opp->wasChanged($f);
+        });
 
         if ($statusField) {
             $new = $opp->getAttribute($statusField);
+
             if ($new) {
                 event(new OpportunityStatusUpdated($opp, strtolower((string) $new)));
             }

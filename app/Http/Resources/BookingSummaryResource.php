@@ -53,7 +53,7 @@ class BookingSummaryResource extends JsonResource
             'state_timeline' => [
                 'confirmed_at'     => $iso($this->confirmed_at ?? null),
                 'completed_at'     => $iso($this->completed_at ?? null),
-                'cancelled_at'     => $iso($this->cancelled_at ?? $this->canceled_at ?? null),
+                'cancelled_at'     => $iso($this->cancelled_at ?? null),
                 'state_changed_at' => $iso($this->state_changed_at ?? null),
             ],
             'window' => [

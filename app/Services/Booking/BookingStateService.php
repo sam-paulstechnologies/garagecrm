@@ -14,22 +14,22 @@ class BookingStateService
 {
     /** Allowed transitions */
     private const MAP = [
-        'pending'          => ['confirmed','scheduled','vehicle_received','canceled'],
-        'scheduled'        => ['confirmed','vehicle_received','canceled'],
-        'confirmed'        => ['vehicle_received','completed','canceled'],
-        'vehicle_received' => ['completed','canceled'],
-        'completed'        => [],
-        'canceled'         => [],
+        Booking::STATUS_PENDING          => [Booking::STATUS_CONFIRMED, Booking::STATUS_SCHEDULED, Booking::STATUS_VEHICLE_RECEIVED, Booking::STATUS_CANCELED],
+        Booking::STATUS_SCHEDULED        => [Booking::STATUS_CONFIRMED, Booking::STATUS_VEHICLE_RECEIVED, Booking::STATUS_CANCELED],
+        Booking::STATUS_CONFIRMED        => [Booking::STATUS_VEHICLE_RECEIVED, Booking::STATUS_COMPLETED, Booking::STATUS_CANCELED],
+        Booking::STATUS_VEHICLE_RECEIVED => [Booking::STATUS_COMPLETED, Booking::STATUS_CANCELED],
+        Booking::STATUS_COMPLETED        => [],
+        Booking::STATUS_CANCELED         => [],
     ];
 
     public function transition(Booking $booking, string $to): Booking
     {
-        $from = (string) $booking->status;
+        $from = strtolower(trim((string) $booking->status));
         $to   = strtolower(trim($to));
 
         if (!array_key_exists($from, self::MAP) || !in_array($to, self::MAP[$from], true)) {
             throw ValidationException::withMessages([
-                'to' => "Illegal transition: {$from} → {$to}"
+                'to' => "Illegal transition: {$from} → {$to}",
             ]);
         }
 
@@ -39,19 +39,24 @@ class BookingStateService
 
             $booking->status = $to;
 
-            if (Schema::hasColumn('bookings', 'state_changed_at')) $booking->state_changed_at = $now;
-            if (Schema::hasColumn('bookings', 'state_changed_by')) $booking->state_changed_by = $actor;
+            if (Schema::hasColumn('bookings', 'state_changed_at')) {
+                $booking->state_changed_at = $now;
+            }
 
-            if ($to === 'confirmed' && Schema::hasColumn('bookings', 'confirmed_at')) {
+            if (Schema::hasColumn('bookings', 'state_changed_by')) {
+                $booking->state_changed_by = $actor;
+            }
+
+            if ($to === Booking::STATUS_CONFIRMED && Schema::hasColumn('bookings', 'confirmed_at')) {
                 $booking->confirmed_at = $now;
             }
-            if ($to === 'completed' && Schema::hasColumn('bookings', 'completed_at')) {
+
+            if ($to === Booking::STATUS_COMPLETED && Schema::hasColumn('bookings', 'completed_at')) {
                 $booking->completed_at = $now;
             }
-            if ($to === 'canceled') {
-                // your DB uses U.S. spelling in ENUM
-                if (Schema::hasColumn('bookings', 'cancelled_at')) $booking->cancelled_at = $now; // ok if you add this later
-                if (Schema::hasColumn('bookings', 'canceled_at'))  $booking->canceled_at  = $now;
+
+            if ($to === Booking::STATUS_CANCELED && Schema::hasColumn('bookings', 'cancelled_at')) {
+                $booking->cancelled_at = $now;
             }
 
             $booking->save();

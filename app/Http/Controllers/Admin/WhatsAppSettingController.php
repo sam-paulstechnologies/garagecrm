@@ -8,24 +8,42 @@ use Illuminate\Http\Request;
 
 class WhatsAppSettingController extends Controller
 {
-    protected function companyId(): int { return (int)(auth()->user()->company_id ?? 1); }
+    protected function companyId(): int
+    {
+        return (int) auth()->user()->company_id;
+    }
 
     public function edit()
     {
-        $set = CompanySetting::firstOrCreate(['company_id'=>$this->companyId()]);
-        return view('admin.whatsapp.settings.edit', compact('set'));
+        $settings = CompanySetting::where('company_id', $this->companyId())
+            ->where('group', 'whatsapp')
+            ->pluck('value', 'key')
+            ->toArray();
+
+        return view('admin.whatsapp.settings.edit', compact('settings'));
     }
 
-    public function save(Request $r)
+    public function save(Request $request)
     {
-        $data = $r->validate([
-            'manager_phone'      => 'nullable|string|max:32',
-            'google_review_link' => 'nullable|url|max:512',
+        $data = $request->validate([
+            'whatsapp_manager_number' => 'nullable|string|max:32',
+            'google_review_link'      => 'nullable|url|max:512',
+            'garage_location_link'    => 'nullable|url|max:512',
         ]);
 
-        $set = CompanySetting::firstOrCreate(['company_id'=>$this->companyId()]);
-        $set->update($data);
+        foreach ($data as $key => $value) {
+            CompanySetting::updateOrCreate(
+                [
+                    'company_id' => $this->companyId(),
+                    'key'        => $key,
+                ],
+                [
+                    'value' => $value,
+                    'group' => 'whatsapp',
+                ]
+            );
+        }
 
-        return back()->with('success','Settings saved.');
+        return back()->with('success', 'WhatsApp settings saved.');
     }
 }

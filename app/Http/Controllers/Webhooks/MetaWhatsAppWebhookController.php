@@ -3,148 +3,319 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
-use App\Models\Client\Lead;
-use App\Models\Client\Opportunity;
-use App\Models\Vehicle\VehicleMake;
-use App\Models\Vehicle\VehicleModel;
-use App\Services\WhatsApp\Drivers\ProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Symfony\Component\HttpFoundation\Response;
+use App\Jobs\ProcessInboundWhatsApp;
+use App\Models\System\Company;
+use App\Models\MessageLog;
 
 class MetaWhatsAppWebhookController extends Controller
 {
-    public function verify(Request $r)
+    /*
+    |--------------------------------------------------------------------------
+    | META WEBHOOK VERIFICATION (GET)
+    |--------------------------------------------------------------------------
+    */
+    public function verify(Request $request)
     {
-        $verify   = (string) config('services.meta.verify_token');
-        if ($r->query('hub.mode') === 'subscribe' &&
-            hash_equals($verify, (string) $r->query('hub.verify_token'))) {
-            return response($r->query('hub.challenge'), 200);
+        // IMPORTANT: Laravel converts dots to underscores in some setups
+        $mode      = $request->query('hub_mode') ?? $request->query('hub.mode');
+        $token     = $request->query('hub_verify_token') ?? $request->query('hub.verify_token');
+        $challenge = $request->query('hub_challenge') ?? $request->query('hub.challenge');
+
+        Log::info('[META] Verification attempt', [
+            'mode'  => $mode,
+            'token' => $token,
+        ]);
+
+        if ($mode !== 'subscribe') {
+            Log::warning('[META] Invalid verify mode');
+            return response('Forbidden', 403);
         }
-        return response('Forbidden', 403);
+
+        if (!$token) {
+            Log::warning('[META] Missing verify token');
+            return response('Forbidden', 403);
+        }
+
+        $company = Company::where('meta_verify_token', $token)->first();
+
+        if (!$company) {
+            Log::warning('[META] Verify token not matched');
+            return response('Forbidden', 403);
+        }
+
+        Log::info('[META] Verification successful', [
+            'company_id' => $company->id
+        ]);
+
+        return response($challenge, 200);
     }
 
-    public function handle(Request $r, ProviderFactory $providers)
+    /*
+    |--------------------------------------------------------------------------
+    | META WEBHOOK RECEIVER (POST)
+    |--------------------------------------------------------------------------
+    */
+    public function handle(Request $request)
     {
-        $payload = $r->json()->all();
+        Log::info('[META] Webhook hit');
 
-        foreach ((array)($payload['entry'] ?? []) as $entry) {
-            foreach ((array)($entry['changes'] ?? []) as $change) {
-                $value = $change['value'] ?? [];
-                $messages = (array) ($value['messages'] ?? []);
-                $metadata = (array) ($value['metadata'] ?? []);
-                $phoneId  = $metadata['phone_number_id'] ?? null;
+        /*
+        |--------------------------------------------------------------------------
+        | 1️⃣ SIGNATURE VALIDATION
+        |--------------------------------------------------------------------------
+        */
+        $signature = $request->header('X-Hub-Signature-256');
 
-                // Resolve company by phone_number_id (you likely store this against tenant)
-                $companyId = $this->resolveCompanyIdByPhoneId($phoneId);
-                if (! $companyId) { continue; }
+        if (!$signature) {
+            Log::warning('[META] Missing signature header');
+            return response('Missing signature', 403);
+        }
 
-                $wa = $providers->forCompany($companyId);
+        $appSecret = config('services.meta_leads.app_secret');
 
-                foreach ($messages as $m) {
-                    // Only handle text replies here
-                    if (($m['type'] ?? '') !== 'text') continue;
+        if (!$appSecret) {
+            Log::error('[META] META_APP_SECRET not configured');
+            return response('Server misconfigured', 500);
+        }
 
-                    $fromE164 = (string) ($m['from'] ?? '');
-                    $text     = trim((string) ($m['text']['body'] ?? ''));
+        $expected = 'sha256=' . hash_hmac(
+            'sha256',
+            $request->getContent(),
+            $appSecret
+        );
 
-                    if ($fromE164 === '' || $text === '') continue;
+        if (!hash_equals($expected, $signature)) {
+            Log::warning('[META] Signature mismatch');
+            return response('Invalid signature', 403);
+        }
 
-                    // Find latest lead by phone (normalized)
-                    $phoneNorm = preg_replace('/\D+/', '', $fromE164);
-                    $lead = Lead::query()
-                        ->where('company_id', $companyId)
-                        ->where('phone_norm', $phoneNorm)
-                        ->latest('id')
-                        ->first();
+        Log::info('[META] Signature validated');
 
-                    if (! $lead) {
-                        Log::info('[MetaWA] No lead match for incoming', ['company_id'=>$companyId,'from'=>$fromE164]);
-                        continue;
-                    }
+        /*
+        |--------------------------------------------------------------------------
+        | 2️⃣ EXTRACT PAYLOAD
+        |--------------------------------------------------------------------------
+        */
+        $payload = $request->all();
+        $value = $request->input('entry.0.changes.0.value');
 
-                    // Parse make/model from free text — simple heuristic:
-                    // e.g. "Toyota Corolla", "Nissan Pathfinder", "Honda City"
-                    [$makeName, $modelName] = $this->parseMakeModel($text);
+        if (!$value) {
+            Log::info('[META] Empty payload structure');
+            return response()->noContent();
+        }
 
-                    // Update opportunity
-                    $opp = Opportunity::where('company_id', $companyId)
-                        ->where('lead_id', $lead->id)
-                        ->latest('id')
-                        ->first();
+        /*
+        |--------------------------------------------------------------------------
+        | 3️⃣ STATUS UPDATES
+        |--------------------------------------------------------------------------
+        | CRITICAL FIX:
+        | Earlier we were only saving provider_status.
+        | Now we also merge the full Meta status object into message_logs.meta,
+        | including failed error reason.
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($value['statuses'])) {
 
-                    if (! $opp) {
-                        Log::info('[MetaWA] No opportunity for lead (yet)', ['lead_id'=>$lead->id]);
-                        continue;
-                    }
+            foreach ($value['statuses'] as $status) {
 
-                    if ($makeName) {
-                        $make = VehicleMake::firstOrCreate(['name' => Str::ucfirst($makeName)]);
-                        $opp->vehicle_make_id = $make->id;
+                $messageId = $status['id'] ?? null;
+                $providerStatus = $status['status'] ?? null;
 
-                        if ($modelName) {
-                            $model = VehicleModel::firstOrCreate([
-                                'make_id' => $make->id,
-                                'name'    => Str::ucfirst($modelName),
-                            ]);
-                            $opp->vehicle_model_id = $model->id;
-                        } else {
-                            $opp->vehicle_model_id = null;
-                        }
+                if (!$messageId) {
+                    Log::warning('[META] Status update missing message id', [
+                        'status' => $status,
+                    ]);
 
-                        $opp->save();
-                    } else {
-                        // fall back to other_make/other_model if we couldn't parse cleanly
-                        $opp->other_make  = Str::limit($text, 255);
-                        $opp->other_model = null;
-                        $opp->save();
-                    }
-
-                    // Send thank-you template
-                    $wa->sendTemplate(
-                        toE164:   $fromE164,
-                        template: 'vehicle_info_thanks', // tenant-approved
-                        params:   [$lead->name ?: 'there'],
-                        links:    [],
-                        context:  ['company_id'=>$companyId, 'lead_id'=>$lead->id]
-                    );
+                    continue;
                 }
+
+                $messageLog = MessageLog::where('provider_message_id', $messageId)
+                    ->latest('id')
+                    ->first();
+
+                if (!$messageLog) {
+                    Log::warning('[META] Status update message log not found', [
+                        'provider_message_id' => $messageId,
+                        'provider_status' => $providerStatus,
+                        'status_payload' => $status,
+                    ]);
+
+                    continue;
+                }
+
+                $existingMeta = $messageLog->meta ?? [];
+
+                if (is_string($existingMeta)) {
+                    $decoded = json_decode($existingMeta, true);
+                    $existingMeta = is_array($decoded) ? $decoded : [];
+                }
+
+                if (!is_array($existingMeta)) {
+                    $existingMeta = [];
+                }
+
+                $errors = $status['errors'] ?? [];
+
+                $messageLog->update([
+                    'provider_status' => $providerStatus,
+                    'meta' => array_merge($existingMeta, [
+                        'last_webhook_status' => $status,
+                        'last_webhook_value' => $value,
+                        'last_webhook_received_at' => now()->toIso8601String(),
+
+                        // Easy-to-query fields
+                        'wa_status' => $providerStatus,
+                        'wa_timestamp' => $status['timestamp'] ?? null,
+                        'wa_recipient_id' => $status['recipient_id'] ?? null,
+                        'wa_conversation' => $status['conversation'] ?? null,
+                        'wa_pricing' => $status['pricing'] ?? null,
+
+                        // Error fields
+                        'wa_errors' => $errors,
+                        'wa_error_code' => $errors[0]['code'] ?? null,
+                        'wa_error_title' => $errors[0]['title'] ?? null,
+                        'wa_error_message' => $errors[0]['message'] ?? null,
+                        'wa_error_details' => $errors[0]['error_data']['details'] ?? null,
+                    ]),
+                ]);
+
+                Log::info('[META] Status update processed', [
+                    'message_log_id' => $messageLog->id,
+                    'provider_message_id' => $messageId,
+                    'provider_status' => $providerStatus,
+                    'error_code' => $errors[0]['code'] ?? null,
+                    'error_title' => $errors[0]['title'] ?? null,
+                    'error_details' => $errors[0]['error_data']['details'] ?? null,
+                ]);
+            }
+
+            return response()->noContent();
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 4️⃣ INBOUND MESSAGE
+        |--------------------------------------------------------------------------
+        */
+        if (empty($value['messages'][0])) {
+            Log::info('[META] No inbound message found');
+            return response()->noContent();
+        }
+
+        $msg = $value['messages'][0];
+        $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
+
+        if (!$phoneNumberId) {
+            Log::warning('[META] Missing phone_number_id');
+            return response()->noContent();
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔴 MULTI-TENANT COMPANY RESOLUTION
+        |--------------------------------------------------------------------------
+        */
+        $company = Company::where(
+            'meta_phone_number_id',
+            $phoneNumberId
+        )->first();
+
+        if (!$company) {
+            Log::warning('[META] No company mapped', [
+                'phone_number_id' => $phoneNumberId
+            ]);
+            return response()->noContent();
+        }
+
+        Log::info('[META] Company resolved', [
+            'company_id' => $company->id
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MESSAGE BODY EXTRACTION
+        |--------------------------------------------------------------------------
+        | Supports:
+        | - Normal text replies
+        | - Template quick reply buttons
+        | - Interactive button replies
+        | - Interactive list replies
+        */
+        $body = $this->extractMessageBody($msg);
+
+        if ($body === '') {
+            $body = '[Non-text message received]';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | DISPATCH JOB
+        |--------------------------------------------------------------------------
+        */
+        $profileName = $value['contacts'][0]['profile']['name'] ?? null;
+
+        ProcessInboundWhatsApp::dispatch(
+            from: $msg['from'] ?? null,
+            to: $value['metadata']['display_phone_number'] ?? null,
+            body: $body,
+            sid: $msg['id'] ?? null,
+            profileName: $profileName,
+            provider: 'meta',
+            payload: $payload,
+            companyId: $company->id
+        );
+
+        Log::info('[META] Inbound message dispatched', [
+            'type' => $msg['type'] ?? null,
+            'body' => $body,
+        ]);
+
+        return response()->noContent();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Extract Meta inbound body
+    |--------------------------------------------------------------------------
+    */
+    protected function extractMessageBody(array $msg): string
+    {
+        $type = $msg['type'] ?? null;
+
+        if ($type === 'text') {
+            return trim((string) ($msg['text']['body'] ?? ''));
+        }
+
+        if ($type === 'button') {
+            return trim((string) (
+                $msg['button']['text']
+                ?? $msg['button']['payload']
+                ?? ''
+            ));
+        }
+
+        if ($type === 'interactive') {
+            $interactiveType = $msg['interactive']['type'] ?? null;
+
+            if ($interactiveType === 'button_reply') {
+                return trim((string) (
+                    $msg['interactive']['button_reply']['title']
+                    ?? $msg['interactive']['button_reply']['id']
+                    ?? ''
+                ));
+            }
+
+            if ($interactiveType === 'list_reply') {
+                return trim((string) (
+                    $msg['interactive']['list_reply']['title']
+                    ?? $msg['interactive']['list_reply']['id']
+                    ?? ''
+                ));
             }
         }
 
-        return response()->noContent(Response::HTTP_NO_CONTENT);
-    }
-
-    protected function resolveCompanyIdByPhoneId(?string $phoneId): ?int
-    {
-        if (! $phoneId) return null;
-        // Example lookup:
-        // return \DB::table('company_settings')
-        //     ->where('key', 'whatsapp.meta.phone_number_id')
-        //     ->where('value', $phoneId)
-        //     ->value('company_id');
-        return \DB::table('company_settings')
-            ->where('key', 'whatsapp.meta.phone_number_id')
-            ->where('value', $phoneId)
-            ->value('company_id');
-    }
-
-    /**
-     * VERY simple parser. If you already have a make list, you can improve by matching first token to known makes.
-     */
-    protected function parseMakeModel(string $text): array
-    {
-        // Normalize spaces
-        $t = preg_replace('/\s+/', ' ', trim($text));
-
-        // Try "Make Model" → split on first space
-        if (str_contains($t, ' ')) {
-            [$make, $modelRest] = explode(' ', $t, 2);
-            return [Str::lower($make), trim($modelRest)];
-        }
-
-        // Single token → treat as make only
-        return [$t !== '' ? Str::lower($t) : null, null];
+        return '';
     }
 }

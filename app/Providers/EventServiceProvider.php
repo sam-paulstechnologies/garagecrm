@@ -7,35 +7,65 @@ use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvi
 class EventServiceProvider extends ServiceProvider
 {
     protected $listen = [
-        // Your unified notification + journey
+
+        /*
+        |--------------------------------------------------------------------------
+        | Lead lifecycle
+        |--------------------------------------------------------------------------
+        */
+
         \App\Events\LeadCreated::class => [
+
+            // Core notification system
             \App\Listeners\SendUnifiedNotification::class,
+
+            // Marketing journey automation
             \App\Listeners\StartJourneyForLead::class,
-            // NEW: Welcome + 20-min follow-up
-            \App\Listeners\Lead\LeadWelcomeAndFollowup::class,
+
+            // WhatsApp automation (single source of truth)
+            \App\Listeners\HandleLeadCreatedOutbound::class,
         ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Opportunity lifecycle
+        |--------------------------------------------------------------------------
+        */
 
         \App\Events\OpportunityStatusUpdated::class => [
             \App\Listeners\SendUnifiedNotification::class,
         ],
 
+        \App\Events\OpportunityStageChanged::class => [
+            \App\Listeners\SendUnifiedNotification::class,
+        ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Booking lifecycle
+        |--------------------------------------------------------------------------
+        */
+
         \App\Events\BookingStatusUpdated::class => [
             \App\Listeners\SendUnifiedNotification::class,
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | Job lifecycle
+        |--------------------------------------------------------------------------
+        */
+
         \App\Events\JobCompleted::class => [
             \App\Listeners\SendUnifiedNotification::class,
-            // NEW: fire 'job.done.feedback'
             \App\Listeners\Job\JobCompletedFeedback::class,
-        ],
-
-        // Backward compat (optional)
-        \App\Events\OpportunityStageChanged::class => [
-            \App\Listeners\SendUnifiedNotification::class,
         ],
     ];
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        //
+    }
 
     public function shouldDiscoverEvents(): bool
     {

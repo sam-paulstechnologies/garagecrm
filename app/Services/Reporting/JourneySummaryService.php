@@ -57,10 +57,10 @@ class JourneySummaryService
             $leadIds    = $byJourney[$journeyId]['lead_ids']   ?? collect();
             $clientIds  = $byJourney[$journeyId]['client_ids'] ?? collect();
 
-            $totalLeads        = (int) $row->total_leads;
-            $totalClosedWon    = (int) $row->total_closed_won;
-            $totalEnrollments  = (int) $row->total_enrollments;
-            $totalOpportunities= (int) $row->total_opportunities;
+            $totalLeads         = (int) $row->total_leads;
+            $totalClosedWon     = (int) $row->total_closed_won;
+            $totalEnrollments   = (int) $row->total_enrollments;
+            $totalOpportunities = (int) $row->total_opportunities;
 
             // Conversion & drop-off
             $conversionRate = $totalLeads > 0
@@ -82,7 +82,7 @@ class JourneySummaryService
                 // 1) Opportunities closed_won for these clients
                 $closedWonOpps = Opportunity::query()
                     ->where('company_id', $companyId)
-                    ->where('stage', 'closed_won')
+                    ->where('stage', Opportunity::STAGE_CLOSED_WON)
                     ->whereIn('client_id', $clientIdArray)
                     ->get(['id', 'client_id']);
 

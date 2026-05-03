@@ -3,34 +3,21 @@
 namespace App\Listeners\Lead;
 
 use App\Events\LeadCreated;
-use App\Services\WhatsApp\SendWhatsAppMessage;
-use Illuminate\Support\Facades\Bus;
+use App\Models\AutomationLog;
 
 class LeadWelcomeAndFollowup
 {
     public function handle(LeadCreated $event): void
     {
-        $lead = $event->lead;
-        if (!$lead || !$lead->phone_norm) return;
-
-        $companyId = (int) ($lead->company_id ?? 1);
-        $to = $lead->phone_norm;
-        $svc = new SendWhatsAppMessage();
-
-        if (($lead->source ?? null) === 'meta') {
-            // 1) New lead (meta)
-            $svc->fireEvent($companyId, 'lead.created.meta', $to, [
-                'name'    => $lead->name ?? 'there',
-                'lead_id' => $lead->id,
-            ]);
-
-            // 2) 20-min follow-up
-            Bus::dispatch(function() use ($svc, $companyId, $to, $lead) {
-                $svc->fireEvent($companyId, 'lead.followup.20m', $to, [
-                    'name'    => $lead->name ?? 'there',
-                    'lead_id' => $lead->id,
-                ]);
-            })->delay(now()->addMinutes(20));
-        }
+        AutomationLog::create([
+            'company_id'      => $event->lead->company_id,
+            'entity_type'     => get_class($event->lead),
+            'entity_id'       => $event->lead->id,
+            'automation_type' => 'system',
+            'action'          => 'LEAD_CREATED',
+            'meta'            => [
+                'source' => $event->lead->source,
+            ],
+        ]);
     }
 }

@@ -2,30 +2,78 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Manager\DashboardController;
-use App\Http\Controllers\Manager\ClientController;
-use App\Http\Controllers\Manager\LeadController;
-use App\Http\Controllers\Manager\BookingController;
-use App\Http\Controllers\Manager\JobController;
-use App\Http\Controllers\Manager\InvoiceController;
-use App\Http\Controllers\Manager\CommunicationController;
-use App\Http\Controllers\Manager\TeamController;
+use App\Http\Controllers\Admin\ManagerController; // 🔥 ADD THIS
 
-Route::middleware(['auth', 'role:manager'])->prefix('manager')->name('manager.')->group(function () {
-    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::middleware(['auth', 'active', 'force_password', 'role:manager'])
+    ->prefix('manager')
+    ->name('manager.')
+    ->group(function () {
 
-    Route::resource('clients', ClientController::class);
-    Route::resource('leads', LeadController::class)->only(['index', 'show', 'edit', 'update']);
-    Route::resource('bookings', BookingController::class)->only(['index', 'show', 'edit', 'update']);
+        /*
+        |--------------------------------------------------------------------------
+        | Dashboard
+        |--------------------------------------------------------------------------
+        */
+        Route::get('dashboard', [DashboardController::class, 'index'])
+            ->name('dashboard');
 
-    Route::get('jobs', [JobController::class, 'index'])->name('jobs.index');
-    Route::get('jobs/{job}', [JobController::class, 'show'])->name('jobs.show');
+        /*
+        |--------------------------------------------------------------------------
+        | 🔥 ESCALATIONS (CORE FEATURE)
+        |--------------------------------------------------------------------------
+        */
+        Route::get('escalations', [ManagerController::class, 'dashboard'])
+            ->name('escalations');
 
-    Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
-    Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+        /*
+        |--------------------------------------------------------------------------
+        | 💬 Conversation
+        |--------------------------------------------------------------------------
+        */
+        Route::get('conversation/{lead}', [ManagerController::class, 'conversation'])
+            ->name('conversation');
 
-    Route::get('team', [TeamController::class, 'index'])->name('team.index');
-    Route::get('team/{user}', [TeamController::class, 'show'])->name('team.show');
+        /*
+        |--------------------------------------------------------------------------
+        | 📤 Reply
+        |--------------------------------------------------------------------------
+        */
+        Route::post('conversation/{lead}/reply', [ManagerController::class, 'reply'])
+            ->name('conversation.reply');
 
-    Route::get('communications/create', [CommunicationController::class, 'create'])->name('communications.create');
-    Route::post('communications/send', [CommunicationController::class, 'send'])->name('communications.send');
-});
+        /*
+        |--------------------------------------------------------------------------
+        | 🔓 Resume Bot
+        |--------------------------------------------------------------------------
+        */
+        Route::post('conversation/{lead}/resume', [ManagerController::class, 'resumeBot'])
+            ->name('conversation.resume');
+
+        /*
+        |--------------------------------------------------------------------------
+        | 📅 Bookings (REAL)
+        |--------------------------------------------------------------------------
+        */
+        Route::get('bookings', [ManagerController::class, 'bookings'])
+            ->name('bookings.index');
+
+        /*
+        |--------------------------------------------------------------------------
+        | (Keep placeholders for future)
+        |--------------------------------------------------------------------------
+        */
+        Route::view('clients', 'manager.placeholder')
+            ->name('clients.index');
+
+        Route::view('leads', 'manager.placeholder')
+            ->name('leads.index');
+
+        Route::view('jobs', 'manager.placeholder')
+            ->name('jobs.index');
+
+        Route::view('invoices', 'manager.placeholder')
+            ->name('invoices.index');
+
+        Route::view('team', 'manager.placeholder')
+            ->name('team.index');
+    });

@@ -3,143 +3,112 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Client\Lead;     // 🔥 ADDED
+use App\Models\User;            // 🔥 ADDED
 
 class MessageLog extends Model
 {
-    protected $table = 'message_logs';
-
     protected $fillable = [
-        'company_id',
-        'lead_id',
-        'conversation_id',
-        'user_id',
-
-        'direction',
-        'channel',
-        'source',
-
-        'to_number',
-        'from_number',
-
-        'template',
-        'template_id',
-        'body',
-        'provider_message_id',
-        'provider_status',
-        'manager_alerted_at',
-        'escalation_reason',
-
-        'meta',
-        'ai_analysis',
-        'ai_confidence',
-        'ai_intent',
-        'ai_propensity_score',
-        'ai_propensity_reason',
-
-        'read_at',
-        'is_ai',
+        'company_id','lead_id','conversation_id','user_id',
+        'direction','channel','source',
+        'to_number','from_number',
+        'template','template_id','body',
+        'provider_message_id','provider_status',
+        'meta','ai_analysis','ai_confidence','ai_intent',
+        'ai_propensity_score','ai_propensity_reason',
+        'read_at','is_ai'
     ];
 
     protected $casts = [
-        'meta'                 => 'array',
-        'ai_analysis'          => 'array',
-        'ai_propensity_score'  => 'integer',
-        'ai_confidence'        => 'decimal:2',
-        'manager_alerted_at'   => 'datetime',
-        'read_at'              => 'datetime',
-        'created_at'           => 'datetime',
-        'updated_at'           => 'datetime',
-        'is_ai'                => 'boolean',
+        'meta'                => 'array',
+        'ai_analysis'         => 'array',
+        'ai_propensity_score' => 'integer',
+        'ai_confidence'       => 'decimal:2',
+        'read_at'             => 'datetime',
+        'is_ai'               => 'boolean',
     ];
 
-    protected static function booted(): void
+    /* ---------- Helpers ---------- */
+
+    public static function in(array $data): self
     {
-        static::creating(function (self $m) {
-            // Channel default
-            $m->channel   = $m->channel ?: 'whatsapp';
+        $data['direction'] = 'in';
+        $data['source']    = 'human';
 
-            // Direction normalisation
-            $m->direction = strtolower($m->direction ?? 'in') === 'out' ? 'out' : 'in';
+        return static::create($data);
+    }
 
-            // Source default
-            if (!in_array($m->source, ['ai', 'template', 'human'], true)) {
-                $m->source = $m->direction === 'in' ? 'human' : null;
-            }
+    public static function out(array $data): self
+    {
+        $data['direction'] = 'out';
+        $data['source']    = $data['source'] ?? 'template';
+        $data['is_ai']     = $data['source'] === 'ai';
 
-            // Strip "whatsapp:" prefix from numbers
-            foreach (['to_number', 'from_number'] as $k) {
-                if (!empty($m->{$k})) {
-                    $m->{$k} = preg_replace('/^whatsapp:/', '', $m->{$k});
-                }
-            }
+        return static::create($data);
+    }
 
-            // If is_ai flag not set, infer from source
-            if ($m->is_ai === null) {
-                $m->is_ai = $m->source === 'ai';
-            }
+    /**
+     * ✅ SLICE 1.5 — Conversion guard
+     */
+    public function hasConverted(): bool
+    {
+        return (bool) ($this->meta['converted'] ?? false);
+    }
+
+    public function markConverted(): void
+    {
+        $meta = is_array($this->meta) ? $this->meta : [];
+        $meta['converted'] = true;
+
+        $this->update([
+            'meta' => $meta,
+        ]);
+    }
+
+    protected static function booted()
+    {
+        static::created(function (self $m) {
+            if (!$m->conversation_id) return;
+
+            $conv = $m->conversation;
+            if (!$conv) return;
+
+            $conv->update([
+                'last_message_at'      => now(),
+                'latest_message_at'    => now(),
+                'last_message_preview' => mb_strimwidth($m->body, 0, 140, '…'),
+                'unread_count'         => $m->direction === 'in'
+                    ? ($conv->unread_count + 1)
+                    : $conv->unread_count,
+            ]);
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Accessors / Mutators for from / to (virtual)
-    |--------------------------------------------------------------------------
-    | Lets the rest of the app use $log->from / $log->to while DB keeps
-    | from_number / to_number.
-    */
-
-    public function getFromAttribute()
-    {
-        return $this->from_number;
-    }
-
-    public function setFromAttribute($value): void
-    {
-        $this->from_number = $value;
-    }
-
-    public function getToAttribute()
-    {
-        return $this->to_number;
-    }
-
-    public function setToAttribute($value): void
-    {
-        $this->to_number = $value;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Relationships
-    |--------------------------------------------------------------------------
-    */
 
     public function conversation()
     {
         return $this->belongsTo(Conversation::class);
     }
 
-    public function suggestions()
+    // 🔥 ADDED → Needed for Manager View (link messages to lead)
+    public function lead()
     {
-        return $this->hasMany(\App\Models\AiSuggestion::class, 'message_log_id');
+        return $this->belongsTo(Lead::class);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | API Shape for React Chat
-    |--------------------------------------------------------------------------
-    */
-
-    public function toChatPayload(): array
+    // 🔥 ADDED → Who sent message (future UI / audit)
+    public function user()
     {
-        return [
-            'id'              => $this->id,
-            'direction'       => $this->direction,             // 'in' | 'out'
-            'body'            => $this->body,
-            'channel'         => $this->channel,
-            'is_ai'           => (bool) ($this->is_ai ?? ($this->source === 'ai')),
-            'created_at'      => optional($this->created_at)->toIso8601String(),
-            'provider_status' => $this->provider_status,
-        ];
+        return $this->belongsTo(User::class);
+    }
+
+    // 🔥 ADDED → UI helpers
+    public function isInbound(): bool
+    {
+        return $this->direction === 'in';
+    }
+
+    public function isOutbound(): bool
+    {
+        return $this->direction === 'out';
     }
 }

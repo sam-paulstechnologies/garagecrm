@@ -10,9 +10,15 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        // Materialize yesterday’s metrics at 00:10 (or today if you prefer)
+        // ✅ AI metrics (existing)
         $schedule->job(new ComputeDailyAiMetrics(now()->toDateString()))
             ->dailyAt('00:10')
+            ->onOneServer()
+            ->withoutOverlapping();
+
+        // ✅ Journeys tick (Phase 8B - WAIT steps runner)
+        $schedule->command('journeys:tick')
+            ->everyMinute()
             ->onOneServer()
             ->withoutOverlapping();
     }

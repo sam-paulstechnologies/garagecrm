@@ -7,100 +7,102 @@ use App\Models\MetaPage;
 use App\Services\Settings\SettingsStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class MetaConnectController extends Controller
 {
     private string $graph = 'https://graph.facebook.com/v19.0';
 
-    /** Step 1: Send user to FB OAuth */
+    /**
+     * Step 1: Redirect user to Facebook OAuth
+     */
     public function start(Request $request)
     {
-        $companyId   = auth()->user()->company_id ?? auth()->user()->company->id;
-        $settings    = new SettingsStore($companyId);
+        $companyId = auth()->user()->company_id;
 
-        $appId       = $settings->get('meta.app_id');
-        $appSecret   = $settings->get('meta.app_secret');
+        $query = http_build_query([
+            'client_id'     => config('services.meta.app_id'),
 
-        abort_unless($appId && $appSecret, 400, 'Meta App ID/Secret not configured.');
+            // ✅ TEMPORARY: force ngrok callback (Meta-friendly)
+            'redirect_uri' => url('/public/admin/lead-sources/meta/callback'),
 
-        $redirectUri = route('admin.meta.callback');
-        $state       = base64_encode(json_encode([
-            'company_id' => $companyId,
-            'nonce'      => Str::random(24),
-        ]));
 
-        $scopes = implode(',', [
-            'pages_show_list',
-            'pages_manage_metadata',
-            'pages_read_engagement',
-            'leads_retrieval',
+            'response_type' => 'code',
+            'scope'         => implode(',', [
+                'pages_show_list',
+                'pages_read_engagement',
+                'leads_retrieval',
+            ]),
         ]);
 
-        $url = "https://www.facebook.com/v19.0/dialog/oauth"
-             . "?client_id={$appId}"
-             . "&redirect_uri=" . urlencode($redirectUri)
-             . "&response_type=code"
-             . "&scope={$scopes}"
-             . "&state={$state}";
-
-        return redirect()->away($url);
+        return redirect("https://www.facebook.com/v19.0/dialog/oauth?{$query}");
     }
 
-    /** Step 2: OAuth callback → exchange code → list pages → show picker */
+
+    /**
+     * Step 2: OAuth callback → exchange token → prepare page selection
+     */
     public function callback(Request $request)
     {
-        $code  = $request->query('code');
-        $state = json_decode(base64_decode($request->query('state', '')), true) ?: [];
+        // Meta error (user cancelled / denied)
+        if ($request->has('error')) {
+            Log::warning('Meta OAuth cancelled', $request->all());
 
-        abort_unless($code && isset($state['company_id']), 400, 'Invalid callback payload.');
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('error', 'Facebook connection was cancelled.');
+        }
 
-        $companyId   = (int) $state['company_id'];
-        $settings    = new SettingsStore($companyId);
-        $appId       = $settings->get('meta.app_id');
-        $appSecret   = $settings->get('meta.app_secret');
-        $redirectUri = route('admin.meta.callback');
+        $code = $request->query('code');
 
-        // 2a) code -> short-lived user token
-        $tokenResp = Http::asForm()->get("{$this->graph}/oauth/access_token", [
+        if (!$code) {
+            Log::error('Meta OAuth callback missing code', $request->all());
+
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('error', 'Facebook login failed. Please try again.');
+        }
+
+        $companyId = auth()->user()->company_id;
+        $settings  = new SettingsStore($companyId);
+
+        $appId     = $settings->get('meta.app_id');
+        $appSecret = $settings->get('meta.app_secret');
+
+        $redirectUri = route('admin.lead-sources.meta.callback');
+
+        // Exchange code for short-lived user token
+        $tokenResponse = Http::asForm()->get("{$this->graph}/oauth/access_token", [
             'client_id'     => $appId,
             'client_secret' => $appSecret,
             'redirect_uri'  => $redirectUri,
             'code'          => $code,
-        ])->throw()->json();
+        ]);
 
-        $userToken = $tokenResp['access_token'] ?? null;
-        abort_unless($userToken, 400, 'Failed to get user token.');
+        if (!$tokenResponse->ok()) {
+            Log::error('Meta token exchange failed', $tokenResponse->json());
 
-        // 2b) short -> long-lived user token
-        $llResp = Http::asForm()->get("{$this->graph}/oauth/access_token", [
-            'grant_type'        => 'fb_exchange_token',
-            'client_id'         => $appId,
-            'client_secret'     => $appSecret,
-            'fb_exchange_token' => $userToken,
-        ])->throw()->json();
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('error', 'Unable to authenticate with Facebook.');
+        }
 
-        $longUserToken = $llResp['access_token'] ?? null;
-        abort_unless($longUserToken, 400, 'Failed to get long-lived user token.');
+        $userAccessToken = $tokenResponse->json('access_token');
 
-        // 2c) list pages
-        $pages = Http::get("{$this->graph}/me/accounts", [
-            'access_token' => $longUserToken,
-            'limit'        => 200,
-        ])->throw()->json('data', []);
-
-        // keep token in session for next step
+        // Store temporarily for page selection
         session([
-            'meta_ll_user_token' => $longUserToken,
-            'meta_company_id'    => $companyId,
+            'meta_company_id'     => $companyId,
+            'meta_user_token'     => $userAccessToken,
         ]);
 
-        return view('admin.meta.pick-page', [
-            'pages' => $pages,
-        ]);
+        return redirect()
+            ->route('admin.lead-sources.meta')
+            ->with('success', 'Facebook connected. Please select a page.');
     }
 
-    /** Step 3: After selecting a Page → get Page token → fetch forms → save */
+    /**
+     * Step 3: Page selected → fetch page token + lead forms
+     */
     public function selectPage(Request $request)
     {
         $request->validate([
@@ -108,32 +110,35 @@ class MetaConnectController extends Controller
             'page_name' => 'required|string',
         ]);
 
-        $companyId     = (int) session('meta_company_id');
-        $longUserToken = (string) session('meta_ll_user_token');
+        $companyId     = session('meta_company_id');
+        $userToken     = session('meta_user_token');
 
-        abort_unless($companyId && $longUserToken, 419, 'Session expired. Please reconnect.');
+        abort_unless($companyId && $userToken, 419, 'Session expired. Please reconnect Facebook.');
 
         $pageId   = $request->page_id;
         $pageName = $request->page_name;
 
-        // Page token
+        // Fetch Page access token
         $pageInfo = Http::get("{$this->graph}/{$pageId}", [
             'fields'       => 'access_token,name',
-            'access_token' => $longUserToken,
+            'access_token' => $userToken,
         ])->throw()->json();
 
         $pageAccessToken = $pageInfo['access_token'] ?? null;
-        abort_unless($pageAccessToken, 400, 'Could not obtain Page access token.');
 
-        // Forms
+        abort_unless($pageAccessToken, 400, 'Unable to fetch Page access token.');
+
+        // Fetch Lead Forms
         $forms = Http::get("{$this->graph}/{$pageId}/leadgen_forms", [
             'access_token' => $pageAccessToken,
             'limit'        => 200,
         ])->throw()->json('data', []);
 
-        // Persist meta_pages row
         $meta = MetaPage::updateOrCreate(
-            ['company_id' => $companyId, 'page_id' => $pageId],
+            [
+                'company_id' => $companyId,
+                'page_id'    => $pageId,
+            ],
             [
                 'page_name'         => $pageName,
                 'page_access_token' => $pageAccessToken,
@@ -141,27 +146,29 @@ class MetaConnectController extends Controller
             ]
         );
 
-        // Optional defaults
         $settings = new SettingsStore($companyId);
         $settings->set('meta.page_id', $pageId);
+
         if (!empty($forms[0]['id'])) {
             $settings->set('meta.form_id', $forms[0]['id']);
         }
 
-        // cleanup
-        session()->forget(['meta_ll_user_token', 'meta_company_id']);
+        session()->forget(['meta_company_id', 'meta_user_token']);
 
-        return redirect()->route('admin.settings.index')
-            ->with('success', "Connected {$meta->page_name} and fetched ".count($forms)." forms.");
+        return redirect()
+            ->route('admin.lead-sources.meta')
+            ->with('success', "Connected {$meta->page_name} and synced " . count($forms) . " forms.");
     }
 
-    /** Refresh forms for the connected page (button in Settings) */
-    public function refresh(Request $request)
+    /**
+     * Refresh lead forms
+     */
+    public function refresh()
     {
-        $companyId = auth()->user()->company_id ?? auth()->user()->company->id;
-        $meta = MetaPage::where('company_id', $companyId)->first();
+        $companyId = auth()->user()->company_id;
+        $meta      = MetaPage::where('company_id', $companyId)->first();
 
-        abort_unless($meta && $meta->page_access_token, 400, 'No connected page.');
+        abort_unless($meta && $meta->page_access_token, 400, 'No connected Meta page.');
 
         $forms = Http::get("{$this->graph}/{$meta->page_id}/leadgen_forms", [
             'access_token' => $meta->page_access_token,
@@ -170,18 +177,19 @@ class MetaConnectController extends Controller
 
         $meta->update(['forms_json' => json_encode($forms)]);
 
-        return back()->with('success', 'Forms refreshed: '.count($forms));
+        return back()->with('success', 'Forms refreshed: ' . count($forms));
     }
 
-    /** Disconnect (delete row + optional settings) */
-    public function disconnect(Request $request)
+    /**
+     * Disconnect Meta
+     */
+    public function disconnect()
     {
-        $companyId = auth()->user()->company_id ?? auth()->user()->company->id;
+        $companyId = auth()->user()->company_id;
 
         MetaPage::where('company_id', $companyId)->delete();
 
         $settings = new SettingsStore($companyId);
-        // FIX: use delete() (SettingsStore doesn't have forget())
         $settings->delete('meta.page_id');
         $settings->delete('meta.form_id');
 

@@ -12,15 +12,12 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
-// Requests & Services
 use App\Http\Requests\StoreJobRequest;
 use App\Http\Requests\UpdateJobRequest;
 use App\Http\Requests\UploadJobDocumentRequest;
 use App\Services\DocumentUploadService;
 use App\Services\JobNumberService;
-use App\Services\WhatsApp\SendWhatsAppMessage;
 
-// Events
 use App\Events\JobCompleted;
 
 class JobController extends Controller
@@ -30,7 +27,7 @@ class JobController extends Controller
         private JobNumberService $jobNumbers = new JobNumberService(),
     ) {}
 
-    protected function authorizeCompany(Job $job)
+    protected function authorizeCompany(Job $job): void
     {
         abort_if($job->company_id !== auth()->user()->company_id, 403);
     }
@@ -45,179 +42,188 @@ class JobController extends Controller
         return $this->jobNumbers->next();
     }
 
-    /* ---------- CRUD ---------- */
+    /* ================= Index ================= */
 
     public function index(Request $request)
     {
-        $q = trim((string)$request->get('q'));
+        $q = trim((string) $request->get('q'));
         $status = $request->get('status');
 
         $query = $this->companyScope()
-            ->with(['client','assignedUser'])
+            ->with(['client:id,name', 'assignedUser:id,name'])
             ->where('is_archived', false);
 
-        if ($status && in_array($status, ['pending','in_progress','completed'], true)) {
+        if (in_array($status, ['pending','in_progress','completed'], true)) {
             $query->where('status', $status);
         }
 
         if ($q !== '') {
-            $query->where(function($w) use ($q) {
+            $query->where(function ($w) use ($q) {
                 $w->where('job_code', 'like', "%{$q}%")
                   ->orWhere('description', 'like', "%{$q}%")
-                  ->orWhereHas('client', fn($cq) => $cq->where('name', 'like', "%{$q}%"));
+                  ->orWhereHas('client', fn ($c) =>
+                      $c->where('name', 'like', "%{$q}%")
+                  );
             });
         }
 
         $jobs = $query->latest('id')->paginate(15)->withQueryString();
 
-        return view('admin.jobs.index', [
-            'jobs'   => $jobs,
-            'q'      => $q,
-            'status' => $status,
-        ]);
+        return view('admin.jobs.index', compact('jobs','q','status'));
     }
 
-    public function archived()
-    {
-        $jobs = $this->companyScope()
-            ->with(['client','assignedUser'])
-            ->where('is_archived', true)
-            ->latest('id')
-            ->paginate(20);
-
-        return view('admin.jobs.archived', compact('jobs'));
-    }
+    /* ================= Create ================= */
 
     public function create()
     {
-        $clients = Client::where('company_id', auth()->user()->company_id)->orderBy('name')->get();
-        $users   = User::where('company_id', auth()->user()->company_id)->orderBy('name')->get();
+        $companyId = auth()->user()->company_id;
+
+        $clients = Client::where('company_id', $companyId)->orderBy('name')->get(['id','name']);
+        $users   = User::where('company_id', $companyId)->orderBy('name')->get(['id','name']);
+
         return view('admin.jobs.create', compact('clients','users'));
     }
+
+    /* ================= Store ================= */
 
     public function store(StoreJobRequest $request)
     {
         $data = $request->validated();
-        $data['company_id']  = auth()->user()->company_id;
-        $data['job_code']    = $request->input('job_code', $this->nextJobCode());
-        $data['status']      = $data['status'] ?? 'pending';
-        $data['is_archived'] = 0;
 
-        if (empty($data['total_time_minutes']) && !empty($data['start_time']) && !empty($data['end_time'])) {
-            $data['total_time_minutes'] = \Carbon\Carbon::parse($data['start_time'])
-                ->diffInMinutes(\Carbon\Carbon::parse($data['end_time']));
+        $data['company_id']  = auth()->user()->company_id;
+        $data['job_code']    = $data['job_code'] ?? $this->nextJobCode();
+        $data['status']      = $data['status'] ?? 'pending';
+        $data['is_archived'] = false;
+
+        if (
+            empty($data['total_time_minutes']) &&
+            !empty($data['start_time']) &&
+            !empty($data['end_time'])
+        ) {
+            $data['total_time_minutes'] =
+                now()->parse($data['start_time'])
+                    ->diffInMinutes(now()->parse($data['end_time']));
         }
 
         $job = Job::create($data);
 
-        if ($job->status === 'completed' && !$job->invoice) {
-            Invoice::create([
-                'company_id' => $job->company_id,
-                'client_id'  => $job->client_id,
-                'job_id'     => $job->id,
-                'amount'     => 0,
-                'status'     => 'pending',
-                'due_date'   => now()->addDays(7),
-                'source'     => 'generated',
-                'number'     => null,
-                'currency'   => 'AED',
-            ]);
-        }
-
         if ($job->status === 'completed') {
-            DB::afterCommit(fn() => event(new JobCompleted($job->fresh())));
+            $this->ensureInvoice($job);
+            DB::afterCommit(fn () => event(new JobCompleted($job->fresh())));
         }
 
-        return redirect()->route('admin.jobs.show', $job)->with('success', 'Job created successfully.');
+        return redirect()
+            ->route('admin.jobs.show', $job)
+            ->with('success', 'Job created successfully.');
     }
+
+    /* ================= Show ================= */
 
     public function show(Job $job)
     {
         $this->authorizeCompany($job);
-        $job->load(['client','assignedUser','invoices','jobCards']);
+
+        $job->load([
+            'client',
+            'assignedUser',
+            'invoices',
+            'jobCards',
+            'jobDocuments',
+        ]);
+
         return view('admin.jobs.show', compact('job'));
     }
+
+    /* ================= Edit ================= */
 
     public function edit(Job $job)
     {
         $this->authorizeCompany($job);
-        $clients = Client::where('company_id', auth()->user()->company_id)->orderBy('name')->get();
-        $users   = User::where('company_id', auth()->user()->company_id)->orderBy('name')->get();
+
+        $companyId = auth()->user()->company_id;
+
+        $clients = Client::where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id','name']);
+
+        $users = User::where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id','name']);
+
         return view('admin.jobs.edit', compact('job','clients','users'));
     }
+
+    /* ================= Update ================= */
 
     public function update(UpdateJobRequest $request, Job $job)
     {
         $this->authorizeCompany($job);
+
         $data = $request->validated();
 
-        if (empty($data['total_time_minutes']) && !empty($data['start_time']) && !empty($data['end_time'])) {
-            $data['total_time_minutes'] = \Carbon\Carbon::parse($data['start_time'])
-                ->diffInMinutes(\Carbon\Carbon::parse($data['end_time']));
+        if (
+            empty($data['total_time_minutes']) &&
+            !empty($data['start_time']) &&
+            !empty($data['end_time'])
+        ) {
+            $data['total_time_minutes'] =
+                now()->parse($data['start_time'])
+                    ->diffInMinutes(now()->parse($data['end_time']));
         }
 
         $oldStatus = $job->status;
+
         $job->update($data);
 
-        if ($job->status === 'completed' && !$job->invoice) {
-            Invoice::create([
-                'company_id' => $job->company_id,
-                'client_id'  => $job->client_id,
-                'job_id'     => $job->id,
-                'amount'     => 0,
-                'status'     => 'pending',
-                'due_date'   => now()->addDays(7),
-                'source'     => 'generated',
-                'currency'   => 'AED',
-            ]);
-        }
-
         if ($oldStatus !== 'completed' && $job->status === 'completed') {
-            DB::afterCommit(fn() => event(new JobCompleted($job->fresh())));
+            $this->ensureInvoice($job);
+            DB::afterCommit(fn () => event(new JobCompleted($job->fresh())));
         }
 
-        return redirect()->route('admin.jobs.show', $job)->with('success', 'Job updated successfully.');
+        return redirect()
+            ->route('admin.jobs.show', $job)
+            ->with('success', 'Job updated successfully.');
     }
+
+    /* ================= Archive ================= */
 
     public function archive(Job $job)
     {
         $this->authorizeCompany($job);
-        $job->update(['is_archived' => 1]);
+
+        $job->update(['is_archived' => true]);
+
         return back()->with('success', 'Job archived.');
     }
 
     public function restore(Job $job)
     {
         $this->authorizeCompany($job);
-        $job->update(['is_archived' => 0]);
+
+        $job->update(['is_archived' => false]);
+
         return back()->with('success', 'Job restored.');
     }
 
-    public function destroy(Job $job)
-    {
-        $this->authorizeCompany($job);
-        $job->delete();
-        return redirect()->route('admin.jobs.index')->with('success', 'Job deleted successfully.');
-    }
+    /* ================= Upload Job Card ================= */
 
-    /* ---------- Upload original Job Card (PDF/Image) ---------- */
     public function uploadCard(UploadJobDocumentRequest $request, Job $job)
     {
         $this->authorizeCompany($job);
 
         $meta = $this->uploader->store(
             $request->file('file'),
-            'companies/'.$job->company_id.'/jobs/'.$job->id.'/job_card'
+            "companies/{$job->company_id}/jobs/{$job->id}/job_cards"
         );
 
         JobCard::create([
-            'job_id'        => $job->id,
-            'company_id'    => $job->company_id,
-            'description'   => $request->input('description'),
-            'status'        => 'uploaded',
-            'file_path'     => $meta['path'],
-            'file_type'     => $meta['mime'],
-            'assigned_to'   => auth()->id(),
+            'job_id'      => $job->id,
+            'company_id'  => $job->company_id,
+            'description' => $request->input('description'),
+            'status'      => 'uploaded',
+            'file_path'   => $meta['path'],
+            'file_type'   => $meta['mime'],
+            'assigned_to' => auth()->id(),
         ]);
 
         JobDocument::create([
@@ -225,8 +231,6 @@ class JobController extends Controller
             'job_id'        => $job->id,
             'type'          => 'job_card',
             'source'        => 'upload',
-            'sender_phone'  => null,
-            'sender_email'  => null,
             'hash'          => $meta['hash'],
             'original_name' => $meta['original_name'],
             'mime'          => $meta['mime'],
@@ -240,37 +244,23 @@ class JobController extends Controller
         return back()->with('success', 'Job card uploaded.');
     }
 
-    /* ---------- NEW: Save a visit schedule & send WA confirmation ---------- */
-    public function setSchedule(Request $request, Job $job)
+    /* ================= Helpers ================= */
+
+    protected function ensureInvoice(Job $job): void
     {
-        $this->authorizeCompany($job);
-
-        $data = $request->validate([
-            'start_at' => 'required|date',           // visit datetime
-            'location' => 'nullable|string|max:160', // optional branch/address
-        ]);
-
-        // Persist date/time on Job (adjust if you use another table/column)
-        $job->update([
-            'scheduled_at' => $data['start_at'],
-            'location'     => $data['location'] ?? $job->location,
-        ]);
-
-        // WhatsApp confirmation to client
-        if ($job->client && $job->client->phone_norm) {
-            (new SendWhatsAppMessage())->fireEvent(
-                (int)($job->company_id ?? 1),
-                'schedule.confirmed',
-                $job->client->phone_norm,
-                [
-                    'name'     => $job->client->name,
-                    'date'     => \Carbon\Carbon::parse($data['start_at'])->format('d M Y'),
-                    'time'     => \Carbon\Carbon::parse($data['start_at'])->format('g:i A'),
-                    'location' => $data['location'] ?? 'our garage',
-                ]
-            );
+        if ($job->invoice) {
+            return;
         }
 
-        return back()->with('success', 'Schedule saved and confirmation sent.');
+        Invoice::create([
+            'company_id' => $job->company_id,
+            'client_id'  => $job->client_id,
+            'job_id'     => $job->id,
+            'amount'     => 0,
+            'status'     => 'pending',
+            'due_date'   => now()->addDays(7),
+            'currency'   => 'AED',
+            'source'     => 'generated',
+        ]);
     }
 }

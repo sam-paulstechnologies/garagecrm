@@ -2,8 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\MessageLog; // unified logger
+use App\Models\MessageLog;
 use App\Models\Client\Lead;
+use App\Models\Conversation;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,214 +15,470 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Carbon\Carbon;
 
 class SendWhatsAppFromTemplate implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries   = 3;
+    public $tries = 3;
     public $backoff = [10, 30, 60];
 
-    /**
-     * $action:
-     *  - 'initial'       : first ACK to lead (will schedule a follow-up check)
-     *  - 'follow_up'     : ask for missing details ONLY if no inbound since 'initial'
-     *  - 'collect_vehicle': asking for make/model
-     *  - 'collect_timeslot': asking for date/time
-     *  - 'confirmed'     : booking confirmation
-     *  - 'reminder'      : booking reminder
-     *  - 'feedback'      : thank-you / feedback request
-     */
+    protected const ACTIONS = [
+        'initial',
+        'start',
+        'follow_up',
+        'collect',
+        'collect_vehicle',
+        'collect_timeslot',
+        'collect_general_enquiry',
+        'retry',
+        'retry_vehicle',
+        'retry_timeslot',
+        'change_timeslot',
+        'confirm_booking',
+        'confirmed',
+        'reminder',
+        'feedback',
+        'handoff_manager',
+        'booking_handoff',
+        'booking_already_created',
+        'manager_attention',
+        'daily_report',
+        'fallback',
+        'acknowledge',
+        'manual_reply',
+    ];
+
+    protected const FOLLOWUP_TEMPLATES = [
+        'ask_make_model_v1',
+        'ask_intent_v1',
+    ];
+
     public string $action;
 
     public function __construct(
-        public int    $companyId,
-        public int    $leadId,
+        public int $companyId,
+        public int $leadId,
         public string $toNumberE164,
         public string $templateName,
-        public array  $placeholders = [],
-        public array  $links = [],
-        public array  $context = [],
-        string        $action = 'initial'
+        public array $placeholders = [],
+        public array $links = [],
+        public array $context = [],
+        string $action = 'initial'
     ) {
-        $this->action = $action;
+        $this->action = in_array($action, self::ACTIONS, true) ? $action : 'initial';
+
+        $this->toNumberE164 = $this->normalizeNumber($this->toNumberE164);
+
         $this->onConnection('database');
-        $this->onQueue('default');
+        $this->onQueue('whatsapp');
     }
 
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("wa-send-{$this->leadId}"))->expireAfter(120),
+            (new WithoutOverlapping("wa-send-{$this->leadId}-{$this->templateName}-{$this->action}"))->expireAfter(120),
             new RateLimited('wa-sends'),
         ];
     }
 
     public function handle(WhatsAppService $wa): void
     {
+        $lead = Lead::find($this->leadId);
+
+        if (!$lead) {
+            Log::warning('[WA] Lead missing, skipping send', [
+                'lead_id' => $this->leadId,
+            ]);
+
+            return;
+        }
+
+        if (!$this->toNumberE164) {
+            Log::warning('[WA] Missing recipient number, skipping send', [
+                'lead_id' => $this->leadId,
+            ]);
+
+            return;
+        }
+
+        $conversation = $this->resolveOrCreateConversation($lead);
+        $conversationId = $conversation?->id;
+
         $ctx = array_merge($this->context, [
-            'company_id' => $this->companyId,
-            'lead_id'    => $this->leadId,
-            'action'     => $this->action, // <- always propagate action
+            'company_id'      => $this->companyId,
+            'lead_id'         => $this->leadId,
+            'conversation_id' => $conversationId,
+            'action'          => $this->action,
         ]);
 
-        // De-dupe: include action and shorten window (2 minutes)
+        if ($this->action === 'follow_up') {
+            $since = !empty($this->context['since'])
+                ? Carbon::parse($this->context['since'])
+                : now()->subMinutes(15);
+
+            if ($this->hasRecentInbound($this->leadId, $this->toNumberE164, $since)) {
+                Log::info('[WA][FollowUp] skipped inbound already received', [
+                    'lead_id' => $this->leadId,
+                ]);
+
+                return;
+            }
+        }
+
         if ($this->isDuplicateRecently(
-            leadId:    $this->leadId,
-            template:  $this->templateName,
-            action:    $this->action,
-            minutes:   2
+            leadId: $this->leadId,
+            template: $this->templateName,
+            action: $this->action,
+            placeholders: $this->placeholders,
+            minutes: 2
         )) {
             Log::info('[WA][Send] skipped duplicate', [
                 'lead_id'  => $this->leadId,
                 'template' => $this->templateName,
                 'action'   => $this->action,
             ]);
+
             return;
         }
 
         $from = $this->getCompanyFromNumber($this->companyId);
-        $isSandbox = is_string($from) && str_contains($from, '+14155238886');
+
+        /*
+        |--------------------------------------------------------------------------
+        | FORCE META TEMPLATE MODE
+        |--------------------------------------------------------------------------
+        | Manager notifications and daily reports must go as Meta templates because
+        | the manager may not have an open 24-hour WhatsApp session.
+        |
+        | Pass this in context:
+        | ['force_template' => true]
+        |--------------------------------------------------------------------------
+        */
+        $forceTemplate = (bool) ($this->context['force_template'] ?? false);
+
+        $sessionOpen = $forceTemplate
+            ? false
+            : $this->isSessionOpen($this->leadId);
+
+        $text = '';
+        $resArr = [];
+        $sendMode = $sessionOpen ? 'session' : 'template';
+        $providerSendCompleted = false;
+        $localLogCompleted = false;
 
         try {
-            if ($isSandbox) {
-                // sandbox: render template as text and send
-                $text = $wa->assembleTemplateAsText($this->templateName, $this->placeholders, $this->links);
-                $res  = $wa->sendText($this->toNumberE164, $text, $ctx);
+            $text = $wa->assembleTemplateAsText(
+                $this->templateName,
+                $this->placeholders,
+                $this->links
+            );
 
-                MessageLog::out([
-                    'company_id'          => $this->companyId,
-                    'lead_id'             => $this->leadId,
-                    'channel'             => 'whatsapp',
-                    'direction'           => 'out',
-                    'to_number'           => $this->toNumberE164,
-                    'from_number'         => $from ?: null,
-                    'template'            => $this->templateName,
-                    'body'                => $text,
-                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? null) : null,
-                    'provider_status'     => is_array($res) ? ($res['status'] ?? 'queued') : 'queued',
-                    // Always include 'action' in meta for de-dupe by action
-                    'meta'                => array_merge(['action' => $this->action], is_array($res) ? $res : []),
+            if ($sessionOpen) {
+                Log::info('[WA] Sending session message', [
+                    'lead_id'  => $this->leadId,
+                    'template' => $this->templateName,
+                    'action'   => $this->action,
+                    'to'       => $this->toNumberE164,
                 ]);
-            } else {
-                // live: template path (Meta/Twilio)
-                $res = $wa->sendTemplate(
-                    toE164:       $this->toNumberE164,
-                    templateName: $this->templateName,
-                    params:       $this->placeholders,
-                    links:        $this->links,
-                    context:      $ctx
+
+                $res = $wa->sendText(
+                    $this->toNumberE164,
+                    $text,
+                    $ctx
                 );
 
-                MessageLog::out([
-                    'company_id'          => $this->companyId,
-                    'lead_id'             => $this->leadId,
-                    'channel'             => 'whatsapp',
-                    'direction'           => 'out',
-                    'to_number'           => $this->toNumberE164,
-                    'from_number'         => $from ?: null,
-                    'template'            => $this->templateName,
-                    'body'                => null,
-                    'provider_message_id' => is_array($res) ? ($res['sid'] ?? null) : null,
-                    'provider_status'     => is_array($res) ? ($res['status'] ?? 'queued') : 'queued',
-                    'meta'                => array_merge(['action' => $this->action], is_array($res) ? $res : []),
+                $providerSendCompleted = true;
+                $resArr = $this->normalizeProviderResponse($res);
+
+            } else {
+                Log::info('[WA] Sending template message', [
+                    'lead_id'        => $this->leadId,
+                    'template'       => $this->templateName,
+                    'action'         => $this->action,
+                    'to'             => $this->toNumberE164,
+                    'force_template' => $forceTemplate,
                 ]);
+
+                $res = $wa->sendTemplate(
+                    toE164: $this->toNumberE164,
+                    templateName: $this->templateName,
+                    params: $this->placeholders,
+                    links: $this->links,
+                    context: $ctx
+                );
+
+                $providerSendCompleted = true;
+                $resArr = $this->normalizeProviderResponse($res);
             }
+
         } catch (\Throwable $e) {
-            Log::error('[WA][Send] exception: '.$e->getMessage(), [
-                'company_id' => $this->companyId,
-                'lead_id'    => $this->leadId,
-                'template'   => $this->templateName,
-                'action'     => $this->action,
+            Log::error('[WA][Send] provider exception ' . $e->getMessage(), [
+                'lead_id'  => $this->leadId,
+                'template' => $this->templateName,
+                'action'   => $this->action,
+                'mode'     => $sendMode,
+                'to'       => $this->toNumberE164,
             ]);
+
             throw $e;
         }
 
-        // Chain: schedule a follow-up (only from 'initial')
-        if ($this->action === 'initial') {
-            self::dispatch(
-                companyId:    $this->companyId,
-                leadId:       $this->leadId,
-                toNumberE164: $this->toNumberE164,
-                templateName: 'ask_make_model_v1', // standardized name
-                placeholders: [],
-                links:        [],
-                context:      array_merge($ctx, ['since' => now()->toDateTimeString()]),
-                action:       'follow_up'
-            )->delay(now()->addMinutes(10));
+        /*
+        |--------------------------------------------------------------------------
+        | LOCAL MESSAGE LOGGING
+        |--------------------------------------------------------------------------
+        | If provider send succeeded, do not throw after this point.
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+            MessageLog::out([
+                'company_id'      => $this->companyId,
+                'lead_id'         => $this->leadId,
+                'conversation_id' => $conversationId,
+                'channel'         => 'whatsapp',
+                'direction'       => 'out',
+                'to_number'       => $this->toNumberE164,
+                'from_number'     => $from ?: null,
+                'template'        => $this->templateName,
+                'body'            => $text,
+                'provider_message_id' => $resArr['sid'] ?? ($resArr['id'] ?? ($resArr['message_id'] ?? null)),
+                'provider_status'     => $resArr['status'] ?? 'queued',
+                'source'              => 'bot',
+                'meta' => array_merge($ctx, [
+                    'send_mode' => $sendMode,
+                    'force_template' => $forceTemplate,
+                    'placeholders_hash' => $this->hashArray($this->placeholders),
+                    'provider_send_completed' => $providerSendCompleted,
+                ], $resArr),
+            ]);
+
+            $localLogCompleted = true;
+
+        } catch (\Throwable $e) {
+            Log::error('[WA][Send] local log failed after provider send - NOT retrying to avoid duplicate ' . $e->getMessage(), [
+                'lead_id'  => $this->leadId,
+                'template' => $this->templateName,
+                'action'   => $this->action,
+                'mode'     => $sendMode,
+                'provider_response' => $resArr,
+            ]);
+
+            return;
         }
 
-        // If this is a follow-up, bail if user already replied since 'since'
-        if ($this->action === 'follow_up') {
-            $sinceStr = $this->context['since'] ?? null;
-            $since    = $sinceStr ? now()->parse($sinceStr) : now()->subMinutes(15);
+        if ($localLogCompleted) {
+            $this->updateConversationAfterSend($conversation, $text);
+        }
 
-            if ($this->hasRecentInbound($this->leadId, $this->toNumberE164, $since)) {
-                Log::info('[WA][FollowUp] skipped — inbound already received', [
-                    'lead_id' => $this->leadId, 'since' => $since
-                ]);
-                return;
+        if (in_array($this->action, ['handoff_manager', 'booking_handoff', 'manager_attention'], true)) {
+            $this->markConversationRequiresAttention($conversation);
+        }
+
+        if (
+            $this->action === 'initial'
+            && in_array($this->templateName, self::FOLLOWUP_TEMPLATES, true)
+        ) {
+            $followups = DB::table('message_logs')
+                ->where('lead_id', $this->leadId)
+                ->where('template', $this->templateName)
+                ->where('direction', 'out')
+                ->where('channel', 'whatsapp')
+                ->where(function ($q) {
+                    $q->where('meta->action', 'follow_up')
+                      ->orWhere('meta->action', 'initial');
+                })
+                ->where('created_at', '>=', now()->subHours(24))
+                ->count();
+
+            if ($followups < 2) {
+                self::dispatch(
+                    companyId: $this->companyId,
+                    leadId: $this->leadId,
+                    toNumberE164: $this->toNumberE164,
+                    templateName: $this->templateName,
+                    placeholders: $this->placeholders,
+                    links: $this->links,
+                    context: array_merge($ctx, [
+                        'since' => now()->toDateTimeString(),
+                    ]),
+                    action: 'follow_up'
+                )->delay(now()->addMinutes(10));
             }
         }
     }
 
     public function failed(\Throwable $e): void
     {
-        Log::error('[WA][JobFailed] '.$e->getMessage(), [
-            'company_id' => $this->companyId,
-            'lead_id'    => $this->leadId,
-            'template'   => $this->templateName,
-            'action'     => $this->action,
+        Log::error('[WA][JobFailed] ' . $e->getMessage(), [
+            'lead_id'  => $this->leadId,
+            'template' => $this->templateName,
+            'action'   => $this->action,
         ]);
+    }
+
+    protected function resolveOrCreateConversation(Lead $lead): ?Conversation
+    {
+        $phone = $lead->phone ?: $this->toNumberE164;
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        $conversation = Conversation::where('company_id', $this->companyId)
+            ->where(function ($q) use ($lead, $phone, $digits) {
+                $q->where('lead_id', $lead->id);
+
+                if ($digits) {
+                    $q->orWhere('customer_phone', 'like', "%{$digits}%");
+                }
+
+                if ($phone) {
+                    $q->orWhere('customer_phone', $phone);
+                }
+            })
+            ->latest('id')
+            ->first();
+
+        if ($conversation) {
+            if (!$conversation->lead_id || (int) $conversation->lead_id !== (int) $lead->id) {
+                $conversation->update([
+                    'lead_id' => $lead->id,
+                    'client_id' => $lead->client_id ?: $conversation->client_id,
+                    'customer_name' => $lead->name ?: $conversation->customer_name,
+                    'customer_phone' => $phone ?: $conversation->customer_phone,
+                ]);
+            }
+
+            return $conversation;
+        }
 
         try {
-            $this->notifyManager(app(WhatsAppService::class), 'send_failed: '.$e->getMessage());
-        } catch (\Throwable $e2) {
-            Log::error('[WA][ManagerAlertFail] '.$e2->getMessage(), [
+            return Conversation::create([
                 'company_id' => $this->companyId,
-                'lead_id'    => $this->leadId,
+                'lead_id' => $lead->id,
+                'client_id' => $lead->client_id,
+                'customer_name' => $lead->name ?: 'WhatsApp Lead',
+                'customer_phone' => $phone,
+                'last_message_at' => now(),
+                'last_message_preview' => null,
+                'unread_count' => 0,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('[WA] Conversation create failed', [
+                'lead_id' => $lead->id,
+                'err' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    protected function updateConversationAfterSend(?Conversation $conversation, string $text): void
+    {
+        if (!$conversation) {
+            return;
+        }
+
+        try {
+            $conversation->update([
+                'last_message_at' => now(),
+                'last_message_preview' => mb_substr($text, 0, 120),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Conversation update failed', [
+                'conversation_id' => $conversation->id,
+                'err' => $e->getMessage(),
             ]);
         }
     }
 
-    /* ==================== helpers ==================== */
+    protected function markConversationRequiresAttention(?Conversation $conversation): void
+    {
+        if (!$conversation) {
+            return;
+        }
+
+        try {
+            $updates = [
+                'last_message_at' => now(),
+            ];
+
+            if (\Illuminate\Support\Facades\Schema::hasColumn('conversations', 'status')) {
+                $updates['status'] = 'requires_attention';
+            }
+
+            if (\Illuminate\Support\Facades\Schema::hasColumn('conversations', 'requires_attention')) {
+                $updates['requires_attention'] = true;
+            }
+
+            $conversation->update($updates);
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Conversation attention update failed', [
+                'conversation_id' => $conversation->id,
+                'err' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function normalizeProviderResponse(mixed $res): array
+    {
+        if (is_array($res)) {
+            return $res;
+        }
+
+        if (is_object($res)) {
+            return json_decode(json_encode($res), true) ?? [];
+        }
+
+        if (is_string($res)) {
+            return ['id' => $res];
+        }
+
+        if ($res === true) {
+            return ['ok' => true];
+        }
+
+        if ($res === false) {
+            return ['ok' => false];
+        }
+
+        return [];
+    }
 
     protected function isDuplicateRecently(
         int $leadId,
         string $template,
         ?string $action,
+        array $placeholders = [],
         int $minutes = 2
     ): bool {
-        try {
-            $q = DB::table('message_logs')
-                ->where('lead_id', $leadId)
-                ->where('direction', 'out')
-                ->where('channel', 'whatsapp')
-                ->where('template', $template)
-                ->where('created_at', '>=', now()->subMinutes($minutes));
-
-            // De-dupe by action if we have it in meta
-            if ($action) {
-                $q->where('meta->action', $action);
-            }
-
-            return $q->exists();
-        } catch (\Throwable $e) {
-            // If DB JSON path fails for any reason, fail-open (no dedupe)
-            Log::debug('[WA][Send] dedupe check failed: '.$e->getMessage());
-            return false;
-        }
+        return DB::table('message_logs')
+            ->where('lead_id', $leadId)
+            ->where('direction', 'out')
+            ->where('channel', 'whatsapp')
+            ->where('template', $template)
+            ->where('meta->action', $action)
+            ->where('created_at', '>=', now()->subMinutes($minutes))
+            ->where(function ($q) use ($placeholders) {
+                $q->where('meta->placeholders_hash', $this->hashArray($placeholders))
+                  ->orWhereNull('meta->placeholders_hash');
+            })
+            ->exists();
     }
 
-    protected function hasRecentInbound(int $leadId, string $toNumber, \DateTimeInterface $since): bool
-    {
+    protected function hasRecentInbound(
+        int $leadId,
+        string $toNumber,
+        \DateTimeInterface $since
+    ): bool {
         $digits = preg_replace('/\D+/', '', $toNumber);
 
         return DB::table('message_logs')
             ->where('direction', 'in')
             ->where(function ($q) use ($leadId, $digits) {
                 $q->where('lead_id', $leadId);
-                if ($digits !== '') {
+
+                if ($digits) {
                     $q->orWhere('from_number', 'like', "%{$digits}%");
                 }
             })
@@ -229,67 +486,49 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ->exists();
     }
 
-    protected function notifyManager(WhatsAppService $wa, string $reason): void
+    protected function isSessionOpen(int $leadId): bool
     {
-        $manager = $this->resolveManagerNumber();
-        if (!$manager) return;
-
-        try {
-            $lead = Lead::find($this->leadId);
-            $wa->sendTemplate(
-                toE164:       $manager,
-                templateName: 'manager_call_lead',
-                params:       [
-                    $lead?->name ?? 'Lead',
-                    $lead?->phone ?? 'N/A',
-                    $lead?->source ?? '-',
-                    $reason,
-                ],
-                links:        [],
-                context:      ['company_id' => $this->companyId, 'lead_id' => $this->leadId]
-            );
-        } catch (\Throwable $e) {
-            Log::error('[WA][ManagerAlert] '.$e->getMessage(), [
-                'company_id' => $this->companyId,
-                'lead_id'    => $this->leadId
-            ]);
-        }
+        return DB::table('message_logs')
+            ->where('lead_id', $leadId)
+            ->where('direction', 'in')
+            ->where('created_at', '>=', now()->subHours(24))
+            ->exists();
     }
 
-    protected function resolveManagerNumber(): ?string
+    protected function hashArray(array $value): string
     {
-        try {
-            $val = DB::table('company_settings')
-                ->where('company_id', $this->companyId)
-                ->where('key', 'whatsapp.manager_number')
-                ->value('value');
+        return sha1(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
 
-            $val = is_string($val) ? trim($val) : null;
-            return $val !== '' ? $val : null;
-        } catch (\Throwable $e) {
-            Log::error('[WA] resolveManagerNumber failed', [
-                'company_id' => $this->companyId,
-                'err'        => $e->getMessage()
-            ]);
-            return null;
+    protected function normalizeNumber(?string $number): string
+    {
+        $number = trim((string) $number);
+        $number = preg_replace('/^whatsapp:/i', '', $number);
+        $number = preg_replace('/\D+/', '', $number);
+
+        if (str_starts_with($number, '05')) {
+            $number = '971' . substr($number, 1);
         }
+
+        if (str_starts_with($number, '9710')) {
+            $number = '971' . substr($number, 3);
+        }
+
+        return $number;
     }
 
     private function getCompanyFromNumber(int $companyId): ?string
     {
-        try {
-            $kv = DB::table('company_settings')
-                ->where('company_id', $companyId)
-                ->whereIn('key', ['twilio.whatsapp_from', 'twilio_whatsapp_from'])
-                ->value('value');
-            if ($kv) return $kv;
-
-            return DB::table('company_settings')
-                ->where('company_id', $companyId)
-                ->value('twilio_whatsapp_from');
-        } catch (\Throwable $e) {
-            Log::error('[WA] getCompanyFromNumber failed: '.$e->getMessage(), ['company_id' => $companyId]);
-            return null;
-        }
+        return DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', [
+                'twilio.whatsapp_from',
+                'twilio_whatsapp_from',
+                'meta.whatsapp_from',
+                'meta_whatsapp_from',
+                'whatsapp.from',
+                'whatsapp_from',
+            ])
+            ->value('value');
     }
 }

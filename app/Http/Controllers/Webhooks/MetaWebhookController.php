@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client\Client;
 use App\Models\Client\Lead;
-use App\Models\LeadDuplicate;
 use App\Models\MetaPage;
 use App\Services\Meta\MetaLeadService;
-use App\Services\Settings\SettingsStore;
+use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -15,77 +15,143 @@ use Symfony\Component\HttpFoundation\Response;
 
 class MetaWebhookController extends Controller
 {
-    public function __construct(private MetaLeadService $meta) {}
+    public function __construct(
+        private MetaLeadService $meta,
+        private WhatsAppService $whatsapp
+    ) {}
 
-    /** Verification */
-    public function verify(Request $r)
+    /**
+     * Meta webhook verification (GET)
+     */
+    public function verify(Request $request)
     {
-        $verify   = (string) $r->query('hub.verify_token');
-        $expected = (string) config('services.meta.verify_token');
+        $mode      = $request->query('hub.mode');
+        $token     = $request->query('hub.verify_token');
+        $challenge = $request->query('hub.challenge');
 
-        if ($r->query('hub.mode') === 'subscribe' && hash_equals($expected, $verify)) {
-            return response($r->query('hub.challenge'), 200);
+        if (
+            $mode === 'subscribe' &&
+            hash_equals(
+                (string) config('services.meta.verify_token'),
+                (string) $token
+            )
+        ) {
+            return response($challenge, 200);
         }
+
+        Log::warning('Meta webhook verification failed', [
+            'mode' => $mode,
+        ]);
+
         return response('Forbidden', 403);
     }
 
-    /** Receive events */
-    public function handle(Request $r)
+    /**
+     * Meta Leadgen webhook handler (POST)
+     */
+    public function handle(Request $request)
     {
-        // Optional: HMAC verify using app secret
         $secret = (string) config('services.meta.app_secret', '');
         if ($secret !== '') {
-            $sig = (string) $r->header('X-Hub-Signature-256', '');
-            if (! $this->validSignature($sig, $r->getContent(), $secret)) {
+            $sig = (string) $request->header('X-Hub-Signature-256', '');
+            if (! $this->validSignature($sig, $request->getContent(), $secret)) {
                 Log::warning('Meta webhook: invalid signature');
                 return response()->noContent(Response::HTTP_UNAUTHORIZED);
             }
         }
 
-        $body = $r->json()->all();
+        foreach ((array) $request->json('entry', []) as $entry) {
 
-        foreach ((array)($body['entry'] ?? []) as $entry) {
-            $pageId = $entry['id'] ?? null; // << Page ID lives here
+            $pageId = $entry['id'] ?? null;
             if (! $pageId) continue;
 
             $metaPage = MetaPage::where('page_id', $pageId)->first();
             if (! $metaPage) {
-                Log::warning('Meta webhook: unknown page id', ['page_id' => $pageId]);
+                Log::warning('Meta webhook: unknown page', ['page_id' => $pageId]);
                 continue;
             }
 
-            $companyId   = (int) $metaPage->company_id;
-            $pageToken   = (string) $metaPage->page_access_token;
-            $formsChosen = (array) ($metaPage->forms_json ?? []);
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
 
-            $store = new SettingsStore($companyId);
-            $windowDays = (int) $store->get('leads.dedupe_days', config('services.leads.dedupe_days', 30));
-            $sinceDate  = now()->subDays($windowDays);
+                $leadgenId = $change['value']['leadgen_id'] ?? null;
+                if (! $leadgenId) continue;
 
-            foreach ((array)($entry['changes'] ?? []) as $change) {
-                $value  = $change['value'] ?? [];
-                $leadId = $value['leadgen_id'] ?? null;
-                $formId = $value['form_id']    ?? null;
+                $row = $this->meta->fetchLeadById(
+                    $metaPage->page_access_token,
+                    (string) $leadgenId
+                );
 
-                // If you let admins pick specific forms, ignore others
-                if (!empty($formsChosen) && $formId && !in_array($formId, $formsChosen, true)) {
-                    continue;
+                if (! is_array($row)) continue;
+
+                $email = $row['email'] ?? null;
+                $phone = $row['phone'] ?? null;
+
+                /** 1️⃣ Client */
+                $client = Client::query()
+                    ->where('company_id', $metaPage->company_id)
+                    ->where(function ($q) use ($email, $phone) {
+                        if ($email) $q->orWhere('email', $email);
+                        if ($phone) $q->orWhere('phone', $phone);
+                    })
+                    ->first();
+
+                if (! $client) {
+                    $client = Client::create([
+                        'company_id' => $metaPage->company_id,
+                        'name'       => $row['name'] ?? 'Meta Lead',
+                        'email'      => $email,
+                        'phone'      => $phone,
+                        'source'     => 'meta',
+                        'status'     => 'active',
+                    ]);
                 }
 
-                if (! $leadId) continue;
+                /** 2️⃣ Lead (idempotent) */
+                $lead = Lead::updateOrCreate(
+                    [
+                        'company_id'      => $metaPage->company_id,
+                        'external_source' => 'meta',
+                        'external_id'     => (string) $leadgenId,
+                    ],
+                    [
+                        'client_id'            => $client->id,
+                        'name'                 => $row['name'] ?? 'Meta Lead',
+                        'email'                => $email,
+                        'phone'                => $phone,
+                        'status'               => 'new',
+                        'source'               => 'meta',
+                        'preferred_channel'    => 'whatsapp',
+                        'external_payload'     => $row,
+                        'external_received_at' => now(),
+                    ]
+                );
 
-                try {
-                    $row = $this->meta->fetchLeadById($pageToken, (string)$leadId);
-                    if ($row) {
-                        $this->ingestRow($companyId, $formId, $row, $windowDays, $sinceDate);
+                /** 3️⃣ SLICE 1.5 — WhatsApp ACK (safe, guarded) */
+                if (
+                    empty($lead->wa_ack_sent) &&
+                    $this->whatsapp->isActiveForCompany($lead->company_id)
+                ) {
+                    try {
+                        $this->whatsapp->sendTemplate(
+                            toE164: $lead->phone,
+                            templateName: 'lead_conversation_start_v1',
+                            params: [$lead->name],
+                            links: [],
+                            context: [
+                                'company_id' => $lead->company_id,
+                                'lead_id'    => $lead->id,
+                                'source'     => 'meta',
+                            ]
+                        );
+
+                        $lead->update(['wa_ack_sent' => true]);
+
+                    } catch (\Throwable $e) {
+                        Log::error('[WA][META][ACK_FAIL]', [
+                            'lead_id' => $lead->id,
+                            'error'   => $e->getMessage(),
+                        ]);
                     }
-                } catch (\Throwable $e) {
-                    Log::error('Meta webhook ingest failed', [
-                        'company_id' => $companyId,
-                        'page_id'    => $pageId,
-                        'leadgen_id' => $leadId,
-                        'error'      => $e->getMessage(),
-                    ]);
                 }
             }
         }
@@ -95,101 +161,13 @@ class MetaWebhookController extends Controller
 
     private function validSignature(string $sigHeader, string $raw, string $secret): bool
     {
-        if (! Str::startsWith($sigHeader, 'sha256=')) return false;
-        $given = Str::after($sigHeader, 'sha256=');
-        $calc  = hash_hmac('sha256', $raw, $secret);
-        return hash_equals($calc, $given);
-    }
-
-    private function ingestRow(int $companyId, ?string $formId, array $row, int $windowDays, \Carbon\Carbon $sinceDate): void
-    {
-        // same ingest logic you already use (trimmed for brevity)
-        $externalId  = $row['external_id']  ?? null;
-        $createdTime = $row['created_time'] ?? null;
-        $name        = $row['name']         ?? 'Meta Lead';
-        $email       = $row['email']        ?? null;
-        $phone       = $row['phone']        ?? null;
-        $payload     = $row['raw']          ?? $row;
-
-        $emailNorm = Lead::normalizeEmail($email);
-        $phoneNorm = Lead::normalizePhone($phone);
-
-        if ($externalId) {
-            Lead::updateOrCreate(
-                [
-                    'company_id'      => $companyId,
-                    'external_source' => 'meta',
-                    'external_id'     => (string) $externalId,
-                ],
-                [
-                    'name'                 => $name,
-                    'email'                => $email,
-                    'email_norm'           => $emailNorm,
-                    'phone'                => $phone,
-                    'phone_norm'           => $phoneNorm,
-                    'status'               => 'new',
-                    'source'               => 'meta',
-                    'preferred_channel'    => 'whatsapp',
-                    'external_form_id'     => (string) $formId,
-                    'external_payload'     => $payload,
-                    'external_received_at' => now(),
-                    'created_at'           => $createdTime ?? now(),
-                ]
-            );
-            return;
+        if (! Str::startsWith($sigHeader, 'sha256=')) {
+            return false;
         }
 
-        $match = Lead::query()
-            ->where('company_id', $companyId)
-            ->where('created_at', '>=', $sinceDate)
-            ->where(function ($q) use ($emailNorm, $phoneNorm) {
-                if ($emailNorm) $q->orWhere('email_norm', $emailNorm);
-                if ($phoneNorm) $q->orWhere('phone_norm', $phoneNorm);
-            })
-            ->orderBy('created_at', 'asc')
-            ->first();
-
-        if ($match) {
-            $matchedOn = null;
-            if ($emailNorm && $match->email_norm === $emailNorm) $matchedOn = 'email';
-            if ($phoneNorm && $match->phone_norm === $phoneNorm) $matchedOn = $matchedOn ? 'both' : 'phone';
-
-            LeadDuplicate::create([
-                'company_id'        => $companyId,
-                'primary_lead_id'   => $match->id,
-                'external_source'   => 'meta',
-                'external_id'       => null,
-                'external_form_id'  => (string) $formId,
-                'name'              => $name,
-                'email'             => $email,
-                'email_norm'        => $emailNorm,
-                'phone'             => $phone,
-                'phone_norm'        => $phoneNorm,
-                'matched_on'        => $matchedOn,
-                'window_days'       => $windowDays,
-                'reason'            => "within {$windowDays} days of lead #{$match->id}",
-                'payload'           => $payload,
-                'detected_at'       => now(),
-            ]);
-            return;
-        }
-
-        Lead::create([
-            'company_id'           => $companyId,
-            'name'                 => $name,
-            'email'                => $email,
-            'email_norm'           => $emailNorm,
-            'phone'                => $phone,
-            'phone_norm'           => $phoneNorm,
-            'status'               => 'new',
-            'source'               => 'meta',
-            'preferred_channel'    => 'whatsapp',
-            'external_source'      => 'meta',
-            'external_id'          => null,
-            'external_form_id'     => (string) $formId,
-            'external_payload'     => $payload,
-            'external_received_at' => now(),
-            'created_at'           => $createdTime ?? now(),
-        ]);
+        return hash_equals(
+            hash_hmac('sha256', $raw, $secret),
+            Str::after($sigHeader, 'sha256=')
+        );
     }
 }

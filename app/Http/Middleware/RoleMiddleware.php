@@ -10,8 +10,8 @@ class RoleMiddleware
 {
     /**
      * Usage:
-     *  ->middleware('role:admin')                // single
-     *  ->middleware('role:admin,manager')        // multiple
+     *  ->middleware('role:admin')
+     *  ->middleware('role:admin,manager')
      */
     public function handle(Request $request, Closure $next, ...$roles)
     {
@@ -19,14 +19,16 @@ class RoleMiddleware
             return redirect('/login');
         }
 
-        $userRole = Auth::user()->role;
-
-        // If middleware is used without arguments, just pass through.
         if (empty($roles)) {
             return $next($request);
         }
 
-        // Support Laravel's "role:admin,manager" signature (roles already split by framework)
+        $userRole = strtolower(trim((string) Auth::user()->role));
+
+        $roles = array_map(function ($role) {
+            return strtolower(trim((string) $role));
+        }, $roles);
+
         if (!in_array($userRole, $roles, true)) {
             abort(403, 'Unauthorized');
         }

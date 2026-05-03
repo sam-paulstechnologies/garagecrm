@@ -5,99 +5,164 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Note;
-use App\Models\Vehicle\Vehicle;
-use App\Models\Shared\Communication;
+use App\Models\Job\Job; // ✅ ADDED
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use App\Imports\ClientImport;
-use Maatwebsite\Excel\Facades\Excel;
 
 class ClientController extends Controller
 {
     /**
-     * 📄 List all active clients with simple search & filters
+     * 📄 List active clients
      */
     public function index(Request $request)
     {
         $companyId = auth()->user()->company_id;
+        $q = trim((string) $request->get('q', ''));
 
-        $q         = trim((string) $request->get('q', ''));
-        $vip       = $request->filled('vip') ? (bool) $request->boolean('vip') : null;
-        $status    = $request->get('status'); // optional free-text status filter
-
-        $clients = Client::query()
-            ->where('company_id', $companyId)
+        $clients = Client::where('company_id', $companyId)
             ->where('is_archived', false)
             ->when($q, function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     $sub->where('name', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
                         ->orWhere('phone', 'like', "%{$q}%")
-                        ->orWhere('whatsapp', 'like', "%{$q}%")
-                        ->orWhere('location', 'like', "%{$q}%");
+                        ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('whatsapp', 'like', "%{$q}%");
                 });
             })
-            ->when(!is_null($vip), fn($q2) => $q2->where('is_vip', $vip))
-            ->when($status, fn($q3) => $q3->where('status', $status))
-            ->latest()
+            ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.clients.index', compact('clients', 'q', 'vip', 'status'));
+        return view('admin.clients.index', compact('clients', 'q'));
     }
 
-    /**
-     * ➕ Show create form
-     */
     public function create()
     {
         return view('admin.clients.create');
     }
 
     /**
-     * 💾 Store new client (AJAX or normal)
+     * 💾 Store client (logical dedupe only)
      */
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name'              => ['required','string','max:255'],
-            'email'             => ['nullable','email','max:255'],
-            'phone'             => ['nullable','string','max:20'],
-            'whatsapp'          => ['nullable','string','max:20'],
-            'location'          => ['nullable','string','max:255'],
-            'preferred_channel' => ['nullable','string','max:50'], // Call/WhatsApp/Email/SMS
+            'name'              => 'required|string|max:255',
+            'phone'             => 'nullable|string|max:50',
+            'whatsapp'          => 'nullable|string|max:20',
+            'email'             => 'nullable|email|max:255',
+            'dob'               => 'nullable|date',
             'gender'            => ['nullable', Rule::in(['male','female','other'])],
-            'dob'               => ['nullable','date'],
-            'address'           => ['nullable','string','max:255'],
-            'city'              => ['nullable','string','max:255'],
-            'state'             => ['nullable','string','max:255'],
-            'postal_code'       => ['nullable','string','max:50'],
-            'country'           => ['nullable','string','max:100'],
-            'source'            => ['nullable','string','max:255'],
-            'status'            => ['nullable','string','max:255'],
-            'notes'             => ['nullable','string'],
-            'is_vip'            => ['nullable','boolean'],
+            'address'           => 'nullable|string',
+            'city'              => 'nullable|string|max:100',
+            'state'             => 'nullable|string|max:100',
+            'postal_code'       => 'nullable|string|max:20',
+            'country'           => 'nullable|string|max:100',
+            'source'            => 'nullable|string|max:255',
+            'status'            => 'nullable|string|max:50',
+            'notes'             => 'nullable|string',
+            'preferred_channel' => ['nullable', Rule::in(['email','phone','whatsapp'])],
+            'is_vip'            => 'nullable|boolean',
         ]);
 
-        $data['company_id'] = auth()->user()->company_id;
+        $companyId = auth()->user()->company_id;
+
+        /** ---------------------------
+         * LOGICAL DEDUPE (WARNING ONLY)
+         * --------------------------- */
+        $possibleDuplicate = Client::where('company_id', $companyId)
+            ->where(function ($q) use ($data) {
+                if (!empty($data['phone'])) {
+                    $q->orWhere('phone', $data['phone']);
+                }
+                if (!empty($data['whatsapp'])) {
+                    $q->orWhere('whatsapp', $data['whatsapp']);
+                }
+                if (!empty($data['email'])) {
+                    $q->orWhere('email', $data['email']);
+                }
+            })
+            ->first();
+
+        $data['company_id'] = $companyId;
         $data['is_vip']     = $request->boolean('is_vip');
 
         $client = Client::create($data);
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'id'    => $client->id,
-                'name'  => $client->name,
-                'phone' => $client->phone,
-            ]);
+        if ($possibleDuplicate) {
+            return redirect()
+                ->route('admin.clients.show', $client->id)
+                ->with('warning', 'Possible duplicate client detected. Please review.');
         }
 
-        return redirect()->route('admin.clients.index')->with('success', 'Client created successfully.');
+        return redirect()
+            ->route('admin.clients.index')
+            ->with('success', 'Client created successfully.');
     }
 
     /**
-     * ✏️ Show edit form
+     * 👁️ View client profile
      */
+    public function show(Client $client)
+    {
+        $this->authorizeClient($client);
+
+        $client->load([
+            'vehicles.make',
+            'vehicles.model',
+            'opportunities.vehicleMake',
+            'opportunities.vehicleModel',
+            'leads',
+            'bookings',
+            'notes',
+            'files',
+        ]);
+
+        /** ✅ SERVICE HISTORY (ADDED) */
+        $serviceHistory = Job::where('client_id', $client->id)
+            ->where('status', 'completed')
+            ->latest('end_time')
+            ->take(10)
+            ->get();
+
+        /** VEHICLE COUNT */
+        $vehicleCount = $client->vehicles?->count() ?? 0;
+
+        if ($vehicleCount === 0) {
+            $vehicleCount = collect($client->opportunities ?? [])
+                ->map(fn ($o) => trim(
+                    ($o->vehicleMake?->name ?? $o->other_make ?? '') . ' ' .
+                    ($o->vehicleModel?->name ?? $o->other_model ?? '')
+                ))
+                ->filter()
+                ->unique()
+                ->count();
+        }
+
+        /** PROFILE SCORE */
+        $score = 0;
+        if ($client->name) $score += 10;
+        if ($client->phone) $score += 10;
+        if ($client->email || $client->whatsapp) $score += 10;
+        if ($client->city || $client->country || $client->address) $score += 10;
+        if ($vehicleCount > 0) $score += 20;
+        if ($client->leads?->count()) $score += 10;
+        if ($client->opportunities?->count()) $score += 10;
+        if ($client->bookings?->count()) $score += 10;
+        if ($client->notes?->count()) $score += 10;
+
+        $kpis = [
+            'cars'        => $vehicleCount,
+            'ltv'         => 0,
+            'avg_spend'   => 0,
+            'last_service'=> null,
+            'next_service'=> null,
+            'profile_pct' => min(100, $score),
+        ];
+
+        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory')); // ✅ ADDED
+    }
+
     public function edit(Client $client)
     {
         $this->authorizeClient($client);
@@ -105,287 +170,114 @@ class ClientController extends Controller
     }
 
     /**
-     * 🔁 Update client
+     * 🔁 Update client (logical dedupe warning)
      */
     public function update(Request $request, Client $client)
     {
         $this->authorizeClient($client);
 
         $data = $request->validate([
-            'name'              => ['required','string','max:255'],
-            'email'             => ['nullable','email','max:255'],
-            'phone'             => ['nullable','string','max:20'],
-            'whatsapp'          => ['nullable','string','max:20'],
-            'location'          => ['nullable','string','max:255'],
-            'preferred_channel' => ['nullable','string','max:50'],
+            'name'              => 'required|string|max:255',
+            'phone'             => 'nullable|string|max:50',
+            'whatsapp'          => 'nullable|string|max:20',
+            'email'             => 'nullable|email|max:255',
+            'dob'               => 'nullable|date',
             'gender'            => ['nullable', Rule::in(['male','female','other'])],
-            'dob'               => ['nullable','date'],
-            'address'           => ['nullable','string','max:255'],
-            'city'              => ['nullable','string','max:255'],
-            'state'             => ['nullable','string','max:255'],
-            'postal_code'       => ['nullable','string','max:50'],
-            'country'           => ['nullable','string','max:100'],
-            'source'            => ['nullable','string','max:255'],
-            'status'            => ['nullable','string','max:255'],
-            'notes'             => ['nullable','string'],
-            'is_vip'            => ['nullable','boolean'],
+            'address'           => 'nullable|string',
+            'city'              => 'nullable|string|max:100',
+            'state'             => 'nullable|string|max:100',
+            'postal_code'       => 'nullable|string|max:20',
+            'country'           => 'nullable|string|max:100',
+            'source'            => 'nullable|string|max:255',
+            'status'            => 'nullable|string|max:50',
+            'notes'             => 'nullable|string',
+            'preferred_channel' => ['nullable', Rule::in(['email','phone','whatsapp'])],
+            'is_vip'            => 'nullable|boolean',
         ]);
+
+        $possibleDuplicate = Client::where('company_id', auth()->user()->company_id)
+            ->where('id', '!=', $client->id)
+            ->where(function ($q) use ($data) {
+                if (!empty($data['phone'])) $q->orWhere('phone', $data['phone']);
+                if (!empty($data['whatsapp'])) $q->orWhere('whatsapp', $data['whatsapp']);
+                if (!empty($data['email'])) $q->orWhere('email', $data['email']);
+            })
+            ->first();
 
         $data['is_vip'] = $request->boolean('is_vip');
-
         $client->update($data);
 
-        return redirect()->route('admin.clients.index')->with('success', 'Client updated successfully.');
-    }
-
-    /**
-     * ⭐ Quick toggle VIP (AJAX or normal)
-     */
-    public function toggleVip(Client $client)
-    {
-        $this->authorizeClient($client);
-
-        $client->update(['is_vip' => !$client->is_vip]);
-
-        if (request()->expectsJson()) {
-            return response()->json(['is_vip' => $client->is_vip]);
+        if ($possibleDuplicate) {
+            return redirect()
+                ->route('admin.clients.show', $client->id)
+                ->with('warning', 'Possible duplicate client detected. Please review.');
         }
 
-        return back()->with('success', 'VIP status updated.');
+        return redirect()
+            ->route('admin.clients.index')
+            ->with('success', 'Client updated successfully.');
     }
 
-    /**
-     * 🗃️ Soft delete (archive)
-     */
-    public function archive($id)
-    {
-        $client = Client::where('company_id', auth()->user()->company_id)->findOrFail($id);
-        $client->update(['is_archived' => true]);
-
-        return redirect()->route('admin.clients.index')->with('success', 'Client archived successfully.');
-    }
-
-    /**
-     * 🗂️ View archived clients
-     */
-    public function archived(Request $request)
-    {
-        $companyId = auth()->user()->company_id;
-        $q = trim((string) $request->get('q', ''));
-
-        $clients = Client::query()
-            ->where('company_id', $companyId)
-            ->where('is_archived', true)
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    $sub->where('name', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('phone', 'like', "%{$q}%");
-                });
-            })
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
-
-        return view('admin.clients.archived', compact('clients', 'q'));
-    }
-
-    /**
-     * ♻️ Restore archived client
-     */
-    public function restore($id)
-    {
-        $client = Client::where('company_id', auth()->user()->company_id)->findOrFail($id);
-        $client->update(['is_archived' => false]);
-
-        return redirect()->route('admin.clients.archived')->with('success', 'Client restored successfully.');
-    }
-
-    /**
-     * 👁️ Show client details — 360° profile + KPIs
-     */
-    public function show(Client $client)
+    public function archive(Client $client)
     {
         $this->authorizeClient($client);
+        $client->update(['is_archived' => true]);
 
-        $client->loadMissing([
-            // Vehicles + make/model
-            'vehicles.make',
-            'vehicles.model',
-
-            // Opportunities (with make/model)
-            'opportunities'              => fn($q) => $q->latest(),
-            'opportunities.vehicleMake',
-            'opportunities.vehicleModel',
-
-            // Related panels
-            'leads'         => fn($q) => $q->latest(),
-            'jobs'          => fn($q) => $q->latest('start_time'),
-            'invoices'      => fn($q) => $q->latest(),
-            'files',
-            'notes'         => fn($q) => $q->latest(),
-        ]);
-
-        // ---- Communications (moved out of Blade) ----
-        $communications = Communication::query()
-            ->forCompany(auth()->user()->company_id)
-            ->where('client_id', $client->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('created_at')
-            ->paginate(10)
-            ->withQueryString();
-
-        // ---- KPIs ----
-        $lifetimeValue = (float) $client->invoices->sum(fn($inv) => (float) ($inv->total ?? $inv->amount ?? 0));
-
-        $visits   = max(1, $client->jobs->count());
-        $avgSpend = round($lifetimeValue / $visits, 2);
-
-        $lastService = optional(
-            $client->jobs->filter(fn($j) => !empty($j->start_time))
-                ->sortByDesc('start_time')
-                ->first()
-        )->start_time;
-
-        $nextService = optional(
-            $client->vehicles->filter(fn($v) => !empty($v->registration_expiry_date))
-                ->sortBy('registration_expiry_date')
-                ->first()
-        )->registration_expiry_date;
-
-        $fields = [
-            $client->name,
-            $client->phone,
-            $client->email,
-            $client->preferred_channel,
-        ];
-        $score = 0; $total = count($fields) + 2;
-        foreach ($fields as $f) { if (!empty($f)) $score++; }
-        if ($client->vehicles->isNotEmpty()) $score++;
-        if ($client->leads->isNotEmpty() || $client->opportunities->isNotEmpty()) $score++;
-        $profilePct = (int) round(($score / max(1, $total)) * 100);
-
-        $kpis = [
-            'cars'         => $client->vehicles->count(),
-            'ltv'          => $lifetimeValue,
-            'avg_spend'    => $avgSpend,
-            'last_service' => $lastService,
-            'next_service' => $nextService,
-            'profile_pct'  => $profilePct,
-        ];
-
-        return view('admin.clients.show', compact('client', 'kpis', 'communications'));
+        return redirect()
+            ->route('admin.clients.index')
+            ->with('success', 'Client archived.');
     }
 
-    /**
-     * 📝 Inline "Add Note" from the client show page (AJAX or normal)
-     */
+    public function archived()
+    {
+        $clients = Client::where('company_id', auth()->user()->company_id)
+            ->where('is_archived', true)
+            ->orderBy('name')
+            ->paginate(20);
+
+        return view('admin.clients.archived', compact('clients'));
+    }
+
+    public function restore(Client $client)
+    {
+        $this->authorizeClient($client);
+        $client->update(['is_archived' => false]);
+
+        return redirect()
+            ->route('admin.clients.archived')
+            ->with('success', 'Client restored.');
+    }
+
+    /** Notes */
+    public function notesIndex(Client $client)
+    {
+        $this->authorizeClient($client);
+        $client->load(['notes.creator']);
+        return view('admin.clients.notes.index', compact('client'));
+    }
+
     public function storeNote(Request $request, Client $client)
     {
         $this->authorizeClient($client);
 
         $data = $request->validate([
-            'content' => ['required','string','max:2000'],
+            'content' => 'required|string|max:5000',
         ]);
 
-        $note = Note::create([
-            'company_id'  => auth()->user()->company_id,
-            'client_id'   => $client->id,
-            'content'     => $data['content'],
-            'created_by'  => auth()->id(),
-            'author_name' => optional(auth()->user())->name,
+        Note::create([
+            'company_id' => auth()->user()->company_id,
+            'client_id'  => $client->id,
+            'content'    => $data['content'],
+            'created_by' => auth()->id(),
         ]);
 
-        if ($request->expectsJson()) {
-            $recent = $client->notes()
-                ->where('company_id', auth()->user()->company_id)
-                ->with(['creator:id,name'])
-                ->latest()
-                ->take(3)
-                ->get();
-
-            return response()->json([
-                'message' => 'Note added.',
-                'note'    => $note->loadMissing('creator:id,name'),
-                'recent'  => $recent,
-            ]);
-        }
-
-        return back()->with('success', 'Note added.');
+        return redirect()
+            ->route('admin.clients.show', $client->id)
+            ->with('success', 'Note added.');
     }
 
     /**
-     * 📒 Paginated Notes tab (View all)
-     */
-    public function notesIndex(Client $client)
-    {
-        $this->authorizeClient($client);
-
-        $notes = $client->notes()
-            ->where('company_id', auth()->user()->company_id)
-            ->with(['creator:id,name'])
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
-
-        return view('admin.clients.notes.index', compact('client', 'notes'));
-    }
-
-    /**
-     * 🚗 Quick PATCH for vehicle renewals from client show page
-     */
-    public function updateVehicleRenewals(Request $request, Vehicle $vehicle)
-    {
-        // Company-guard through the vehicle's client
-        $client = $vehicle->client()->first();
-        abort_if(!$client || $client->company_id !== auth()->user()->company_id, 403);
-
-        $data = $request->validate([
-            'registration_expiry_date' => ['nullable','date'],
-            'insurance_expiry_date'    => ['nullable','date'],
-        ]);
-
-        $vehicle->update($data);
-
-        return back()->with('success', 'Vehicle renewal dates updated.');
-    }
-
-    /**
-     * 📥 Show import form
-     */
-    public function importForm()
-    {
-        return view('admin.clients.import');
-    }
-
-    /**
-     * 📤 Handle import with feedback (success/skip/total)
-     */
-    public function import(Request $request)
-    {
-        $request->validate([
-            'file' => ['required','file','mimes:xlsx,csv,txt'],
-        ]);
-
-        $importer = new ClientImport(auth()->user()->company_id);
-
-        try {
-            Excel::import($importer, $request->file('file'));
-        } catch (\Throwable $e) {
-            return redirect()->route('admin.clients.index')
-                ->with('import_error', true)
-                ->with('error_message', $e->getMessage());
-        }
-
-        return redirect()->route('admin.clients.index')
-            ->with('import_success', true)
-            ->with('imported', $importer->imported)
-            ->with('skipped', $importer->skipped)
-            ->with('total', $importer->total);
-    }
-
-    /**
-     * 🔐 Restrict access by company
+     * 🔐 Company guard
      */
     protected function authorizeClient(Client $client): void
     {

@@ -4,11 +4,12 @@
 
 import "./bootstrap";
 import { createRoot } from "react-dom/client";
+
+/* ============================
+   Chat Window (Existing)
+   ============================ */
 import ChatWindow from "./Pages/Chat/ChatWindow";
 
-/**
- * Mount React Chat Window
- */
 function mountChatWindow() {
     const el = document.getElementById("chat-window");
     if (!el) return;
@@ -25,11 +26,29 @@ function mountChatWindow() {
     );
 }
 
-/**
- * Auto-mount when ready
- */
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mountChatWindow);
-} else {
-    mountChatWindow();
+/* ============================
+   Admin Demo Page
+   ============================ */
+import DemoPage from "./components/Demo/DemoPage";
+
+function mountAdminDemo() {
+    const el = document.getElementById("admin-demo");
+    if (!el) return;
+
+    const root = createRoot(el);
+    root.render(<DemoPage root={el} />);
 }
+
+/* ============================
+   Auto mount
+   ============================ */
+function onReady(fn) {
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", fn);
+    } else {
+        fn();
+    }
+}
+
+onReady(mountChatWindow);
+onReady(mountAdminDemo);

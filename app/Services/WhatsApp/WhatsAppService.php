@@ -2,464 +2,541 @@
 
 namespace App\Services\WhatsApp;
 
-use GuzzleHttp\Client as HttpClient;
+use App\Models\WhatsApp\WhatsAppMessage;
+use App\Services\WhatsApp\Drivers\MetaCloudWhatsApp;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
-use App\Models\WhatsApp\WhatsAppMessage;
 use Twilio\Rest\Client as TwilioClient;
 
-/**
- * Provider-agnostic WhatsApp sender.
- * - sendTemplate(): Meta / Twilio / (stub) Gupshup
- * - sendText(): direct Twilio text (useful for AI-first)
- * - assembleTemplateAsText(): tiny library for Twilio text mode
- */
 class WhatsAppService
 {
-    protected string $provider;
-    protected HttpClient $http;
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Availability Check
+    |--------------------------------------------------------------------------
+    */
 
-    public function __construct()
+    public function isActiveForCompany(int $companyId): bool
     {
-        $this->provider = config('services.whatsapp.provider', 'meta'); // 'meta' | 'twilio' | 'gupshup'
-        $this->http     = new HttpClient(['timeout' => 15]);
+        try {
+            $provider = $this->getTenantProvider($companyId);
+
+            if ($provider === 'meta') {
+                return $this->hasMetaSettings($companyId);
+            }
+
+            if ($provider === 'twilio') {
+                return $this->hasTwilioSettings($companyId);
+            }
+
+            return false;
+
+        } catch (\Throwable $e) {
+            Log::warning('[WA] isActiveForCompany failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
-    /** Public API */
+    /*
+    |--------------------------------------------------------------------------
+    | Send Plain Text
+    |--------------------------------------------------------------------------
+    */
+
+    public function sendText(string $toE164, string $body, array $context = []): array|bool
+    {
+        $companyId = $context['company_id'] ?? null;
+
+        if (!$companyId) {
+            throw new \Exception('WhatsAppService requires company_id');
+        }
+
+        $companyId = (int) $companyId;
+        $provider = $this->getTenantProvider($companyId);
+        $toE164 = $this->normalizeNumber($toE164);
+
+        if (!$this->isActiveForCompany($companyId)) {
+            throw new \Exception("WhatsApp is not configured for company {$companyId}");
+        }
+
+        return match ($provider) {
+
+            'meta' => (new MetaCloudWhatsApp($companyId))
+                ->sendText($toE164, $body),
+
+            'twilio' => $this->sendTwilioText($companyId, $toE164, $body),
+
+            default => throw new \Exception(
+                "Unsupported WhatsApp provider: {$provider}"
+            )
+        };
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Send Template
+    |--------------------------------------------------------------------------
+    */
+
     public function sendTemplate(
         string $toE164,
         string $templateName,
         array $params = [],
         array $links = [],
         array $context = []
-    ): array {
-        $tenantProvider = $this->getTenantProvider($context['company_id'] ?? null);
-        $provider = $tenantProvider ?: $this->provider;
+    ): array|bool {
+
+        $companyId = $context['company_id'] ?? null;
+
+        if (!$companyId) {
+            throw new \Exception('WhatsAppService requires company_id');
+        }
+
+        $companyId = (int) $companyId;
+        $provider = $this->getTenantProvider($companyId);
+        $toE164 = $this->normalizeNumber($toE164);
+
+        if (!$this->isActiveForCompany($companyId)) {
+            throw new \Exception("WhatsApp is not configured for company {$companyId}");
+        }
 
         return match ($provider) {
-            'meta'   => $this->sendMetaTemplate($toE164, $templateName, $params, $links, $context),
-            'twilio' => $this->sendTwilioTemplate($toE164, $templateName, $params, $links, $context),
-            'gupshup'=> $this->sendGupshupTemplate($toE164, $templateName, $params, $links, $context),
-            default  => ['error' => 'Unknown provider'],
+
+            'meta' => (new MetaCloudWhatsApp($companyId))
+                ->sendTemplate($toE164, $templateName, $params),
+
+            'twilio' => $this->sendTwilioTemplate(
+                $companyId,
+                $toE164,
+                $templateName,
+                $params,
+                $links
+            ),
+
+            default => throw new \Exception(
+                "Unsupported WhatsApp provider: {$provider}"
+            )
         };
     }
 
-    /* ======================== META ======================== */
-    protected function sendMetaTemplate(string $to, string $template, array $params, array $links, array $context): array
-    {
-        $companyId = $context['company_id'] ?? null;
+    /*
+    |--------------------------------------------------------------------------
+    | TWILIO TEXT
+    |--------------------------------------------------------------------------
+    */
 
-        $phoneId = $this->getSetting($companyId, [
-            'company_col' => 'meta_phone_id',
-            'kv_keys'     => ['whatsapp.meta.phone_id', 'meta.phone_id', 'meta.phone_number_id', 'whatsapp.meta.phone_number_id'],
-            'config'      => 'services.whatsapp.meta.phone_id',
-        ]);
+    protected function sendTwilioText(
+        int $companyId,
+        string $to,
+        string $body
+    ): bool {
 
-        $token = $this->getSetting($companyId, [
-            'company_col' => 'meta_token',
-            'kv_keys'     => ['whatsapp.meta.token', 'meta.token', 'meta.access_token'],
-            'config'      => 'services.whatsapp.meta.token',
-        ]);
+        $settings = $this->getTwilioSettings($companyId);
 
-        if (!$phoneId || !$token) {
-            $this->logWa(provider: 'meta', to: $to, status: 'failed', companyId: $companyId, payload: [
-                'error' => 'Meta phone_id/token missing',
-                'template' => $template,
-                'params'   => $params,
-                'links'    => $links,
-            ]);
-            return ['error' => 'Meta phone_id/token missing'];
-        }
+        $client = new TwilioClient(
+            $settings['sid'],
+            $settings['token']
+        );
 
-        $components = [];
-        if (!empty($params)) {
-            $components[] = [
-                'type' => 'body',
-                'parameters' => array_values(array_map(
-                    fn($p) => ['type' => 'text', 'text' => (string)$p],
-                    $params
-                )),
-            ];
-        }
-        if (!empty($links)) {
-            $components[] = [
-                'type'       => 'button',
-                'sub_type'   => 'url',
-                'index'      => '0',
-                'parameters' => [['type' => 'text', 'text' => (string)($links[0] ?? '')]],
-            ];
-        }
+        $msg = $client->messages->create(
+            $this->wa($to),
+            [
+                'from' => $this->wa($settings['from']),
+                'body' => $body,
+            ]
+        );
 
-        $payload = [
-            'messaging_product' => 'whatsapp',
-            'to'       => ltrim($to, '+'), // Graph expects digits only
-            'type'     => 'template',
-            'template' => [
-                'name'       => $template,
-                'language'   => ['code' => 'en'],
-                'components' => $components,
-            ],
-        ];
+        $this->logWa(
+            'twilio',
+            $to,
+            'sent',
+            $companyId,
+            ['sid' => $msg->sid ?? null]
+        );
 
-        $url = "https://graph.facebook.com/v20.0/{$phoneId}/messages";
-
-        try {
-            $res  = $this->http->post($url, [
-                'headers' => [
-                    'Authorization' => "Bearer {$token}",
-                    'Content-Type'  => 'application/json',
-                ],
-                'json' => $payload,
-            ]);
-
-            $body = json_decode((string) $res->getBody(), true) ?? ['ok' => true];
-
-            $externalId = $body['messages'][0]['id'] ?? null;
-
-            $this->logWa(
-                provider:   'meta',
-                to:         $to,
-                status:     'sent',
-                companyId:  $companyId,
-                templateId: null,
-                externalId: $externalId,
-                providerMsgId: $externalId,
-                payload:    [
-                    'request'  => $payload,
-                    'response' => $body,
-                    'template' => $template,
-                ]
-            );
-
-            return $body;
-        } catch (\Throwable $e) {
-            Log::error('[WA][META] send error: '.$e->getMessage(), ['payload' => $payload]);
-
-            $this->logWa(
-                provider:  'meta',
-                to:        $to,
-                status:    'failed',
-                companyId: $companyId,
-                payload:   ['request' => $payload, 'error' => $e->getMessage(), 'template' => $template]
-            );
-
-            return ['error' => $e->getMessage()];
-        }
+        return true;
     }
 
-    /* ======================== TWILIO ======================== */
-    protected function sendTwilioTemplate(string $toE164, string $template, array $params, array $links, array $context): array
+    /*
+    |--------------------------------------------------------------------------
+    | TWILIO TEMPLATE (fallback as text)
+    |--------------------------------------------------------------------------
+    */
+
+    protected function sendTwilioTemplate(
+        int $companyId,
+        string $to,
+        string $template,
+        array $params,
+        array $links
+    ): bool {
+
+        $body = $this->assembleTemplateAsText(
+            $template,
+            $params,
+            $links
+        );
+
+        return $this->sendTwilioText($companyId, $to, $body);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Twilio Settings Loader
+    |--------------------------------------------------------------------------
+    */
+
+    protected function getTwilioSettings(int $companyId): array
     {
-        $companyId = $context['company_id'] ?? null;
+        $sid = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', ['twilio.sid', 'twilio_sid'])
+            ->value('value');
 
-        $sid = $this->getSetting($companyId, [
-            'company_col' => 'twilio_sid',
-            'kv_keys'     => ['twilio.sid', 'twilio.account_sid'],
-            'config'      => 'services.whatsapp.twilio.sid',
-        ]);
+        $token = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', ['twilio.token', 'twilio_token'])
+            ->value('value');
 
-        $token = $this->getSetting($companyId, [
-            'company_col' => 'twilio_token',
-            'kv_keys'     => ['twilio.token', 'twilio.auth_token'],
-            'config'      => 'services.whatsapp.twilio.token',
-        ]);
-
-        $from = $this->getSetting($companyId, [
-            'company_col' => 'twilio_whatsapp_from',
-            'kv_keys'     => ['twilio.whatsapp_from'],
-            'config'      => 'services.whatsapp.twilio.from',
-        ]);
+        $from = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', [
+                'twilio.whatsapp_from',
+                'twilio_whatsapp_from',
+                'whatsapp.from',
+                'whatsapp_from',
+            ])
+            ->value('value');
 
         if (!$sid || !$token || !$from) {
-            $this->logWa('twilio', $toE164, 'failed', $companyId, [
-                'error' => 'Twilio SID/token/from missing',
-                'template' => $template,
-                'params'   => $params,
-                'links'    => $links,
-            ]);
-            return ['error' => 'Twilio SID/token/from missing'];
+            throw new \Exception(
+                "Twilio not configured for company {$companyId}"
+            );
         }
 
-        $client = new TwilioClient($sid, $token);
+        return compact('sid', 'token', 'from');
+    }
 
-        $fromWa = $this->wa($from);
-        $toWa   = $this->wa($toE164);
-
-        $body = $this->assembleTemplateAsText($template, $params, $links);
-        $mode = str_contains($fromWa, '+14155238886') ? 'sandbox' : 'live';
-
+    protected function hasTwilioSettings(int $companyId): bool
+    {
         try {
-            $msg = $client->messages->create($toWa, [
-                'from'           => $fromWa,
-                'body'           => $body,
-                'statusCallback' => route('api.webhooks.twilio.whatsapp.status'),
-            ]);
+            $settings = $this->getTwilioSettings($companyId);
 
-            $this->logWa(
-                provider:   'twilio',
-                to:         $toE164,
-                status:     'sent',
-                companyId:  $companyId,
-                externalId: $msg->sid ?? null,
-                providerMsgId: $msg->sid ?? null,
-                payload:    [
-                    'to'   => $toWa,
-                    'from' => $fromWa,
-                    'body' => $body,
-                    'mode' => $mode,
-                    'template' => $template,
-                ]
-            );
+            return !empty($settings['sid'])
+                && !empty($settings['token'])
+                && !empty($settings['from']);
 
-            return ['sid' => $msg->sid];
-        } catch (\Throwable $e) {
-            Log::error('[WA][TWILIO] send error: '.$e->getMessage(), [
-                'to' => $toWa, 'from' => $fromWa, 'mode' => $mode,
-            ]);
-
-            $this->logWa(
-                provider:  'twilio',
-                to:        $toE164,
-                status:    'failed',
-                companyId: $companyId,
-                payload:   [
-                    'to' => $toWa, 'from' => $fromWa, 'body' => $body, 'mode' => $mode,
-                    'error' => $e->getMessage(),
-                    'template' => $template,
-                ]
-            );
-
-            return ['error' => $e->getMessage()];
+        } catch (\Throwable) {
+            return false;
         }
     }
 
-    /* ======================== GUPSHUP (stub) ======================== */
-    protected function sendGupshupTemplate(string $to, string $template, array $params, array $links, array $context): array
+    protected function hasMetaSettings(int $companyId): bool
     {
-        $this->logWa('gupshup', $to, 'failed', $context['company_id'] ?? null, [
-            'todo' => 'Implement Gupshup',
-            'template' => $template,
-            'params'   => $params,
-            'links'    => $links,
-        ]);
-        return ['todo' => 'Implement Gupshup if you switch provider'];
-    }
+        $company = DB::table('companies')
+            ->where('id', $companyId)
+            ->first();
 
-    /* =================== Direct text (Twilio) =================== */
-    public function sendText(string $toE164, string $body, array $context = []): array
-    {
-        $companyId = $context['company_id'] ?? null;
-
-        $sid = $this->getSetting($companyId, [
-            'company_col' => 'twilio_sid',
-            'kv_keys'     => ['twilio.sid', 'twilio.account_sid'],
-            'config'      => 'services.whatsapp.twilio.sid',
-        ]);
-        $token = $this->getSetting($companyId, [
-            'company_col' => 'twilio_token',
-            'kv_keys'     => ['twilio.token', 'twilio.auth_token'],
-            'config'      => 'services.whatsapp.twilio.token',
-        ]);
-        $from = $this->getSetting($companyId, [
-            'company_col' => 'twilio_whatsapp_from',
-            'kv_keys'     => ['twilio.whatsapp_from'],
-            'config'      => 'services.whatsapp.twilio.from',
-        ]);
-
-        if (!$sid || !$token || !$from) {
-            $this->logWa('twilio', $toE164, 'failed', $companyId, [
-                'error' => 'Twilio SID/token/from missing for sendText',
-                'body'  => $body,
-            ]);
-            return ['error' => 'Twilio SID/token/from missing'];
+        if (
+            $company
+            && !empty($company->meta_phone_number_id)
+            && !empty($company->meta_access_token)
+        ) {
+            return true;
         }
 
-        $client = new TwilioClient($sid, $token);
-        $fromWa = $this->wa($from);
-        $toWa   = $this->wa($toE164);
+        $keys = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', [
+                'meta.phone_number_id',
+                'meta_phone_number_id',
+                'meta.access_token',
+                'meta_access_token',
+                'meta.waba_id',
+                'meta_waba_id',
+                'whatsapp.phone_number_id',
+                'whatsapp_phone_number_id',
+                'whatsapp.access_token',
+                'whatsapp_access_token',
+            ])
+            ->pluck('value', 'key')
+            ->toArray();
 
-        try {
-            $msg = $client->messages->create($toWa, [
-                'from'           => $fromWa,
-                'body'           => $body,
-                'statusCallback' => route('api.webhooks.twilio.whatsapp.status'),
-            ]);
+        $phoneNumberId =
+            $keys['meta.phone_number_id']
+            ?? $keys['meta_phone_number_id']
+            ?? $keys['whatsapp.phone_number_id']
+            ?? $keys['whatsapp_phone_number_id']
+            ?? null;
 
-            $this->logWa(
-                provider:   'twilio',
-                to:         $toE164,
-                status:     'sent',
-                companyId:  $companyId,
-                externalId: $msg->sid ?? null,
-                providerMsgId: $msg->sid ?? null,
-                payload:    [
-                    'to'   => $toWa,
-                    'from' => $fromWa,
-                    'body' => $body,
-                    'template' => 'text',
-                ]
-            );
+        $accessToken =
+            $keys['meta.access_token']
+            ?? $keys['meta_access_token']
+            ?? $keys['whatsapp.access_token']
+            ?? $keys['whatsapp_access_token']
+            ?? null;
 
-            return ['sid' => $msg->sid];
-        } catch (\Throwable $e) {
-            Log::error('[WA][TWILIO][TEXT] send error: '.$e->getMessage());
-
-            $this->logWa('twilio', $toE164, 'failed', $companyId, [
-                'to' => $toWa, 'from' => $fromWa, 'body' => $body, 'error' => $e->getMessage(),
-                'template' => 'text',
-            ]);
-
-            return ['error' => $e->getMessage()];
-        }
+        return !empty($phoneNumberId) && !empty($accessToken);
     }
 
-    /* ====================== Utilities ====================== */
+    /*
+    |--------------------------------------------------------------------------
+    | TEMPLATE LIBRARY (Sandbox / Session fallback)
+    |--------------------------------------------------------------------------
+    */
 
-    protected function wa(string $n): string
-    {
-        $n = trim($n);
-        return Str::startsWith($n, 'whatsapp:') ? $n : 'whatsapp:' . $n;
-    }
+    public function assembleTemplateAsText(
+        string $template,
+        array $params = [],
+        array $links = []
+    ): string {
 
-    /** Public for jobs to reuse (sandbox + live) */
-    public function assembleTemplateAsText(string $template, array $params, array $links): string
-    {
         $library = [
-            'lead_acknowledgment_v2' => "Hi 👋 thanks for contacting us. Our manager will call you shortly.",
-            'visit_handoff_v1'       => "Got it! Our manager will reach out to you shortly to finalize the visit.",
-            'visit_confirmation_v1'  => "All set! ✅ Your visit is scheduled for {0}.",
-            'visit_feedback_v1'      => "Hi! Hope your experience was great. Could you share quick feedback?",
-            'review_request_v1'      => "That's awesome to hear! 🙌 Would you mind leaving us a quick Google review?",
-            'apology_response_v1'    => "We're really sorry to hear that. Our manager will contact you to make it right.",
-            'ack_lead'               => "Hey! 👋 We’ve received your details. Our manager will call you shortly.",
-            'ask_make_model'         => "Could you please share your car’s *Make & Model*?",
-            'manager_call_lead'      => "Heads up 👤 Lead needs attention: Name: {0}, Phone: {1}, Source: {2}. Reason: {3}",
-            'booking_confirmation'   => "Your booking is confirmed for {0} ({1}). See you soon! 🚗",
-            'visit_reminder_v1'      => "Reminder ⏰ Your booking is for {0} ({1}). Reply if you need to reschedule.",
-            // You can add v1 names too if you want them to print nicely via Twilio text:
-            'ask_make_model_v1'      => "Could you please share your car’s *Make & Model*?",
-            'ask_preferred_time_v1'  => "Thanks {0}! What date/time works best for your service?",
-            'booking_confirmed_v1'   => "Booking confirmed ✅ Ref {0} on {1} at {2}.",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Greeting / Intent
+            |--------------------------------------------------------------------------
+            */
+
+            'ask_intent_v1' =>
+                "👋 Hi {0}!\n\n".
+                "How can we help today?\n\n".
+                "1️⃣ Book a service\n".
+                "2️⃣ General enquiry\n".
+                "3️⃣ Speak to a manager",
+
+            'gratitude_v1' =>
+                "You're welcome, {0}! 😊\n\n".
+                "Let us know if you need anything else.",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Pricing / General Enquiry
+            |--------------------------------------------------------------------------
+            */
+
+            'pricing_handoff_v1' =>
+                "Thanks {0}! Pricing depends on the vehicle and service required.\n\n".
+                "Our service manager will check and share the best estimate shortly.",
+
+            'ask_general_enquiry_v1' =>
+                "Sure {0}. Please tell us your question or requirement.\n\n".
+                "Example:\nAC issue, pickup/drop, service cost, location, timing, warranty, or any other query.",
+
+            'general_enquiry_handoff_v1' =>
+                "Thanks {0}. We have shared your enquiry with our service manager.\n\n".
+                "They will contact you shortly to assist.",
+
+            'ask_service_type_v1' =>
+                "Sure {0}. What service do you need?\n\n".
+                "Example:\nOil change, AC repair, brake service, general service",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Booking flow
+            |--------------------------------------------------------------------------
+            */
+
+            'ask_make_model_v1' =>
+                "🚗 Please tell us your vehicle make and model.\n\n".
+                "Example:\nToyota Camry",
+
+            'ask_preferred_time_v1' =>
+                "📅 Thanks {0}! What date/time works best?",
+
+            'confirm_booking_v1' =>
+                "📅 Please confirm your booking request.\n\n".
+                "Vehicle: {0}\n".
+                "Preferred date/time: {1}\n\n".
+                "Reply *Yes* to confirm or *No* to change.",
+
+            'booking_confirmed_v1' =>
+                "Booking confirmed ✅\n\n".
+                "Ref: {0}\n".
+                "Date: {1}\n".
+                "Time: {2}",
+
+            'booking_already_created_v1' =>
+                "✅ Your booking request is already captured.\n\n".
+                "Our team will review and confirm shortly.",
+
+            'ask_preferred_time_retry_v1' =>
+                "Please share a valid preferred date and time.\n\n".
+                "Example:\nTomorrow 10am\nSaturday 4pm",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Escalations / Handoff
+            |--------------------------------------------------------------------------
+            */
+
+            'manager_handoff_v1' =>
+                "✅ Thanks! Our service manager will contact you shortly.",
+
+            'booking_handoff_v1' =>
+                "✅ Thanks {0}. Your booking request has been shared with our service manager.\n\n".
+                "They will contact you shortly to confirm the slot.",
+
+            'lead_acknowledgment_v2' =>
+                "Hi 👋 thanks for contacting us.\n".
+                "Our manager will reach out shortly.",
+
+            'visit_handoff_v1' =>
+                "Got it! Our manager will reach out shortly.",
+
+            'manager_call_lead' =>
+                "Lead alert 👤\n".
+                "Name: {0}\n".
+                "Phone: {1}\n".
+                "Source: {2}\n".
+                "Reason: {3}",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Fallback / Errors
+            |--------------------------------------------------------------------------
+            */
+
+            'fallback_v1' =>
+                "Sorry, I couldn't understand that clearly.\n\n".
+                "Please reply with:\n".
+                "1️⃣ Book a service\n".
+                "2️⃣ General enquiry\n".
+                "3️⃣ Speak to a manager",
+
+            'system_error_handoff_v1' =>
+                "Sorry, something went wrong while processing your request.\n\n".
+                "Our service manager will contact you shortly.",
+
+            /*
+            |--------------------------------------------------------------------------
+            | Future campaign / CRM templates
+            |--------------------------------------------------------------------------
+            */
+
+            'lead_conversation_start_v1' =>
+                "Hi {0} 👋\n\n".
+                "Thanks for contacting us. How can we help you today?\n\n".
+                "1️⃣ Book a service\n".
+                "2️⃣ General enquiry\n".
+                "3️⃣ Speak to a manager\n\n".
+                "Please reply with 1, 2, or 3.",
+
+            'follow_up_v1' =>
+                "Hi {0}, just following up on your service request.\n\n".
+                "Would you like us to help you book a slot?",
+
+            'feedback_request_v1' =>
+                "Hi {0}, thank you for choosing us.\n\n".
+                "Please share your feedback about your service experience.",
         ];
 
-        $body = $library[$template] ?? $template;
+        $body = $library[$template] ?? "Template: {$template}";
 
         foreach ($params as $i => $val) {
             $body = str_replace('{'.$i.'}', (string) $val, $body);
         }
 
         if (!empty($links)) {
-            $body .= "\n";
-            foreach ($links as $label => $url) {
-                $body .= (is_string($label) ? "{$label}: {$url}" : (string)$url) . "\n";
+            foreach ($links as $url) {
+                $body .= "\n".$url;
             }
-            $body = rtrim($body);
         }
 
-        return $body;
+        return trim($body);
     }
 
-    /** Persist to whatsapp_messages */
+    /*
+    |--------------------------------------------------------------------------
+    | Logging
+    |--------------------------------------------------------------------------
+    */
+
     protected function logWa(
         string $provider,
         string $to,
         string $status,
         ?int $companyId = null,
-        array $payload = [],
-        ?int $templateId = null,
-        ?string $externalId = null,
-        ?string $providerMsgId = null
+        array $payload = []
     ): void {
+
         try {
+
             WhatsAppMessage::create([
-                'company_id'          => $companyId,
-                'campaign_id'         => null,
-                'template_id'         => $templateId,
-                'to'                  => $to,
-                'direction'           => 'out',
-                'status'              => $status,
-                'external_id'         => $externalId,
-                'provider_message_id' => $providerMsgId ?? $externalId,
-                'error_message'       => ($status === 'failed') ? ($payload['error'] ?? null) : null,
-                'payload'             => $payload,
+                'company_id' => $companyId,
+                'provider'   => $provider,
+                'to'         => $to,
+                'direction'  => 'out',
+                'status'     => $status,
+                'payload'    => $payload,
             ]);
+
         } catch (\Throwable $e) {
+
             Log::error('[WA] logWa failed: '.$e->getMessage());
         }
     }
 
-    /** Get a single setting with fallback chain */
-    protected function getSetting(?int $companyId, array $map): ?string
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    protected function wa(string $n): string
     {
-        $val = null;
-
-        if ($companyId) {
-            try {
-                $row = DB::table('company_settings')
-                    ->where('company_id', $companyId)
-                    ->first();
-
-                if ($row && !empty($map['company_col']) && isset($row->{$map['company_col']})) {
-                    $raw = (string) $row->{$map['company_col']};
-                    $isEncrypted = property_exists($row, 'is_encrypted') ? ((int) $row->is_encrypted === 1) : false;
-                    $val = $this->maybeDecrypt($raw, $isEncrypted);
-                    if ($this->hasValue($val)) return $val;
-                }
-            } catch (\Throwable $e) { /* ignore; fallback */ }
-
-            if (!empty($map['kv_keys']) && is_array($map['kv_keys'])) {
-                try {
-                    $rows = DB::table('company_settings')
-                        ->select(['key', 'value', 'is_encrypted'])
-                        ->where('company_id', $companyId)
-                        ->whereIn('key', $map['kv_keys'])
-                        ->get();
-
-                    foreach ($rows as $r) {
-                        $raw = (string) $r->value;
-                        $dec = $this->maybeDecrypt($raw, (int) ($r->is_encrypted ?? 0) === 1);
-                        if ($this->hasValue($dec)) return $dec;
-                    }
-                } catch (\Throwable $e) { /* ignore; fallback */ }
-            }
-        }
-
-        $cfg = $map['config'] ? config($map['config']) : null;
-        return $this->hasValue($cfg) ? trim((string) $cfg) : null;
+        return Str::startsWith($n, 'whatsapp:')
+            ? $n
+            : 'whatsapp:'.trim($n);
     }
 
-    protected function maybeDecrypt(?string $v, bool $encrypted): ?string
+    protected function normalizeNumber(?string $number): string
     {
-        if (!$this->hasValue($v)) return null;
-        $v = trim((string)$v);
+        $number = trim((string) $number);
+        $number = preg_replace('/^whatsapp:/i', '', $number);
+        $number = preg_replace('/\D+/', '', $number);
 
-        if ($encrypted || Str::startsWith($v, 'eyJpdiI6')) {
-            try { return Crypt::decryptString($v); } catch (\Throwable) { /* fall through */ }
+        if (str_starts_with($number, '05')) {
+            $number = '971' . substr($number, 1);
         }
-        return $v;
+
+        if (str_starts_with($number, '9710')) {
+            $number = '971' . substr($number, 3);
+        }
+
+        return $number;
     }
 
-    protected function hasValue($v): bool
-    {
-        return isset($v) && trim((string)$v) !== '';
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant Provider Resolver
+    |--------------------------------------------------------------------------
+    */
 
-    /** Optional: per-tenant provider override (company_settings key `whatsapp.provider`) */
-    protected function getTenantProvider(?int $companyId): ?string
+    protected function getTenantProvider(int $companyId): string
     {
-        if (!$companyId) return null;
-        try {
-            $pv = DB::table('company_settings')
-                ->where('company_id', $companyId)
-                ->whereIn('key', ['whatsapp.provider', 'wa.provider'])
-                ->value('value');
+        $provider = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->whereIn('key', [
+                'whatsapp.provider',
+                'wa.provider',
+                'meta.provider',
+                'provider.whatsapp',
+            ])
+            ->value('value');
 
-            $pv = is_string($pv) ? strtolower(trim($pv)) : null;
-            return in_array($pv, ['meta', 'twilio', 'gupshup'], true) ? $pv : null;
-        } catch (\Throwable $e) {
-            return null;
+        $provider = strtolower(trim((string) $provider));
+
+        if (!$provider) {
+            return 'meta';
         }
+
+        return $provider;
     }
 }

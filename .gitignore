@@ -12,3 +12,6 @@
 /coverage
 /public/build/
 /backup.sql
+/tmp_frames/
+/scripts/
+/public/loader/

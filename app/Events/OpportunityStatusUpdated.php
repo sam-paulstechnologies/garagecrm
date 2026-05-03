@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use App\Models\Opportunity\Opportunity;
+use App\Models\Client\Opportunity;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -10,5 +10,8 @@ class OpportunityStatusUpdated
 {
     use Dispatchable, SerializesModels;
 
-    public function __construct(public Opportunity $opportunity, public string $status) {}
+    public function __construct(
+        public Opportunity $opportunity,
+        public string $status
+    ) {}
 }

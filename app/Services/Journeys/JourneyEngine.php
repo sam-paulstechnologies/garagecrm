@@ -2,22 +2,33 @@
 
 namespace App\Services\Journeys;
 
-use App\Models\{Journey, JourneyEnrollment, JourneyStep, MessageTemplate, WhatsAppMessage};
+use App\Models\Journey;
+use App\Models\JourneyEnrollment;
+use App\Models\JourneyStep;
+use App\Models\AutomationLog;
+use App\Models\WhatsApp\WhatsAppMessage;
+use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Services\WhatsApp\ProviderFactory;
 
 class JourneyEngine
 {
-    /** Enroll an entity into all active journeys for a trigger and immediately advance */
-    public function enrollForTrigger(int $companyId, string $trigger, object $enrollable, array $context = []): void
-    {
-        $journeys = Journey::where([
-            'company_id' => $companyId,
-            'trigger'    => $trigger,
-            'is_active'  => true
-        ])->get();
+    /**
+     * Enroll entity into all active journeys matching trigger_key
+     */
+    public function enrollForTrigger(
+        int $companyId,
+        string $triggerKey,
+        object $enrollable,
+        array $context = []
+    ): void {
+        $journeys = Journey::where('company_id', $companyId)
+            ->where('trigger_key', $triggerKey)
+            ->where('is_active', true)
+            ->get();
 
         foreach ($journeys as $journey) {
-            $enr = JourneyEnrollment::create([
+
+            $enrollment = JourneyEnrollment::create([
                 'company_id'            => $companyId,
                 'journey_id'            => $journey->id,
                 'enrollable_type'       => get_class($enrollable),
@@ -27,18 +38,49 @@ class JourneyEngine
                 'context'               => $context,
             ]);
 
-            $this->advance($enr);
+            AutomationLog::create([
+                'company_id'      => $companyId,
+                'entity_type'     => get_class($enrollable),
+                'entity_id'       => $enrollable->id,
+                'automation_type' => 'journey',
+                'action'          => 'ENROLLED',
+                'meta'            => [
+                    'journey_id' => $journey->id,
+                    'trigger'    => $triggerKey,
+                    'context'    => $context,
+                ],
+            ]);
+
+            $this->advance($enrollment);
         }
     }
 
-    /** Advance to next step; handle types: SEND_WHATSAPP, WAIT, IF, TAG, STOP */
+    /**
+     * Execute next step
+     */
     public function advance(JourneyEnrollment $enr): void
     {
-        if ($enr->status !== 'active') return;
+        if ($enr->status !== 'active') {
+            return;
+        }
 
-        $step = $enr->journey->steps->firstWhere('position', $enr->current_step_position + 1);
+        $enr->loadMissing('journey.steps');
+
+        $step = $enr->journey->steps
+            ->firstWhere('position', $enr->current_step_position + 1);
+
         if (!$step) {
             $enr->update(['status' => 'completed']);
+
+            AutomationLog::create([
+                'company_id'      => $enr->company_id,
+                'entity_type'     => $enr->enrollable_type,
+                'entity_id'       => $enr->enrollable_id,
+                'automation_type' => 'journey',
+                'action'          => 'COMPLETED',
+                'meta'            => ['journey_id' => $enr->journey_id],
+            ]);
+
             return;
         }
 
@@ -47,83 +89,90 @@ class JourneyEngine
             'WAIT'          => $this->wait($enr, $step),
             'IF'            => $this->branch($enr, $step),
             'TAG'           => $this->tag($enr, $step),
-            'STOP'          => $enr->update(['status' => 'completed']),
+            'STOP'          => $this->stop($enr),
             default         => $this->skip($enr),
         };
     }
 
     private function skip(JourneyEnrollment $enr): void
     {
-        $enr->update(['current_step_position' => $enr->current_step_position + 1]);
+        $enr->update([
+            'current_step_position' => $enr->current_step_position + 1,
+        ]);
+
         $this->advance($enr);
     }
+
+    private function stop(JourneyEnrollment $enr): void
+    {
+        $enr->update(['status' => 'completed']);
+    }
+
+    /* ---------------- WHATSAPP ---------------- */
 
     private function sendWhatsApp(JourneyEnrollment $enr, JourneyStep $step): void
     {
         $cfg = $step->config ?? [];
-        $template = MessageTemplate::find($cfg['template_id'] ?? 0);
-        if (!$template || !$template->is_active) {
+        $template = WhatsAppTemplate::find($cfg['template_id'] ?? null);
+
+        if (!$template) {
             $this->skip($enr);
             return;
         }
 
         $ctx = $enr->context ?? [];
         $to  = $ctx['phone'] ?? null;
+
         if (!$to) {
             $this->skip($enr);
             return;
         }
 
-        // simple {{var}} interpolation from context
-        $body = preg_replace_callback('/{{\s*(\w+)\s*}}/', fn($m) => $ctx[$m[1]] ?? '', $template->body);
+        $body = preg_replace_callback(
+            '/{{\s*(\w+)\s*}}/',
+            fn ($m) => $ctx[$m[1]] ?? '',
+            $template->body
+        );
 
         $msg = WhatsAppMessage::create([
-            'company_id'           => $enr->company_id,
-            'messageable_type'     => $enr->enrollable_type,
-            'messageable_id'       => $enr->enrollable_id,
-            'to'                   => $to,
-            // keep FROM optional; provider client can use its configured default
-            'from'                 => null,
-            'message_template_id'  => $template->id,
-            'body'                 => $body,
-            'status'               => 'queued',
+            'company_id'  => $enr->company_id,
+            'template_id' => $template->id,
+            'to'          => $to,
+            'direction'   => 'out',
+            'status'      => 'queued',
+            'payload'     => [
+                'journey_id' => $enr->journey_id,
+                'step_id'    => $step->id,
+                'body'       => $body,
+            ],
         ]);
 
         try {
-            // Resolve correct provider based on WHATSAPP_PROVIDER
-            $client = ProviderFactory::make();
-            $resp   = $client->send($to, $body);
+            $resp = ProviderFactory::make()->send($to, $body);
 
             $msg->update([
-                'status'                => 'sent',
-                // try common id shapes across providers
-                'provider_message_id'   => $resp['sid'] ?? ($resp['messages'][0]['id'] ?? $resp['message_id'] ?? null),
-                'meta'                  => [
-                    'provider' => config('services.whatsapp.provider'),
-                    'response' => $resp,
-                ],
-                'sent_at'               => now(),
+                'status'              => 'sent',
+                'provider_message_id' => $resp['sid'] ?? null,
             ]);
         } catch (\Throwable $e) {
             $msg->update([
-                'status'    => 'failed',
-                'meta'      => [
-                    'provider' => config('services.whatsapp.provider'),
-                    'error'    => $e->getMessage(),
-                ],
-                'failed_at' => now(),
+                'status'        => 'failed',
+                'error_message' => $e->getMessage(),
             ]);
         }
 
         $this->skip($enr);
     }
 
+    /* ---------------- WAIT ---------------- */
+
     private function wait(JourneyEnrollment $enr, JourneyStep $step): void
     {
-        $wait    = $step->config['wait'] ?? ['minutes' => 5];
-        $seconds = ($wait['seconds'] ?? 0)
-                 + 60 * ($wait['minutes'] ?? 0)
-                 + 3600 * ($wait['hours'] ?? 0);
+        $wait = $step->config['wait'] ?? ['minutes' => 5];
+        $seconds =
+            ($wait['seconds'] ?? 0) +
+            ($wait['minutes'] ?? 0) * 60 +
+            ($wait['hours'] ?? 0) * 3600;
 
         $ctx = $enr->context ?? [];
         $ctx['_wake_at'] = now()->addSeconds($seconds)->toISOString();
@@ -132,8 +181,9 @@ class JourneyEngine
             'context'               => $ctx,
             'current_step_position' => $enr->current_step_position + 1,
         ]);
-        // a scheduled command should pick it up when due
     }
+
+    /* ---------------- IF ---------------- */
 
     private function branch(JourneyEnrollment $enr, JourneyStep $step): void
     {
@@ -144,26 +194,30 @@ class JourneyEngine
         }
 
         $ctx   = $enr->context ?? [];
-        $left  = data_get($ctx, $if['key'] ?? null);
-        $op    = $if['op'] ?? '=';
+        $left  = data_get($ctx, $if['key']);
         $right = $if['value'] ?? null;
+        $op    = $if['op'] ?? '=';
 
-        $ok = match ($op) {
-            '='        => $left == $right,
-            '!='       => $left != $right,
-            'contains' => is_string($left) && str_contains($left, (string) $right),
-            default    => false,
+        $result = match ($op) {
+            '='  => $left == $right,
+            '!=' => $left != $right,
+            default => false,
         };
 
-        $jump = (int) ($ok ? ($if['then_jump'] ?? 1) : ($if['else_jump'] ?? 1));
+        $jump = $result
+            ? ($if['then_jump'] ?? 1)
+            : ($if['else_jump'] ?? 1);
 
-        $enr->update(['current_step_position' => $enr->current_step_position + $jump]);
+        $enr->update([
+            'current_step_position' => $enr->current_step_position + $jump,
+        ]);
+
         $this->advance($enr);
     }
 
     private function tag(JourneyEnrollment $enr, JourneyStep $step): void
     {
-        // placeholder for future tagging functionality
+        // reserved for Phase 9
         $this->skip($enr);
     }
 }

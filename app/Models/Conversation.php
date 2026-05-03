@@ -13,15 +13,11 @@ class Conversation extends Model
         'customer_name',
         'customer_phone',
         'subject',
-
-        // old fields
         'latest_message_at',
-        'is_whatsapp_linked',
-
-        // new fields for Sprint A
         'last_message_at',
         'last_message_preview',
         'unread_count',
+        'is_whatsapp_linked',
     ];
 
     protected $casts = [
@@ -32,18 +28,7 @@ class Conversation extends Model
 
     public function messages()
     {
-        return $this->hasMany(MessageLog::class, 'conversation_id')
-            ->orderBy('id');
-    }
-
-    public function participants()
-    {
-        return $this->hasMany(ConversationParticipant::class);
-    }
-
-    public function scopeForCompany($q, $companyId)
-    {
-        return $q->where('company_id', $companyId);
+        return $this->hasMany(MessageLog::class)->orderBy('id');
     }
 
     public function markAllRead()
@@ -55,5 +40,4 @@ class Conversation extends Model
 
         $this->update(['unread_count' => 0]);
     }
-
 }

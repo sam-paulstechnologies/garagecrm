@@ -9,6 +9,9 @@
         'method' => 'POST',
         'vehicle' => null,
         'clients' => $clients,
+        'makes' => $makes,
+        'models' => $models,
+        'prefillClientId' => $prefillClientId ?? null,
     ])
 </div>
 @endsection

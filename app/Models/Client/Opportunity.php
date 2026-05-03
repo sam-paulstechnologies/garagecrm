@@ -2,37 +2,80 @@
 
 namespace App\Models\Client;
 
+use App\Models\Job\Booking;
+use App\Models\Job\Invoice;
+use App\Models\Job\Job;
+use App\Models\Traits\BelongsToCompany;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Opportunity extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, BelongsToCompany;
+
+    protected $table = 'opportunities';
+
+    public const STAGE_NEW = 'new';
+    public const STAGE_ATTEMPTING_CONTACT = 'attempting_contact';
+    public const STAGE_COLLECTING_DETAILS = 'collecting_details';
+    public const STAGE_MANAGER_CONFIRMATION_PENDING = 'manager_confirmation_pending';
+    public const STAGE_APPOINTMENT = 'appointment';
+    public const STAGE_OFFER = 'offer';
+    public const STAGE_CLOSED_WON = 'closed_won';
+    public const STAGE_CLOSED_LOST = 'closed_lost';
+
+    public const STAGES = [
+        self::STAGE_NEW,
+        self::STAGE_ATTEMPTING_CONTACT,
+        self::STAGE_COLLECTING_DETAILS,
+        self::STAGE_MANAGER_CONFIRMATION_PENDING,
+        self::STAGE_APPOINTMENT,
+        self::STAGE_OFFER,
+        self::STAGE_CLOSED_WON,
+        self::STAGE_CLOSED_LOST,
+    ];
+
+    public const ACTIVE_STAGES = [
+        self::STAGE_NEW,
+        self::STAGE_ATTEMPTING_CONTACT,
+        self::STAGE_COLLECTING_DETAILS,
+        self::STAGE_MANAGER_CONFIRMATION_PENDING,
+        self::STAGE_APPOINTMENT,
+        self::STAGE_OFFER,
+    ];
 
     protected $fillable = [
         'client_id',
         'lead_id',
         'company_id',
+
         'title',
         'service_type',
-        'stage',
-        'value',
-        'expected_close_date',
         'notes',
         'source',
-        'assigned_to',
+
+        'stage',
         'priority',
+        'value',
+        'expected_close_date',
         'is_converted',
         'close_reason',
+
+        'ai_status',
+
         'next_follow_up',
         'expected_duration',
         'score',
+
+        'assigned_to',
+
         'vehicle_id',
         'vehicle_make_id',
         'vehicle_model_id',
@@ -40,71 +83,163 @@ class Opportunity extends Model
         'other_model',
     ];
 
-    /* -------------------------
-     | Relationships
-     ------------------------- */
-    public function client(): BelongsTo { return $this->belongsTo(Client::class); }
-    public function lead(): BelongsTo   { return $this->belongsTo(Lead::class); }
+    protected $casts = [
+        'value' => 'decimal:2',
+        'is_converted' => 'boolean',
+        'expected_close_date' => 'date',
+        'next_follow_up' => 'date',
+        'score' => 'integer',
+    ];
 
-    /** Primary accessor used in controllers/partials */
+    protected $with = [
+        'client',
+        'assignee',
+        'vehicle',
+        'vehicleMake',
+        'vehicleModel',
+    ];
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to')
-            ->withDefault(['name' => 'Unassigned']);
+            ->withDefault([
+                'name' => 'Unassigned',
+            ]);
     }
 
-    /** Alias for UI that references owner() */
-    public function owner(): BelongsTo { return $this->assignee(); }
-
-    public function vehicle(): BelongsTo { return $this->belongsTo(Vehicle::class); }
-    public function vehicleMake(): BelongsTo { return $this->belongsTo(VehicleMake::class, 'vehicle_make_id'); }
-    public function vehicleModel(): BelongsTo { return $this->belongsTo(VehicleModel::class, 'vehicle_model_id'); }
-
-    /* -------------------------
-     | Accessors & Mutators
-     ------------------------- */
-    public function getServiceTypeArrayAttribute(): array
+    public function owner(): BelongsTo
     {
-        return explode(',', $this->service_type ?? '');
+        return $this->assignee();
     }
 
-    public function setServiceTypeArrayAttribute($value): void
+    public function vehicle(): BelongsTo
     {
-        $this->attributes['service_type'] = is_array($value) ? implode(',', $value) : $value;
+        return $this->belongsTo(Vehicle::class, 'vehicle_id');
     }
 
-    /* -------------------------
-     | Scopes
-     ------------------------- */
-    public function scopeForCompany($query, $companyId)
+    public function vehicleMake(): BelongsTo
     {
-        return $query->where('company_id', $companyId);
+        return $this->belongsTo(VehicleMake::class, 'vehicle_make_id');
     }
 
-    /* -------------------------
-     | Convenience
-     ------------------------- */
-    /** Safely set vehicle fields in one call */
-    public function setVehicle(?int $makeId, ?int $modelId, ?string $otherMake, ?string $otherModel): void
+    public function vehicleModel(): BelongsTo
     {
-        $this->vehicle_make_id  = $makeId   ?: $this->vehicle_make_id;
-        $this->vehicle_model_id = $modelId  ?: $this->vehicle_model_id;
-        $this->other_make       = $otherMake  ?: $this->other_make;
-        $this->other_model      = $otherModel ?: $this->other_model;
+        return $this->belongsTo(VehicleModel::class, 'vehicle_model_id');
     }
 
-    /** Human-readable label for UI */
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class, 'opportunity_id');
+    }
+
+    public function jobs(): HasMany
+    {
+        return $this->hasMany(Job::class, 'opportunity_id');
+    }
+
+    public function invoices()
+    {
+        return $this->hasManyThrough(
+            Invoice::class,
+            Job::class,
+            'opportunity_id',
+            'job_id',
+            'id',
+            'id'
+        );
+    }
+
     public function getVehicleLabelAttribute(): ?string
     {
-        $mk = $this->vehicleMake?->name ?? $this->other_make;
-        $md = $this->vehicleModel?->name ?? $this->other_model;
-        if (!$mk && !$md) return null;
-        return trim($mk.' '.$md);
+        if ($this->vehicle) {
+            $make = $this->vehicle->make?->name;
+            $model = $this->vehicle->model?->name;
+
+            $label = trim(($make ?? '') . ' ' . ($model ?? ''));
+
+            if ($label !== '') {
+                return $label;
+            }
+        }
+
+        $make = $this->vehicleMake?->name ?? $this->other_make;
+        $model = $this->vehicleModel?->name ?? $this->other_model;
+
+        $label = trim(($make ?? '') . ' ' . ($model ?? ''));
+
+        return $label !== '' ? $label : null;
     }
 
-    /** Optional: fallback to lead vehicle if set */
-    public function getDefaultVehicleAttribute()
+    public function getStageLabelAttribute(): string
     {
-        return $this->lead?->vehicle ?? null;
+        return match ((string) $this->stage) {
+            self::STAGE_NEW => 'New',
+            self::STAGE_ATTEMPTING_CONTACT => 'Attempting Contact',
+            self::STAGE_COLLECTING_DETAILS => 'Collecting Details',
+            self::STAGE_MANAGER_CONFIRMATION_PENDING => 'Manager Confirmation Pending',
+            self::STAGE_APPOINTMENT => 'Appointment',
+            self::STAGE_OFFER => 'Offer',
+            self::STAGE_CLOSED_WON => 'Closed Won',
+            self::STAGE_CLOSED_LOST => 'Closed Lost',
+            default => ucfirst(str_replace('_', ' ', (string) $this->stage)),
+        };
+    }
+
+    public function markCollectingDetails(): void
+    {
+        $this->update([
+            'stage' => self::STAGE_COLLECTING_DETAILS,
+        ]);
+    }
+
+    public function markManagerConfirmation(): void
+    {
+        $this->update([
+            'stage' => self::STAGE_MANAGER_CONFIRMATION_PENDING,
+        ]);
+    }
+
+    public function markAppointmentBooked(): void
+    {
+        $this->update([
+            'stage' => self::STAGE_APPOINTMENT,
+        ]);
+    }
+
+    public function markClosedWon(): void
+    {
+        $this->update([
+            'stage' => self::STAGE_CLOSED_WON,
+            'is_converted' => true,
+        ]);
+    }
+
+    public function markClosedLost(?string $reason = null): void
+    {
+        $this->update([
+            'stage' => self::STAGE_CLOSED_LOST,
+            'close_reason' => $reason,
+            'is_converted' => false,
+        ]);
+    }
+
+    public function scopePendingManager($query)
+    {
+        return $query->where('stage', self::STAGE_MANAGER_CONFIRMATION_PENDING);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->whereIn('stage', self::ACTIVE_STAGES);
     }
 }

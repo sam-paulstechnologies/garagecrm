@@ -8,7 +8,7 @@ use App\Http\Requests\Communication\UpdateCommunicationRequest;
 use App\Models\Client\Client;
 use App\Models\Lead\Lead;
 use App\Models\Opportunity\Opportunity;
-use App\Models\Booking\Booking;
+use App\Models\Job\Booking;
 use App\Models\Shared\Communication;
 use Illuminate\Http\Request;
 
@@ -16,13 +16,14 @@ class CommunicationController extends Controller
 {
     public function index(Request $request)
     {
-        $companyId = company_id(); // replace with your tenant resolver
-        $filters   = $request->only([
+        $companyId = company_id();
+
+        $filters = $request->only([
             'client_id','lead_id','opportunity_id','booking_id',
             'type','follow_up_required','date_from','date_to','q'
         ]);
 
-        $communications = Communication::with(['client'])
+        $communications = Communication::with('client')
             ->forCompany($companyId)
             ->filter($filters)
             ->orderByDesc('communication_date')
@@ -40,15 +41,14 @@ class CommunicationController extends Controller
     public function create(Request $request)
     {
         $companyId = company_id();
-        $clients   = Client::where('company_id', $companyId)->orderBy('name')->get(['id','name']);
 
-        $prefill = [
-            'client_id'      => $request->get('client_id'),
-            'lead_id'        => $request->get('lead_id'),
-            'opportunity_id' => $request->get('opportunity_id'),
-            'booking_id'     => $request->get('booking_id'),
-            'type'           => $request->get('type'),
-        ];
+        $clients = Client::where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id','name']);
+
+        $prefill = $request->only([
+            'client_id','lead_id','opportunity_id','booking_id','type'
+        ]);
 
         return view('admin.communications.create', compact('clients','prefill'));
     }
@@ -57,14 +57,12 @@ class CommunicationController extends Controller
     {
         $data = $request->validated();
         $data['company_id'] = company_id();
-        if (empty($data['communication_date'])) {
-            $data['communication_date'] = now();
-        }
+        $data['communication_date'] ??= now();
 
-        $comm = Communication::create($data);
+        $communication = Communication::create($data);
 
         return redirect()
-            ->route('admin.communications.show', $comm)
+            ->route('admin.communications.show', $communication)
             ->with('success', 'Communication logged successfully.');
     }
 
@@ -79,8 +77,10 @@ class CommunicationController extends Controller
     public function edit(Communication $communication)
     {
         $this->authorizeCompany($communication);
-        $companyId = company_id();
-        $clients   = Client::where('company_id', $companyId)->orderBy('name')->get(['id','name']);
+
+        $clients = Client::where('company_id', company_id())
+            ->orderBy('name')
+            ->get(['id','name']);
 
         return view('admin.communications.edit', compact('communication','clients'));
     }
@@ -105,63 +105,36 @@ class CommunicationController extends Controller
             ->with('success', 'Communication deleted.');
     }
 
-    // Embedded lists
-    public function clientList(Client $client)
+    /* ============================================================
+     | FOLLOW-UPS DASHBOARD (R1 – UAT CRITICAL)
+     | Shows all pending follow-ups
+     ============================================================ */
+    public function followUps()
     {
-        $this->authorizeCompany($client);
+        $communications = Communication::with('client')
+            ->forCompany(company_id())
+            ->pendingFollowups()
+            ->orderBy('communication_date')
+            ->paginate(20);
 
-        $communications = Communication::where('company_id', company_id())
-            ->where('client_id', $client->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('id')
-            ->paginate(10);
-
-        return view('admin.communications._list', compact('communications'));
+        return view('admin.communications.followups', compact('communications'));
     }
 
-    public function leadList(Lead $lead)
+    /* ✅ FOLLOW-UP COMPLETE */
+    public function complete(Communication $communication)
     {
-        $this->authorizeCompany($lead);
+        $this->authorizeCompany($communication);
 
-        $communications = Communication::where('company_id', company_id())
-            ->where('lead_id', $lead->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('id')
-            ->paginate(10);
+        $communication->update([
+            'completed_at'       => now(),
+            'follow_up_required' => false,
+        ]);
 
-        return view('admin.communications._list', compact('communications'));
-    }
-
-    public function opportunityList(Opportunity $opportunity)
-    {
-        $this->authorizeCompany($opportunity);
-
-        $communications = Communication::where('company_id', company_id())
-            ->where('opportunity_id', $opportunity->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('id')
-            ->paginate(10);
-
-        return view('admin.communications._list', compact('communications'));
-    }
-
-    public function bookingList(Booking $booking)
-    {
-        $this->authorizeCompany($booking);
-
-        $communications = Communication::where('company_id', company_id())
-            ->where('booking_id', $booking->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('id')
-            ->paginate(10);
-
-        return view('admin.communications._list', compact('communications'));
+        return back()->with('success', 'Follow-up marked as completed.');
     }
 
     protected function authorizeCompany($model): void
     {
-        if (method_exists($model, 'getAttribute') && $model->getAttribute('company_id') !== company_id()) {
-            abort(403);
-        }
+        abort_if($model->company_id !== company_id(), 403);
     }
 }

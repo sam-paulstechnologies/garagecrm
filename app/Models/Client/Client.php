@@ -4,25 +4,23 @@ namespace App\Models\Client;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
-use App\Models\Client\Lead;
-use App\Models\Client\Opportunity;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Shared\File;
-use App\Models\Client\Note;
-use App\Models\Vehicle\Vehicle;
-use App\Models\Job\Job;
-use App\Models\Job\Invoice;
-use App\Models\Job\JobDocument;
 
 class Client extends Model
 {
     use HasFactory;
 
+    protected $table = 'clients';
+
     protected $fillable = [
         'company_id',
         'name',
         'phone',
+        'phone_norm',     // 🔥 ADD THIS COLUMN IN DB
         'whatsapp',
+        'email',
+        'email_norm',     // 🔥 ADD THIS COLUMN IN DB
         'dob',
         'gender',
         'address',
@@ -30,7 +28,6 @@ class Client extends Model
         'state',
         'postal_code',
         'country',
-        'email',
         'source',
         'status',
         'notes',
@@ -45,49 +42,137 @@ class Client extends Model
         'is_archived' => 'boolean',
     ];
 
-    /* ---------------- Relations ---------------- */
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 MODEL EVENTS (NORMALIZATION + SAFETY)
+    |--------------------------------------------------------------------------
+    */
 
-    public function leads()
+    protected static function booted(): void
     {
-        return $this->hasMany(Lead::class, 'client_id', 'id');
+        static::saving(function ($client) {
+
+            // 🔥 NORMALIZE PHONE
+            $client->phone_norm = self::normalizePhone($client->phone);
+
+            // 🔥 NORMALIZE EMAIL
+            $client->email_norm = self::normalizeEmail($client->email);
+
+            // 🔥 WHATSAPP FALLBACK
+            if (!$client->whatsapp && $client->phone) {
+                $client->whatsapp = $client->phone;
+            }
+        });
     }
 
-    public function opportunities()
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 DUPLICATE HELPERS (CRITICAL)
+    |--------------------------------------------------------------------------
+    */
+
+    public static function findByPhone(int $companyId, ?string $phone): ?self
     {
-        return $this->hasMany(Opportunity::class, 'client_id', 'id');
+        if (!$phone) return null;
+
+        return self::where('company_id', $companyId)
+            ->where('phone_norm', self::normalizePhone($phone))
+            ->first();
     }
 
-    public function files()
+    public static function findByEmail(int $companyId, ?string $email): ?self
     {
-        return $this->hasMany(File::class, 'client_id', 'id');
+        if (!$email) return null;
+
+        return self::where('company_id', $companyId)
+            ->where('email_norm', self::normalizeEmail($email))
+            ->first();
     }
 
-    public function notes()
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 NORMALIZATION (UAE SAFE)
+    |--------------------------------------------------------------------------
+    */
+
+    public static function normalizePhone(?string $phone): ?string
     {
-        return $this->hasMany(Note::class, 'client_id', 'id');
+        if (!$phone) return null;
+
+        $phone = preg_replace('/\D+/', '', $phone);
+
+        // UAE logic
+        if (str_starts_with($phone, '05')) {
+            $phone = '971' . substr($phone, 1);
+        }
+
+        if (str_starts_with($phone, '9710')) {
+            $phone = '971' . substr($phone, 3);
+        }
+
+        return $phone ?: null;
     }
 
-    /** 🚗 Client → Vehicles */
-    public function vehicles()
+    public static function normalizeEmail(?string $email): ?string
     {
-        return $this->hasMany(Vehicle::class, 'client_id', 'id');
+        if (!$email) return null;
+
+        $email = trim(mb_strtolower($email));
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
     }
 
-    /** 🧾 Invoices linked to this client */
-    public function invoices()
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONSHIPS
+    |--------------------------------------------------------------------------
+    */
+
+    public function vehicles(): HasMany
     {
-        return $this->hasMany(Invoice::class, 'client_id', 'id');
+        return $this->hasMany(\App\Models\Vehicle\Vehicle::class, 'client_id');
     }
 
-    /** 🔧 Service Jobs linked to client */
-    public function jobs()
+    public function opportunities(): HasMany
     {
-        return $this->hasMany(Job::class, 'client_id', 'id');
+        return $this->hasMany(\App\Models\Client\Opportunity::class, 'client_id');
     }
 
-    /** 📄 Documents assigned to this client */
-    public function jobDocuments()
+    public function leads(): HasMany
     {
-        return $this->hasMany(JobDocument::class, 'client_id', 'id');
+        return $this->hasMany(\App\Models\Client\Lead::class, 'client_id');
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(\App\Models\Client\Note::class, 'client_id')
+            ->latest();
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(\App\Models\Job\Booking::class, 'client_id')
+            ->orderByDesc('created_at');
+    }
+
+    public function files(): HasMany
+    {
+        return $this->hasMany(File::class, 'client_id')
+            ->orderByDesc('uploaded_at');
+    }
+
+    public function jobDocuments(): HasMany
+    {
+        return $this->hasMany(File::class, 'client_id')
+            ->whereNotNull('job_id')
+            ->orderByDesc('uploaded_at');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(
+            \App\Models\Client\ClientDocument::class,
+            'client_id'
+        );
     }
 }

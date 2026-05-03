@@ -6,8 +6,24 @@ use Illuminate\Database\Eloquent\Model;
 
 class Journey extends Model
 {
-    protected $fillable = ['company_id','name','trigger','is_active'];
-    protected $casts = ['is_active'=>'boolean'];
+    protected $fillable = [
+        'company_id',
+        'name',
+        'trigger_key',
+        'description',
+        'triggers',
+        'rules',
+        'is_active',
+    ];
 
-    public function steps(){ return $this->hasMany(JourneyStep::class)->orderBy('position'); }
+    protected $casts = [
+        'is_active' => 'boolean',
+        'triggers'  => 'array',
+        'rules'     => 'array',
+    ];
+
+    public function steps()
+    {
+        return $this->hasMany(JourneyStep::class)->orderBy('position');
+    }
 }

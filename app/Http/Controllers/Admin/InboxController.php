@@ -4,54 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Models\MessageLog;
+use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
 
 class InboxController extends Controller
 {
-    public function index(Request $request)
-    {
-        $user = $request->user();
-        $companyId = (int) $user->company_id;
-
-        $conversations = Conversation::forCompany($companyId)
-            ->orderByDesc('last_message_at')
-            ->paginate(30);
-
-        return view('admin.chat.index', [
-            'conversations'        => $conversations,
-            'activeConversation'   => null,
-            'activeConversationId' => null,
-            'initialMessagesJson'  => json_encode([]),
-        ]);
-    }
-
-    public function show(Request $request, Conversation $conversation)
-    {
-        $this->authorize('view', $conversation);
-
-        $user = $request->user();
-        $companyId = (int) $user->company_id;
-
-        $conversations = Conversation::forCompany($companyId)
-            ->orderByDesc('last_message_at')
-            ->paginate(30);
-
-        return view('admin.chat.index', [
-            'conversations'        => $conversations,
-            'activeConversation'   => $conversation,
-            'activeConversationId' => $conversation->id,
-            'initialMessagesJson'  => json_encode([]),
-        ]);
-    }
-
-    /**
-     * NEW — JSON API for refreshing left panel
-     */
     public function jsonList(Request $request)
     {
         $companyId = (int) $request->user()->company_id;
 
-        $items = Conversation::forCompany($companyId)
+        $items = Conversation::where('company_id', $companyId)
             ->orderByDesc('last_message_at')
             ->limit(50)
             ->get()
@@ -64,12 +27,87 @@ class InboxController extends Controller
                     'last_message_at' => optional($c->last_message_at)->toIso8601String(),
                     'unread_count' => (int) $c->unread_count,
                 ];
-            })
-            ->values();
+            });
 
         return response()->json([
             'ok' => true,
             'conversations' => $items
         ]);
+    }
+
+    public function jsonMessages(Request $request, Conversation $conversation)
+    {
+        // 🔥 COMPANY SAFE ACCESS
+        abort_if(
+            $conversation->company_id !== $request->user()->company_id,
+            403
+        );
+
+        $messages = $conversation->messages()
+            ->orderBy('id')
+            ->get()
+            ->map(function ($m) {
+                return [
+                    'id' => $m->id,
+                    'direction' => $m->direction,
+                    'body' => $m->body,
+                    'created_at' => $m->created_at->toIso8601String(),
+                    'is_ai' => $m->is_ai,
+                ];
+            });
+
+        $conversation->markAllRead();
+
+        return response()->json([
+            'ok' => true,
+            'messages' => $messages
+        ]);
+    }
+
+    public function send(Request $request, WhatsAppService $wa)
+    {
+        $request->validate([
+            'conversation_id' => 'required|exists:conversations,id',
+            'message' => 'required|string'
+        ]);
+
+        $companyId = (int) $request->user()->company_id;
+
+        // 🔥 SAFE FETCH (CRITICAL FIX)
+        $conversation = Conversation::where('id', $request->conversation_id)
+            ->where('company_id', $companyId)
+            ->firstOrFail();
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔥 MANAGER TAKEOVER (CRITICAL FIX)
+        |--------------------------------------------------------------------------
+        */
+        if ($conversation->lead) {
+            $conversation->lead->update([
+                'conversation_state' => 'human' // 🔥 stops bot
+            ]);
+        }
+
+        // Send WhatsApp
+        $wa->sendText(
+            $conversation->customer_phone,
+            $request->message,
+            ['company_id' => $companyId]
+        );
+
+        // Log message
+        MessageLog::out([
+            'company_id' => $companyId,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $conversation->lead_id,
+            'channel' => 'whatsapp',
+            'to_number' => $conversation->customer_phone,
+            'from_number' => null,
+            'body' => $request->message,
+            'source' => 'human',
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 }

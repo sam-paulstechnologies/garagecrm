@@ -1,107 +1,148 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Middleware\VerifyCsrfToken;
 
-/** Webhooks */
+/*
+|--------------------------------------------------------------------------
+| Webhook Controllers
+|--------------------------------------------------------------------------
+*/
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
 
-/** Auth’d API */
+/*
+|--------------------------------------------------------------------------
+| Public API Controllers
+|--------------------------------------------------------------------------
+*/
+use App\Http\Controllers\Api\WebsiteLeadController;
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated API Controllers
+|--------------------------------------------------------------------------
+*/
 use App\Http\Controllers\Api\WhatsAppTemplateApiController;
 use App\Http\Controllers\Api\WhatsAppCampaignApiController;
 use App\Http\Controllers\Api\WhatsAppMessageApiController;
 use App\Http\Controllers\Api\WhatsAppSettingApiController;
-
-/** Sprint-2: Booking summary + transitions */
 use App\Http\Controllers\Api\BookingSummaryController;
 use App\Http\Controllers\Api\BookingTransitionController;
+use App\Http\Controllers\Api\MeController;
 
 /*
 |--------------------------------------------------------------------------
-| Public (no auth) API v1
+| Public API v1 (Stateless)
 |--------------------------------------------------------------------------
 */
 Route::prefix('v1')->group(function () {
-    // Health check
-    Route::get('/health', fn () => response()->json(['ok' => true, 'ts' => now()->toISOString()]));
 
-    // Twilio WhatsApp webhooks (no CSRF)
-    Route::match(['GET','POST','HEAD'], '/webhooks/twilio/whatsapp',
+    // Health
+    Route::get('/health', fn () => response()->json([
+        'ok' => true,
+        'ts' => now()->toISOString(),
+    ]));
+
+    // Website Lead
+    Route::post(
+        '/website-leads/{token}',
+        [WebsiteLeadController::class, 'store']
+    )->name('api.website-leads.store');
+
+    /*
+    |--------------------------------------------------------------------------
+    | META WHATSAPP WEBHOOK (ONLY HERE)
+    |--------------------------------------------------------------------------
+    */
+    Route::get(
+        '/webhooks/meta/whatsapp',
+        [MetaWhatsAppWebhookController::class, 'verify']
+    );
+
+    Route::post(
+        '/webhooks/meta/whatsapp',
+        [MetaWhatsAppWebhookController::class, 'handle']
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | TWILIO WHATSAPP WEBHOOKS
+    |--------------------------------------------------------------------------
+    */
+    Route::match(['GET','POST','HEAD'],
+        '/webhooks/twilio/whatsapp',
         [TwilioWhatsAppWebhookController::class, 'handle']
-    )->withoutMiddleware(VerifyCsrfToken::class)
-     ->name('api.webhooks.twilio.whatsapp');
+    )->name('api.webhooks.twilio.whatsapp');
 
-    Route::match(['GET','POST','HEAD'], '/webhooks/twilio/whatsapp/status',
+    Route::match(['GET','POST','HEAD'],
+        '/webhooks/twilio/whatsapp/status',
         [TwilioWhatsAppWebhookController::class, 'status']
-    )->withoutMiddleware(VerifyCsrfToken::class)
-     ->name('api.webhooks.twilio.whatsapp.status');
+    )->name('api.webhooks.twilio.whatsapp.status');
 
-    Route::get('/webhooks/twilio/ping', fn () => 'twilio-ok')
-        ->withoutMiddleware(VerifyCsrfToken::class);
+    Route::get('/webhooks/twilio/ping', fn () => 'twilio-ok');
 
-    // Generic OPTIONS preflight for any webhook path
-    Route::options('/webhooks/{any}', fn () => response()->noContent())
-        ->where('any', '.*')
-        ->withoutMiddleware(VerifyCsrfToken::class);
 });
 
 /*
 |--------------------------------------------------------------------------
-| Authenticated API v1
-| NOTE: Using fixed throttle "60,1" to avoid MissingRateLimiterException.
-|       When you register a named "api" limiter, you can switch back to 'throttle:api'.
+| Authenticated API v1 (Sanctum)
 |--------------------------------------------------------------------------
 */
 Route::prefix('v1')
     ->middleware(['auth:sanctum', 'throttle:60,1'])
     ->group(function () {
 
-        // Current user
-        Route::get('/me', \App\Http\Controllers\Api\MeController::class)->name('api.me');
+        Route::get('/me', MeController::class)->name('api.me');
 
-        // WhatsApp Templates
-        Route::prefix('whatsapp/templates')->as('api.whatsapp.templates.')->group(function () {
-            Route::get('/',              [WhatsAppTemplateApiController::class, 'index'])->name('index');
-            Route::post('/',             [WhatsAppTemplateApiController::class, 'store'])->name('store');
-            Route::get('/{id}',          [WhatsAppTemplateApiController::class, 'show'])->name('show');
-            Route::put('/{id}',          [WhatsAppTemplateApiController::class, 'update'])->name('update');
-            Route::delete('/{id}',       [WhatsAppTemplateApiController::class, 'destroy'])->name('destroy');
-            Route::post('/{id}/preview', [WhatsAppTemplateApiController::class, 'preview'])->name('preview');
-        });
+        Route::prefix('whatsapp/templates')
+            ->as('api.whatsapp.templates.')
+            ->group(function () {
+                Route::get('/', [WhatsAppTemplateApiController::class, 'index'])->name('index');
+                Route::post('/', [WhatsAppTemplateApiController::class, 'store'])->name('store');
+                Route::get('/{id}', [WhatsAppTemplateApiController::class, 'show'])->name('show');
+                Route::put('/{id}', [WhatsAppTemplateApiController::class, 'update'])->name('update');
+                Route::delete('/{id}', [WhatsAppTemplateApiController::class, 'destroy'])->name('destroy');
+                Route::post('/{id}/preview', [WhatsAppTemplateApiController::class, 'preview'])->name('preview');
+            });
 
-        // WhatsApp Campaigns
-        Route::prefix('whatsapp/campaigns')->as('api.whatsapp.campaigns.')->group(function () {
-            Route::get('/',           [WhatsAppCampaignApiController::class, 'index'])->name('index');
-            Route::post('/',          [WhatsAppCampaignApiController::class, 'store'])->name('store');
-            Route::get('/{id}',       [WhatsAppCampaignApiController::class, 'show'])->name('show');
-            Route::put('/{id}',       [WhatsAppCampaignApiController::class, 'update'])->name('update');
-            Route::delete('/{id}',    [WhatsAppCampaignApiController::class, 'destroy'])->name('destroy');
-            Route::post('/{id}/send', [WhatsAppCampaignApiController::class, 'sendNow'])->name('send');
-        });
+        Route::prefix('whatsapp/campaigns')
+            ->as('api.whatsapp.campaigns.')
+            ->group(function () {
+                Route::get('/', [WhatsAppCampaignApiController::class, 'index'])->name('index');
+                Route::post('/', [WhatsAppCampaignApiController::class, 'store'])->name('store');
+                Route::get('/{id}', [WhatsAppCampaignApiController::class, 'show'])->name('show');
+                Route::put('/{id}', [WhatsAppCampaignApiController::class, 'update'])->name('update');
+                Route::delete('/{id}', [WhatsAppCampaignApiController::class, 'destroy'])->name('destroy');
+                Route::post('/{id}/send', [WhatsAppCampaignApiController::class, 'sendNow'])->name('send');
+            });
 
-        // WhatsApp Messages
-        Route::prefix('whatsapp/messages')->as('api.whatsapp.messages.')->group(function () {
-            Route::get('/',            [WhatsAppMessageApiController::class, 'index'])->name('index');
-            Route::get('/{id}',        [WhatsAppMessageApiController::class, 'show'])->name('show');
-            Route::post('/{id}/retry', [WhatsAppMessageApiController::class, 'retry'])->name('retry');
-        });
+        Route::prefix('whatsapp/messages')
+            ->as('api.whatsapp.messages.')
+            ->group(function () {
+                Route::get('/', [WhatsAppMessageApiController::class, 'index'])->name('index');
+                Route::get('/{id}', [WhatsAppMessageApiController::class, 'show'])->name('show');
+                Route::post('/{id}/retry', [WhatsAppMessageApiController::class, 'retry'])->name('retry');
+            });
 
-        // WhatsApp Settings
-        Route::prefix('whatsapp/settings')->as('api.whatsapp.settings.')->group(function () {
-            Route::get('/',  [WhatsAppSettingApiController::class, 'show'])->name('show');
-            Route::post('/', [WhatsAppSettingApiController::class, 'update'])->name('update');
-        });
+        Route::prefix('whatsapp/settings')
+            ->as('api.whatsapp.settings.')
+            ->group(function () {
+                Route::get('/', [WhatsAppSettingApiController::class, 'show'])->name('show');
+                Route::post('/', [WhatsAppSettingApiController::class, 'update'])->name('update');
+            });
 
-        // Sprint-2: Booking Summary & Transition
-        Route::get('/bookings/{id}/summary',     [BookingSummaryController::class, 'show'])->name('api.bookings.summary');
-        Route::post('/bookings/{id}/transition', [BookingTransitionController::class, 'store'])->name('api.bookings.transition');
+        Route::get('/bookings/{id}/summary', [BookingSummaryController::class, 'show'])
+            ->name('api.bookings.summary');
+
+        Route::post('/bookings/{id}/transition', [BookingTransitionController::class, 'store'])
+            ->name('api.bookings.transition');
     });
 
 /*
 |--------------------------------------------------------------------------
-| Fallback
+| API Fallback
 |--------------------------------------------------------------------------
 */
-Route::fallback(function () {
-    return response()->json(['message' => 'Endpoint not found.'], 404);
-});
+Route::fallback(fn () => response()->json([
+    'message' => 'Endpoint not found.',
+], 404));

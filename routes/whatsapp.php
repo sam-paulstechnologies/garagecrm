@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\WhatsAppTemplateController;
 use App\Http\Controllers\Admin\WhatsAppCampaignController;
 use App\Http\Controllers\Admin\WhatsAppMappingController;
@@ -14,91 +13,198 @@ use App\Http\Controllers\Admin\MessageLogController;
 use App\Jobs\SendWhatsAppFromTemplate;
 use App\Models\Client\Lead;
 
-// Optional admin dashboard (will live at /admin/dashboard)
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+/*
+|--------------------------------------------------------------------------
+| Admin WhatsApp Module
+|--------------------------------------------------------------------------
+| IMPORTANT:
+| Do NOT define /dashboard here.
+| Main /dashboard is handled in routes/web.php for role-based redirect.
+|--------------------------------------------------------------------------
+*/
 
-// /admin/whatsapp/*
-Route::prefix('whatsapp')->as('whatsapp.')->group(function () {
+Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
+    ->prefix('admin/whatsapp')
+    ->as('admin.whatsapp.')
+    ->group(function () {
 
-    // Templates
-    Route::get('templates',                 [WhatsAppTemplateController::class, 'index'])->name('templates.index');
-    Route::get('templates/create',          [WhatsAppTemplateController::class, 'create'])->name('templates.create');
-    Route::post('templates',                [WhatsAppTemplateController::class, 'store'])->name('templates.store');
-    Route::get('templates/{template}',      [WhatsAppTemplateController::class, 'show'])->name('templates.show');
-    Route::get('templates/{template}/edit', [WhatsAppTemplateController::class, 'edit'])->name('templates.edit');
-    Route::put('templates/{template}',      [WhatsAppTemplateController::class, 'update'])->name('templates.update');
-    Route::delete('templates/{template}',   [WhatsAppTemplateController::class, 'destroy'])->name('templates.destroy');
+        /*
+        |--------------------------------------------------------------------------
+        | Templates
+        |--------------------------------------------------------------------------
+        */
+        Route::get('templates', [WhatsAppTemplateController::class, 'index'])
+            ->name('templates.index');
 
-    // Template extras
-    Route::post('templates/{template}/preview',   [WhatsAppTemplateController::class, 'preview'])->name('templates.preview');
-    Route::post('templates/{template}/test-send', [WhatsAppTemplateController::class, 'testSend'])->name('templates.test_send');
+        Route::get('templates/create', [WhatsAppTemplateController::class, 'create'])
+            ->name('templates.create');
 
-    // Campaigns
-    Route::get('campaigns',                      [WhatsAppCampaignController::class, 'index'])->name('campaigns.index');
-    Route::get('campaigns/create',               [WhatsAppCampaignController::class, 'create'])->name('campaigns.create');
-    Route::post('campaigns',                     [WhatsAppCampaignController::class, 'store'])->name('campaigns.store');
-    Route::get('campaigns/{campaign}/edit',      [WhatsAppCampaignController::class, 'edit'])->name('campaigns.edit');
-    Route::put('campaigns/{campaign}',           [WhatsAppCampaignController::class, 'update'])->name('campaigns.update');
-    Route::delete('campaigns/{campaign}',        [WhatsAppCampaignController::class, 'destroy'])->name('campaigns.destroy');
-    Route::post('campaigns/{campaign}/send-now', [WhatsAppCampaignController::class, 'sendNow'])->name('campaigns.send_now');
-    Route::post('campaigns/{campaign}/schedule', [WhatsAppCampaignController::class, 'schedule'])->name('campaigns.schedule');
-    Route::post('campaigns/{campaign}/pause',    [WhatsAppCampaignController::class, 'pause'])->name('campaigns.pause');
-    Route::post('campaigns/{campaign}/resume',   [WhatsAppCampaignController::class, 'resume'])->name('campaigns.resume');
+        Route::post('templates', [WhatsAppTemplateController::class, 'store'])
+            ->name('templates.store');
 
-    // Trigger → Template mappings
-    Route::get('mappings',                   [WhatsAppMappingController::class, 'index'])->name('mappings.index');
-    Route::post('mappings',                  [WhatsAppMappingController::class, 'store'])->name('mappings.store');
-    Route::put('mappings/{mapping}',         [WhatsAppMappingController::class, 'update'])->name('mappings.update');
-    Route::post('mappings/{mapping}/toggle', [WhatsAppMappingController::class, 'toggle'])->name('mappings.toggle');
+        Route::get('templates/{template}', [WhatsAppTemplateController::class, 'show'])
+            ->name('templates.show');
 
-    // Messages UI
-    Route::get('messages',                   [WhatsAppMessageController::class, 'index'])->name('messages.index');
-    Route::get('messages/{message}',         [WhatsAppMessageController::class, 'show'])->name('messages.show');
-    Route::post('messages/{message}/retry',  [WhatsAppMessageController::class, 'retry'])->name('messages.retry');
+        Route::get('templates/{template}/edit', [WhatsAppTemplateController::class, 'edit'])
+            ->name('templates.edit');
 
-    // Logs viewer
-    Route::get('logs',                    [MessageLogController::class, 'index'])->name('logs.index');
-    Route::get('logs/{log}',              [MessageLogController::class, 'show'])->name('logs.show');
-    Route::get('logs-export/csv',         [MessageLogController::class, 'exportCsv'])->name('logs.export.csv');
+        Route::put('templates/{template}', [WhatsAppTemplateController::class, 'update'])
+            ->name('templates.update');
 
-    // ✅ Settings (fixes: Route [admin.whatsapp.settings.edit] not defined)
-    Route::get('settings', [WhatsAppSettingController::class, 'edit'])->name('settings.edit');
-    Route::put('settings', [WhatsAppSettingController::class, 'update'])->name('settings.update');
+        Route::delete('templates/{template}', [WhatsAppTemplateController::class, 'destroy'])
+            ->name('templates.destroy');
 
-    // ✅ Performance (fixes: Route [admin.whatsapp.performance.index] not defined)
-    Route::get('performance', [WhatsAppPerformanceController::class, 'index'])
-        ->name('performance.index');
+        Route::post('templates/{template}/preview', [WhatsAppTemplateController::class, 'preview'])
+            ->name('templates.preview');
 
-    // Dev smoke
-    Route::get('dev/wa-smoke', function (\Illuminate\Http\Request $r) {
-        $user = auth()->user();
-        $companyId = (int) $user->company_id;
+        Route::post('templates/{template}/test-send', [WhatsAppTemplateController::class, 'testSend'])
+            ->name('templates.test_send');
 
-        $lead = null;
-        if ($id = $r->query('lead')) {
-            $lead = Lead::where('company_id', $companyId)->find((int)$id);
-        }
-        if (!$lead && ($phone = $r->query('phone'))) {
-            $norm = preg_replace('/\D+/', '', (string)$phone);
-            $lead = Lead::where('company_id', $companyId)->where('phone_norm', $norm)->latest('id')->first();
-        }
-        if (!$lead) {
-            $lead = Lead::where('company_id', $companyId)->whereNotNull('phone')->latest('id')->first();
-        }
-        if (!$lead) {
-            return response('No testable lead found. Create a lead with a valid E.164 phone first.', 400);
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | Campaigns
+        |--------------------------------------------------------------------------
+        */
+        Route::get('campaigns', [WhatsAppCampaignController::class, 'index'])
+            ->name('campaigns.index');
 
-        SendWhatsAppFromTemplate::dispatch(
-            companyId:    $companyId,
-            leadId:       $lead->id,
-            toNumberE164: $lead->phone,
-            templateName: 'lead_welcome',
-            placeholders: [$lead->name ?: 'there'],
-            links:        [],
-            context:      []
-        );
+        Route::get('campaigns/create', [WhatsAppCampaignController::class, 'create'])
+            ->name('campaigns.create');
 
-        return "✅ Dispatched WA for lead #{$lead->id} ({$lead->name}). Check phone {$lead->phone}.";
-    })->name('dev.wa_smoke');
-});
+        Route::post('campaigns', [WhatsAppCampaignController::class, 'store'])
+            ->name('campaigns.store');
+
+        Route::get('campaigns/{campaign}/edit', [WhatsAppCampaignController::class, 'edit'])
+            ->name('campaigns.edit');
+
+        Route::put('campaigns/{campaign}', [WhatsAppCampaignController::class, 'update'])
+            ->name('campaigns.update');
+
+        Route::delete('campaigns/{campaign}', [WhatsAppCampaignController::class, 'destroy'])
+            ->name('campaigns.destroy');
+
+        Route::post('campaigns/{campaign}/send-now', [WhatsAppCampaignController::class, 'sendNow'])
+            ->name('campaigns.send_now');
+
+        Route::post('campaigns/{campaign}/schedule', [WhatsAppCampaignController::class, 'schedule'])
+            ->name('campaigns.schedule');
+
+        Route::post('campaigns/{campaign}/pause', [WhatsAppCampaignController::class, 'pause'])
+            ->name('campaigns.pause');
+
+        Route::post('campaigns/{campaign}/resume', [WhatsAppCampaignController::class, 'resume'])
+            ->name('campaigns.resume');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Trigger Template Mappings
+        |--------------------------------------------------------------------------
+        */
+        Route::get('mappings', [WhatsAppMappingController::class, 'index'])
+            ->name('mappings.index');
+
+        Route::post('mappings', [WhatsAppMappingController::class, 'store'])
+            ->name('mappings.store');
+
+        Route::put('mappings/{mapping}', [WhatsAppMappingController::class, 'update'])
+            ->name('mappings.update');
+
+        Route::post('mappings/{mapping}/toggle', [WhatsAppMappingController::class, 'toggle'])
+            ->name('mappings.toggle');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Messages
+        |--------------------------------------------------------------------------
+        */
+        Route::get('messages', [WhatsAppMessageController::class, 'index'])
+            ->name('messages.index');
+
+        Route::get('messages/{message}', [WhatsAppMessageController::class, 'show'])
+            ->name('messages.show');
+
+        Route::post('messages/{message}/retry', [WhatsAppMessageController::class, 'retry'])
+            ->name('messages.retry');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Logs
+        |--------------------------------------------------------------------------
+        */
+        Route::get('logs', [MessageLogController::class, 'index'])
+            ->name('logs.index');
+
+        Route::get('logs/{log}', [MessageLogController::class, 'show'])
+            ->name('logs.show');
+
+        Route::get('logs-export/csv', [MessageLogController::class, 'exportCsv'])
+            ->name('logs.export.csv');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Settings
+        |--------------------------------------------------------------------------
+        */
+        Route::get('settings', [WhatsAppSettingController::class, 'edit'])
+            ->name('settings.edit');
+
+        Route::put('settings', [WhatsAppSettingController::class, 'update'])
+            ->name('settings.update');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Performance
+        |--------------------------------------------------------------------------
+        */
+        Route::get('performance', [WhatsAppPerformanceController::class, 'index'])
+            ->name('performance.index');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Dev Smoke Test
+        |--------------------------------------------------------------------------
+        */
+        Route::get('dev/wa-smoke', function (\Illuminate\Http\Request $r) {
+
+            $user = auth()->user();
+            $companyId = (int) $user->company_id;
+
+            $lead = null;
+
+            if ($id = $r->query('lead')) {
+                $lead = Lead::where('company_id', $companyId)->find((int) $id);
+            }
+
+            if (!$lead && ($phone = $r->query('phone'))) {
+                $norm = preg_replace('/\D+/', '', (string) $phone);
+
+                $lead = Lead::where('company_id', $companyId)
+                    ->where('phone_norm', $norm)
+                    ->latest('id')
+                    ->first();
+            }
+
+            if (!$lead) {
+                $lead = Lead::where('company_id', $companyId)
+                    ->whereNotNull('phone')
+                    ->latest('id')
+                    ->first();
+            }
+
+            if (!$lead) {
+                return response('No testable lead found. Create a lead with a valid E.164 phone first.', 400);
+            }
+
+            SendWhatsAppFromTemplate::dispatch(
+                companyId: $companyId,
+                leadId: $lead->id,
+                toNumberE164: $lead->phone,
+                templateName: 'lead_welcome',
+                placeholders: [$lead->name ?: 'there'],
+                links: [],
+                context: []
+            );
+
+            return "✅ Dispatched WA for lead #{$lead->id} ({$lead->name}). Check phone {$lead->phone}.";
+        })->name('dev.wa_smoke');
+    });

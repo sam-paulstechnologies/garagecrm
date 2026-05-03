@@ -4,11 +4,12 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class PasswordForceController extends Controller
 {
     /**
-     * Show the "set a new password" screen after an admin reset.
+     * Show force password screen
      */
     public function edit()
     {
@@ -16,7 +17,7 @@ class PasswordForceController extends Controller
     }
 
     /**
-     * Persist the new password and clear the must_change_password flag.
+     * Update password
      */
     public function update(Request $request)
     {
@@ -25,17 +26,19 @@ class PasswordForceController extends Controller
         ]);
 
         $user = $request->user();
+
         $user->password = Hash::make($data['password']);
 
-        // Clear the flag if present.
-        if (\Schema::hasColumn('users', 'must_change_password')) {
+        // Clear flag if exists
+        if (Schema::hasColumn('users', 'must_change_password')) {
             $user->must_change_password = false;
         }
 
         $user->save();
 
+        // 🔥 FIX: redirect based on role
         return redirect()
-            ->route('admin.dashboard')
+            ->route('dashboard')
             ->with('success', 'Password updated successfully.');
     }
 }

@@ -9,17 +9,15 @@ class StartJourneyForLead
 {
     public function handle(LeadCreated $event): void
     {
-        $lead = $event->lead;
-
         app(JourneyEngine::class)->enrollForTrigger(
-            companyId: $lead->company_id,
-            trigger: 'lead.created',
-            enrollable: $lead,
-            context: [
-                'lead_id' => $lead->id,
-                'name'    => $lead->name ?? trim(($lead->first_name ?? '').' '.($lead->last_name ?? '')),
-                'phone'   => $lead->whatsapp ?? $lead->phone ?? null,
-                'source'  => $lead->source ?? null,
+            $event->lead->company_id,
+            'lead.created',
+            $event->lead,
+            [
+                'lead_id' => $event->lead->id,
+                'phone'   => $event->lead->phone_norm,
+                'name'    => $event->lead->name,
+                'source'  => $event->lead->source,
             ]
         );
     }

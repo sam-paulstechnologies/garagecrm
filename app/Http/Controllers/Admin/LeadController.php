@@ -7,386 +7,235 @@ use App\Models\Client\Lead;
 use App\Models\Client\Client;
 use App\Models\Client\Opportunity;
 use App\Models\Shared\Communication;
+use App\Models\User;
+use App\Services\WhatsApp\WhatsAppService;
+use App\Services\Leads\LeadResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class LeadController extends Controller
 {
-    /** 📄 List leads with search, filters, and pagination */
     public function index(Request $request)
     {
         $companyId = auth()->user()->company_id;
-
-        $q         = trim((string) $request->get('q', ''));
-        $status    = $request->get('status');
-        $source    = $request->get('source');
-        $assignee  = $request->get('assigned_to');
-        $isHot     = $request->has('is_hot') ? (int) $request->boolean('is_hot') : null;
-        $order     = $request->get('order', 'latest');
+        $q = trim((string) $request->get('q', ''));
 
         $leads = Lead::query()
             ->with(['client:id,name,phone,email', 'assignee:id,name'])
             ->where('company_id', $companyId)
-            ->when($q, fn($query) => $query->where(fn($sub) => $sub
-                ->where('name', 'like', "%{$q}%")
-                ->orWhere('email', 'like', "%{$q}%")
-                ->orWhere('phone', 'like', "%{$q}%")
-                ->orWhere('notes', 'like', "%{$q}%")
-                ->orWhere('source', 'like', "%{$q}%")))
-            ->when($status, fn($q2) => $q2->where('status', $status))
-            ->when($source, fn($q3) => $q3->where('source', $source))
-            ->when($assignee, fn($q4) => $q4->where('assigned_to', $assignee))
-            ->when(!is_null($isHot), fn($q5) => $q5->where('is_hot', (bool)$isHot))
-            ->when($order === 'score', fn($q6) => $q6->orderByDesc('lead_score')->latest('id'))
-            ->when($order === 'last_contact', fn($q7) => $q7->orderByDesc('last_contacted_at')->latest('id'))
-            ->when($order === 'latest', fn($q8) => $q8->latest())
-            ->paginate(20)
-            ->withQueryString();
+            ->when($q, function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('name', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('phone', 'like', "%{$q}%")
+                        ->orWhere('source', 'like', "%{$q}%");
+                });
+            })
+            ->latest()
+            ->paginate(20);
 
-        return view('admin.leads.index', compact('leads', 'q', 'status', 'source', 'assignee', 'isHot', 'order'));
+        return view('admin.leads.index', compact('leads', 'q'));
     }
 
-    /** ➕ Create form */
     public function create()
     {
-        $clients = Client::where('company_id', auth()->user()->company_id)
-            ->orderBy('name')
-            ->get(['id','name','phone','email']);
+        $companyId = auth()->user()->company_id;
 
-        return view('admin.leads.create', compact('clients'));
+        return view('admin.leads.create', [
+            'clients' => Client::where('company_id', $companyId)->orderBy('name')->get(),
+            'managers' => User::where('company_id', $companyId)
+                ->where('role', 'manager')
+                ->orderBy('name')
+                ->get(),
+        ]);
     }
 
-    /** 💾 Store lead (auto-convert if status=qualified) */
-    public function store(Request $request)
+    public function store(Request $request, WhatsAppService $whatsapp, LeadResolver $leadResolver)
     {
+        $companyId = auth()->user()->company_id;
+
         $data = $request->validate([
-            'name'               => ['required','string','max:255'],
-            'email'              => ['nullable','email','max:150'],
-            'phone'              => ['nullable','string','max:20'],
-            'status'             => ['required','string','max:50'],
-            'source'             => ['nullable','string','max:100'],
-            'notes'              => ['nullable','string'],
-            'assigned_to'        => ['nullable','integer'],
-            'lead_score_reason'  => ['nullable','string'],
-            'preferred_channel'  => ['nullable','in:email,phone,whatsapp'],
-            'is_hot'             => ['nullable','boolean'],
-            'client_id'          => ['nullable','exists:clients,id'],
-            'last_contacted_at'  => ['nullable','date'],
+            'name' => 'required|string|max:255',
+
+            // ✅ FIX: At least one required
+            'email' => 'nullable|email|max:150|required_without:phone',
+            'phone' => 'nullable|string|max:20|required_without:email',
+
+            'source' => 'nullable|string|max:100',
+            'notes' => 'nullable|string',
+
+            // ✅ FIX: Company scoped validation
+            'assigned_to' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId))
+            ],
+
+            'client_id' => [
+                'nullable',
+                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId))
+            ],
+
+            'preferred_channel' => 'nullable|in:email,phone,whatsapp',
         ]);
 
-        $data['company_id'] = auth()->user()->company_id;
-        $newStatus = strtolower((string) ($data['status'] ?? ''));
+        $data['company_id'] = $companyId;
+        $data['status'] = 'new';
+        $data['source'] = $data['source'] ?? 'Manual';
 
-        $lead = null;
+        DB::transaction(function () use ($data, $leadResolver, $companyId, &$lead, &$messageType, &$messageText) {
 
-        DB::transaction(function () use (&$lead, $data, $newStatus) {
-            $lead = Lead::create($data);
+            $lead = $leadResolver->resolve([
+                'name' => $data['name'],
+                'phone' => $data['phone'],
+                'email' => $data['email'],
+                'source' => $data['source'],
+            ], $companyId);
 
-            if (method_exists($lead, 'calculateScore')) {
-                $lead->calculateScore();
+            if (!$lead) {
+                throw new \Exception('Lead creation failed');
             }
 
-            if ($newStatus === 'qualified') {
+            // ✅ UX message
+            if ($lead->wasRecentlyCreated) {
+                $messageType = 'success';
+                $messageText = '✅ New lead created successfully.';
+            } else {
+                if ($lead->is_active) {
+                    $messageType = 'warning';
+                    $messageText = '⚠️ Active lead already exists. Reusing existing record.';
+                } else {
+                    $messageType = 'success';
+                    $messageText = '🔁 Previous enquiry closed. New lead created.';
+                }
+            }
+
+            // Update optional fields
+            $lead->update([
+                'assigned_to' => $data['assigned_to'] ?? $lead->assigned_to,
+                'notes' => $data['notes'] ?? $lead->notes,
+                'preferred_channel' => $data['preferred_channel'] ?? $lead->preferred_channel,
+            ]);
+
+            // ✅ FIX: Convert ONLY if new lead
+            if ($lead->wasRecentlyCreated) {
                 $this->convertToOpportunity($lead);
             }
         });
 
-        return redirect()->route('admin.leads.index')->with('success', 'Lead created.');
+        session()->flash($messageType, $messageText);
+
+        return redirect()->route('admin.leads.index');
     }
 
-    /** ✏️ Edit form */
-    public function edit(Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $clients = Client::where('company_id', auth()->user()->company_id)
-            ->orderBy('name')
-            ->get(['id','name','phone','email']);
-
-        return view('admin.leads.edit', compact('lead', 'clients'));
-    }
-
-    /** 🔁 Update lead (auto-convert when moving into qualified) */
-    public function update(Request $request, Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $data = $request->validate([
-            'name'               => ['required','string','max:255'],
-            'email'              => ['nullable','email','max:150'],
-            'phone'              => ['nullable','string','max:20'],
-            'status'             => ['required','string','max:50'],
-            'source'             => ['nullable','string','max:100'],
-            'notes'              => ['nullable','string'],
-            'assigned_to'        => ['nullable','integer'],
-            'lead_score_reason'  => ['nullable','string'],
-            'preferred_channel'  => ['nullable','in:email,phone,whatsapp'],
-            'is_hot'             => ['nullable','boolean'],
-            'client_id'          => ['nullable','exists:clients,id'],
-            'last_contacted_at'  => ['nullable','date'],
-        ]);
-
-        $oldStatus = strtolower((string) $lead->status);
-        $newStatus = strtolower((string) $data['status']);
-
-        DB::transaction(function () use ($lead, $data, $oldStatus, $newStatus) {
-            $lead->update($data);
-
-            if (method_exists($lead, 'calculateScore')) {
-                $lead->calculateScore();
-            }
-
-            if ($oldStatus !== 'qualified' && $newStatus === 'qualified') {
-                $this->convertToOpportunity($lead);
-            }
-        });
-
-        return redirect()->route('admin.leads.index')->with('success', 'Lead updated.');
-    }
-
-    /** 🗑️ Delete */
-    public function destroy(Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-        $lead->delete();
-
-        return redirect()->route('admin.leads.index')->with('success', 'Lead deleted.');
-    }
-
-    /** 👁️ Show a single lead (+ communications) */
     public function show(Lead $lead)
     {
         $this->authorizeCompany($lead);
 
-        $lead->loadMissing([
-            'client:id,name,phone,email',
-            'opportunity',
-            'assignee:id,name',
+        return view('admin.leads.show', [
+            'lead' => $lead,
+            'communications' => Communication::where('lead_id', $lead->id)->latest()->paginate(10),
+            'messageLogs' => \App\Models\MessageLog::where('lead_id', $lead->id)->latest()->paginate(10),
         ]);
-
-        $communications = Communication::query()
-            ->forCompany(auth()->user()->company_id)
-            ->where('lead_id', $lead->id)
-            ->orderByDesc('communication_date')
-            ->orderByDesc('id')
-            ->paginate(10)
-            ->withQueryString();
-
-        return view('admin.leads.show', compact('lead', 'communications'));
     }
 
-    /** ⭐ Toggle "hot" flag (AJAX or normal) */
-    public function toggleHot(Lead $lead)
+    public function edit(Lead $lead)
     {
         $this->authorizeCompany($lead);
 
-        $lead->update(['is_hot' => !$lead->is_hot]);
+        $companyId = auth()->user()->company_id;
 
-        return request()->expectsJson()
-            ? response()->json(['is_hot' => (bool)$lead->is_hot])
-            : back()->with('success', 'Lead hot flag updated.');
+        return view('admin.leads.edit', [
+            'lead' => $lead,
+            'clients' => Client::where('company_id', $companyId)->get(),
+            'managers' => User::where('company_id', $companyId)
+                ->where('role', 'manager')
+                ->get(),
+        ]);
     }
 
-    /** 👤 Assign/Reassign lead owner (AJAX or normal) */
-    public function assign(Request $request, Lead $lead)
+    public function update(Request $request, Lead $lead)
     {
         $this->authorizeCompany($lead);
+
+        $companyId = auth()->user()->company_id;
 
         $data = $request->validate([
-            'assigned_to' => ['nullable','integer'],
+            'name' => 'required|string|max:255',
+
+            'email' => 'nullable|email|max:150|required_without:phone',
+            'phone' => 'nullable|string|max:20|required_without:email',
+
+            'source' => 'nullable|string|max:100',
+
+            'assigned_to' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId))
+            ],
+
+            'client_id' => [
+                'nullable',
+                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId))
+            ],
         ]);
 
-        $lead->update(['assigned_to' => $data['assigned_to'] ?? null]);
+        $lead->update($data);
 
-        return $request->expectsJson()
-            ? response()->json(['assigned_to' => $lead->assigned_to])
-            : back()->with('success', 'Lead assigned.');
+        return redirect()->route('admin.leads.show', $lead);
     }
 
-    /** 🔄 Manual conversion endpoint */
-    public function convert(Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        DB::transaction(function () use ($lead) {
-            $this->convertToOpportunity($lead);
-        });
-
-        return request()->expectsJson()
-            ? response()->json(['message' => 'Lead converted.'])
-            : back()->with('success', 'Lead converted.');
-    }
-
-    /** ☎️ Touch last_contacted_at = now (AJAX or normal) */
-    public function touchContacted(Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $lead->update(['last_contacted_at' => now()]);
-
-        return request()->expectsJson()
-            ? response()->json(['last_contacted_at' => $lead->last_contacted_at])
-            : back()->with('success', 'Last contacted time updated.');
-    }
-
-    // =========================
-    // 🔸 AI Co-Pilot Endpoints
-    // =========================
-
-    /** Get Co-Pilot meta (summary, intent, confidence, propensity, actions) */
-    public function copilotMeta(Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-        $svc = app(\App\Services\Ai\ActionSuggestService::class);
-        return response()->json($svc->forLead($lead));
-    }
-
-    /** Ask AI for a short suggested reply (based on last inbound + ai_analysis) */
-    public function copilotSuggestReply(Request $request, Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $lastIn = \App\Models\MessageLog::query()
-            ->where('lead_id', $lead->id)
-            ->where('company_id', $lead->company_id)
-            ->where('direction','in')
-            ->orderByDesc('id')->first();
-
-        $text  = $lastIn?->body ?? 'Hi';
-        $nlp   = $lastIn?->ai_analysis ?? [];
-
-        $reply = app(\App\Services\Ai\NlpService::class)->replyText(
-            $lastIn?->from_number ?? ($lead->phone ?? ''),
-            $lastIn?->to_number ?? '',
-            $text,
-            ['lead' => [
-                'name' => $lead->name,
-                'vehicle_make_id'  => $lead->vehicle_make_id ?? null,
-                'vehicle_model_id' => $lead->vehicle_model_id ?? null,
-                'other_make'       => $lead->other_make ?? null,
-                'other_model'      => $lead->other_model ?? null,
-                'conversation_state'=> $lead->conversation_state ?? null,
-            ], 'nlp' => $nlp]
-        );
-
-        return response()->json(['ok'=>true, 'reply'=>$reply]);
-    }
-
-    /** Create a quick booking (defaults to tomorrow 10:00) */
-    public function copilotQuickBooking(Request $request, Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $date = $request->input('date', now()->addDay()->format('Y-m-d'));
-        $time = $request->input('time', '10:00');
-
-        $dt = \Carbon\Carbon::parse("{$date} {$time}");
-
-        $booking = \App\Models\Job\Booking::create([
-            'company_id'   => $lead->company_id,
-            'lead_id'      => $lead->id,
-            'client_id'    => $lead->client_id,
-            'scheduled_at' => $dt,
-            'slot'         => ((int)$dt->format('H') >= 12) ? 'Afternoon' : 'Morning',
-            'status'       => 'Pending',
-            'notes'        => 'Quick booking from Co-Pilot',
-        ]);
-
-        return response()->json(['ok'=>true, 'booking_id'=>$booking->id]);
-    }
-
-    /** Schedule a follow-up reminder (no job enqueue here, echo plan) */
-    public function copilotScheduleFollowup(Request $request, Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-        $hours = max(1, (int)$request->input('hours', 24));
-        $lead->update(['last_contacted_at' => now()]);
-        return response()->json(['ok'=>true, 'scheduled_for'=> now()->addHours($hours)->toIso8601String()]);
-    }
-
-    /** Send a WhatsApp template (or free text when template='__free_text__') */
-    public function copilotSendTemplate(Request $request, Lead $lead)
-    {
-        $this->authorizeCompany($lead);
-
-        $tpl  = (string) $request->input('template', 'lead_acknowledgment_v2');
-        $body = (string) $request->input('body', '');
-
-        if ($tpl === '__free_text__') {
-            // Log + send free text via your unified chat or WA service (simple fallback below):
-            \App\Jobs\SendWhatsAppFromTemplate::dispatch(
-                companyId:    $lead->company_id,
-                leadId:       $lead->id,
-                toNumberE164: $lead->phone ?? '',
-                templateName: '__free_text__',
-                placeholders: [],
-                links:        [],
-                context:      ['company_id'=>$lead->company_id, 'lead_id'=>$lead->id, 'body'=>$body],
-                action:       'copilot'
-            );
-            return response()->json(['ok'=>true]);
-        }
-
-        \App\Jobs\SendWhatsAppFromTemplate::dispatch(
-            companyId:    $lead->company_id,
-            leadId:       $lead->id,
-            toNumberE164: $lead->phone ?? '',
-            templateName: $tpl,
-            placeholders: [],
-            links:        [],
-            context:      ['company_id'=>$lead->company_id, 'lead_id'=>$lead->id],
-            action:       'copilot'
-        );
-
-        return response()->json(['ok'=>true]);
-    }
-
-    // =========================
-    // 🔒 Helpers
-    // =========================
-
-    /** 🔐 Company guard */
     protected function authorizeCompany(Lead $lead): void
     {
         abort_if($lead->company_id !== auth()->user()->company_id, 403);
     }
 
-    /** 🧠 Core conversion logic */
     protected function convertToOpportunity(Lead $lead): void
     {
-        $companyId = $lead->company_id;
+        // ✅ SAFE CLIENT CREATION
+        $clientQuery = Client::where('company_id', $lead->company_id);
 
-        if (!$lead->client_id) {
+        if ($lead->phone_norm) {
+            $clientQuery->where('phone', $lead->phone_norm);
+        } elseif ($lead->email) {
+            $clientQuery->where('email', $lead->email);
+        }
+
+        $client = $clientQuery->first();
+
+        if (!$client) {
             $client = Client::create([
-                'name'        => $lead->name,
-                'email'       => $lead->email,
-                'phone'       => $lead->phone,
-                'location'    => null,
-                'last_service'=> null,
-                'source'      => $lead->source ?? 'Lead',
-                'company_id'  => $companyId,
+                'company_id' => $lead->company_id,
+                'name' => $lead->name,
+                'email' => $lead->email,
+                'phone' => $lead->phone_norm,
             ]);
-            $lead->client_id = $client->id;
-            $lead->save();
         }
 
         Opportunity::firstOrCreate(
             [
-                'company_id' => $companyId,
-                'lead_id'    => $lead->id,
+                'lead_id' => $lead->id,
+                'company_id' => $lead->company_id,
             ],
             [
-                'client_id'   => $lead->client_id,
-                'title'       => 'Opportunity: ' . ($lead->name ?: 'New') . ' - ' . Str::limit(($lead->source ?? 'Lead'), 30),
-                'stage'       => 'new',
-                'amount'      => 0,
-                'notes'       => $lead->notes,
-                'assigned_to' => $lead->assigned_to,
+                'client_id' => $client->id,
+                'title' => 'Lead: ' . ($lead->name ?? 'New Opportunity'),
+                'stage' => 'new',
+                'source' => $lead->source,
             ]
         );
 
-        $lead->status = 'converted';
-        $lead->save();
+        // deactivate others safely
+        if ($lead->phone_norm) {
+            Lead::where('company_id', $lead->company_id)
+                ->where('phone_norm', $lead->phone_norm)
+                ->where('id', '!=', $lead->id)
+                ->where('is_active', 1)
+                ->update(['is_active' => 0]);
+        }
+
+        $lead->update([
+            'is_active' => 0,
+            'status' => 'converted'
+        ]);
     }
 }

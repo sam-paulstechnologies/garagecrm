@@ -6,15 +6,12 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken as Middleware;
 
 class VerifyCsrfToken extends Middleware
 {
-    /**
-     * The URIs that should be excluded from CSRF verification.
-     */
     protected $except = [
-    'webhooks/twilio/*',
-    'webhooks/email/*',
-    'webhooks/meta/*',
-    'webhooks/*',
-    '*twilio*',
-];
+        'public/website-lead/*',
 
+        'webhooks/*',
+        'webhooks/twilio/*',
+        'webhooks/email/*',
+        'webhooks/meta/*',
+    ];
 }

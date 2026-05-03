@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -26,11 +25,16 @@ class DashboardController extends Controller
         $companyId = (int) $user->company_id;
 
         // ---- AI Status for badge ----
-        $get = fn($k,$d=null) => DB::table('company_settings')
-            ->where('company_id',$companyId)->where('key',$k)->value('value') ?? $d;
+        $get = fn($k, $d = null) => DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->where('key', $k)
+            ->value('value') ?? $d;
 
-        $aiEnabled   = ($get('ai.enabled','0') === '1');
-        $aiThreshold = is_numeric($get('ai.confidence_threshold')) ? (float)$get('ai.confidence_threshold') : (float) env('AI_CONFIDENCE_THRESHOLD', 0.60);
+        $aiEnabled   = ($get('ai.enabled', '0') === '1');
+        $aiThreshold = is_numeric($get('ai.confidence_threshold'))
+            ? (float) $get('ai.confidence_threshold')
+            : (float) env('AI_CONFIDENCE_THRESHOLD', 0.60);
+
         $aiFirst     = ($get('ai.first_reply', '0') === '1');
 
         $aiStatus = [
@@ -41,23 +45,29 @@ class DashboardController extends Controller
             'color'     => $aiEnabled ? '#10b981' : '#9ca3af',
         ];
 
-        // ---- existing stats (unchanged) ----
+        // ---- Stats ----
         $stats = [
-            'total_users' => User::where('company_id', $companyId)->count(),
+            'total_users'   => User::where('company_id', $companyId)->count(),
             'total_clients' => Client::where('company_id', $companyId)->count(),
-            'total_leads' => Lead::where('company_id', $companyId)->count(),
+            'total_leads'   => Lead::where('company_id', $companyId)->count(),
+
             'revenue_this_month' => Invoice::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->sum('amount'),
+
+            // ✅ Better meaning: bookings scheduled in this month (not created this month)
             'bookings_this_month' => Booking::where('company_id', $companyId)
-                ->whereMonth('created_at', now()->month)
-                ->whereYear('created_at', now()->year)
+                ->where('is_archived', false)
+                ->whereMonth('booking_date', now()->month)
+                ->whereYear('booking_date', now()->year)
                 ->count(),
+
             'new_clients_this_month' => Client::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->count(),
+
             'new_leads_this_month' => Lead::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
@@ -66,6 +76,7 @@ class DashboardController extends Controller
 
         $monthlyRevenue = collect(range(0, 5))->map(function ($i) use ($companyId) {
             $month = now()->subMonths($i);
+
             return [
                 'month'   => $month->format('M'),
                 'revenue' => Invoice::where('company_id', $companyId)
@@ -75,33 +86,43 @@ class DashboardController extends Controller
             ];
         })->reverse()->values();
 
-        $recentLeads = Lead::where('company_id', $companyId)->latest()->take(5)->get();
+        $recentLeads = Lead::where('company_id', $companyId)
+            ->latest()
+            ->take(5)
+            ->get();
 
         $recentBookings = Booking::with('client')
             ->where('company_id', $companyId)
-            ->latest()->take(5)->get();
+            ->where('is_archived', false)
+            ->latest()
+            ->take(5)
+            ->get();
 
         $recentOpportunities = Opportunity::with('client')
             ->where('company_id', $companyId)
-            ->latest()->take(5)->get();
+            ->latest()
+            ->take(5)
+            ->get();
 
         $calendarBookings = Booking::with('client')
             ->where('company_id', $companyId)
-            ->where('status', 'confirmed')
+            ->where('is_archived', false)
+            ->where('status', Booking::STATUS_CONFIRMED)
             ->whereDate('booking_date', '>=', Carbon::today())
             ->get();
 
         $calendarEvents = $calendarBookings->map(function ($booking) {
             return [
-                'title' => ($booking->client->name ?? 'Client') . ' - ' . ucfirst($booking->service_type),
-                'start' => $booking->booking_date,
+                'title' => ($booking->client->name ?? 'Client') . ' - ' . ucfirst((string) $booking->service_type),
+                'start' => optional($booking->booking_date)->toDateString(),
                 'url'   => route('admin.bookings.edit', $booking->id),
                 'color' => '#4f46e5',
             ];
         });
 
         $pendingBookings = Booking::where('company_id', $companyId)
-            ->where('status', '!=', 'completed')
+            ->where('is_archived', false)
+            ->where('status', '!=', Booking::STATUS_COMPLETED)
             ->count();
 
         $unpaidInvoices = Invoice::where('company_id', $companyId)
@@ -119,7 +140,7 @@ class DashboardController extends Controller
             'followups_due'    => $followUpsDue,
         ];
 
-        // ---- WhatsApp KPIs (your existing block) ----
+        // ---- WhatsApp KPIs ----
         $ackWindowMins = 20;
         $slaMins       = 120;
         $lookbackHours = 24;
@@ -200,7 +221,7 @@ class DashboardController extends Controller
             'followUpsDue',
             'smartKPIs',
             'waDashboard',
-            'aiStatus' // <-- pass to view
+            'aiStatus'
         ));
     }
 }

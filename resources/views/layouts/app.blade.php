@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>{{ config('app.name', 'Garage CRM') }}</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-    <!-- Vite (React/JS entry will import CSS) -->
+    <!-- Vite -->
     @viteReactRefresh
     @vite(['resources/js/app.jsx'])
 
-    <!-- Alpine (optional) -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
     @stack('styles')
 </head>
+
 <body class="font-sans antialiased bg-gray-100">
+
     <div class="min-h-screen">
-        {{-- ✅ Navigation --}}
+
+        {{-- Navigation --}}
         @include('layouts.navigation')
 
-        {{-- ✅ Optional Header --}}
+        {{-- Optional Header --}}
         @hasSection('header')
             <header class="bg-white shadow">
                 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -34,12 +34,19 @@
             </header>
         @endif
 
-        {{-- ✅ Main Content --}}
+        {{-- Main Content --}}
         <main>
             @yield('content')
         </main>
+
     </div>
 
+    {{-- WhatsApp Floating Popup --}}
+    @auth
+        @include('partials.whatsapp-popup')
+    @endauth
+
     @stack('scripts')
+
 </body>
 </html>

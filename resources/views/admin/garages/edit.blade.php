@@ -1,29 +1,64 @@
+{{-- resources/views/admin/garages/edit.blade.php --}}
+
 @extends('layouts.app')
 
 @section('content')
 <div class="container">
-    <h1 class="text-2xl font-bold mb-4">Edit Garage</h1>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h1 class="h4 mb-0">Edit Garage</h1>
+        <a href="{{ route('admin.garages.show', $garage->id) }}" class="btn btn-outline-secondary">Back</a>
+    </div>
 
-    <form action="{{ route('admin.garages.update', $garage->id) }}" method="POST">
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <strong>Please fix the errors below.</strong>
+        </div>
+    @endif
+
+    <form action="{{ route('admin.garages.update', $garage->id) }}" method="POST" class="card p-3">
         @csrf
         @method('PUT')
 
-        <div class="form-group mb-3">
-            <label>Garage Name</label>
-            <input name="name" class="form-control" value="{{ $garage->name }}" required />
+        <div class="mb-3">
+            <label class="form-label">Garage Name <span class="text-danger">*</span></label>
+            <input name="name" class="form-control" value="{{ old('name', $garage->name) }}" required maxlength="191">
+            @error('name') <div class="text-danger small">{{ $message }}</div> @enderror
         </div>
 
-        <div class="form-group mb-3">
-            <label>Location</label>
-            <input name="location" class="form-control" value="{{ $garage->location }}" required />
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Phone</label>
+                <input name="phone" class="form-control" value="{{ old('phone', $garage->phone) }}" maxlength="30">
+                @error('phone') <div class="text-danger small">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Email</label>
+                <input name="email" type="email" class="form-control" value="{{ old('email', $garage->email) }}" maxlength="191">
+                @error('email') <div class="text-danger small">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Default Garage</label>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="is_default" value="1"
+                        {{ old('is_default', $garage->is_default) ? 'checked' : '' }}>
+                    <label class="form-check-label">Set as default</label>
+                </div>
+                @error('is_default') <div class="text-danger small">{{ $message }}</div> @enderror
+            </div>
         </div>
 
-        <div class="form-group mb-3">
-            <label>Manager Name</label>
-            <input name="manager_name" class="form-control" value="{{ $garage->manager_name }}" required />
+        <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control" rows="3" maxlength="255">{{ old('address', $garage->address) }}</textarea>
+            @error('address') <div class="text-danger small">{{ $message }}</div> @enderror
         </div>
 
-        <button class="btn btn-primary">Update Garage</button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary">Update</button>
+            <a href="{{ route('admin.garages.show', $garage->id) }}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
     </form>
 </div>
 @endsection

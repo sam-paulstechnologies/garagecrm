@@ -2,129 +2,188 @@
 
 namespace App\Models\Job;
 
+use App\Models\Client\Client;
+use App\Models\Client\Opportunity;
+use App\Models\Traits\BelongsToCompany;
+use App\Models\User;
+use App\Models\Vehicle\Vehicle;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Schema;
 
 class Booking extends Model
 {
+    use SoftDeletes, BelongsToCompany;
+
     protected $table = 'bookings';
 
-    protected $casts = [
-        'pickup_required' => 'boolean',
-        'is_archived'     => 'boolean',
-        'confirmed_at'    => 'datetime',
-        'completed_at'    => 'datetime',
-        'cancelled_at'    => 'datetime',
-        'state_changed_at'=> 'datetime',
-        'reminder_sent_at'=> 'datetime',
-    ];
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_CONFIRMED = 'confirmed';
+    public const STATUS_SCHEDULED = 'scheduled';
+    public const STATUS_VEHICLE_RECEIVED = 'vehicle_received';
+    public const STATUS_COMPLETED = 'completed';
+
+    // DB status enum uses American spelling only: canceled
+    public const STATUS_CANCELED = 'canceled';
+
+    // Compatibility alias, but value is still DB-safe
+    public const STATUS_CANCELLED = self::STATUS_CANCELED;
 
     protected $fillable = [
         'company_id',
         'client_id',
-        'opportunity_id',
         'vehicle_id',
+        'opportunity_id',
+
         'name',
         'service_type',
 
-        // one of these will exist in your schema:
-        'date',
         'booking_date',
-        'scheduled_at',
-
-        // slot/time choice
         'slot',
+
         'assigned_to',
 
-        // pickup
         'pickup_required',
         'pickup_address',
         'pickup_contact_number',
 
-        // misc
-        'notes',
+        'priority',
         'expected_duration',
         'expected_close_date',
-        'priority',
-        'status',          // ENUM in DB
+
+        'status',
         'is_archived',
 
-        // Sprint-2 timeline stamps
+        'notes',
+
         'confirmed_at',
         'completed_at',
+
+        // DB timestamp column uses British spelling
         'cancelled_at',
+
         'state_changed_at',
         'state_changed_by',
         'reminder_sent_at',
     ];
 
-    /* -------------------- Relationships -------------------- */
+    protected $casts = [
+        'pickup_required' => 'boolean',
+        'is_archived' => 'boolean',
+        'booking_date' => 'date',
+        'expected_close_date' => 'date',
+        'confirmed_at' => 'datetime',
+        'completed_at' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'state_changed_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
+    ];
+
+    protected $with = [
+        'client',
+        'opportunity',
+        'vehicleData',
+        'assignedUser',
+    ];
 
     public function client(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Client\Client::class);
+        return $this->belongsTo(Client::class)
+            ->withDefault(['name' => 'Unknown Client']);
     }
 
     public function opportunity(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Client\Opportunity::class);
+        return $this->belongsTo(Opportunity::class);
     }
 
     public function vehicleData(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Vehicle\Vehicle::class, 'vehicle_id');
+        return $this->belongsTo(Vehicle::class, 'vehicle_id');
     }
 
     public function assignedUser(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'assigned_to');
+        return $this->belongsTo(User::class, 'assigned_to')
+            ->withDefault(['name' => 'Unassigned']);
     }
 
-    /* -------------------- Availability Check -------------------- */
-    /**
-     * Schema-aware, parameterized slot availability check.
-     *
-     * @param  string    $bookingDate  Y-m-d (user-entered date)
-     * @param  string    $slot         'morning' | 'afternoon' | 'evening' | 'full_day'
-     * @param  int       $companyId
-     * @param  int|null  $ignoreId     booking id to ignore (during edit)
-     * @return bool                    true when slot is free
-     */
-    public static function isSlotAvailable(string $bookingDate, string $slot, int $companyId, ?int $ignoreId = null): bool
+    public function scopeCompany($query, int $companyId)
     {
-        $q = static::query()
+        return $query->where('company_id', $companyId);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_archived', false);
+    }
+
+    public function scopeUpcoming($query)
+    {
+        return $query->whereDate('booking_date', '>=', now()->toDateString());
+    }
+
+    public static function isSlotAvailable(
+        string $bookingDate,
+        string $slot,
+        int $companyId,
+        ?int $ignoreId = null
+    ): bool {
+        $query = static::query()
             ->where('company_id', $companyId)
-            ->where('is_archived', false);
+            ->where('is_archived', false)
+            ->whereDate('booking_date', $bookingDate)
+            ->where('slot', strtolower(trim($slot)))
+            ->where('status', '!=', self::STATUS_CANCELED);
 
         if ($ignoreId) {
-            $q->where('id', '!=', $ignoreId);
+            $query->where('id', '!=', $ignoreId);
         }
 
-        // Use whichever date-like column exists in your schema
-        if (Schema::hasColumn('bookings', 'date')) {
-            $q->whereDate('date', $bookingDate);
-        } elseif (Schema::hasColumn('bookings', 'booking_date')) {
-            $q->whereDate('booking_date', $bookingDate);
-        } elseif (Schema::hasColumn('bookings', 'scheduled_at')) {
-            $q->whereDate('scheduled_at', $bookingDate);
+        return !$query->exists();
+    }
+
+    public function getSlotLabelAttribute(): string
+    {
+        return match (strtolower((string) $this->slot)) {
+            'morning' => 'Morning',
+            'afternoon' => 'Afternoon',
+            'evening' => 'Evening',
+            'full_day' => 'Full Day',
+            default => ucfirst((string) $this->slot),
+        };
+    }
+
+    public function getVehicleLabelAttribute(): ?string
+    {
+        if ($this->vehicleData) {
+            $make = $this->vehicleData->make?->name;
+            $model = $this->vehicleData->model?->name;
+
+            $label = trim(($make ?? '') . ' ' . ($model ?? ''));
+
+            if ($label !== '') {
+                return $label;
+            }
         }
 
-        // Slot/time column
-        if (Schema::hasColumn('bookings', 'slot')) {
-            $q->where('slot', $slot);
-        } elseif (Schema::hasColumn('bookings', 'booking_time')) {
-            $q->where('booking_time', $slot);
+        if ($this->opportunity?->vehicle_label) {
+            return $this->opportunity->vehicle_label;
         }
 
-        // Ignore only cancelled/canceled bookings when checking availability
-        if (Schema::hasColumn('bookings', 'status')) {
-            $q->where(function ($qq) {
-                $qq->whereNull('status')
-                   ->orWhereNotIn('status', ['cancelled', 'canceled']);
-            });
-        }
+        return null;
+    }
 
-        return !$q->exists();
+    public function getStatusLabelAttribute(): string
+    {
+        return match (strtolower((string) $this->status)) {
+            self::STATUS_PENDING => 'Pending',
+            self::STATUS_CONFIRMED => 'Confirmed',
+            self::STATUS_SCHEDULED => 'Scheduled',
+            self::STATUS_VEHICLE_RECEIVED => 'Vehicle Received',
+            self::STATUS_COMPLETED => 'Completed',
+            self::STATUS_CANCELED => 'Canceled',
+            default => ucfirst(str_replace('_', ' ', (string) $this->status)),
+        };
     }
 }
