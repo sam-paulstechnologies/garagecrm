@@ -28,7 +28,7 @@ class BookingFlow
      */
     public function handleTimeslot(Lead $lead, string $text): array
     {
-        $normalizedText = $this->normalizeTimeslotText($text);
+        $normalizedText = $this->normalizeTimeslotText($text, $lead);
 
         $date = $this->bookingService->parsePreferredDateTime($normalizedText);
 
@@ -40,7 +40,9 @@ class BookingFlow
         if (!$date instanceof Carbon) {
             return $this->retryTimeslot(
                 lead: $lead,
-                reason: 'Invalid date/time received: ' . $text
+                reason: 'Invalid date/time received: ' . $text,
+                customerMessage: 'I could not understand that date/time. Please share a clear preferred time, for example: Tuesday 10 AM.',
+                selectedText: $text
             );
         }
 
@@ -52,7 +54,10 @@ class BookingFlow
         if ($date->isPast()) {
             return $this->retryTimeslot(
                 lead: $lead,
-                reason: 'Past date/time received: ' . $text
+                reason: 'Past date/time received: ' . $text,
+                customerMessage: 'That time has already passed. Please choose a future date/time within garage working hours.',
+                selectedText: $text,
+                selectedAt: $date
             );
         }
 
@@ -60,8 +65,7 @@ class BookingFlow
         |--------------------------------------------------------------------------
         | Company Working Hours Protection
         |--------------------------------------------------------------------------
-        | If customer selects a time outside garage working hours, do not proceed
-        | to confirmation. Ask them to choose a valid time.
+        | Outside-hours should guide the customer, not count as a failed attempt.
         |--------------------------------------------------------------------------
         */
         $workingHoursViolation = $this->bookingService->workingHoursViolation($lead, $date);
@@ -69,7 +73,11 @@ class BookingFlow
         if ($workingHoursViolation) {
             return $this->retryTimeslot(
                 lead: $lead,
-                reason: $workingHoursViolation
+                reason: $workingHoursViolation,
+                customerMessage: $this->outsideWorkingHoursMessage($lead, $date, $workingHoursViolation),
+                selectedText: $text,
+                selectedAt: $date,
+                incrementAttempt: false
             );
         }
 
@@ -145,7 +153,7 @@ class BookingFlow
         |--------------------------------------------------------------------------
         */
         $maybeDate = $this->bookingService->parsePreferredDateTime(
-            $this->normalizeTimeslotText($text)
+            $this->normalizeTimeslotText($text, $lead)
         );
 
         if ($maybeDate instanceof Carbon && !$this->looksLikeConfirmation($input)) {
@@ -221,15 +229,14 @@ class BookingFlow
             $lead->conversation_data = $data;
             $lead->save();
 
-            return [
-                'template' => 'ask_preferred_time_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'retry_timeslot',
-                'context' => [
-                    'reason' => $workingHoursViolation,
-                    'working_hours_message' => $this->bookingService->workingHoursMessage($lead),
-                ],
-            ];
+            return $this->retryTimeslot(
+                lead: $lead,
+                reason: $workingHoursViolation,
+                customerMessage: $this->outsideWorkingHoursMessage($lead, $date, $workingHoursViolation),
+                selectedText: $pending['raw_text'] ?? null,
+                selectedAt: $date,
+                incrementAttempt: false
+            );
         }
 
         /*
@@ -261,12 +268,17 @@ class BookingFlow
 
             return [
                 'template' => 'ask_preferred_time_retry_v1',
-                'placeholders' => [$lead->name ?: 'there'],
+                'placeholders' => [
+                    $lead->name ?: 'there',
+                    'That slot is already unavailable. Please choose another date/time.',
+                ],
                 'action' => 'retry_timeslot',
                 'context' => [
                     'reason' => 'Slot unavailable',
+                    'customer_message' => 'That slot is already unavailable. Please choose another date/time.',
                     'date' => $date->toDateString(),
                     'slot' => $slot,
+                    'retry_signature' => sha1('slot_unavailable|' . $date->toIso8601String() . '|' . $slot),
                 ],
             ];
         }
@@ -298,15 +310,14 @@ class BookingFlow
                 $lead->conversation_data = $data;
                 $lead->save();
 
-                return [
-                    'template' => 'ask_preferred_time_v1',
-                    'placeholders' => [$lead->name ?: 'there'],
-                    'action' => 'retry_timeslot',
-                    'context' => [
-                        'reason' => $e->getMessage(),
-                        'working_hours_message' => $this->bookingService->workingHoursMessage($lead),
-                    ],
-                ];
+                return $this->retryTimeslot(
+                    lead: $lead,
+                    reason: $e->getMessage(),
+                    customerMessage: $this->outsideWorkingHoursMessage($lead, $date, $e->getMessage()),
+                    selectedText: $pending['raw_text'] ?? null,
+                    selectedAt: $date,
+                    incrementAttempt: false
+                );
             }
 
             return $this->guard->escalateToManager(
@@ -399,33 +410,72 @@ class BookingFlow
     /**
      * Retry timeslot capture
      */
-    protected function retryTimeslot(Lead $lead, string $reason): array
-    {
+    protected function retryTimeslot(
+        Lead $lead,
+        string $reason,
+        ?string $customerMessage = null,
+        ?string $selectedText = null,
+        ?Carbon $selectedAt = null,
+        bool $incrementAttempt = true
+    ): array {
         $data = $this->conversationData($lead);
 
         $attempts = (int) ($data['timeslot_attempts'] ?? 0);
-        $attempts++;
+
+        if ($incrementAttempt) {
+            $attempts++;
+        }
 
         $data['timeslot_attempts'] = $attempts;
+        $data['last_timeslot_retry_reason'] = $reason;
+        $data['last_timeslot_retry_message'] = $customerMessage;
+        $data['last_timeslot_retry_selected_text'] = $selectedText;
+        $data['last_timeslot_retry_selected_at'] = $selectedAt?->toIso8601String();
+        $data['last_timeslot_retry_at'] = now()->toIso8601String();
 
         $lead->conversation_state = 'awaiting_timeslot';
         $lead->conversation_data = $data;
         $lead->save();
 
-        if ($attempts >= 3) {
+        /*
+        |--------------------------------------------------------------------------
+        | Escalate only when this retry actually counted as a failed attempt.
+        | Outside-hours retries pass incrementAttempt=false, so they keep guiding.
+        |--------------------------------------------------------------------------
+        */
+        if ($incrementAttempt && $attempts >= 3) {
             return $this->guard->escalateToManager(
                 $lead,
                 'Timeslot capture failed multiple times. ' . $reason
             );
         }
 
+        $message = $customerMessage ?: 'Please share your preferred date/time for the booking. Example: Tuesday 10 AM.';
+
         return [
-            'template' => 'ask_preferred_time_v1',
-            'placeholders' => [$lead->name ?: 'there'],
+            'template' => 'ask_preferred_time_retry_v1',
+            'placeholders' => [
+                $lead->name ?: 'there',
+                $message,
+            ],
             'action' => 'retry_timeslot',
             'context' => [
                 'reason' => $reason,
+                'customer_message' => $message,
                 'attempts' => $attempts,
+                'selected_text' => $selectedText,
+                'selected_at' => $selectedAt?->toIso8601String(),
+                'working_hours_message' => $this->bookingService->workingHoursMessage($lead),
+                'retry_signature' => sha1(
+                    implode('|', [
+                        $lead->id,
+                        $reason,
+                        $message,
+                        $selectedText ?? '',
+                        $selectedAt?->toIso8601String() ?? '',
+                        now()->format('Y-m-d H:i:s'),
+                    ])
+                ),
             ],
         ];
     }
@@ -537,10 +587,37 @@ class BookingFlow
     /**
      * Normalize common WhatsApp date/time phrases
      */
-    protected function normalizeTimeslotText(string $text): string
+    protected function normalizeTimeslotText(string $text, ?Lead $lead = null): string
     {
         $text = trim($text);
         $lower = strtolower($text);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Handle "same day" / "same date" / "that day"
+        |--------------------------------------------------------------------------
+        | Example:
+        | Customer: Wednesday 10 PM
+        | Bot: outside working hours
+        | Customer: How about 4 PM same day?
+        | System: uses the previous selected date and changes only the time.
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $lead
+            && (
+                str_contains($lower, 'same day')
+                || str_contains($lower, 'same date')
+                || str_contains($lower, 'that day')
+                || str_contains($lower, 'same')
+            )
+        ) {
+            $sameDayText = $this->normalizeSameDayTimeslotText($lead, $text);
+
+            if ($sameDayText) {
+                return $sameDayText;
+            }
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -591,6 +668,173 @@ class BookingFlow
         }
 
         return $text;
+    }
+
+    /**
+     * Normalize "same day" time from the last rejected/selected date
+     */
+    protected function normalizeSameDayTimeslotText(Lead $lead, string $text): ?string
+    {
+        $data = $this->conversationData($lead);
+
+        $lastSelectedAt = $data['last_timeslot_retry_selected_at'] ?? null;
+
+        if (!$lastSelectedAt) {
+            return null;
+        }
+
+        try {
+            $baseDate = Carbon::parse($lastSelectedAt);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $time = $this->extractTimeFromText($text);
+
+        if (!$time) {
+            return null;
+        }
+
+        [$hour, $minute] = $time;
+
+        return $baseDate
+            ->copy()
+            ->setTime($hour, $minute)
+            ->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Extract time from text
+     */
+    protected function extractTimeFromText(string $text): ?array
+    {
+        $lower = strtolower(trim($text));
+
+        /*
+        |--------------------------------------------------------------------------
+        | Explicit AM/PM: 4 PM, 4:30 PM
+        |--------------------------------------------------------------------------
+        */
+        if (preg_match('/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i', $lower, $m)) {
+            $hour = (int) $m[1];
+            $minute = isset($m[2]) ? (int) $m[2] : 0;
+            $ampm = strtolower($m[3]);
+
+            if ($hour < 1 || $hour > 12 || $minute > 59) {
+                return null;
+            }
+
+            if ($ampm === 'pm' && $hour < 12) {
+                $hour += 12;
+            }
+
+            if ($ampm === 'am' && $hour === 12) {
+                $hour = 0;
+            }
+
+            return [$hour, $minute];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 24-hour time: 16:00, 16:30
+        |--------------------------------------------------------------------------
+        */
+        if (preg_match('/\b([01]?\d|2[0-3]):([0-5]\d)\b/', $lower, $m)) {
+            return [(int) $m[1], (int) $m[2]];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Bare hour near same-day wording:
+        | "same day 4", "how about 4 same day"
+        |--------------------------------------------------------------------------
+        */
+        if (preg_match('/\b(?:same day|same date|that day|same)\s+(?:at\s+)?(\d{1,2})\b/i', $lower, $m)) {
+            return $this->normalizeBareHour((int) $m[1]);
+        }
+
+        if (preg_match('/\b(\d{1,2})\s+(?:same day|same date|that day|same)\b/i', $lower, $m)) {
+            return $this->normalizeBareHour((int) $m[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalize bare hour into likely customer intent
+     */
+    protected function normalizeBareHour(int $hour): ?array
+    {
+        if ($hour >= 8 && $hour <= 11) {
+            return [$hour, 0];
+        }
+
+        if ($hour >= 1 && $hour <= 7) {
+            return [$hour + 12, 0];
+        }
+
+        if ($hour === 12) {
+            return [12, 0];
+        }
+
+        if ($hour >= 13 && $hour <= 23) {
+            return [$hour, 0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Build customer-facing outside-hours message
+     */
+    protected function outsideWorkingHoursMessage(
+        Lead $lead,
+        Carbon $selectedAt,
+        string $fallbackReason
+    ): string {
+        $workingHoursMessage = $this->cleanWorkingHoursMessage(
+            (string) $this->bookingService->workingHoursMessage($lead)
+        );
+
+        $selected = $selectedAt->format('d M Y, h:i A');
+
+        if ($workingHoursMessage !== '') {
+            return "The selected time {$selected} is outside our garage working hours.\n\n"
+                . "{$workingHoursMessage}\n\n"
+                . "Please choose another time within working hours.";
+        }
+
+        return "The selected time {$selected} is outside our garage working hours.\n\n"
+            . "Please choose another time within working hours.";
+    }
+
+    /**
+     * Clean working-hours text to avoid duplicate instructions
+     */
+    protected function cleanWorkingHoursMessage(string $message): string
+    {
+        $message = trim($message);
+
+        if ($message === '') {
+            return '';
+        }
+
+        $message = preg_replace('/\s+/', ' ', $message);
+
+        $message = preg_replace(
+            '/\s*Please choose (a|another)?\s*time within working hours\.?$/i',
+            '',
+            $message
+        );
+
+        $message = preg_replace(
+            '/\s*Please choose (a|another)?\s*slot within working hours\.?$/i',
+            '',
+            $message
+        );
+
+        return trim((string) $message);
     }
 
     /**

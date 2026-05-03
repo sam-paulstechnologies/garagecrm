@@ -366,9 +366,18 @@ class WhatsAppService
                 "✅ Your booking request is already captured.\n\n".
                 "Our team will review and confirm shortly.",
 
+            /*
+            |--------------------------------------------------------------------------
+            | Dynamic retry message
+            |--------------------------------------------------------------------------
+            | {0} = customer name
+            | {1} = specific retry reason/message from BookingFlow
+            |--------------------------------------------------------------------------
+            */
+
             'ask_preferred_time_retry_v1' =>
-                "Please share a valid preferred date and time.\n\n".
-                "Example:\nTomorrow 10am\nSaturday 4pm",
+                "Hi {0},\n\n".
+                "{1}",
 
             /*
             |--------------------------------------------------------------------------
