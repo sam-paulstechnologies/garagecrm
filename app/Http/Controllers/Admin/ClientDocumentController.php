@@ -9,20 +9,37 @@ use Illuminate\Http\Request;
 
 class ClientDocumentController extends Controller
 {
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     public function store(Request $request, Client $client)
     {
+        $companyId = $this->companyId();
+
+        abort_unless((int) $client->company_id === $companyId, 404);
+
         $request->validate([
-            'document' => 'required|file|max:5120',
-            'type'     => 'nullable|string|max:50',
+            'document' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
+            'type'     => ['nullable', 'string', 'max:50'],
         ]);
 
-        $path = $request->file('document')
-            ->store('uploads/client-documents', 'public');
+        $file = $request->file('document');
+
+        $path = $file->store(
+            "companies/{$companyId}/uploads/client-documents",
+            'public'
+        );
 
         ClientDocument::create([
-            'company_id'    => company_id(),
+            'company_id'    => $companyId,
             'client_id'     => $client->id,
-            'document_name' => $request->file('document')->getClientOriginalName(),
+            'document_name' => $file->getClientOriginalName(),
             'document_path' => $path,
             'document_type' => $request->input('type', 'other'),
             'uploaded_by'   => auth()->id(),

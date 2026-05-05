@@ -16,7 +16,18 @@ class EnforceAiPolicy
     public function handle($job, $next)
     {
         try {
-            $companyId = (int) ($job->companyId ?? 1);
+            $companyId = (int) ($job->companyId ?? 0);
+
+            if (!$companyId) {
+                Log::warning('[AI][Policy] Missing company_id, failing closed.');
+
+                if (method_exists($job, 'policyHandoff')) {
+                    return $job->policyHandoff('missing_company_id', 0);
+                }
+
+                return null;
+            }
+
             $policy = new AiPolicyService($companyId);
 
             if (!$policy->enabled()) {
@@ -27,7 +38,7 @@ class EnforceAiPolicy
             // Basic AI output structure assumed on job instance
             $nlp = $job->nlp ?? null;
             if (!$nlp || !is_array($nlp)) {
-                Log::warning('[AI][Policy] No NLP data found, allowing by default.');
+                Log::warning('[AI][Policy] No NLP data found, allowing by default.', ['company_id' => $companyId]);
                 return $next($job);
             }
 
@@ -50,12 +61,16 @@ class EnforceAiPolicy
 
             // --- Intent-based gating ---
             if (in_array($intent, $policy->intentsForbidden(), true)) {
-                Log::notice('[AI][Policy] Forbidden intent', ['intent' => $intent]);
+                Log::notice('[AI][Policy] Forbidden intent', [
+                    'company_id' => $companyId,
+                    'intent' => $intent,
+                ]);
                 return $job->policyBlock("Sorry, I can’t handle that. I’ll connect you to our manager.");
             }
 
             if (in_array($intent, $policy->intentsHandoff(), true) || $confidence < $confTh) {
                 Log::info('[AI][Policy] Handoff triggered', [
+                    'company_id' => $companyId,
                     'intent' => $intent,
                     'confidence' => $confidence,
                     'threshold' => $confTh
@@ -64,7 +79,10 @@ class EnforceAiPolicy
             }
 
             if (in_array($intent, $policy->intentsHandle(), true)) {
-                Log::debug('[AI][Policy] Allowed intent', ['intent' => $intent]);
+                Log::debug('[AI][Policy] Allowed intent', [
+                    'company_id' => $companyId,
+                    'intent' => $intent,
+                ]);
                 return $next($job);
             }
 

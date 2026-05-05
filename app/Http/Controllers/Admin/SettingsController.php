@@ -6,16 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\Settings\UpdateSettingsRequest;
 use App\Services\Settings\SettingsStore;
 use App\Services\Settings\SettingsValidator;
-use App\Services\IntegrationTest\MetaTester;
-use App\Services\IntegrationTest\TwilioTester;
 use Illuminate\Support\Facades\DB;
 
 class SettingsController extends Controller
 {
+    protected function company()
+    {
+        $company = auth()->user()?->company;
+
+        abort_if(!$company || !$company->id, 403);
+
+        return $company;
+    }
+
     public function index()
     {
-        $user    = auth()->user();
-        $company = $user->company;
+        $company = $this->company();
 
         $store = new SettingsStore($company->id);
 
@@ -32,10 +38,10 @@ class SettingsController extends Controller
 
     public function update(UpdateSettingsRequest $request)
     {
-        $company = auth()->user()->company;
+        $company = $this->company();
 
         DB::transaction(function () use ($request, $company) {
-            $this->persistSettings($request, $company->id);
+            $this->persistSettings($request, (int) $company->id);
         });
 
         return redirect()
@@ -43,11 +49,56 @@ class SettingsController extends Controller
             ->with('success', 'Settings updated successfully.');
     }
 
+    public function testMetaInline()
+    {
+        $company = $this->company();
+        $store = new SettingsStore($company->id);
+
+        $hasToken = filled($store->get('meta.access_token'));
+        $hasPageId = filled($store->get('meta.page_id'));
+
+        if (!$hasToken || !$hasPageId) {
+            return back()->with(
+                'warning',
+                'Meta settings are incomplete. Please add Meta access token and page ID.'
+            );
+        }
+
+        return back()->with(
+            'success',
+            'Meta settings found. Full live test can be connected after tester service method is confirmed.'
+        );
+    }
+
+    public function testTwilioInline()
+    {
+        $company = $this->company();
+        $store = new SettingsStore($company->id);
+
+        $hasSid = filled($store->get('twilio.account_sid'));
+        $hasToken = filled($store->get('twilio.auth_token'));
+        $hasFrom = filled($store->get('twilio.whatsapp_from'));
+
+        if (!$hasSid || !$hasToken || !$hasFrom) {
+            return back()->with(
+                'warning',
+                'Twilio settings are incomplete. Please add Account SID, Auth Token, and WhatsApp From number.'
+            );
+        }
+
+        return back()->with(
+            'success',
+            'Twilio settings found. Full live test can be connected after tester service method is confirmed.'
+        );
+    }
+
     /** ---------------- Helpers ---------------- */
 
     private function persistSettings(UpdateSettingsRequest $request, int $companyId): void
     {
-        $company = auth()->user()->company;
+        $company = $this->company();
+
+        abort_if((int) $company->id !== (int) $companyId, 403);
 
         // 1️⃣ Company basics
         $company->fill([
@@ -71,9 +122,9 @@ class SettingsController extends Controller
             'twilio.whatsapp_from'   => $request->input('twilio.whatsapp_from'),
 
             // WhatsApp / Garage
-            'whatsapp.manager_number' => $request->input('manager_whatsapp'),
-            'garage.google_review_link' => $request->input('google_review_link'),
-            'garage.location_link'      => $request->input('garage_location_link'),
+            'whatsapp.manager_number'    => $request->input('manager_whatsapp'),
+            'garage.google_review_link'  => $request->input('google_review_link'),
+            'garage.location_link'       => $request->input('garage_location_link'),
 
             // System
             'system.timezone'             => $request->input('system.timezone', 'Asia/Dubai'),
@@ -142,6 +193,7 @@ class SettingsController extends Controller
         }
 
         json_decode($s, true);
+
         return json_last_error() === JSON_ERROR_NONE;
     }
 }

@@ -18,6 +18,7 @@ class AiSuggestionsController extends Controller
         $suggestions = DB::table('ai_suggestions as s')
             ->join('message_logs as m', 'm.id', '=', 's.message_log_id')
             ->where('s.company_id', $companyId)
+            ->where('m.company_id', $companyId)
             ->where('s.status', 'pending')
             ->select([
                 's.id',
@@ -54,6 +55,8 @@ class AiSuggestionsController extends Controller
             // Mark approved
             DB::table('ai_suggestions')
                 ->where('id', $row->id)
+                ->where('company_id', $companyId)
+                ->where('status', 'pending')
                 ->update([
                     'status'      => 'approved',
                     'approved_at'=> now(),
@@ -63,7 +66,9 @@ class AiSuggestionsController extends Controller
                 ]);
 
             // Send outbound message
-            $inbound = MessageLog::findOrFail($row->message_log_id);
+            $inbound = MessageLog::where('company_id', $companyId)
+                ->findOrFail($row->message_log_id);
+
             AiOutboundSender::sendFromInbound(
                 $inbound,
                 (string) $row->suggestion_text

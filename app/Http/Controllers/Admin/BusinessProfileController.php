@@ -11,7 +11,9 @@ class BusinessProfileController extends Controller
 {
     public function edit(Request $request)
     {
-        $companyId = (int) (optional($request->user())->company_id ?: 1);
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
 
         $get = function (string $k, $d = null) use ($companyId) {
             return DB::table('company_settings')
@@ -43,7 +45,10 @@ class BusinessProfileController extends Controller
 
     public function update(UpdateBusinessProfileRequest $request)
     {
-        $companyId = (int) (optional($request->user())->company_id ?: 1);
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
         $p = $request->validated();
 
         $holidays = $p['holidays'] ?? '[]';

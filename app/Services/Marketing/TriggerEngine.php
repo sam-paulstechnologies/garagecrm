@@ -48,7 +48,15 @@ class TriggerEngine
      */
     public function runForLead(Lead $lead): void
     {
-        $companyId = (int) ($lead->company_id ?? 1);
+        $companyId = (int) ($lead->company_id ?? 0);
+
+        if (!$companyId) {
+            Log::warning('[TriggerEngine] lead has no company_id', [
+                'lead_id' => $lead->id,
+            ]);
+
+            return;
+        }
 
         $triggers = $this->for('lead.created', $companyId);
 
@@ -79,13 +87,18 @@ class TriggerEngine
                 continue;
             }
 
-            $campaign = Campaign::find($t->campaign_id);
+            $campaign = Campaign::where('company_id', $companyId)->find($t->campaign_id);
             if (!$campaign) {
-                Log::warning('[TriggerEngine] campaign not found for trigger', ['trigger_id' => $t->id, 'campaign_id' => $t->campaign_id]);
+                Log::warning('[TriggerEngine] campaign not found for trigger', [
+                    'company_id' => $companyId,
+                    'trigger_id' => $t->id,
+                    'campaign_id' => $t->campaign_id
+                ]);
                 continue;
             }
 
             Log::info('[TriggerEngine] matched; enrolling lead into campaign', [
+                'company_id'  => $companyId,
                 'trigger_id'  => $t->id,
                 'campaign_id' => $campaign->id,
                 'lead_id'     => $lead->id,

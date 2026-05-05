@@ -7,16 +7,27 @@ use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Models\WhatsApp\WhatsAppTemplateMapping;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class MappingController extends Controller
 {
-    protected function companyId() {
+    protected function companyId()
+    {
         // replace with your tenant resolution
-        return Auth::user()->company_id ?? 1;
+        $companyId = (int) (Auth::user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
     }
 
-    public function index() {
-        $templates = WhatsAppTemplate::where('status','active')->orderBy('name')->get();
+    public function index()
+    {
+        $templates = WhatsAppTemplate::where('company_id', $this->companyId())
+            ->where('status','active')
+            ->orderBy('name')
+            ->get();
+
         $mappings = WhatsAppTemplateMapping::where('company_id', $this->companyId())
             ->orderBy('event_key')->get();
         $eventKeys = [
@@ -31,10 +42,15 @@ class MappingController extends Controller
         return view('whatsapp.mappings.index', compact('templates','mappings','eventKeys'));
     }
 
-    public function store(Request $r) {
+    public function store(Request $r)
+    {
         $data = $r->validate([
             'event_key' => 'required|string|max:80',
-            'template_id' => 'nullable|integer|exists:whatsapp_templates,id',
+            'template_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('whatsapp_templates', 'id')->where('company_id', $this->companyId()),
+            ],
         ]);
         $data['company_id'] = $this->companyId();
         WhatsAppTemplateMapping::updateOrCreate(
@@ -44,17 +60,23 @@ class MappingController extends Controller
         return back()->with('ok','Mapping saved.');
     }
 
-    public function update(Request $r, $id) {
-        $m = WhatsAppTemplateMapping::findOrFail($id);
+    public function update(Request $r, $id)
+    {
+        $m = WhatsAppTemplateMapping::where('company_id', $this->companyId())->findOrFail($id);
         $m->update($r->validate([
-            'template_id' => 'nullable|integer|exists:whatsapp_templates,id',
+            'template_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('whatsapp_templates', 'id')->where('company_id', $this->companyId()),
+            ],
             'is_active' => 'nullable|boolean'
         ]));
         return back()->with('ok','Updated.');
     }
 
-    public function toggle($id) {
-        $m = WhatsAppTemplateMapping::findOrFail($id);
+    public function toggle($id)
+    {
+        $m = WhatsAppTemplateMapping::where('company_id', $this->companyId())->findOrFail($id);
         $m->is_active = ! $m->is_active;
         $m->save();
         return back()->with('ok','Toggled.');

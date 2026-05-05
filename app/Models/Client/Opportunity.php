@@ -66,6 +66,7 @@ class Opportunity extends Model
         'value',
         'expected_close_date',
         'is_converted',
+        'is_archived',
         'close_reason',
 
         'ai_status',
@@ -86,6 +87,7 @@ class Opportunity extends Model
     protected $casts = [
         'value' => 'decimal:2',
         'is_converted' => 'boolean',
+        'is_archived' => 'boolean',
         'expected_close_date' => 'date',
         'next_follow_up' => 'date',
         'score' => 'integer',
@@ -98,6 +100,25 @@ class Opportunity extends Model
         'vehicleMake',
         'vehicleModel',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     public function client(): BelongsTo
     {

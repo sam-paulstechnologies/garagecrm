@@ -58,13 +58,17 @@ Route::get('/_ops/flush', function (Request $r) {
 |--------------------------------------------------------------------------
 */
 Route::get('/db-counts', function () {
+    $companyId = (int) (auth()->user()?->company_id ?? auth()->user()?->company?->id ?? 0);
+
+    abort_if(!$companyId, 403);
+
     $counts = DB::selectOne("
         SELECT
-          (SELECT COUNT(*) FROM users)     AS users,
-          (SELECT COUNT(*) FROM clients)   AS clients,
-          (SELECT COUNT(*) FROM leads)     AS leads,
-          (SELECT COUNT(*) FROM bookings)  AS bookings
-    ");
+          (SELECT COUNT(*) FROM users WHERE company_id = ?)     AS users,
+          (SELECT COUNT(*) FROM clients WHERE company_id = ?)   AS clients,
+          (SELECT COUNT(*) FROM leads WHERE company_id = ?)     AS leads,
+          (SELECT COUNT(*) FROM bookings WHERE company_id = ?)  AS bookings
+    ", [$companyId, $companyId, $companyId, $companyId]);
 
     return response()->json(['ok' => true, 'counts' => $counts]);
 })->middleware('auth');
@@ -89,6 +93,8 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
     Route::get('/dashboard', function () {
 
         $user = Auth::user();
+
+        abort_if(!$user || blank($user->role), 403);
 
         return match (strtolower(trim((string) $user->role))) {
             'admin'    => redirect()->route('admin.dashboard'),

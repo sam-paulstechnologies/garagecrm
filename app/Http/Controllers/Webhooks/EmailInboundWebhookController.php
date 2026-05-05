@@ -7,6 +7,7 @@ use App\Services\Documents\Ingestion\UploadIngestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class EmailInboundWebhookController extends Controller
@@ -28,6 +29,17 @@ class EmailInboundWebhookController extends Controller
             return response('OK', Response::HTTP_OK);
         }
 
+        $companyId = $this->resolveCompanyId($from);
+
+        if (!$companyId) {
+            Log::warning('email.inbound.company_not_resolved', [
+                'message_id' => $messageId,
+                'from'       => $from,
+            ]);
+
+            return response('OK', Response::HTTP_OK);
+        }
+
         $client = Http::timeout((int) config('document_ingest.http_timeout_seconds', 30))
             ->withHeaders(['User-Agent' => config('document_ingest.http_user_agent', 'GarageCRM/1.0')]);
 
@@ -43,6 +55,7 @@ class EmailInboundWebhookController extends Controller
                         $binary = $resp->body();
                     } else {
                         Log::warning('email.inbound.fetch_failed', [
+                            'company_id' => $companyId,
                             'message_id' => $messageId,
                             'from'       => $from,
                             'url'        => $att['url'],
@@ -52,6 +65,7 @@ class EmailInboundWebhookController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::warning('email.inbound.fetch_exception', [
+                    'company_id' => $companyId,
                     'message_id' => $messageId,
                     'from'       => $from,
                     'url'        => $att['url'] ?? null,
@@ -68,6 +82,7 @@ class EmailInboundWebhookController extends Controller
             $size     = isset($att['size']) ? (int) $att['size'] : strlen($binary);
 
             $this->ingest->ingestRawBinary($binary, [
+                'company_id'          => $companyId,
                 'type'                => 'other',
                 'source'              => 'email',
                 'sender_email'        => $from ?: null,
@@ -79,5 +94,29 @@ class EmailInboundWebhookController extends Controller
         }
 
         return response('OK', Response::HTTP_OK);
+    }
+
+    protected function resolveCompanyId(string $from): ?int
+    {
+        $email = strtolower(trim($from));
+
+        if ($email === '') {
+            return null;
+        }
+
+        $companyId = DB::table('companies')
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->orWhereRaw('LOWER(business_email) = ?', [$email])
+            ->orWhereRaw('LOWER(manager_email) = ?', [$email])
+            ->value('id');
+
+        if ($companyId) {
+            return (int) $companyId;
+        }
+
+        return DB::table('clients')
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->orWhereRaw('LOWER(email_norm) = ?', [$email])
+            ->value('company_id');
     }
 }

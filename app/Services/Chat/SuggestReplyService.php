@@ -23,9 +23,10 @@ class SuggestReplyService
         $conf = is_array($inbound->ai_analysis) ? ($inbound->ai_analysis['confidence'] ?? null) : null;
 
         return AiSuggestion::create([
-            'message_log_id' => $inbound->id,
-            'suggestion_text'=> $text,
-            'confidence'     => $conf,
+            'company_id'      => $inbound->company_id,
+            'message_log_id'  => $inbound->id,
+            'suggestion_text' => $text,
+            'confidence'      => $conf,
         ]);
     }
 }

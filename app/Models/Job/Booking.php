@@ -8,8 +8,8 @@ use App\Models\Traits\BelongsToCompany;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Booking extends Model
 {
@@ -85,6 +85,25 @@ class Booking extends Model
         'vehicleData',
         'assignedUser',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     public function client(): BelongsTo
     {

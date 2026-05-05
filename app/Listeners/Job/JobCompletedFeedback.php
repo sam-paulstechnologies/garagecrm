@@ -10,10 +10,19 @@ class JobCompletedFeedback
     public function handle(JobCompleted $event): void
     {
         $job = $event->job;
-        if (!$job || !$job->client || !$job->client->phone_norm) return;
+
+        if (!$job || !$job->client || !$job->client->phone_norm) {
+            return;
+        }
+
+        $companyId = (int) ($job->company_id ?? 0);
+
+        if (!$companyId) {
+            return;
+        }
 
         (new SendWhatsAppMessage())->fireEvent(
-            (int) ($job->company_id ?? 1),
+            $companyId,
             'job.done.feedback',
             $job->client->phone_norm,
             [

@@ -6,14 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Models\WhatsApp\WhatsAppTemplateMapping;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class WhatsAppMappingController extends Controller
 {
-    protected function companyId(): int { return (int)(auth()->user()->company_id ?? 1); }
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
 
     public function index()
     {
-        $templates = WhatsAppTemplate::where('status','active')->orderBy('name')->get();
+        $templates = WhatsAppTemplate::where('company_id', $this->companyId())
+            ->where('status','active')
+            ->orderBy('name')
+            ->get();
 
         $mappings  = WhatsAppTemplateMapping::where('company_id', $this->companyId())
             ->orderBy('event_key')
@@ -36,7 +47,11 @@ class WhatsAppMappingController extends Controller
     {
         $data = $r->validate([
             'event_key'   => 'required|string|max:80',
-            'template_id' => 'nullable|integer|exists:whatsapp_templates,id',
+            'template_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('whatsapp_templates', 'id')->where('company_id', $this->companyId()),
+            ],
         ]);
 
         WhatsAppTemplateMapping::updateOrCreate(
@@ -49,8 +64,14 @@ class WhatsAppMappingController extends Controller
 
     public function update(Request $r, WhatsAppTemplateMapping $mapping)
     {
+        $this->ensureMappingBelongsToCompany($mapping);
+
         $mapping->update($r->validate([
-            'template_id' => 'nullable|integer|exists:whatsapp_templates,id',
+            'template_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('whatsapp_templates', 'id')->where('company_id', $this->companyId()),
+            ],
             'is_active'   => 'nullable|boolean',
         ]));
         return back()->with('success','Mapping updated.');
@@ -58,8 +79,15 @@ class WhatsAppMappingController extends Controller
 
     public function toggle(WhatsAppTemplateMapping $mapping)
     {
+        $this->ensureMappingBelongsToCompany($mapping);
+
         $mapping->is_active = ! $mapping->is_active;
         $mapping->save();
         return back()->with('success','Mapping toggled.');
+    }
+
+    private function ensureMappingBelongsToCompany(WhatsAppTemplateMapping $mapping): void
+    {
+        abort_unless((int) $mapping->company_id === $this->companyId(), 404);
     }
 }

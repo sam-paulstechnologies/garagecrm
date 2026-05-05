@@ -78,17 +78,19 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("wa-send-{$this->leadId}-{$this->templateName}-{$this->action}"))->expireAfter(120),
+            (new WithoutOverlapping("wa-send-{$this->companyId}-{$this->leadId}-{$this->templateName}-{$this->action}"))->expireAfter(120),
             new RateLimited('wa-sends'),
         ];
     }
 
     public function handle(WhatsAppService $wa): void
     {
-        $lead = Lead::find($this->leadId);
+        $lead = Lead::where('company_id', $this->companyId)
+            ->find($this->leadId);
 
         if (!$lead) {
-            Log::warning('[WA] Lead missing, skipping send', [
+            Log::warning('[WA] Lead missing or company mismatch, skipping send', [
+                'company_id' => $this->companyId,
                 'lead_id' => $this->leadId,
             ]);
 
@@ -97,6 +99,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
         if (!$this->toNumberE164) {
             Log::warning('[WA] Missing recipient number, skipping send', [
+                'company_id' => $this->companyId,
                 'lead_id' => $this->leadId,
             ]);
 
@@ -120,6 +123,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
             if ($this->hasRecentInbound($this->leadId, $this->toNumberE164, $since)) {
                 Log::info('[WA][FollowUp] skipped inbound already received', [
+                    'company_id' => $this->companyId,
                     'lead_id' => $this->leadId,
                 ]);
 
@@ -135,6 +139,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             minutes: 2
         )) {
             Log::info('[WA][Send] skipped duplicate', [
+                'company_id' => $this->companyId,
                 'lead_id'  => $this->leadId,
                 'template' => $this->templateName,
                 'action'   => $this->action,
@@ -177,6 +182,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
             if ($sessionOpen) {
                 Log::info('[WA] Sending session message', [
+                    'company_id' => $this->companyId,
                     'lead_id'  => $this->leadId,
                     'template' => $this->templateName,
                     'action'   => $this->action,
@@ -194,6 +200,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
             } else {
                 Log::info('[WA] Sending template message', [
+                    'company_id'     => $this->companyId,
                     'lead_id'        => $this->leadId,
                     'template'       => $this->templateName,
                     'action'         => $this->action,
@@ -215,6 +222,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
         } catch (\Throwable $e) {
             Log::error('[WA][Send] provider exception ' . $e->getMessage(), [
+                'company_id' => $this->companyId,
                 'lead_id'  => $this->leadId,
                 'template' => $this->templateName,
                 'action'   => $this->action,
@@ -259,6 +267,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
         } catch (\Throwable $e) {
             Log::error('[WA][Send] local log failed after provider send - NOT retrying to avoid duplicate ' . $e->getMessage(), [
+                'company_id' => $this->companyId,
                 'lead_id'  => $this->leadId,
                 'template' => $this->templateName,
                 'action'   => $this->action,
@@ -282,6 +291,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             && in_array($this->templateName, self::FOLLOWUP_TEMPLATES, true)
         ) {
             $followups = DB::table('message_logs')
+                ->where('company_id', $this->companyId)
                 ->where('lead_id', $this->leadId)
                 ->where('template', $this->templateName)
                 ->where('direction', 'out')
@@ -313,6 +323,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     public function failed(\Throwable $e): void
     {
         Log::error('[WA][JobFailed] ' . $e->getMessage(), [
+            'company_id' => $this->companyId,
             'lead_id'  => $this->leadId,
             'template' => $this->templateName,
             'action'   => $this->action,
@@ -365,6 +376,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             Log::error('[WA] Conversation create failed', [
+                'company_id' => $this->companyId,
                 'lead_id' => $lead->id,
                 'err' => $e->getMessage(),
             ]);
@@ -386,6 +398,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             Log::warning('[WA] Conversation update failed', [
+                'company_id' => $this->companyId,
                 'conversation_id' => $conversation->id,
                 'err' => $e->getMessage(),
             ]);
@@ -414,6 +427,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             $conversation->update($updates);
         } catch (\Throwable $e) {
             Log::warning('[WA] Conversation attention update failed', [
+                'company_id' => $this->companyId,
                 'conversation_id' => $conversation->id,
                 'err' => $e->getMessage(),
             ]);
@@ -453,6 +467,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         int $minutes = 2
     ): bool {
         return DB::table('message_logs')
+            ->where('company_id', $this->companyId)
             ->where('lead_id', $leadId)
             ->where('direction', 'out')
             ->where('channel', 'whatsapp')
@@ -474,6 +489,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $digits = preg_replace('/\D+/', '', $toNumber);
 
         return DB::table('message_logs')
+            ->where('company_id', $this->companyId)
             ->where('direction', 'in')
             ->where(function ($q) use ($leadId, $digits) {
                 $q->where('lead_id', $leadId);
@@ -489,6 +505,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     protected function isSessionOpen(int $leadId): bool
     {
         return DB::table('message_logs')
+            ->where('company_id', $this->companyId)
             ->where('lead_id', $leadId)
             ->where('direction', 'in')
             ->where('created_at', '>=', now()->subHours(24))

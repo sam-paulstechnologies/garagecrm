@@ -10,7 +10,10 @@ class WhatsAppMessageController extends Controller
 {
     public function index(Request $request)
     {
-        $q = WhatsAppMessage::query();
+        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
+
+        $q = WhatsAppMessage::query()
+            ->where('company_id', $companyId);
 
         // filters
         if ($request->filled('status'))   $q->where('status', $request->status);
@@ -26,17 +29,28 @@ class WhatsAppMessageController extends Controller
         return view('admin.whatsapp.messages.index', compact('messages'));
     }
 
-    public function show(WhatsAppMessage $message)
+    public function show(Request $request, WhatsAppMessage $message)
     {
+        $this->ensureMessageBelongsToCompany($request, $message);
+
         $payload = is_array($message->payload) ? $message->payload : json_decode($message->payload ?? '[]', true);
         return view('admin.whatsapp.messages.show', compact('message','payload'));
     }
 
-    public function retry(WhatsAppMessage $message)
+    public function retry(Request $request, WhatsAppMessage $message)
     {
+        $this->ensureMessageBelongsToCompany($request, $message);
+
         // Wire your retry job here if/when needed
         // RetryWhatsAppMessage::dispatch($message->id);
 
         return back()->with('status', "Retry queued for message #{$message->id}");
+    }
+
+    private function ensureMessageBelongsToCompany(Request $request, WhatsAppMessage $message): void
+    {
+        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
+
+        abort_unless((int) $message->company_id === (int) $companyId, 404);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
@@ -10,11 +11,18 @@ use Illuminate\Support\Facades\Schema;
 
 class LaunchSetupController extends Controller
 {
+    protected function company()
+    {
+        $company = auth()->user()?->company;
+
+        abort_if(!$company || !$company->id, 403);
+
+        return $company;
+    }
+
     public function edit()
     {
-        $company = auth()->user()->company;
-
-        abort_if(!$company, 404, 'Company not found.');
+        $company = $this->company();
 
         return view('admin.settings.launch-setup', [
             'company' => $company,
@@ -28,9 +36,7 @@ class LaunchSetupController extends Controller
 
     public function update(Request $request)
     {
-        $company = auth()->user()->company;
-
-        abort_if(!$company, 404, 'Company not found.');
+        $company = $this->company();
 
         $data = $request->validate([
             'legal_name' => ['nullable', 'string', 'max:255'],
@@ -114,24 +120,32 @@ class LaunchSetupController extends Controller
             if (!$managerEmail) {
                 $warning = 'Manager password reset was not sent because manager email is missing.';
             } else {
-                try {
-                    $status = Password::sendResetLink([
-                        'email' => $managerEmail,
-                    ]);
+                $managerUser = User::where('company_id', $company->id)
+                    ->where('email', $managerEmail)
+                    ->first();
 
-                    if ($status === Password::RESET_LINK_SENT) {
-                        $message = 'Launch setup updated successfully. Password reset link sent to manager.';
-                    } else {
-                        $warning = 'Launch setup saved, but password reset was not sent. Make sure the manager email exists as a user.';
+                if (!$managerUser) {
+                    $warning = 'Launch setup saved, but password reset was not sent. Manager email does not exist as a user in this company.';
+                } else {
+                    try {
+                        $status = Password::sendResetLink([
+                            'email' => $managerEmail,
+                        ]);
+
+                        if ($status === Password::RESET_LINK_SENT) {
+                            $message = 'Launch setup updated successfully. Password reset link sent to manager.';
+                        } else {
+                            $warning = 'Launch setup saved, but password reset was not sent.';
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('[LaunchSetup] Manager password reset failed', [
+                            'company_id' => $company->id,
+                            'manager_email' => $managerEmail,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        $warning = 'Launch setup saved, but password reset failed. Please check manager user account.';
                     }
-                } catch (\Throwable $e) {
-                    Log::warning('[LaunchSetup] Manager password reset failed', [
-                        'company_id' => $company->id,
-                        'manager_email' => $managerEmail,
-                        'error' => $e->getMessage(),
-                    ]);
-
-                    $warning = 'Launch setup saved, but password reset failed. Please check manager user account.';
                 }
             }
         }
@@ -148,14 +162,6 @@ class LaunchSetupController extends Controller
         $bookingRules = $this->arrayValue($company->booking_rules ?? []);
         $serviceAreas = $this->arrayValue($company->service_areas ?? []);
 
-        /*
-        |--------------------------------------------------------------------------
-        | WhatsApp readiness
-        |--------------------------------------------------------------------------
-        | WABA ID is not required here because current sending/receiving is working
-        | with meta_phone_number_id + meta_access_token + is_whatsapp_active.
-        |--------------------------------------------------------------------------
-        */
         $whatsappReady =
             !empty($company->meta_phone_number_id)
             && !empty($company->meta_access_token)

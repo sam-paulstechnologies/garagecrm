@@ -72,6 +72,36 @@ class JobController extends Controller
         return view('admin.jobs.index', compact('jobs','q','status'));
     }
 
+    /* ================= Archived ================= */
+
+    public function archived(Request $request)
+    {
+        $q = trim((string) $request->get('q'));
+        $status = $request->get('status');
+
+        $query = $this->companyScope()
+            ->with(['client:id,name', 'assignedUser:id,name'])
+            ->where('is_archived', true);
+
+        if (in_array($status, ['pending','in_progress','completed'], true)) {
+            $query->where('status', $status);
+        }
+
+        if ($q !== '') {
+            $query->where(function ($w) use ($q) {
+                $w->where('job_code', 'like', "%{$q}%")
+                  ->orWhere('description', 'like', "%{$q}%")
+                  ->orWhereHas('client', fn ($c) =>
+                      $c->where('name', 'like', "%{$q}%")
+                  );
+            });
+        }
+
+        $jobs = $query->latest('id')->paginate(15)->withQueryString();
+
+        return view('admin.jobs.index', compact('jobs','q','status'));
+    }
+
     /* ================= Create ================= */
 
     public function create()
@@ -89,8 +119,14 @@ class JobController extends Controller
     public function store(StoreJobRequest $request)
     {
         $data = $request->validated();
+        $companyId = auth()->user()->company_id;
 
-        $data['company_id']  = auth()->user()->company_id;
+        if (!empty($data['booking_id'])) {
+            $booking = \App\Models\Job\Booking::where('company_id', $companyId)->findOrFail($data['booking_id']);
+            abort_unless((int) $booking->client_id === (int) $data['client_id'], 422);
+        }
+
+        $data['company_id']  = $companyId;
         $data['job_code']    = $data['job_code'] ?? $this->nextJobCode();
         $data['status']      = $data['status'] ?? 'pending';
         $data['is_archived'] = false;
@@ -160,6 +196,12 @@ class JobController extends Controller
         $this->authorizeCompany($job);
 
         $data = $request->validated();
+        $companyId = auth()->user()->company_id;
+
+        if (!empty($data['booking_id'])) {
+            $booking = \App\Models\Job\Booking::where('company_id', $companyId)->findOrFail($data['booking_id']);
+            abort_unless((int) $booking->client_id === (int) $data['client_id'], 422);
+        }
 
         if (
             empty($data['total_time_minutes']) &&
@@ -227,6 +269,7 @@ class JobController extends Controller
         ]);
 
         JobDocument::create([
+            'company_id'    => $job->company_id,
             'client_id'     => $job->client_id,
             'job_id'        => $job->id,
             'type'          => 'job_card',

@@ -20,9 +20,18 @@ use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     public function index()
     {
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
         $bookings = Booking::with([
                 'client',
@@ -39,9 +48,28 @@ class BookingController extends Controller
         return view('admin.bookings.index', compact('bookings'));
     }
 
+    public function archived()
+    {
+        $companyId = $this->companyId();
+
+        $bookings = Booking::with([
+                'client',
+                'opportunity',
+                'vehicleData.make',
+                'vehicleData.model',
+                'assignedUser'
+            ])
+            ->where('company_id', $companyId)
+            ->where('is_archived', true)
+            ->latest()
+            ->paginate(20);
+
+        return view('admin.bookings.archived', compact('bookings'));
+    }
+
     public function create()
     {
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
         return view('admin.bookings.create', [
             'clients'       => Client::where('company_id', $companyId)->get(),
@@ -56,7 +84,7 @@ class BookingController extends Controller
 
     public function store(Request $request)
     {
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
         $data = $request->validate([
             'client_id' => [
@@ -106,6 +134,8 @@ class BookingController extends Controller
                 ]),
             ],
         ]);
+
+        $this->validateLinkedRecords($data, $companyId);
 
         try {
             DB::transaction(function () use ($data, $companyId, $request) {
@@ -172,7 +202,8 @@ class BookingController extends Controller
             'assignedUser'
         ]);
 
-        $communications = Communication::where('booking_id', $booking->id)
+        $communications = Communication::where('company_id', $booking->company_id)
+            ->where('booking_id', $booking->id)
             ->latest()
             ->paginate(10);
 
@@ -183,7 +214,7 @@ class BookingController extends Controller
     {
         $this->authorizeBooking($booking);
 
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
         return view('admin.bookings.edit', [
             'booking'       => $booking,
@@ -201,7 +232,7 @@ class BookingController extends Controller
     {
         $this->authorizeBooking($booking);
 
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
         $data = $request->validate([
             'name'         => 'required|string|max:255',
@@ -282,10 +313,10 @@ class BookingController extends Controller
                 if ($freshBooking->status === Booking::STATUS_VEHICLE_RECEIVED) {
                     Job::firstOrCreate(
                         [
-                            'booking_id' => $freshBooking->id,
+                            'company_id'  => $freshBooking->company_id,
+                            'booking_id'  => $freshBooking->id,
                         ],
                         [
-                            'company_id'  => $freshBooking->company_id,
                             'client_id'   => $freshBooking->client_id,
                             'description' => $freshBooking->service_type ?? 'Service job',
                             'status'      => 'pending',
@@ -327,6 +358,34 @@ class BookingController extends Controller
         $booking->update(['is_archived' => false]);
 
         return back()->with('success', 'Booking restored.');
+    }
+
+    public function destroy(Booking $booking)
+    {
+        $this->authorizeBooking($booking);
+
+        $booking->update(['is_archived' => true]);
+
+        return back()->with('success', 'Booking archived.');
+    }
+
+    protected function validateLinkedRecords(array $data, int $companyId): void
+    {
+        if (!empty($data['opportunity_id'])) {
+            $opportunity = Opportunity::where('company_id', $companyId)
+                ->where('client_id', $data['client_id'])
+                ->find($data['opportunity_id']);
+
+            abort_if(!$opportunity, 422, 'Selected opportunity does not belong to the selected client.');
+        }
+
+        if (!empty($data['vehicle_id'])) {
+            $vehicle = Vehicle::where('company_id', $companyId)
+                ->where('client_id', $data['client_id'])
+                ->find($data['vehicle_id']);
+
+            abort_if(!$vehicle, 422, 'Selected vehicle does not belong to the selected client.');
+        }
     }
 
     protected function handleScheduledBooking(Booking $booking): void
@@ -396,6 +455,11 @@ class BookingController extends Controller
             return;
         }
 
+        abort_if(
+            (int) $booking->opportunity->company_id !== (int) $booking->company_id,
+            403
+        );
+
         $booking->opportunity->update([
             'stage' => Opportunity::STAGE_APPOINTMENT,
             'next_follow_up' => $booking->booking_date,
@@ -405,6 +469,6 @@ class BookingController extends Controller
 
     protected function authorizeBooking(Booking $booking): void
     {
-        abort_if($booking->company_id !== auth()->user()->company_id, 403);
+        abort_if((int) $booking->company_id !== (int) $this->companyId(), 403);
     }
 }

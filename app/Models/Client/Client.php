@@ -2,10 +2,10 @@
 
 namespace App\Models\Client;
 
+use App\Models\Shared\File;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Shared\File;
 
 class Client extends Model
 {
@@ -41,6 +41,25 @@ class Client extends Model
         'is_vip'      => 'boolean',
         'is_archived' => 'boolean',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -163,9 +182,10 @@ class Client extends Model
 
     public function jobDocuments(): HasMany
     {
-        return $this->hasMany(File::class, 'client_id')
+        return $this->hasMany(\App\Models\Job\JobDocument::class, 'client_id')
+            ->where('company_id', $this->company_id)
             ->whereNotNull('job_id')
-            ->orderByDesc('uploaded_at');
+            ->orderByDesc('received_at');
     }
 
     public function documents()

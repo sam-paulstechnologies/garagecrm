@@ -10,9 +10,13 @@ class BookingSummaryController extends Controller
 {
     public function show(int $id): JsonResponse
     {
-        $booking = Booking::with(['client','opportunity','vehicleData','assignedUser'])->findOrFail($id);
+        $companyId = (int) (auth()->user()->company_id ?? auth()->user()->company->id ?? 0);
 
-        abort_if($booking->company_id !== auth()->user()->company_id, 403);
+        abort_if(!$companyId, 403);
+
+        $booking = Booking::with(['client','opportunity','vehicleData','assignedUser'])
+            ->where('company_id', $companyId)
+            ->findOrFail($id);
 
         return response()->json([
             'id'           => $booking->id,

@@ -28,7 +28,7 @@ class GenerateAiSuggestion implements ShouldQueue
         $msg = MessageLog::find($this->messageId);
 
         // Safety checks
-        if (!$msg || $msg->direction !== 'in') {
+        if (!$msg || $msg->direction !== 'in' || !$msg->company_id) {
             return;
         }
 

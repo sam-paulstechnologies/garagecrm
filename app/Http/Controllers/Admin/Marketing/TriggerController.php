@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Admin\Marketing;
 use App\Http\Controllers\Controller;
 use App\Models\Marketing\{Trigger, Campaign};
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TriggerController extends Controller
 {
     public function index()
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
 
         $items = Trigger::with('campaign:id,name')
             ->where('company_id',$companyId)
@@ -22,7 +23,7 @@ class TriggerController extends Controller
 
     public function create()
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
 
         $campaigns = Campaign::where('company_id',$companyId)
             ->orderBy('name')->get(['id','name']);
@@ -40,13 +41,16 @@ class TriggerController extends Controller
 
     public function store(Request $r)
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
 
         $data = $r->validate([
             'name'        => 'required|string|max:160',
             'event'       => 'required|string|max:80',
             'conditions'  => 'nullable|array',
-            'campaign_id' => 'required|exists:campaigns,id',
+            'campaign_id' => [
+                'required',
+                Rule::exists('campaigns', 'id')->where('company_id', $companyId),
+            ],
             'status'      => 'required|in:active,paused,archived',
         ]);
 
@@ -66,7 +70,7 @@ class TriggerController extends Controller
     {
         $this->authorizeCompany($trigger->company_id);
 
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
 
         $campaigns = Campaign::where('company_id',$companyId)
             ->orderBy('name')->get(['id','name']);
@@ -85,11 +89,16 @@ class TriggerController extends Controller
     {
         $this->authorizeCompany($trigger->company_id);
 
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
+
         $data = $r->validate([
             'name'        => 'required|string|max:160',
             'event'       => 'required|string|max:80',
             'conditions'  => 'nullable|array',
-            'campaign_id' => 'required|exists:campaigns,id',
+            'campaign_id' => [
+                'required',
+                Rule::exists('campaigns', 'id')->where('company_id', $companyId),
+            ],
             'status'      => 'required|in:active,paused,archived',
         ]);
 
@@ -107,7 +116,7 @@ class TriggerController extends Controller
 
     private function authorizeCompany($rowCompanyId): void
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = auth()->user()->company_id ?? auth()->user()->company->id ?? 0;
         abort_if((int)$rowCompanyId !== (int)$companyId, 403);
     }
 }

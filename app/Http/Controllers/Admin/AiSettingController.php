@@ -15,7 +15,9 @@ class AiSettingController extends Controller
 
     public function edit(Request $request)
     {
-        $companyId = (int) optional($request->user())->company_id ?: 1;
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
 
         $keys = [
             // Policy
@@ -77,7 +79,9 @@ class AiSettingController extends Controller
 
     public function update(Request $request)
     {
-        $companyId = (int) optional($request->user())->company_id ?: 1;
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
 
         $data = $request->validate([
             // policy

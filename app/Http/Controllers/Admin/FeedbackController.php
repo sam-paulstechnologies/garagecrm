@@ -3,19 +3,21 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
+use App\Models\Company\CompanySetting;
+use App\Models\Job\Booking;
+use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Models\Company\CompanySetting;
-use App\Models\Bookings\Booking;   // if you have a Booking model
-use App\Models\Leads\Lead;         // if you have a Lead model
-use App\Models\Opportunities\Opportunity; // if present
-use App\Services\WhatsApp\SendWhatsAppMessage;
 
 class FeedbackController extends Controller
 {
     public function index()
     {
         $companyId = (int)(auth()->user()->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
 
         $rows = DB::table('feedback')
             ->where('company_id', $companyId)
@@ -34,49 +36,95 @@ class FeedbackController extends Controller
     public function store(Request $r)
     {
         $data = $r->validate([
-            'booking_id'     => 'nullable|integer',
-            'lead_id'        => 'nullable|integer',
-            'opportunity_id' => 'nullable|integer',
-            'rating'         => 'required|integer|min:1|max:5',
-            'comment'        => 'nullable|string',
+            'booking_id'     => ['nullable', 'integer'],
+            'lead_id'        => ['nullable', 'integer'],
+            'opportunity_id' => ['nullable', 'integer'],
+            'rating'         => ['required', 'integer', 'min:1', 'max:5'],
+            'comment'        => ['nullable', 'string'],
         ]);
 
-        $companyId = (int)(auth()->user()->company_id ?? 0) ?: 1;
+        $companyId = (int)(auth()->user()->company_id ?? 0);
 
-        // Figure out a phone number to message (best-effort: try booking->client->phone_norm, then lead phone_norm)
+        abort_if(!$companyId, 403);
+
+        $bookingId = null;
+        $leadId = null;
+        $opportunityId = null;
+
         $toPhone = null;
         $clientName = null;
 
-        if (!empty($data['booking_id']) && class_exists(Booking::class)) {
-            if ($b = Booking::with('client')->find($data['booking_id'])) {
-                $this->abortIfWrongCompany($b->company_id, $companyId);
-                $toPhone   = $b->client->phone_norm ?? null;
-                $clientName= $b->client->name ?? null;
+        /*
+        |--------------------------------------------------------------------------
+        | Booking validation — fail closed
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($data['booking_id'])) {
+            $booking = Booking::with('client')
+                ->where('company_id', $companyId)
+                ->find($data['booking_id']);
+
+            abort_if(!$booking, 422, 'Invalid booking for this company.');
+
+            $bookingId = $booking->id;
+            $toPhone = $booking->client->phone_norm ?? $booking->client->phone ?? null;
+            $clientName = $booking->client->name ?? null;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Lead validation — fail closed
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($data['lead_id'])) {
+            $lead = Lead::with('client')
+                ->where('company_id', $companyId)
+                ->find($data['lead_id']);
+
+            abort_if(!$lead, 422, 'Invalid lead for this company.');
+
+            $leadId = $lead->id;
+
+            if (!$toPhone) {
+                $toPhone = $lead->phone_norm
+                    ?? $lead->phone
+                    ?? ($lead->client->phone_norm ?? null)
+                    ?? ($lead->client->phone ?? null);
             }
-        } elseif (!empty($data['lead_id']) && class_exists(Lead::class)) {
-            if ($l = Lead::with('client')->find($data['lead_id'])) {
-                $this->abortIfWrongCompany($l->company_id, $companyId);
-                $toPhone   = $l->phone_norm ?? ($l->client->phone_norm ?? null);
-                $clientName= $l->client->name ?? $l->name ?? null;
+
+            if (!$clientName) {
+                $clientName = $lead->client->name ?? $lead->name ?? null;
             }
         }
 
-        // Persist feedback
+        /*
+        |--------------------------------------------------------------------------
+        | Opportunity validation — fail closed
+        |--------------------------------------------------------------------------
+        */
+        if (!empty($data['opportunity_id'])) {
+            $opportunity = Opportunity::where('company_id', $companyId)
+                ->find($data['opportunity_id']);
+
+            abort_if(!$opportunity, 422, 'Invalid opportunity for this company.');
+
+            $opportunityId = $opportunity->id;
+        }
+
         DB::table('feedback')->insert([
             'company_id'     => $companyId,
-            'booking_id'     => $data['booking_id'] ?? null,
-            'opportunity_id' => $data['opportunity_id'] ?? null,
-            'lead_id'        => $data['lead_id'] ?? null,
-            'rating'         => (int)$data['rating'],
-            'sentiment'      => $this->sentimentFromRating((int)$data['rating']),
+            'booking_id'     => $bookingId,
+            'opportunity_id' => $opportunityId,
+            'lead_id'        => $leadId,
+            'rating'         => (int) $data['rating'],
+            'sentiment'      => $this->sentimentFromRating((int) $data['rating']),
             'comment'        => $data['comment'] ?? null,
             'source'         => 'admin',
             'created_at'     => now(),
             'updated_at'     => now(),
         ]);
 
-        // Positive? send review request
-        if ($toPhone && (int)$data['rating'] >= 4) {
+        if ($toPhone && (int) $data['rating'] >= 4) {
             $set = CompanySetting::where('company_id', $companyId)->first();
             $reviewLink = $set->google_review_link ?? 'https://google.com';
 
@@ -84,20 +132,20 @@ class FeedbackController extends Controller
                 $companyId,
                 'feedback.positive.review',
                 $toPhone,
-                ['name' => $clientName ?: 'there', 'review_link' => $reviewLink]
+                [
+                    'name' => $clientName ?: 'there',
+                    'review_link' => $reviewLink,
+                ]
             );
         }
 
-        return redirect()->route('admin.feedback.index')->with('success', 'Feedback recorded.');
+        return redirect()
+            ->route('admin.feedback.index')
+            ->with('success', 'Feedback recorded.');
     }
 
     private function sentimentFromRating(int $rating): string
     {
-        return $rating >= 4 ? 'positive' : ($rating == 3 ? 'neutral' : 'negative');
-    }
-
-    private function abortIfWrongCompany($rowCompanyId, $authedCompanyId): void
-    {
-        abort_if((int)$rowCompanyId !== (int)$authedCompanyId, 403, 'Wrong company scope.');
+        return $rating >= 4 ? 'positive' : ($rating === 3 ? 'neutral' : 'negative');
     }
 }

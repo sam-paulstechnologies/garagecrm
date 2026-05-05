@@ -20,9 +20,11 @@ class CommunicationLogController extends Controller
                 $q->where('direction', strtolower($request->direction))
             )
             ->when($request->q, function ($q) use ($request) {
-                $q->where('body', 'like', '%'.$request->q.'%')
-                  ->orWhere('to_phone', 'like', '%'.$request->q.'%')
-                  ->orWhere('to_email', 'like', '%'.$request->q.'%');
+                $q->where(function ($w) use ($request) {
+                    $w->where('body', 'like', '%'.$request->q.'%')
+                      ->orWhere('to_phone', 'like', '%'.$request->q.'%')
+                      ->orWhere('to_email', 'like', '%'.$request->q.'%');
+                });
             })
             ->orderByDesc('communication_date')
             ->orderByDesc('id')

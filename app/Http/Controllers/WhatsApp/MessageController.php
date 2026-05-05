@@ -9,8 +9,15 @@ use Illuminate\Http\Request;
 
 class MessageController extends Controller
 {
+    protected function companyId(): int
+    {
+        return (int) (auth()->user()->company_id ?? auth()->user()->company->id ?? 0);
+    }
+
     public function index(Request $r) {
-        $q = WhatsAppMessage::query()->orderByDesc('id');
+        $q = WhatsAppMessage::where('company_id', $this->companyId())
+            ->orderByDesc('id');
+
         if ($r->filled('status'))   $q->where('status', $r->string('status'));
         if ($r->filled('to'))       $q->where('to_number', 'like', '%'.$r->string('to').'%');
         if ($r->filled('template')) $q->where('template', $r->string('template'));
@@ -19,12 +26,12 @@ class MessageController extends Controller
     }
 
     public function show($id) {
-        $msg = WhatsAppMessage::findOrFail($id);
+        $msg = WhatsAppMessage::where('company_id', $this->companyId())->findOrFail($id);
         return view('whatsapp.messages.show', compact('msg'));
     }
 
     public function retry($id) {
-        $msg = WhatsAppMessage::findOrFail($id);
+        $msg = WhatsAppMessage::where('company_id', $this->companyId())->findOrFail($id);
         // Re-send using the same payload
         dispatch(function() use ($msg) {
             (new SendWhatsAppMessage())->sendRaw(

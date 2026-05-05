@@ -2,11 +2,11 @@
 
 namespace App\Models\Job;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Client\Client;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
@@ -56,6 +56,25 @@ class Invoice extends Model
         'size'         => 'integer',
         'version'      => 'integer',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     /* =====================================================
      | Relationships

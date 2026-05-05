@@ -3,39 +3,55 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-
-use App\Models\User;
 use App\Models\Client\Client;
+use App\Models\Client\CommunicationLog;
 use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
 use App\Models\Job\Invoice;
-use App\Models\Client\Opportunity;
-use App\Models\Client\CommunicationLog;
+use App\Models\User;
 use App\Models\WhatsApp\WhatsAppMessage;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     public function index()
     {
         $user = auth()->user();
-        if (!$user) return redirect()->route('login');
 
-        $companyId = (int) $user->company_id;
+        if (!$user) {
+            return redirect()->route('login');
+        }
 
-        // ---- AI Status for badge ----
+        $companyId = $this->companyId();
+
+        /*
+        |--------------------------------------------------------------------------
+        | AI Status for badge
+        |--------------------------------------------------------------------------
+        */
         $get = fn($k, $d = null) => DB::table('company_settings')
             ->where('company_id', $companyId)
             ->where('key', $k)
             ->value('value') ?? $d;
 
-        $aiEnabled   = ($get('ai.enabled', '0') === '1');
+        $aiEnabled = ($get('ai.enabled', '0') === '1');
+
         $aiThreshold = is_numeric($get('ai.confidence_threshold'))
             ? (float) $get('ai.confidence_threshold')
             : (float) env('AI_CONFIDENCE_THRESHOLD', 0.60);
 
-        $aiFirst     = ($get('ai.first_reply', '0') === '1');
+        $aiFirst = ($get('ai.first_reply', '0') === '1');
 
         $aiStatus = [
             'enabled'   => $aiEnabled,
@@ -45,18 +61,26 @@ class DashboardController extends Controller
             'color'     => $aiEnabled ? '#10b981' : '#9ca3af',
         ];
 
-        // ---- Stats ----
+        /*
+        |--------------------------------------------------------------------------
+        | Stats
+        |--------------------------------------------------------------------------
+        */
         $stats = [
-            'total_users'   => User::where('company_id', $companyId)->count(),
-            'total_clients' => Client::where('company_id', $companyId)->count(),
-            'total_leads'   => Lead::where('company_id', $companyId)->count(),
+            'total_users' => User::where('company_id', $companyId)->count(),
+
+            'total_clients' => Client::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->count(),
+
+            'total_leads' => Lead::where('company_id', $companyId)->count(),
 
             'revenue_this_month' => Invoice::where('company_id', $companyId)
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->sum('amount'),
 
-            // ✅ Better meaning: bookings scheduled in this month (not created this month)
+            // Bookings scheduled in this month
             'bookings_this_month' => Booking::where('company_id', $companyId)
                 ->where('is_archived', false)
                 ->whereMonth('booking_date', now()->month)
@@ -64,6 +88,7 @@ class DashboardController extends Controller
                 ->count(),
 
             'new_clients_this_month' => Client::where('company_id', $companyId)
+                ->where('is_archived', false)
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->count(),
@@ -86,6 +111,11 @@ class DashboardController extends Controller
             ];
         })->reverse()->values();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Recent records
+        |--------------------------------------------------------------------------
+        */
         $recentLeads = Lead::where('company_id', $companyId)
             ->latest()
             ->take(5)
@@ -100,10 +130,16 @@ class DashboardController extends Controller
 
         $recentOpportunities = Opportunity::with('client')
             ->where('company_id', $companyId)
+            ->where('is_archived', false)
             ->latest()
             ->take(5)
             ->get();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Calendar
+        |--------------------------------------------------------------------------
+        */
         $calendarBookings = Booking::with('client')
             ->where('company_id', $companyId)
             ->where('is_archived', false)
@@ -120,6 +156,11 @@ class DashboardController extends Controller
             ];
         });
 
+        /*
+        |--------------------------------------------------------------------------
+        | Smart KPIs
+        |--------------------------------------------------------------------------
+        */
         $pendingBookings = Booking::where('company_id', $companyId)
             ->where('is_archived', false)
             ->where('status', '!=', Booking::STATUS_COMPLETED)
@@ -140,24 +181,36 @@ class DashboardController extends Controller
             'followups_due'    => $followUpsDue,
         ];
 
-        // ---- WhatsApp KPIs ----
+        /*
+        |--------------------------------------------------------------------------
+        | WhatsApp KPIs
+        |--------------------------------------------------------------------------
+        */
         $ackWindowMins = 20;
-        $slaMins       = 120;
+        $slaMins = 120;
         $lookbackHours = 24;
 
         $waOutboundToday = WhatsAppMessage::forCompany($companyId)
             ->whereDate('created_at', now())
             ->where('direction', 'out');
 
-        $waInboundToday  = WhatsAppMessage::forCompany($companyId)
+        $waInboundToday = WhatsAppMessage::forCompany($companyId)
             ->whereDate('created_at', now())
             ->where('direction', 'in');
 
         $waKpis = [
-            'sent_today'      => (clone $waOutboundToday)->whereIn('status', ['sent', 'delivered', 'read', 'replied'])->count(),
-            'delivered_today' => (clone $waOutboundToday)->where('status', 'delivered')->count(),
-            'replied_today'   => (clone $waInboundToday)->count(),
-            'failed_24h'      => WhatsAppMessage::forCompany($companyId)
+            'sent_today' => (clone $waOutboundToday)
+                ->whereIn('status', ['sent', 'delivered', 'read', 'replied'])
+                ->count(),
+
+            'delivered_today' => (clone $waOutboundToday)
+                ->where('status', 'delivered')
+                ->count(),
+
+            'replied_today' => (clone $waInboundToday)
+                ->count(),
+
+            'failed_24h' => WhatsAppMessage::forCompany($companyId)
                 ->where('status', 'failed')
                 ->where('created_at', '>=', now()->subDay())
                 ->count(),
@@ -197,6 +250,7 @@ class DashboardController extends Controller
             ")
             ->count();
 
+        // Global system health metric, intentionally not company-scoped.
         $failedJobsCount = DB::table('failed_jobs')->count();
 
         $waDashboard = [

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant\Lead;
+use App\Models\Client\Lead;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -36,21 +36,29 @@ class LeadManagementController extends Controller
             $lead->convertToClient();
         }
 
-        return redirect()->route('admin.leads.index')->with('success', 'Lead created successfully.');
+        return redirect()->route('tenant.leads.index')->with('success', 'Lead created successfully.');
+    }
+
+    public function show($id)
+    {
+        $lead = Lead::where('company_id', Auth::user()->company_id)
+            ->findOrFail($id);
+
+        return view('admin.leads.show', compact('lead'));
     }
 
     public function edit($id)
     {
-        $lead = Lead::findOrFail($id);
-        $this->authorizeLead($lead);
+        $lead = Lead::where('company_id', Auth::user()->company_id)
+            ->findOrFail($id);
 
         return view('admin.leads.edit', compact('lead'));
     }
 
     public function update(Request $request, $id)
     {
-        $lead = Lead::findOrFail($id);
-        $this->authorizeLead($lead);
+        $lead = Lead::where('company_id', Auth::user()->company_id)
+            ->findOrFail($id);
 
         $validated = $this->validateLead($request);
         $lead->update($validated);
@@ -60,17 +68,17 @@ class LeadManagementController extends Controller
             $lead->convertToClient();
         }
 
-        return redirect()->route('admin.leads.index')->with('success', 'Lead updated successfully.');
+        return redirect()->route('tenant.leads.index')->with('success', 'Lead updated successfully.');
     }
 
     public function destroy($id)
     {
-        $lead = Lead::findOrFail($id);
-        $this->authorizeLead($lead);
+        $lead = Lead::where('company_id', Auth::user()->company_id)
+            ->findOrFail($id);
 
         $lead->delete();
 
-        return redirect()->route('admin.leads.index')->with('success', 'Lead deleted successfully.');
+        return redirect()->route('tenant.leads.index')->with('success', 'Lead deleted successfully.');
     }
 
     private function validateLead(Request $request): array

@@ -118,6 +118,26 @@ class MetaWhatsAppWebhookController extends Controller
         */
         if (!empty($value['statuses'])) {
 
+            $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
+
+            if (!$phoneNumberId) {
+                Log::warning('[META] Status update missing phone_number_id');
+                return response()->noContent();
+            }
+
+            $company = Company::where(
+                'meta_phone_number_id',
+                $phoneNumberId
+            )->first();
+
+            if (!$company) {
+                Log::warning('[META] Status company not resolved', [
+                    'phone_number_id' => $phoneNumberId,
+                ]);
+
+                return response()->noContent();
+            }
+
             foreach ($value['statuses'] as $status) {
 
                 $messageId = $status['id'] ?? null;
@@ -125,18 +145,21 @@ class MetaWhatsAppWebhookController extends Controller
 
                 if (!$messageId) {
                     Log::warning('[META] Status update missing message id', [
+                        'company_id' => $company->id,
                         'status' => $status,
                     ]);
 
                     continue;
                 }
 
-                $messageLog = MessageLog::where('provider_message_id', $messageId)
+                $messageLog = MessageLog::where('company_id', $company->id)
+                    ->where('provider_message_id', $messageId)
                     ->latest('id')
                     ->first();
 
                 if (!$messageLog) {
                     Log::warning('[META] Status update message log not found', [
+                        'company_id' => $company->id,
                         'provider_message_id' => $messageId,
                         'provider_status' => $providerStatus,
                         'status_payload' => $status,
@@ -182,6 +205,7 @@ class MetaWhatsAppWebhookController extends Controller
                 ]);
 
                 Log::info('[META] Status update processed', [
+                    'company_id' => $company->id,
                     'message_log_id' => $messageLog->id,
                     'provider_message_id' => $messageId,
                     'provider_status' => $providerStatus,
@@ -268,6 +292,7 @@ class MetaWhatsAppWebhookController extends Controller
         );
 
         Log::info('[META] Inbound message dispatched', [
+            'company_id' => $company->id,
             'type' => $msg['type'] ?? null,
             'body' => $body,
         ]);
@@ -310,7 +335,7 @@ class MetaWhatsAppWebhookController extends Controller
             if ($interactiveType === 'list_reply') {
                 return trim((string) (
                     $msg['interactive']['list_reply']['title']
-                    ?? $msg['interactive']['list_reply']['id']
+                    ?? $msg['interactive']['button_reply']['id']
                     ?? ''
                 ));
             }

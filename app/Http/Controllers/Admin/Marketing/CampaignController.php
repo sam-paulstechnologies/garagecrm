@@ -11,9 +11,19 @@ use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
 {
+    protected function companyId(): int
+    {
+        return (int) (auth()->user()->company_id ?? auth()->user()->company->id ?? 0);
+    }
+
+    protected function authorizeCompany(Campaign $campaign): void
+    {
+        abort_if((int) $campaign->company_id !== $this->companyId(), 403);
+    }
+
     public function index()
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = $this->companyId();
 
         $items = Campaign::where('company_id', $companyId)
             ->latest()
@@ -28,7 +38,7 @@ class CampaignController extends Controller
      */
     public function create()
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = $this->companyId();
 
         // Only id + name needed for dropdown; keep it light
         $templates = WhatsAppTemplate::where('company_id', $companyId)
@@ -47,7 +57,7 @@ class CampaignController extends Controller
 
     public function store(Request $r)
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $companyId = $this->companyId();
 
         $data = $r->validate([
             'name'         => 'required|string|max:160',
@@ -71,6 +81,10 @@ class CampaignController extends Controller
 
             // Steps
             foreach (($data['steps'] ?? []) as $i => $s) {
+                if (!empty($s['template_id'])) {
+                    WhatsAppTemplate::where('company_id', $companyId)->findOrFail($s['template_id']);
+                }
+
                 CampaignStep::create([
                     'campaign_id'   => $campaign->id,
                     'step_order'    => $i + 1,
@@ -96,7 +110,9 @@ class CampaignController extends Controller
 
     public function edit(Campaign $campaign)
     {
-        $companyId = auth()->user()->company_id ?? 1;
+        $this->authorizeCompany($campaign);
+
+        $companyId = $this->companyId();
 
         // For editing, you may also want templates available for step changes
         $templates = WhatsAppTemplate::where('company_id', $companyId)
@@ -110,6 +126,10 @@ class CampaignController extends Controller
 
     public function update(Request $r, Campaign $campaign)
     {
+        $this->authorizeCompany($campaign);
+
+        $companyId = $this->companyId();
+
         $data = $r->validate([
             'name'         => 'required|string|max:160',
             'type'         => 'required|in:broadcast,automation',
@@ -120,7 +140,7 @@ class CampaignController extends Controller
             'audiences'    => 'nullable|array',
         ]);
 
-        DB::transaction(function () use ($campaign, $data) {
+        DB::transaction(function () use ($campaign, $data, $companyId) {
             $campaign->update([
                 'name'         => $data['name'],
                 'type'         => $data['type'],
@@ -132,6 +152,10 @@ class CampaignController extends Controller
             // Steps (replace)
             $campaign->steps()->delete();
             foreach (($data['steps'] ?? []) as $i => $s) {
+                if (!empty($s['template_id'])) {
+                    WhatsAppTemplate::where('company_id', $companyId)->findOrFail($s['template_id']);
+                }
+
                 $campaign->steps()->create([
                     'step_order'    => $i + 1,
                     'action'        => $s['action'] ?? 'send_template',
@@ -154,12 +178,16 @@ class CampaignController extends Controller
 
     public function activate(Campaign $campaign)
     {
+        $this->authorizeCompany($campaign);
+
         $campaign->update(['status' => 'active']);
         return back()->with('ok', 'Campaign activated');
     }
 
     public function pause(Campaign $campaign)
     {
+        $this->authorizeCompany($campaign);
+
         $campaign->update(['status' => 'paused']);
         return back()->with('ok', 'Campaign paused');
     }

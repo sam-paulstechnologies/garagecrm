@@ -56,6 +56,8 @@ class CommunicationController extends Controller
     public function store(StoreCommunicationRequest $request)
     {
         $data = $request->validated();
+        unset($data['company_id']);
+
         $data['company_id'] = company_id();
         $data['communication_date'] ??= now();
 
@@ -88,7 +90,11 @@ class CommunicationController extends Controller
     public function update(UpdateCommunicationRequest $request, Communication $communication)
     {
         $this->authorizeCompany($communication);
-        $communication->update($request->validated());
+
+        $data = $request->validated();
+        unset($data['company_id']);
+
+        $communication->update($data);
 
         return redirect()
             ->route('admin.communications.show', $communication)

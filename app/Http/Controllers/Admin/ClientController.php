@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Note;
-use App\Models\Job\Job; // ✅ ADDED
+use App\Models\Job\Job;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -118,8 +118,9 @@ class ClientController extends Controller
             'files',
         ]);
 
-        /** ✅ SERVICE HISTORY (ADDED) */
-        $serviceHistory = Job::where('client_id', $client->id)
+        /** ✅ SERVICE HISTORY */
+        $serviceHistory = Job::where('company_id', auth()->user()->company_id)
+            ->where('client_id', $client->id)
             ->where('status', 'completed')
             ->latest('end_time')
             ->take(10)
@@ -152,15 +153,15 @@ class ClientController extends Controller
         if ($client->notes?->count()) $score += 10;
 
         $kpis = [
-            'cars'        => $vehicleCount,
-            'ltv'         => 0,
-            'avg_spend'   => 0,
-            'last_service'=> null,
-            'next_service'=> null,
-            'profile_pct' => min(100, $score),
+            'cars'         => $vehicleCount,
+            'ltv'          => 0,
+            'avg_spend'    => 0,
+            'last_service' => null,
+            'next_service' => null,
+            'profile_pct'  => min(100, $score),
         ];
 
-        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory')); // ✅ ADDED
+        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory'));
     }
 
     public function edit(Client $client)
@@ -246,6 +247,44 @@ class ClientController extends Controller
         return redirect()
             ->route('admin.clients.archived')
             ->with('success', 'Client restored.');
+    }
+
+    /**
+     * 📥 Import form
+     */
+    public function importForm()
+    {
+        return view('admin.clients.import');
+    }
+
+    /**
+     * 📥 Import clients
+     * Basic placeholder-safe import handler.
+     * You can later connect this to Excel/CSV import logic.
+     */
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => ['nullable', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
+        ]);
+
+        return redirect()
+            ->route('admin.clients.index')
+            ->with('warning', 'Client import screen is available, but import processing is not configured yet.');
+    }
+
+    /**
+     * 🗑️ Delete client
+     */
+    public function destroy(Client $client)
+    {
+        $this->authorizeClient($client);
+
+        $client->delete();
+
+        return redirect()
+            ->route('admin.clients.index')
+            ->with('success', 'Client deleted successfully.');
     }
 
     /** Notes */

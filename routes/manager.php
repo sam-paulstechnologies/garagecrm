@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\ManagerController;
 use App\Http\Controllers\Manager\DashboardController;
-use App\Http\Controllers\Admin\ManagerController; // 🔥 ADD THIS
+use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'active', 'force_password', 'role:manager'])
     ->prefix('manager')
@@ -19,7 +19,7 @@ Route::middleware(['auth', 'active', 'force_password', 'role:manager'])
 
         /*
         |--------------------------------------------------------------------------
-        | 🔥 ESCALATIONS (CORE FEATURE)
+        | Escalations
         |--------------------------------------------------------------------------
         */
         Route::get('escalations', [ManagerController::class, 'dashboard'])
@@ -27,31 +27,21 @@ Route::middleware(['auth', 'active', 'force_password', 'role:manager'])
 
         /*
         |--------------------------------------------------------------------------
-        | 💬 Conversation
+        | Conversation
         |--------------------------------------------------------------------------
         */
         Route::get('conversation/{lead}', [ManagerController::class, 'conversation'])
             ->name('conversation');
 
-        /*
-        |--------------------------------------------------------------------------
-        | 📤 Reply
-        |--------------------------------------------------------------------------
-        */
         Route::post('conversation/{lead}/reply', [ManagerController::class, 'reply'])
             ->name('conversation.reply');
 
-        /*
-        |--------------------------------------------------------------------------
-        | 🔓 Resume Bot
-        |--------------------------------------------------------------------------
-        */
         Route::post('conversation/{lead}/resume', [ManagerController::class, 'resumeBot'])
             ->name('conversation.resume');
 
         /*
         |--------------------------------------------------------------------------
-        | 📅 Bookings (REAL)
+        | Bookings
         |--------------------------------------------------------------------------
         */
         Route::get('bookings', [ManagerController::class, 'bookings'])
@@ -59,7 +49,7 @@ Route::middleware(['auth', 'active', 'force_password', 'role:manager'])
 
         /*
         |--------------------------------------------------------------------------
-        | (Keep placeholders for future)
+        | Placeholders
         |--------------------------------------------------------------------------
         */
         Route::view('clients', 'manager.placeholder')

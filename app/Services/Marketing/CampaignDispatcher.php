@@ -38,6 +38,16 @@ class CampaignDispatcher
             return;
         }
 
+        if ((int) $campaign->company_id !== (int) $enrollment->company_id) {
+            Log::warning('[CampaignDispatcher] Campaign company mismatch', [
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
+                'campaign_company_id' => $campaign->company_id,
+                'enrollment_id' => $enrollment->id,
+            ]);
+            return;
+        }
+
         $step = $campaign->steps->firstWhere('step_order', $enrollment->current_step);
 
         if (!$step) {
@@ -49,7 +59,8 @@ class CampaignDispatcher
 
             case 'send_template':
 
-                $tpl = WhatsAppTemplate::find($step->template_id);
+                $tpl = WhatsAppTemplate::where('company_id', $enrollment->company_id)
+                    ->find($step->template_id);
 
                 if ($tpl) {
 
@@ -58,6 +69,7 @@ class CampaignDispatcher
 
                     if (!$phone || !$leadId) {
                         Log::warning('[CampaignDispatcher] Missing phone or lead', [
+                            'company_id' => $enrollment->company_id,
                             'enrollment_id' => $enrollment->id
                         ]);
                         return;
@@ -124,7 +136,8 @@ class CampaignDispatcher
     {
         if (strtolower((string) $e->subject_type) === 'lead') {
 
-            $lead = Lead::find($e->subject_id);
+            $lead = Lead::where('company_id', $e->company_id)
+                ->find($e->subject_id);
 
             return $lead?->phone_norm ?: ($lead?->phone ?? '');
         }
@@ -135,7 +148,10 @@ class CampaignDispatcher
     protected function resolveLeadId(CampaignEnrollment $e): ?int
     {
         if (strtolower((string) $e->subject_type) === 'lead') {
-            return $e->subject_id;
+            $lead = Lead::where('company_id', $e->company_id)
+                ->find($e->subject_id);
+
+            return $lead?->id;
         }
 
         return null;
@@ -145,7 +161,8 @@ class CampaignDispatcher
     {
         if (strtolower((string) $e->subject_type) === 'lead') {
 
-            $lead = Lead::find($e->subject_id);
+            $lead = Lead::where('company_id', $e->company_id)
+                ->find($e->subject_id);
 
             return [
                 $lead?->name ?: 'there',

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class AiSuggestion extends Model
 {
-    protected $fillable = ['message_log_id','suggestion_text','confidence','chosen'];
+    protected $fillable = ['company_id','message_log_id','suggestion_text','confidence','chosen'];
 
     protected $casts = [
         'chosen'     => 'boolean',

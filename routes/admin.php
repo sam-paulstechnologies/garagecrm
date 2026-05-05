@@ -40,9 +40,13 @@ use App\Http\Controllers\Admin\{
     JourneyTimelineController,
     AudienceController,
     DuplicateClientsController,
-    MetaConnectController
+    MetaConnectController,
+    DocumentInboxController,
+    CommunicationLogController
 };
 
+use App\Http\Controllers\Admin\Marketing\CampaignController as MarketingCampaignController;
+use App\Http\Controllers\Admin\Marketing\TriggerController as MarketingTriggerController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
 use App\Http\Controllers\Public\ManagerBookingController;
@@ -130,6 +134,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::pattern('enrollment', '[0-9]+');
         Route::pattern('audience', '[0-9]+');
         Route::pattern('candidate', '[0-9]+');
+        Route::pattern('doc', '[0-9]+');
+        Route::pattern('campaign', '[0-9]+');
+        Route::pattern('trigger', '[0-9]+');
 
         /*
         |----------------------------------------------------------------------
@@ -197,6 +204,20 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
         /*
         |----------------------------------------------------------------------
+        | Documents Inbox
+        |----------------------------------------------------------------------
+        */
+        Route::get('documents', [DocumentInboxController::class, 'index'])
+            ->name('documents.index');
+
+        Route::get('documents/{doc}', [DocumentInboxController::class, 'show'])
+            ->name('documents.show');
+
+        Route::post('documents/{doc}/assign', [DocumentInboxController::class, 'assign'])
+            ->name('documents.assign');
+
+        /*
+        |----------------------------------------------------------------------
         | Clients & Vehicles
         |----------------------------------------------------------------------
         */
@@ -220,6 +241,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
         Route::post('clients/{client}/documents', [ClientDocumentController::class, 'store'])
             ->name('clients.documents.store');
+
+        Route::post('clients/{client}/documents/inbox-upload', [DocumentInboxController::class, 'uploadForClient'])
+            ->name('documents.upload-for-client');
 
         Route::get('clients/import', [ClientController::class, 'importForm'])
             ->name('clients.import.form');
@@ -307,7 +331,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::post('jobs/{job}/card/upload', [JobController::class, 'uploadCard'])
             ->name('jobs.card.upload');
 
-        Route::resource('jobs', JobController::class);
+        Route::resource('jobs', JobController::class)->except(['destroy']);
 
         /*
         |----------------------------------------------------------------------
@@ -331,6 +355,55 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('communications.complete');
 
         Route::resource('communications', CommunicationController::class);
+
+        Route::get('communication-logs', [CommunicationLogController::class, 'index'])
+            ->name('communication-logs.index');
+
+        /*
+        |----------------------------------------------------------------------
+        | Marketing
+        |----------------------------------------------------------------------
+        */
+        Route::prefix('marketing')->name('marketing.')->group(function () {
+            Route::get('campaigns', [MarketingCampaignController::class, 'index'])
+                ->name('campaigns.index');
+
+            Route::get('campaigns/create', [MarketingCampaignController::class, 'create'])
+                ->name('campaigns.create');
+
+            Route::post('campaigns', [MarketingCampaignController::class, 'store'])
+                ->name('campaigns.store');
+
+            Route::get('campaigns/{campaign}/edit', [MarketingCampaignController::class, 'edit'])
+                ->name('campaigns.edit');
+
+            Route::put('campaigns/{campaign}', [MarketingCampaignController::class, 'update'])
+                ->name('campaigns.update');
+
+            Route::post('campaigns/{campaign}/activate', [MarketingCampaignController::class, 'activate'])
+                ->name('campaigns.activate');
+
+            Route::post('campaigns/{campaign}/pause', [MarketingCampaignController::class, 'pause'])
+                ->name('campaigns.pause');
+
+            Route::get('triggers', [MarketingTriggerController::class, 'index'])
+                ->name('triggers.index');
+
+            Route::get('triggers/create', [MarketingTriggerController::class, 'create'])
+                ->name('triggers.create');
+
+            Route::post('triggers', [MarketingTriggerController::class, 'store'])
+                ->name('triggers.store');
+
+            Route::get('triggers/{trigger}/edit', [MarketingTriggerController::class, 'edit'])
+                ->name('triggers.edit');
+
+            Route::put('triggers/{trigger}', [MarketingTriggerController::class, 'update'])
+                ->name('triggers.update');
+
+            Route::delete('triggers/{trigger}', [MarketingTriggerController::class, 'destroy'])
+                ->name('triggers.destroy');
+        });
 
         /*
         |----------------------------------------------------------------------

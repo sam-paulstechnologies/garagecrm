@@ -17,8 +17,12 @@ class BookingTransitionController extends Controller
     {
         $data = $request->validate(['to' => 'required|string|max:40']);
 
-        $booking = Booking::findOrFail($id);
-        abort_if($booking->company_id !== auth()->user()->company_id, 403);
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        $booking = Booking::where('company_id', $companyId)
+            ->findOrFail($id);
 
         try {
             $updated = $this->svc->transition($booking, $data['to']);

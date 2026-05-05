@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreJobRequest extends FormRequest
 {
@@ -13,9 +14,18 @@ class StoreJobRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = (int) (auth()->user()->company_id ?? auth()->user()->company->id ?? 0);
+
         return [
-            'client_id'          => ['required','exists:clients,id'],
-            'booking_id'         => ['nullable','integer'],
+            'client_id'          => [
+                'required',
+                Rule::exists('clients', 'id')->where('company_id', $companyId),
+            ],
+            'booking_id'         => [
+                'nullable',
+                'integer',
+                Rule::exists('bookings', 'id')->where('company_id', $companyId),
+            ],
             'description'        => ['required','string','max:1000'],
             'start_time'         => ['nullable','date'],
             'end_time'           => ['nullable','date','after_or_equal:start_time'],
@@ -24,7 +34,10 @@ class StoreJobRequest extends FormRequest
             'parts_used'         => ['nullable','string'],
             'total_time_minutes' => ['nullable','integer','min:0'],
             'status'             => ['nullable','in:pending,in_progress,completed'],
-            'assigned_to'        => ['nullable','exists:users,id'],
+            'assigned_to'        => [
+                'nullable',
+                Rule::exists('users', 'id')->where('company_id', $companyId),
+            ],
         ];
     }
 }

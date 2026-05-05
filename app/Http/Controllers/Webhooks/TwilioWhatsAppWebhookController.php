@@ -111,13 +111,34 @@ class TwilioWhatsAppWebhookController
         $status = strtolower((string) $request->input('MessageStatus'));
         $error  = $request->input('ErrorCode');
 
+        $fromRaw = preg_replace('/^whatsapp:/', '', (string) $request->input('From'));
+        $toRaw   = preg_replace('/^whatsapp:/', '', (string) $request->input('To'));
+
         Log::info('[Twilio WhatsApp] Status update', compact('sid', 'status', 'error'));
 
         if (!$sid) {
             return response('OK', Response::HTTP_OK);
         }
 
-        $log = MessageLog::where('provider_message_id', $sid)->latest()->first();
+        $companyId = DB::table('company_settings')
+            ->whereIn('key', ['twilio.whatsapp_from', 'twilio_whatsapp_from'])
+            ->whereIn('value', array_filter([$fromRaw, $toRaw]))
+            ->value('company_id');
+
+        if (!$companyId) {
+            Log::warning('[Twilio WhatsApp] Status company not resolved', [
+                'sid'  => $sid,
+                'from' => $fromRaw,
+                'to'   => $toRaw,
+            ]);
+
+            return response('OK', Response::HTTP_OK);
+        }
+
+        $log = MessageLog::where('company_id', (int) $companyId)
+            ->where('provider_message_id', $sid)
+            ->latest()
+            ->first();
 
         if (!$log) {
             return response('OK', Response::HTTP_OK);
@@ -136,13 +157,14 @@ class TwilioWhatsAppWebhookController
         */
         if ($status === 'delivered' && empty($meta['converted']) && $log->lead_id) {
             try {
-                $converter->ensureClientAndOpportunity((int) $log->lead_id);
+                $converter->ensureClientAndOpportunity((int) $log->lead_id, (int) $log->company_id);
 
                 $meta['converted'] = true;
                 $log->update(['meta' => $meta]);
 
             } catch (\Throwable $e) {
                 Log::error('[WA] Conversion failed', [
+                    'company_id' => $log->company_id,
                     'sid' => $sid,
                     'err' => $e->getMessage(),
                 ]);

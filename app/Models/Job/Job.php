@@ -2,17 +2,16 @@
 
 namespace App\Models\Job;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-use App\Models\Traits\BelongsToCompany;
 use App\Models\Client\Client;
-use App\Models\User;
 use App\Models\Job\Invoice;
 use App\Models\Job\JobCard;
 use App\Models\Job\JobDocument;
 use App\Models\Service\JobService;
+use App\Models\Traits\BelongsToCompany;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Job extends Model
 {
@@ -43,6 +42,25 @@ class Job extends Model
         'is_archived'        => 'boolean',
         'total_time_minutes' => 'integer',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     /*
     |--------------------------------------------------------------------------

@@ -9,17 +9,23 @@ use Illuminate\Support\Carbon;
 
 class JourneyWakeCommand extends Command
 {
-    protected $signature = 'journeys:wake';
+    protected $signature = 'journeys:wake {--company_id=}';
     protected $description = 'Resume journey enrollments whose WAIT time has elapsed';
 
     public function handle(): int
     {
         $now = now();
+        $companyId = $this->option('company_id');
 
         // Filter in PHP to keep JSON logic simple. For scale, move _wake_at to a column.
-        $due = JourneyEnrollment::where('status','active')
-            ->whereNotNull('context')
-            ->get()
+        $query = JourneyEnrollment::where('status','active')
+            ->whereNotNull('context');
+
+        if ($companyId) {
+            $query->where('company_id', (int) $companyId);
+        }
+
+        $due = $query->get()
             ->filter(fn($e) => ($e->context['_wake_at'] ?? null) && $now->gte(Carbon::parse($e->context['_wake_at'])));
 
         $engine = app(JourneyEngine::class);

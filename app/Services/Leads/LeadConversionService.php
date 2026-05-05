@@ -10,17 +10,30 @@ use Illuminate\Support\Facades\Log;
 
 class LeadConversionService
 {
-    public function ensureClientAndOpportunity(int $leadId): void
+    public function ensureClientAndOpportunity(int $leadId, ?int $companyId = null): void
     {
-        $lead = Lead::find($leadId);
+        $lead = Lead::when($companyId, function ($q) use ($companyId) {
+                $q->where('company_id', $companyId);
+            })
+            ->find($leadId);
 
         if (!$lead) {
             return;
         }
 
-        DB::transaction(function () use ($lead) {
+        DB::transaction(function () use ($lead, $companyId) {
 
             $lead->refresh();
+
+            if ($companyId && (int) $lead->company_id !== (int) $companyId) {
+                Log::warning('[LeadConversionService] Lead company mismatch', [
+                    'company_id' => $companyId,
+                    'lead_id' => $lead->id,
+                    'lead_company_id' => $lead->company_id,
+                ]);
+
+                return;
+            }
 
             /*
             |--------------------------------------------------------------------------
@@ -64,6 +77,7 @@ class LeadConversionService
                     ]);
 
                     Log::info('[LeadConversionService] Client created from lead', [
+                        'company_id' => $lead->company_id,
                         'lead_id'   => $lead->id,
                         'client_id' => $client->id,
                     ]);
@@ -103,6 +117,7 @@ class LeadConversionService
                     }
 
                     Log::info('[LeadConversionService] Existing client reused for lead', [
+                        'company_id' => $lead->company_id,
                         'lead_id'   => $lead->id,
                         'client_id' => $client->id,
                     ]);
@@ -195,6 +210,7 @@ class LeadConversionService
             ]);
 
             Log::info('[LeadConversionService] Opportunity created from lead', [
+                'company_id' => $lead->company_id,
                 'lead_id'   => $lead->id,
                 'client_id' => $lead->client_id,
             ]);

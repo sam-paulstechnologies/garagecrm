@@ -12,7 +12,10 @@ class InsightsController extends Controller
 
     public function monitoring(Request $request)
     {
-        $companyId = (int) optional($request->user())->company_id ?: 1;
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
         $from = $request->query('from');
         $to   = $request->query('to');
 

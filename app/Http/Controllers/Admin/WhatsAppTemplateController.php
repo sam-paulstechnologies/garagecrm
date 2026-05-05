@@ -20,7 +20,11 @@ class WhatsAppTemplateController extends Controller
 
     public function index(Request $request)
     {
-        $q = WhatsAppTemplate::query()->latest('updated_at');
+        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
+
+        $q = WhatsAppTemplate::query()
+            ->where('company_id', $companyId)
+            ->latest('updated_at');
 
         if ($s = trim($request->get('q', ''))) {
             $q->where(function ($w) use ($s) {
@@ -41,6 +45,7 @@ class WhatsAppTemplateController extends Controller
         $templates = $q->paginate(20)->withQueryString();
 
         $categories = WhatsAppTemplate::query()
+            ->where('company_id', $companyId)
             ->select('category')
             ->whereNotNull('category')
             ->where('category', '<>', '')
@@ -56,8 +61,10 @@ class WhatsAppTemplateController extends Controller
         return view('admin.whatsapp.templates.create');
     }
 
-    public function show(WhatsAppTemplate $template)
+    public function show(Request $request, WhatsAppTemplate $template)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         return view('admin.whatsapp.templates.show', compact('template'));
     }
 
@@ -80,6 +87,7 @@ class WhatsAppTemplateController extends Controller
             'language'   => $request->input('language', 'en'),
         ]);
 
+        $tpl->company_id = $companyId;
         $tpl->variables = $tpl->extractVariables();
         $tpl->save();
 
@@ -87,14 +95,19 @@ class WhatsAppTemplateController extends Controller
             ->with('success', 'Template created.');
     }
 
-    public function edit(WhatsAppTemplate $template)
+    public function edit(Request $request, WhatsAppTemplate $template)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         return view('admin.whatsapp.templates.edit', compact('template'));
     }
 
     public function update(UpdateTemplateRequest $request, WhatsAppTemplate $template)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         $data = $request->validated();
+        unset($data['company_id']);
 
         $buttons = $request->input('buttons');
         if (is_string($buttons)) {
@@ -107,6 +120,7 @@ class WhatsAppTemplateController extends Controller
         $data['status']   = $data['status']   ?? $template->status   ?? 'active';
 
         $template->fill($data);
+        $template->company_id = $request->user()->company_id ?? $request->user()->company->id ?? null;
         $template->variables = $template->extractVariables();
         $template->save();
 
@@ -114,8 +128,10 @@ class WhatsAppTemplateController extends Controller
             ->with('success', 'Template updated.');
     }
 
-    public function destroy(WhatsAppTemplate $template)
+    public function destroy(Request $request, WhatsAppTemplate $template)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         $template->delete();
         return redirect()->route('admin.whatsapp.templates.index')
             ->with('success', 'Template deleted.');
@@ -124,6 +140,8 @@ class WhatsAppTemplateController extends Controller
     /** Live preview: returns rendered header/body/footer as JSON with demo vars. */
     public function preview(Request $request, WhatsAppTemplate $template)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         $demo = [];
         foreach ($template->variables ?? [] as $v) {
             $demo[$v] = $request->input("vars.$v", strtoupper($v));
@@ -146,11 +164,14 @@ class WhatsAppTemplateController extends Controller
      */
     public function testSend(Request $request, WhatsAppTemplate $template, WhatsAppService $wa)
     {
+        $this->ensureTemplateBelongsToCompany($request, $template);
+
         $request->validate([
             'to_phone'   => ['required','regex:/^\+\d{8,20}$/'],
-            'company_id' => ['nullable','integer'],
             'lead_id'    => ['nullable','integer'],
         ]);
+
+        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
 
         // Build ordered params based on extracted variables
         $params = [];
@@ -166,7 +187,7 @@ class WhatsAppTemplateController extends Controller
         }
 
         $context = [
-            'company_id' => $request->input('company_id') ?? ($request->user()->company_id ?? null),
+            'company_id' => $companyId,
             'lead_id'    => $request->input('lead_id'),
         ];
 
@@ -190,6 +211,13 @@ class WhatsAppTemplateController extends Controller
         return back()->with($failed ? 'error' : 'success',
             $failed ? ('Send failed: '.$res['error']) : 'Test message queued/sent.'
         );
+    }
+
+    private function ensureTemplateBelongsToCompany(Request $request, WhatsAppTemplate $template): void
+    {
+        $companyId = $request->user()->company_id ?? $request->user()->company->id ?? null;
+
+        abort_unless((int) $template->company_id === (int) $companyId, 404);
     }
 
     private function renderVars(?string $text, array $vars): string

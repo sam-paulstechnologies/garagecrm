@@ -8,6 +8,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class VehicleController extends Controller
 {
@@ -43,7 +44,10 @@ class VehicleController extends Controller
         $companyId = auth()->user()->company_id;
 
         $data = $request->validate([
-            'client_id'                => 'required|exists:clients,id',
+            'client_id'                => [
+                'required',
+                Rule::exists('clients', 'id')->where('company_id', $companyId),
+            ],
             'make_id'                  => 'nullable|exists:vehicle_makes,id',
             'model_id'                 => 'nullable|exists:vehicle_models,id',
             'plate_number'             => 'nullable|string|max:100',
@@ -69,6 +73,19 @@ class VehicleController extends Controller
             ->with('success', 'Vehicle added successfully.');
     }
 
+    public function show(Vehicle $vehicle)
+    {
+        $this->authorizeVehicle($vehicle);
+
+        $vehicle->load([
+            'client',
+            'make',
+            'model',
+        ]);
+
+        return view('admin.vehicles.show', compact('vehicle'));
+    }
+
     public function edit(Vehicle $vehicle)
     {
         $this->authorizeVehicle($vehicle);
@@ -91,7 +108,10 @@ class VehicleController extends Controller
         $companyId = auth()->user()->company_id;
 
         $data = $request->validate([
-            'client_id'                => 'required|exists:clients,id',
+            'client_id'                => [
+                'required',
+                Rule::exists('clients', 'id')->where('company_id', $companyId),
+            ],
             'make_id'                  => 'nullable|exists:vehicle_makes,id',
             'model_id'                 => 'nullable|exists:vehicle_models,id',
             'plate_number'             => 'nullable|string|max:100',

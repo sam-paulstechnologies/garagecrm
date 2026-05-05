@@ -2,10 +2,10 @@
 
 namespace App\Models\Vehicle;
 
+use App\Models\Client\Client;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Builder;
-use App\Models\Client\Client;
 
 class Vehicle extends Model
 {
@@ -32,6 +32,25 @@ class Vehicle extends Model
         'inspection_expiry_date'   => 'date',
         'current_mileage'          => 'integer'
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROUTE MODEL BINDING SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        if (!$companyId) {
+            return null;
+        }
+
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('company_id', $companyId)
+            ->first();
+    }
 
     /*
     |--------------------------------------------------------------------------

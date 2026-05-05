@@ -5,18 +5,23 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\MessageLog;
-use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SlaDashboardController extends Controller
 {
+    protected function companyId(Request $request): int
+    {
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     public function index(Request $request)
     {
-        $companyId = (int) $request->user()->company_id;
-
-        $now = Carbon::now();
+        $companyId = $this->companyId($request);
 
         // ------------------------------
         // 1. BASIC COUNTS
@@ -36,7 +41,7 @@ class SlaDashboardController extends Controller
             ->selectRaw('AVG(TIMESTAMPDIFF(SECOND, m1.created_at, m2.created_at)) as avg_seconds')
             ->join('message_logs as m2', function ($j) {
                 $j->on('m1.conversation_id', '=', 'm2.conversation_id')
-                  ->where('m2.direction', 'out');
+                    ->where('m2.direction', 'out');
             })
             ->where('m1.direction', 'in')
             ->where('m1.company_id', $companyId)
@@ -69,13 +74,15 @@ class SlaDashboardController extends Controller
         // 5. Agent Performance
         // ------------------------------
         $agentPerformance = MessageLog::query()
-            ->select('users.name',
+            ->select(
+                'users.name',
                 DB::raw('COUNT(message_logs.id) as total'),
-                DB::raw('SUM(message_logs.source="ai") as ai_count'),
-                DB::raw('SUM(message_logs.direction="out") as outbound')
+                DB::raw('SUM(message_logs.source = "ai") as ai_count'),
+                DB::raw('SUM(message_logs.direction = "out") as outbound')
             )
             ->join('users', 'users.id', '=', 'message_logs.user_id')
             ->where('message_logs.company_id', $companyId)
+            ->where('users.company_id', $companyId)
             ->groupBy('users.id', 'users.name')
             ->orderByDesc('total')
             ->limit(10)
@@ -85,12 +92,12 @@ class SlaDashboardController extends Controller
         // 6. Ageing Buckets
         // ------------------------------
         $ageBuckets = [
-            '0_15'   => $this->countBucket($companyId, 0, 15),
-            '15_60'  => $this->countBucket($companyId, 15, 60),
-            '1_3h'   => $this->countBucket($companyId, 60, 180),
-            '3_24h'  => $this->countBucket($companyId, 180, 1440),
-            '1_3d'   => $this->countBucket($companyId, 1440, 4320),
-            '3d_plus'=> $this->countBucket($companyId, 4320, null),
+            '0_15'    => $this->countBucket($companyId, 0, 15),
+            '15_60'   => $this->countBucket($companyId, 15, 60),
+            '1_3h'    => $this->countBucket($companyId, 60, 180),
+            '3_24h'   => $this->countBucket($companyId, 180, 1440),
+            '1_3d'    => $this->countBucket($companyId, 1440, 4320),
+            '3d_plus' => $this->countBucket($companyId, 4320, null),
         ];
 
         return view('admin.sla.dashboard', [
@@ -105,7 +112,7 @@ class SlaDashboardController extends Controller
         ]);
     }
 
-    private function countBucket($companyId, $minMinutes, $maxMinutes = null)
+    private function countBucket(int $companyId, int $minMinutes, ?int $maxMinutes = null): int
     {
         $query = Conversation::where('company_id', $companyId)
             ->where('status', 'open')

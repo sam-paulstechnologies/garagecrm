@@ -66,6 +66,11 @@ class JourneyEngine
 
         $enr->loadMissing('journey.steps');
 
+        if (!$enr->journey || (int) $enr->journey->company_id !== (int) $enr->company_id) {
+            $enr->update(['status' => 'stopped']);
+            return;
+        }
+
         $step = $enr->journey->steps
             ->firstWhere('position', $enr->current_step_position + 1);
 
@@ -113,7 +118,8 @@ class JourneyEngine
     private function sendWhatsApp(JourneyEnrollment $enr, JourneyStep $step): void
     {
         $cfg = $step->config ?? [];
-        $template = WhatsAppTemplate::find($cfg['template_id'] ?? null);
+        $template = WhatsAppTemplate::where('company_id', $enr->company_id)
+            ->find($cfg['template_id'] ?? null);
 
         if (!$template) {
             $this->skip($enr);

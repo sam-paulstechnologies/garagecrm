@@ -3,14 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendWhatsAppFromTemplate;
 use App\Models\Client\Lead;
-use App\Models\MessageLog;
 use App\Models\Job\Booking;
+use App\Models\MessageLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class ManagerController extends Controller
 {
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     /**
      * =========================================================
      * 📊 Dashboard (Escalations)
@@ -18,11 +27,11 @@ class ManagerController extends Controller
      */
     public function dashboard()
     {
-        $companyId = Auth::user()->company_id;
+        $companyId = $this->companyId();
 
         $leads = Lead::with(['client', 'opportunity'])
             ->where('company_id', $companyId)
-            ->where('conversation_state', 'human') // 🔥 escalated only
+            ->where('conversation_state', 'human')
             ->latest()
             ->get();
 
@@ -36,13 +45,14 @@ class ManagerController extends Controller
      */
     public function conversation($leadId)
     {
-        $companyId = Auth::user()->company_id;
+        $companyId = $this->companyId();
 
         $lead = Lead::with(['client', 'opportunity'])
             ->where('company_id', $companyId)
             ->findOrFail($leadId);
 
-        $messages = MessageLog::where('lead_id', $lead->id)
+        $messages = MessageLog::where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
             ->orderBy('created_at')
             ->get();
 
@@ -56,7 +66,7 @@ class ManagerController extends Controller
      */
     public function reply(Request $request, $leadId)
     {
-        $companyId = Auth::user()->company_id;
+        $companyId = $this->companyId();
 
         $lead = Lead::where('company_id', $companyId)
             ->findOrFail($leadId);
@@ -65,14 +75,23 @@ class ManagerController extends Controller
             'message' => 'required|string|max:1000',
         ]);
 
-        // 🔥 Send via WhatsApp job
-        \App\Jobs\SendWhatsAppFromTemplate::dispatch(
+        $toNumber = $lead->phone_norm ?: $lead->phone;
+
+        abort_if(!$toNumber, 422, 'Lead phone number is missing.');
+
+        SendWhatsAppFromTemplate::dispatch(
             companyId: $companyId,
             leadId: $lead->id,
-            toNumberE164: $lead->phone,
-            templateName: 'manual_reply', // 👈 create simple template
+            toNumberE164: $toNumber,
+            templateName: 'manual_reply',
             placeholders: [$data['message']],
-            context: ['manual' => true],
+            links: [],
+            context: [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id,
+                'manual' => true,
+                'source' => 'manager_reply',
+            ],
             action: 'manual_reply'
         );
 
@@ -86,7 +105,7 @@ class ManagerController extends Controller
      */
     public function resumeBot($leadId)
     {
-        $companyId = Auth::user()->company_id;
+        $companyId = $this->companyId();
 
         $lead = Lead::where('company_id', $companyId)
             ->findOrFail($leadId);
@@ -105,7 +124,7 @@ class ManagerController extends Controller
      */
     public function bookings()
     {
-        $companyId = Auth::user()->company_id;
+        $companyId = $this->companyId();
 
         $bookings = Booking::with(['client', 'vehicleData', 'assignedUser'])
             ->where('company_id', $companyId)

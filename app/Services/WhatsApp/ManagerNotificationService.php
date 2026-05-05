@@ -35,6 +35,17 @@ class ManagerNotificationService
             return;
         }
 
+        if ((int) $lead->company_id !== (int) $company->id) {
+            Log::warning('[ManagerNotification] Lead company mismatch, notification skipped', [
+                'lead_id' => $lead->id,
+                'lead_company_id' => $lead->company_id,
+                'company_id' => $company->id,
+                'reason' => $reason,
+            ]);
+
+            return;
+        }
+
         $managerPhone = $this->managerPhone($company);
 
         if (!$managerPhone) {
@@ -97,6 +108,18 @@ class ManagerNotificationService
             Log::warning('[ManagerNotification] Lead missing for booking, notification skipped', [
                 'booking_id' => $booking->id,
                 'company_id' => $booking->company_id,
+                'reason' => $reason,
+            ]);
+
+            return;
+        }
+
+        if ((int) $lead->company_id !== (int) $booking->company_id) {
+            Log::warning('[ManagerNotification] Booking lead company mismatch, notification skipped', [
+                'booking_id' => $booking->id,
+                'booking_company_id' => $booking->company_id,
+                'lead_id' => $lead->id,
+                'lead_company_id' => $lead->company_id,
                 'reason' => $reason,
             ]);
 
@@ -195,17 +218,21 @@ class ManagerNotificationService
     protected function leadForBooking(Booking $booking): ?Lead
     {
         if ($booking->opportunity?->lead) {
-            return $booking->opportunity->lead;
+            $lead = $booking->opportunity->lead;
+
+            return (int) $lead->company_id === (int) $booking->company_id ? $lead : null;
         }
 
         if (!empty($booking->lead_id)) {
-            return Lead::find($booking->lead_id);
+            return Lead::where('company_id', $booking->company_id)
+                ->find($booking->lead_id);
         }
 
         if ($booking->opportunity_id) {
-            $opportunity = Opportunity::find($booking->opportunity_id);
+            $opportunity = Opportunity::where('company_id', $booking->company_id)
+                ->find($booking->opportunity_id);
 
-            if ($opportunity?->lead) {
+            if ($opportunity?->lead && (int) $opportunity->lead->company_id === (int) $booking->company_id) {
                 return $opportunity->lead;
             }
         }

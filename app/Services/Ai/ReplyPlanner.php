@@ -9,7 +9,11 @@ class ReplyPlanner
 {
     public function decide(Lead $lead, string $incomingText, array $nlp, float $fallbackThreshold = 0.60): array
     {
-        $companyId = (int) ($lead->company_id ?? 1);
+        $companyId = (int) ($lead->company_id ?? 0);
+
+        if (!$companyId) {
+            return $this->handoff($lead, 'missing_company_id');
+        }
 
         $policy  = new AiPolicyService($companyId);
         $context = new AiContextService($companyId);
@@ -176,10 +180,14 @@ class ReplyPlanner
         elseif (preg_match('/\btoday\b/i', $t))      $base = now()->startOfDay();
         elseif (preg_match('/\b(mon|tue|wed|thu|fri|sat|sun)(day)?\b/i', $t, $m)) $base = Carbon::parse('next '.$m[0])->startOfDay();
         else {
-            try { $parsed = Carbon::parse($text); $base = $parsed->copy()->startOfDay();
-                  if (!$slot && (int)$parsed->format('H') >= 12) $slot = 'Afternoon';
-                  if (!$slot && (int)$parsed->format('H') > 0 && (int)$parsed->format('H') < 12) $slot = 'Morning';
-            } catch (\Throwable) { $base = null; }
+            try {
+                $parsed = Carbon::parse($text);
+                $base = $parsed->copy()->startOfDay();
+                if (!$slot && (int)$parsed->format('H') >= 12) $slot = 'Afternoon';
+                if (!$slot && (int)$parsed->format('H') > 0 && (int)$parsed->format('H') < 12) $slot = 'Morning';
+            } catch (\Throwable) {
+                $base = null;
+            }
         }
 
         if (!$base) return [null, ''];

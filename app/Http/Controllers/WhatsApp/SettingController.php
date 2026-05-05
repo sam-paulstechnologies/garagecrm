@@ -9,14 +9,23 @@ use Illuminate\Support\Facades\Auth;
 
 class SettingController extends Controller
 {
-    protected function companyId() { return Auth::user()->company_id ?? 1; }
+    protected function companyId()
+    {
+        $companyId = (int) (Auth::user()?->company_id ?? 0);
 
-    public function edit() {
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
+    public function edit()
+    {
         $set = CompanySetting::firstOrCreate(['company_id'=>$this->companyId()]);
         return view('whatsapp.settings.edit', compact('set'));
     }
 
-    public function save(Request $r) {
+    public function save(Request $r)
+    {
         $data = $r->validate([
             'manager_phone' => 'nullable|string|max:32',
             'google_review_link' => 'nullable|url|max:512',

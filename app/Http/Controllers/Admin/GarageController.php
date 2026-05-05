@@ -8,9 +8,18 @@ use Illuminate\Http\Request;
 
 class GarageController extends Controller
 {
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
     public function index()
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
 
         $garages = Garage::where('company_id', $companyId)
             ->latest()
@@ -26,7 +35,7 @@ class GarageController extends Controller
 
     public function store(Request $request)
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
 
         $data = $request->validate([
             'name'       => 'required|string|max:191',
@@ -53,7 +62,8 @@ class GarageController extends Controller
 
     public function show(Garage $garage)
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
+
         abort_unless((int)$garage->company_id === $companyId, 403);
 
         return view('admin.garages.show', compact('garage'));
@@ -61,7 +71,8 @@ class GarageController extends Controller
 
     public function edit(Garage $garage)
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
+
         abort_unless((int)$garage->company_id === $companyId, 403);
 
         return view('admin.garages.edit', compact('garage'));
@@ -69,7 +80,8 @@ class GarageController extends Controller
 
     public function update(Request $request, Garage $garage)
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
+
         abort_unless((int)$garage->company_id === $companyId, 403);
 
         $data = $request->validate([
@@ -98,7 +110,8 @@ class GarageController extends Controller
 
     public function destroy(Garage $garage)
     {
-        $companyId = (int) (auth()->user()->company_id ?? 1);
+        $companyId = $this->companyId();
+
         abort_unless((int)$garage->company_id === $companyId, 403);
 
         $garage->delete();

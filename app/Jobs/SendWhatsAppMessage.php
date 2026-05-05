@@ -28,6 +28,8 @@ class SendWhatsAppMessage implements ShouldQueue
     {
         try {
 
+            $companyId = (int) ($this->meta['company_id'] ?? 0);
+
             $twilioSid   = config('services.twilio.sid');
             $twilioToken = config('services.twilio.token');
             $from        = config('services.twilio.whatsapp_from');
@@ -35,6 +37,7 @@ class SendWhatsAppMessage implements ShouldQueue
             $tw = new Client($twilioSid, $twilioToken);
 
             Log::info('[WA][Twilio] Sending message', [
+                'company_id' => $companyId ?: null,
                 'to' => $this->toE164,
                 'templateId' => $this->templateId
             ]);
@@ -58,14 +61,16 @@ class SendWhatsAppMessage implements ShouldQueue
 
                 $templateName = null;
 
-                if ($this->templateId && class_exists(\App\Models\WhatsApp\WhatsAppTemplate::class)) {
+                if ($this->templateId && $companyId && class_exists(\App\Models\WhatsApp\WhatsAppTemplate::class)) {
 
-                    $tpl = \App\Models\WhatsApp\WhatsAppTemplate::find($this->templateId);
+                    $tpl = \App\Models\WhatsApp\WhatsAppTemplate::where('company_id', $companyId)
+                        ->find($this->templateId);
 
                     $templateName = $tpl?->name;
                 }
 
                 \App\Models\WhatsApp\WhatsAppMessage::create([
+                    'company_id'     => $companyId ?: null,
                     'provider'      => 'twilio',
                     'direction'     => 'outbound',
                     'to_number'     => $this->toE164,
@@ -86,6 +91,7 @@ class SendWhatsAppMessage implements ShouldQueue
         } catch (\Throwable $e) {
 
             Log::error('[WA][Twilio] Send failed', [
+                'company_id' => $this->meta['company_id'] ?? null,
                 'to'  => $this->toE164,
                 'err' => $e->getMessage()
             ]);

@@ -13,9 +13,16 @@ class WhatsAppMessageApiController extends Controller
     // GET /api/whatsapp/messages
     public function index(Request $r)
     {
-        $q = MessageLog::query()->orderByDesc('id');
+        $companyId = (int) optional($r->user())->company_id;
 
-        if ($companyId = $r->integer('company_id')) $q->where('company_id', $companyId);
+        if (!$companyId) {
+            return response()->json(['ok' => false, 'error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $q = MessageLog::query()
+            ->where('company_id', $companyId)
+            ->orderByDesc('id');
+
         if ($leadId = $r->integer('lead_id')) $q->where('lead_id', $leadId);
         if ($dir = $r->input('direction')) $q->where('direction', $dir);
         if ($phone = trim((string) $r->input('phone'))) {
@@ -43,9 +50,15 @@ class WhatsAppMessageApiController extends Controller
     }
 
     // GET /api/whatsapp/messages/{id}
-    public function show($id)
+    public function show(Request $r, $id)
     {
-        $log = MessageLog::find($id);
+        $companyId = (int) optional($r->user())->company_id;
+
+        if (!$companyId) {
+            return response()->json(['ok' => false, 'error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $log = MessageLog::where('company_id', $companyId)->find($id);
         if (!$log) {
             return response()->json(['ok' => false, 'error' => 'Not found'], Response::HTTP_NOT_FOUND);
         }
@@ -53,9 +66,15 @@ class WhatsAppMessageApiController extends Controller
     }
 
     // POST /api/whatsapp/messages/{id}/retry
-    public function retry($id)
+    public function retry(Request $r, $id)
     {
-        $log = MessageLog::find($id);
+        $companyId = (int) optional($r->user())->company_id;
+
+        if (!$companyId) {
+            return response()->json(['ok' => false, 'error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $log = MessageLog::where('company_id', $companyId)->find($id);
         if (!$log) {
             return response()->json(['ok' => false, 'error' => 'Not found'], Response::HTTP_NOT_FOUND);
         }

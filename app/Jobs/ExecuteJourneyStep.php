@@ -14,12 +14,24 @@ class ExecuteJourneyStep implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(public int $enrollmentId) {}
+    public function __construct(
+        public int $enrollmentId,
+        public ?int $companyId = null
+    ) {}
 
     public function handle(JourneyStepExecutor $executor): void
     {
-        $enrollment = JourneyEnrollment::find($this->enrollmentId);
-        if (!$enrollment) return;
+        $query = JourneyEnrollment::query();
+
+        if ($this->companyId) {
+            $query->where('company_id', $this->companyId);
+        }
+
+        $enrollment = $query->find($this->enrollmentId);
+
+        if (!$enrollment) {
+            return;
+        }
 
         $executor->execute($enrollment);
     }

@@ -3,26 +3,36 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Job\Invoice;
 use App\Models\Client\Client;
+use App\Models\Job\Invoice;
 use App\Models\Job\Job;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class InvoiceController extends Controller
 {
     /* ---------- Guards ---------- */
-    protected function guardCompanyOrAbort($companyId)
+    protected function companyId(): int
     {
-        abort_if($companyId !== auth()->user()->company_id, 403);
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
+        return $companyId;
+    }
+
+    protected function guardCompanyOrAbort($companyId): void
+    {
+        abort_if((int) $companyId !== (int) $this->companyId(), 403);
     }
 
     protected function invoicesScope()
     {
-        return Invoice::where('company_id', auth()->user()->company_id);
+        return Invoice::where('company_id', $this->companyId());
     }
 
-    /* ---------- CRUD (keep your screens) ---------- */
+    /* ---------- CRUD ---------- */
     public function index()
     {
         $invoices = $this->invoicesScope()
@@ -35,47 +45,44 @@ class InvoiceController extends Controller
 
     public function create()
     {
-        $companyId = auth()->user()->company_id;
-        $clients   = Client::where('company_id', $companyId)->orderBy('name')->get();
-        $jobs      = collect(); // load via AJAX after client select
+        $companyId = $this->companyId();
+
+        $clients = Client::where('company_id', $companyId)->orderBy('name')->get();
+        $jobs = collect(); // load via AJAX after client select
+
         return view('admin.invoices.create', compact('clients','jobs'));
     }
 
     public function store(Request $request)
     {
+        $companyId = $this->companyId();
+
         $data = $request->validate([
-            'client_id'     => ['required','exists:clients,id'],
-            'job_id'        => ['nullable','exists:jobs,id'],
+            'client_id'     => ['required', Rule::exists('clients', 'id')->where('company_id', $companyId)],
+            'job_id'        => ['nullable', Rule::exists('jobs', 'id')->where('company_id', $companyId)],
             'amount'        => ['required','numeric','min:0'],
             'status'        => ['required','in:pending,paid,overdue'],
             'due_date'      => ['nullable','date'],
 
-            // agreed metadata
             'number'        => ['nullable','string','max:191'],
             'invoice_date'  => ['nullable','date'],
             'currency'      => ['nullable','string','max:10'],
             'is_primary'    => ['nullable','boolean'],
 
-            // upload
             'invoice_file'  => ['nullable','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
         ]);
 
-        $data['company_id'] = auth()->user()->company_id;
-        $data['source']     = 'upload';                 // since this path is manual entry
-        $data['currency']   = $data['currency'] ?? 'AED';
-        $data['uploaded_by']= auth()->id();
+        $this->validateJobBelongsToClient($data, $companyId);
 
-        if (!empty($data['job_id'])) {
-            $job = Job::findOrFail($data['job_id']);
-            $this->guardCompanyOrAbort($job->company_id);
-        }
+        $data['company_id'] = $companyId;
+        $data['source'] = 'upload';
+        $data['currency'] = $data['currency'] ?? 'AED';
+        $data['uploaded_by'] = auth()->id();
 
-        // handle file + dedupe + versioning + primary
         if ($request->hasFile('invoice_file')) {
             $file = $request->file('invoice_file');
             $hash = hash_file('sha256', $file->getRealPath());
 
-            // dedupe within company+client
             $dupe = $this->invoicesScope()
                 ->where('client_id', $data['client_id'])
                 ->where('hash', $hash)
@@ -88,20 +95,19 @@ class InvoiceController extends Controller
                     ->with('warning', "Looks like a duplicate of invoice #{$dupe->id}.");
             }
 
-            $path         = $file->store('invoices', 'public');
+            $path = $file->store("companies/{$companyId}/invoices", 'public');
+
             $data['file_path'] = $path;
             $data['file_type'] = $file->getClientOriginalExtension();
-            $data['mime']      = $file->getClientMimeType();
-            $data['size']      = $file->getSize();
-            $data['hash']      = $hash;
+            $data['mime'] = $file->getClientMimeType();
+            $data['size'] = $file->getSize();
+            $data['hash'] = $hash;
         }
 
-        // versioning per job (if any)
         $data['version'] = !empty($data['job_id'])
             ? (1 + (int) $this->invoicesScope()->where('job_id', $data['job_id'])->max('version'))
             : 1;
 
-        // primary toggle: only one per job
         $setPrimary = (bool) ($data['is_primary'] ?? false);
         if ($setPrimary && !empty($data['job_id'])) {
             $this->invoicesScope()->where('job_id', $data['job_id'])->update(['is_primary' => false]);
@@ -118,6 +124,9 @@ class InvoiceController extends Controller
     public function show(Invoice $invoice)
     {
         $this->guardCompanyOrAbort($invoice->company_id);
+
+        $invoice->load(['client','job']);
+
         return view('admin.invoices.show', compact('invoice'));
     }
 
@@ -125,8 +134,9 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
-        $companyId = auth()->user()->company_id;
-        $clients   = Client::where('company_id', $companyId)->orderBy('name')->get();
+        $companyId = $this->companyId();
+
+        $clients = Client::where('company_id', $companyId)->orderBy('name')->get();
 
         $jobs = Job::where('company_id', $companyId)
             ->where('client_id', $invoice->client_id)
@@ -140,9 +150,11 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
+        $companyId = $this->companyId();
+
         $data = $request->validate([
-            'client_id'     => ['required','exists:clients,id'],
-            'job_id'        => ['nullable','exists:jobs,id'],
+            'client_id'     => ['required', Rule::exists('clients', 'id')->where('company_id', $companyId)],
+            'job_id'        => ['nullable', Rule::exists('jobs', 'id')->where('company_id', $companyId)],
             'amount'        => ['required','numeric','min:0'],
             'status'        => ['required','in:pending,paid,overdue'],
             'due_date'      => ['nullable','date'],
@@ -155,37 +167,33 @@ class InvoiceController extends Controller
             'invoice_file'  => ['nullable','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
         ]);
 
-        if (!empty($data['job_id'])) {
-            $job = Job::findOrFail($data['job_id']);
-            $this->guardCompanyOrAbort($job->company_id);
-        }
+        $this->validateJobBelongsToClient($data, $companyId);
 
-        // new file? replace + recompute hash/mime/size
         if ($request->hasFile('invoice_file')) {
             if ($invoice->file_path && Storage::disk('public')->exists($invoice->file_path)) {
                 Storage::disk('public')->delete($invoice->file_path);
             }
-            $file            = $request->file('invoice_file');
-            $path            = $file->store('invoices', 'public');
+
+            $file = $request->file('invoice_file');
+            $path = $file->store("companies/{$companyId}/invoices", 'public');
+
             $data['file_path'] = $path;
             $data['file_type'] = $file->getClientOriginalExtension();
-            $data['mime']      = $file->getClientMimeType();
-            $data['size']      = $file->getSize();
-            $data['hash']      = hash_file('sha256', $file->getRealPath());
+            $data['mime'] = $file->getClientMimeType();
+            $data['size'] = $file->getSize();
+            $data['hash'] = hash_file('sha256', $file->getRealPath());
         }
 
-        // primary toggle (one per job)
         $setPrimary = (bool) ($data['is_primary'] ?? false);
         if ($setPrimary && !empty($data['job_id'])) {
             $this->invoicesScope()->where('job_id', $data['job_id'])->update(['is_primary' => false]);
             $data['is_primary'] = true;
         } elseif ($setPrimary && empty($data['job_id'])) {
-            // can't be primary without a job
             $data['is_primary'] = false;
         }
 
-        $data['currency']    = $data['currency'] ?? ($invoice->currency ?? 'AED');
-        $data['uploaded_by'] = $invoice->uploaded_by ?? auth()->id(); // keep first uploader
+        $data['currency'] = $data['currency'] ?? ($invoice->currency ?? 'AED');
+        $data['uploaded_by'] = $invoice->uploaded_by ?? auth()->id();
 
         $invoice->update($data);
 
@@ -195,7 +203,9 @@ class InvoiceController extends Controller
     public function destroy(Invoice $invoice)
     {
         $this->guardCompanyOrAbort($invoice->company_id);
+
         $invoice->delete();
+
         return redirect()->route('admin.invoices.index')->with('success', 'Invoice deleted.');
     }
 
@@ -207,10 +217,10 @@ class InvoiceController extends Controller
         $path = $invoice->file_path;
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
-        $ext      = pathinfo($path, PATHINFO_EXTENSION) ?: 'pdf';
-        $number   = $invoice->number ?? $invoice->id;
+        $ext = pathinfo($path, PATHINFO_EXTENSION) ?: 'pdf';
+        $number = $invoice->number ?? $invoice->id;
         $filename = "invoice-{$number}.{$ext}";
-        $mime     = $invoice->mime
+        $mime = $invoice->mime
             ?? $invoice->file_type
             ?? (Storage::disk('public')->mimeType($path) ?: 'application/octet-stream');
 
@@ -254,6 +264,8 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($job->company_id);
 
+        $companyId = $this->companyId();
+
         $data = $request->validate([
             'invoice_file' => ['required','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
             'number'       => ['nullable','string','max:191'],
@@ -276,7 +288,7 @@ class InvoiceController extends Controller
             return back()->with('warning', "Looks like a duplicate of invoice #{$dupe->id}.");
         }
 
-        $path = $file->store('invoices', 'public');
+        $path = $file->store("companies/{$companyId}/invoices", 'public');
 
         $setPrimary = (bool) ($data['is_primary'] ?? false);
         if ($setPrimary) {
@@ -286,7 +298,7 @@ class InvoiceController extends Controller
         $version = 1 + (int) $this->invoicesScope()->where('job_id', $job->id)->max('version');
 
         Invoice::create([
-            'company_id'   => auth()->user()->company_id,
+            'company_id'   => $companyId,
             'client_id'    => $job->client_id,
             'job_id'       => $job->id,
             'source'       => 'upload',
@@ -315,9 +327,11 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($client->company_id);
 
+        $companyId = $this->companyId();
+
         $data = $request->validate([
             'invoice_file' => ['required','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
-            'job_id'       => ['nullable','exists:jobs,id'],
+            'job_id'       => ['nullable', Rule::exists('jobs', 'id')->where('company_id', $companyId)],
             'number'       => ['nullable','string','max:191'],
             'invoice_date' => ['nullable','date'],
             'due_date'     => ['nullable','date'],
@@ -326,10 +340,9 @@ class InvoiceController extends Controller
             'is_primary'   => ['nullable','boolean'],
         ]);
 
-        // if job provided, guard it
         if (!empty($data['job_id'])) {
-            $job = Job::findOrFail($data['job_id']);
-            $this->guardCompanyOrAbort($job->company_id);
+            $job = Job::where('company_id', $companyId)->findOrFail($data['job_id']);
+            abort_unless((int) $job->client_id === (int) $client->id, 422);
         }
 
         $file = $request->file('invoice_file');
@@ -344,9 +357,9 @@ class InvoiceController extends Controller
             return back()->with('warning', "Looks like a duplicate of invoice #{$dupe->id}.");
         }
 
-        $path = $file->store('invoices', 'public');
+        $path = $file->store("companies/{$companyId}/invoices", 'public');
 
-        $jobId      = $data['job_id'] ?? null;
+        $jobId = $data['job_id'] ?? null;
         $setPrimary = (bool) ($data['is_primary'] ?? false);
 
         if ($setPrimary && $jobId) {
@@ -358,7 +371,7 @@ class InvoiceController extends Controller
             : 1;
 
         Invoice::create([
-            'company_id'   => auth()->user()->company_id,
+            'company_id'   => $companyId,
             'client_id'    => $client->id,
             'job_id'       => $jobId,
             'source'       => 'upload',
@@ -395,5 +408,17 @@ class InvoiceController extends Controller
         $invoice->update(['is_primary' => true]);
 
         return back()->with('success', 'Marked as primary.');
+    }
+
+    protected function validateJobBelongsToClient(array $data, int $companyId): void
+    {
+        if (empty($data['job_id'])) {
+            return;
+        }
+
+        $job = Job::where('company_id', $companyId)
+            ->findOrFail($data['job_id']);
+
+        abort_unless((int) $job->client_id === (int) $data['client_id'], 422);
     }
 }

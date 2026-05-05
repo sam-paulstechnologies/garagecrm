@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Tenant\ClientController;
+use App\Http\Controllers\Tenant\ClientBookingController;
 use App\Http\Controllers\Tenant\LeadManagementController;
 use App\Http\Controllers\Tenant\BookingController;
 use App\Http\Controllers\Tenant\JobController;
@@ -10,6 +11,9 @@ use App\Http\Controllers\Tenant\InvoiceController;
 use App\Http\Controllers\Tenant\CommunicationController;
 
 Route::middleware(['auth', 'role:tenant'])->prefix('tenant')->name('tenant.')->group(function () {
+    Route::get('clients/{client}/bookings', [ClientBookingController::class, 'index'])
+        ->name('clients.bookings');
+
     Route::resource('clients', ClientController::class);
     Route::resource('leads', LeadManagementController::class);
 
@@ -18,7 +22,9 @@ Route::middleware(['auth', 'role:tenant'])->prefix('tenant')->name('tenant.')->g
 
     Route::get('jobs', [JobController::class, 'index'])->name('jobs.index');
 
-    Route::resource('jobcards', JobCardController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy', 'show']);
+    Route::resource('jobcards', JobCardController::class)
+        ->parameters(['jobcards' => 'jobCard'])
+        ->only(['index', 'create', 'store', 'edit', 'update', 'destroy', 'show']);
 
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::get('invoices/{invoice}/download', [InvoiceController::class, 'download'])->name('invoices.download');

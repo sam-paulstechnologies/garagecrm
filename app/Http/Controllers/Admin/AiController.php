@@ -11,7 +11,9 @@ class AiController extends Controller
 {
     public function edit(Request $request)
     {
-        $companyId = (int) optional($request->user())->company_id ?: 1;
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
 
         $get = fn($k, $d=null) => DB::table('company_settings')
             ->where('company_id', $companyId)
@@ -34,7 +36,10 @@ class AiController extends Controller
 
     public function update(UpdateAiSettingsRequest $request)
     {
-        $companyId = (int) optional($request->user())->company_id ?: 1;
+        $companyId = (int) ($request->user()?->company_id ?? 0);
+
+        abort_if(!$companyId, 403);
+
         $p = $request->validated();
 
         $rows = [

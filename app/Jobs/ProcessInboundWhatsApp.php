@@ -46,7 +46,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping('wa-inbound-' . $this->from))->expireAfter(60),
+            (new WithoutOverlapping('wa-inbound-' . $this->companyId . '-' . $this->from))->expireAfter(60),
         ];
     }
 
@@ -82,8 +82,9 @@ class ProcessInboundWhatsApp implements ShouldQueue
         |--------------------------------------------------------------------------
         */
 
-        if ($this->sid && MessageLog::where('provider_message_id', $this->sid)->exists()) {
+        if ($this->sid && MessageLog::where('company_id', $companyId)->where('provider_message_id', $this->sid)->exists()) {
             Log::info('[WA] Duplicate SID ignored', [
+                'company_id' => $companyId,
                 'sid' => $this->sid,
             ]);
 
@@ -113,6 +114,16 @@ class ProcessInboundWhatsApp implements ShouldQueue
             return;
         }
 
+        if ((int) $lead->company_id !== $companyId) {
+            Log::warning('[WA] Lead company mismatch', [
+                'company_id' => $companyId,
+                'lead_id'    => $lead->id,
+                'lead_company_id' => $lead->company_id,
+            ]);
+
+            return;
+        }
+
         /*
         |--------------------------------------------------------------------------
         | Ensure client/opportunity
@@ -120,10 +131,11 @@ class ProcessInboundWhatsApp implements ShouldQueue
         */
 
         try {
-            app(LeadConversionService::class)->ensureClientAndOpportunity($lead->id);
+            app(LeadConversionService::class)->ensureClientAndOpportunity($lead->id, $companyId);
             $lead->refresh();
         } catch (\Throwable $e) {
             Log::warning('[WA] Conversion failed', [
+                'company_id' => $companyId,
                 'lead_id' => $lead->id,
                 'error'   => $e->getMessage(),
             ]);
@@ -196,6 +208,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             Log::warning('[WA] Communication log failed', [
+                'company_id' => $companyId,
                 'lead_id' => $lead->id,
                 'error'   => $e->getMessage(),
             ]);
@@ -209,8 +222,19 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         $lead->refresh();
 
+        if ((int) $lead->company_id !== $companyId) {
+            Log::warning('[WA] Lead company mismatch after refresh', [
+                'company_id' => $companyId,
+                'lead_id'    => $lead->id,
+                'lead_company_id' => $lead->company_id,
+            ]);
+
+            return;
+        }
+
         if ($lead->conversation_state === 'human') {
             Log::info('[WA] Bot skipped — human takeover active', [
+                'company_id' => $companyId,
                 'lead_id' => $lead->id,
                 'conversation_id' => $conversationId,
             ]);
@@ -232,6 +256,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 $response = app(ConversationEngine::class)->handle($lead, $text, $nlp);
             } catch (\Throwable $e) {
                 Log::error('[WA] Engine failed', [
+                    'company_id' => $companyId,
                     'lead_id' => $lead->id,
                     'error'   => $e->getMessage(),
                 ]);
@@ -255,6 +280,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         if (!$template) {
             Log::info('[WA] No template returned by engine', [
+                'company_id' => $companyId,
                 'lead_id' => $lead->id,
                 'action'  => $response['action'] ?? null,
             ]);
@@ -287,6 +313,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
         */
 
         Log::info('[WA] Dispatching outbound template', [
+            'company_id' => $companyId,
             'lead_id'  => $lead->id,
             'template' => $template,
             'action'   => $response['action'] ?? 'initial',
@@ -339,6 +366,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         } catch (\Throwable $e) {
             Log::error('[WA] Manager notify failed', [
+                'company_id' => $companyId,
                 'lead_id' => $lead->id ?? null,
                 'error'   => $e->getMessage(),
             ]);
