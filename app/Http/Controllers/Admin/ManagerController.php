@@ -35,7 +35,7 @@ class ManagerController extends Controller
             ->latest()
             ->get();
 
-        return view('admin.manager.dashboard', compact('leads'));
+        return view('manager.dashboard', compact('leads'));
     }
 
     /**
@@ -56,7 +56,7 @@ class ManagerController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        return view('admin.manager.conversation', compact('lead', 'messages'));
+        return view('manager.conversation', compact('lead', 'messages'));
     }
 
     /**
@@ -88,9 +88,9 @@ class ManagerController extends Controller
             links: [],
             context: [
                 'company_id' => $companyId,
-                'lead_id' => $lead->id,
-                'manual' => true,
-                'source' => 'manager_reply',
+                'lead_id'    => $lead->id,
+                'manual'     => true,
+                'source'     => 'manager_reply',
             ],
             action: 'manual_reply'
         );
@@ -111,7 +111,7 @@ class ManagerController extends Controller
             ->findOrFail($leadId);
 
         $lead->update([
-            'conversation_state' => 'idle'
+            'conversation_state' => 'idle',
         ]);
 
         return back()->with('success', 'Bot resumed');
@@ -132,6 +132,6 @@ class ManagerController extends Controller
             ->latest()
             ->paginate(20);
 
-        return view('admin.manager.bookings', compact('bookings'));
+        return view('manager.bookings', compact('bookings'));
     }
 }

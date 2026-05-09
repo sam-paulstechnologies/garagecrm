@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 */
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\MetaWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -51,30 +52,48 @@ Route::prefix('v1')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | META WHATSAPP WEBHOOK (ONLY HERE)
+    | META LEAD ADS WEBHOOK
     |--------------------------------------------------------------------------
+    | This is only for Facebook / Instagram Lead Ads leadgen webhooks.
+    | Do not mix this with Meta WhatsApp webhooks.
+    */
+    Route::get(
+        '/webhooks/meta/leads',
+        [MetaWebhookController::class, 'verify']
+    )->name('api.webhooks.meta.leads.verify');
+
+    Route::post(
+        '/webhooks/meta/leads',
+        [MetaWebhookController::class, 'handle']
+    )->name('api.webhooks.meta.leads.handle');
+
+    /*
+    |--------------------------------------------------------------------------
+    | META WHATSAPP WEBHOOK
+    |--------------------------------------------------------------------------
+    | This is only for WhatsApp Cloud API messages/statuses.
     */
     Route::get(
         '/webhooks/meta/whatsapp',
         [MetaWhatsAppWebhookController::class, 'verify']
-    );
+    )->name('api.webhooks.meta.whatsapp.verify');
 
     Route::post(
         '/webhooks/meta/whatsapp',
         [MetaWhatsAppWebhookController::class, 'handle']
-    );
+    )->name('api.webhooks.meta.whatsapp.handle');
 
     /*
     |--------------------------------------------------------------------------
     | TWILIO WHATSAPP WEBHOOKS
     |--------------------------------------------------------------------------
     */
-    Route::match(['GET','POST','HEAD'],
+    Route::match(['GET', 'POST', 'HEAD'],
         '/webhooks/twilio/whatsapp',
         [TwilioWhatsAppWebhookController::class, 'handle']
     )->name('api.webhooks.twilio.whatsapp');
 
-    Route::match(['GET','POST','HEAD'],
+    Route::match(['GET', 'POST', 'HEAD'],
         '/webhooks/twilio/whatsapp/status',
         [TwilioWhatsAppWebhookController::class, 'status']
     )->name('api.webhooks.twilio.whatsapp.status');

@@ -15,7 +15,11 @@ class RouteServiceProvider extends ServiceProvider
         /** @var Router $router */
         $router = $this->app->make(Router::class);
 
-        // Middleware aliases (safe binding)
+        /*
+        |--------------------------------------------------------------------------
+        | Middleware Aliases
+        |--------------------------------------------------------------------------
+        */
         if (class_exists(\App\Http\Middleware\EnsureUserIsActive::class)) {
             $router->aliasMiddleware('active', \App\Http\Middleware\EnsureUserIsActive::class);
         }
@@ -24,11 +28,18 @@ class RouteServiceProvider extends ServiceProvider
             $router->aliasMiddleware('force_password', \App\Http\Middleware\ForcePasswordChange::class);
         }
 
+        if (class_exists(\App\Http\Middleware\RoleMiddleware::class)) {
+            $router->aliasMiddleware('role', \App\Http\Middleware\RoleMiddleware::class);
+        }
+
         $this->routes(function () {
 
             /*
             |--------------------------------------------------------------------------
             | API Routes
+            |--------------------------------------------------------------------------
+            | routes/api.php already uses Route::prefix('v1'), so we add only /api here.
+            | Final URL example: /api/v1/webhooks/meta/leads
             |--------------------------------------------------------------------------
             */
             if (is_file(base_path('routes/api.php'))) {
@@ -39,7 +50,7 @@ class RouteServiceProvider extends ServiceProvider
 
             /*
             |--------------------------------------------------------------------------
-            | Web Routes
+            | Main Web Routes
             |--------------------------------------------------------------------------
             */
             if (is_file(base_path('routes/web.php'))) {
@@ -49,34 +60,78 @@ class RouteServiceProvider extends ServiceProvider
 
             /*
             |--------------------------------------------------------------------------
-            | Admin Routes (SAFE middleware handling)
+            | Admin Routes
             |--------------------------------------------------------------------------
             */
             if (is_file(base_path('routes/admin.php'))) {
-
-                $middleware = ['web', 'auth'];
-
-                if (class_exists(\App\Http\Middleware\EnsureUserIsActive::class)) {
-                    $middleware[] = 'active';
-                }
-
-                if (class_exists(\App\Http\Middleware\ForcePasswordChange::class)) {
-                    $middleware[] = 'force_password';
-                }
-
-                Route::middleware($middleware)
+                Route::middleware($this->protectedWebMiddleware())
                     ->group(base_path('routes/admin.php'));
             }
 
             /*
             |--------------------------------------------------------------------------
-            | Webhooks (NO middleware)
+            | Manager Routes
+            |--------------------------------------------------------------------------
+            */
+            if (is_file(base_path('routes/manager.php'))) {
+                Route::middleware($this->protectedWebMiddleware())
+                    ->group(base_path('routes/manager.php'));
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Tenant Routes
+            |--------------------------------------------------------------------------
+            */
+            if (is_file(base_path('routes/tenant.php'))) {
+                Route::middleware($this->protectedWebMiddleware())
+                    ->group(base_path('routes/tenant.php'));
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Mechanic Routes
+            |--------------------------------------------------------------------------
+            */
+            if (is_file(base_path('routes/mechanic.php'))) {
+                Route::middleware($this->protectedWebMiddleware())
+                    ->group(base_path('routes/mechanic.php'));
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | WhatsApp Admin/Web Routes
+            |--------------------------------------------------------------------------
+            */
+            if (is_file(base_path('routes/whatsapp.php'))) {
+                Route::middleware($this->protectedWebMiddleware())
+                    ->group(base_path('routes/whatsapp.php'));
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Public Webhooks
             |--------------------------------------------------------------------------
             */
             if (is_file(base_path('routes/webhooks.php'))) {
-                Route::middleware([]) // 🔥 IMPORTANT FIX
+                Route::middleware([])
                     ->group(base_path('routes/webhooks.php'));
             }
         });
+    }
+
+    private function protectedWebMiddleware(): array
+    {
+        $middleware = ['web', 'auth'];
+
+        if (class_exists(\App\Http\Middleware\EnsureUserIsActive::class)) {
+            $middleware[] = 'active';
+        }
+
+        if (class_exists(\App\Http\Middleware\ForcePasswordChange::class)) {
+            $middleware[] = 'force_password';
+        }
+
+        return $middleware;
     }
 }

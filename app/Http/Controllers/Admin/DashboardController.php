@@ -9,10 +9,11 @@ use App\Models\Client\Lead;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
 use App\Models\Job\Invoice;
+use App\Models\Job\Job;
 use App\Models\User;
-use App\Models\WhatsApp\WhatsAppMessage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route as RouteFacade;
 
 class DashboardController extends Controller
 {
@@ -63,7 +64,7 @@ class DashboardController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Stats
+        | Main Dashboard Stats - Company Scoped
         |--------------------------------------------------------------------------
         */
         $stats = [
@@ -73,18 +74,45 @@ class DashboardController extends Controller
                 ->where('is_archived', false)
                 ->count(),
 
-            'total_leads' => Lead::where('company_id', $companyId)->count(),
+            'total_leads' => Lead::where('company_id', $companyId)
+                ->count(),
+
+            'total_opportunities' => Opportunity::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->count(),
+
+            'total_bookings' => Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->count(),
+
+            'total_jobs' => Job::where('company_id', $companyId)
+                ->count(),
+
+            'total_invoices' => Invoice::where('company_id', $companyId)
+                ->whereNull('deleted_at')
+                ->count(),
 
             'revenue_this_month' => Invoice::where('company_id', $companyId)
+                ->whereNull('deleted_at')
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->sum('amount'),
 
-            // Bookings scheduled in this month
             'bookings_this_month' => Booking::where('company_id', $companyId)
                 ->where('is_archived', false)
                 ->whereMonth('booking_date', now()->month)
                 ->whereYear('booking_date', now()->year)
+                ->count(),
+
+            'jobs_this_month' => Job::where('company_id', $companyId)
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
+                ->count(),
+
+            'invoices_this_month' => Invoice::where('company_id', $companyId)
+                ->whereNull('deleted_at')
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
                 ->count(),
 
             'new_clients_this_month' => Client::where('company_id', $companyId)
@@ -97,6 +125,43 @@ class DashboardController extends Controller
                 ->whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->count(),
+
+            'new_opportunities_this_month' => Opportunity::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
+                ->count(),
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Revenue Summary
+        |--------------------------------------------------------------------------
+        */
+        $paidRevenueThisMonth = Invoice::where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->where('status', 'paid')
+            ->whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->sum('amount');
+
+        $pendingInvoiceAmount = Invoice::where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'paid')
+            ->sum('amount');
+
+        $averageInvoiceValue = Invoice::where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->avg('amount') ?? 0;
+
+        $revenueSummary = [
+            'paid_this_month'      => $paidRevenueThisMonth,
+            'pending_amount'       => $pendingInvoiceAmount,
+            'average_invoice'      => $averageInvoiceValue,
+            'unpaid_invoice_count' => Invoice::where('company_id', $companyId)
+                ->whereNull('deleted_at')
+                ->where('status', '!=', 'paid')
+                ->count(),
         ];
 
         $monthlyRevenue = collect(range(0, 5))->map(function ($i) use ($companyId) {
@@ -105,11 +170,30 @@ class DashboardController extends Controller
             return [
                 'month'   => $month->format('M'),
                 'revenue' => Invoice::where('company_id', $companyId)
+                    ->whereNull('deleted_at')
                     ->whereMonth('created_at', $month->month)
                     ->whereYear('created_at', $month->year)
                     ->sum('amount'),
             ];
         })->reverse()->values();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Pipeline Summary
+        |--------------------------------------------------------------------------
+        */
+        $leadPipeline = Lead::where('company_id', $companyId)
+            ->select('status', DB::raw('COUNT(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->toArray();
+
+        $opportunityPipeline = Opportunity::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->select('stage', DB::raw('COUNT(*) as total'))
+            ->groupBy('stage')
+            ->pluck('total', 'stage')
+            ->toArray();
 
         /*
         |--------------------------------------------------------------------------
@@ -137,28 +221,56 @@ class DashboardController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Calendar
+        | Dashboard Mini Calendar
         |--------------------------------------------------------------------------
+        | Same active booking logic as full calendar.
         */
         $calendarBookings = Booking::with('client')
             ->where('company_id', $companyId)
-            ->where('is_archived', false)
-            ->where('status', Booking::STATUS_CONFIRMED)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')
+                    ->orWhere('is_archived', false);
+            })
             ->whereDate('booking_date', '>=', Carbon::today())
             ->get();
 
-        $calendarEvents = $calendarBookings->map(function ($booking) {
-            return [
-                'title' => ($booking->client->name ?? 'Client') . ' - ' . ucfirst((string) $booking->service_type),
-                'start' => optional($booking->booking_date)->toDateString(),
-                'url'   => route('admin.bookings.edit', $booking->id),
-                'color' => '#4f46e5',
-            ];
-        });
+        $calendarEvents = $calendarBookings
+            ->map(function ($booking) {
+                $start = $this->resolveCalendarStart($booking);
+
+                if (!$start) {
+                    return null;
+                }
+
+                $end = $this->resolveCalendarEnd($booking, $start);
+
+                $titleParts = [
+                    $booking->client->name ?? 'Client',
+                    $booking->service_type ?: ($booking->name ?? 'Booking'),
+                ];
+
+                $url = RouteFacade::has('admin.bookings.show')
+                    ? route('admin.bookings.show', $booking->id)
+                    : url('/admin/bookings/' . $booking->id);
+
+                return [
+                    'id'              => $booking->id,
+                    'title'           => implode(' - ', array_filter($titleParts)),
+                    'start'           => $start->toIso8601String(),
+                    'end'             => $end?->toIso8601String(),
+                    'url'             => $url,
+                    'backgroundColor' => $this->calendarStatusColor($booking->status),
+                    'borderColor'     => $this->calendarStatusColor($booking->status),
+                    'textColor'       => '#ffffff',
+                    'color'           => $this->calendarStatusColor($booking->status),
+                ];
+            })
+            ->filter()
+            ->values();
 
         /*
         |--------------------------------------------------------------------------
-        | Smart KPIs
+        | Smart KPIs / Alerts
         |--------------------------------------------------------------------------
         */
         $pendingBookings = Booking::where('company_id', $companyId)
@@ -167,6 +279,7 @@ class DashboardController extends Controller
             ->count();
 
         $unpaidInvoices = Invoice::where('company_id', $companyId)
+            ->whereNull('deleted_at')
             ->where('status', '!=', 'paid')
             ->count();
 
@@ -175,92 +288,116 @@ class DashboardController extends Controller
             ->whereBetween('communication_date', [now()->startOfWeek(), now()->endOfWeek()])
             ->count();
 
+        $openJobs = Job::where('company_id', $companyId)
+            ->whereNotIn('status', ['completed', 'cancelled', 'closed'])
+            ->count();
+
         $smartKPIs = [
             'pending_bookings' => $pendingBookings,
             'unpaid_invoices'  => $unpaidInvoices,
             'followups_due'    => $followUpsDue,
+            'open_jobs'        => $openJobs,
         ];
+
+        $alerts = collect();
+
+        if ($pendingBookings > 0) {
+            $alerts->push([
+                'label' => $pendingBookings . ' pending booking(s) need attention',
+                'url'   => route('admin.bookings.index'),
+            ]);
+        }
+
+        if ($unpaidInvoices > 0) {
+            $alerts->push([
+                'label' => $unpaidInvoices . ' unpaid invoice(s)',
+                'url'   => route('admin.invoices.index'),
+            ]);
+        }
+
+        if ($followUpsDue > 0) {
+            $alerts->push([
+                'label' => $followUpsDue . ' follow-up(s) due this week',
+                'url'   => route('admin.communication-logs.index'),
+            ]);
+        }
+
+        if ($openJobs > 0) {
+            $alerts->push([
+                'label' => $openJobs . ' open job(s)',
+                'url'   => route('admin.jobs.index'),
+            ]);
+        }
 
         /*
         |--------------------------------------------------------------------------
-        | WhatsApp KPIs
+        | WhatsApp KPIs - From message_logs
         |--------------------------------------------------------------------------
         */
-        $ackWindowMins = 20;
-        $slaMins = 120;
-        $lookbackHours = 24;
-
-        $waOutboundToday = WhatsAppMessage::forCompany($companyId)
-            ->whereDate('created_at', now())
-            ->where('direction', 'out');
-
-        $waInboundToday = WhatsAppMessage::forCompany($companyId)
-            ->whereDate('created_at', now())
-            ->where('direction', 'in');
+        $waStart = now()->subDays(7);
 
         $waKpis = [
-            'sent_today' => (clone $waOutboundToday)
-                ->whereIn('status', ['sent', 'delivered', 'read', 'replied'])
+            'sent_today' => DB::table('message_logs')
+                ->where('company_id', $companyId)
+                ->where('channel', 'whatsapp')
+                ->where('direction', 'out')
+                ->whereDate('created_at', now())
                 ->count(),
 
-            'delivered_today' => (clone $waOutboundToday)
-                ->where('status', 'delivered')
+            'outbound_7d' => DB::table('message_logs')
+                ->where('company_id', $companyId)
+                ->where('channel', 'whatsapp')
+                ->where('direction', 'out')
+                ->where('created_at', '>=', $waStart)
+                ->whereIn('provider_status', ['queued', 'sent', 'delivered', 'read'])
                 ->count(),
 
-            'replied_today' => (clone $waInboundToday)
+            'replies_7d' => DB::table('message_logs')
+                ->where('company_id', $companyId)
+                ->where('channel', 'whatsapp')
+                ->where('direction', 'in')
+                ->where('created_at', '>=', $waStart)
                 ->count(),
 
-            'failed_24h' => WhatsAppMessage::forCompany($companyId)
-                ->where('status', 'failed')
-                ->where('created_at', '>=', now()->subDay())
+            'failed_7d' => DB::table('message_logs')
+                ->where('company_id', $companyId)
+                ->where('channel', 'whatsapp')
+                ->where('created_at', '>=', $waStart)
+                ->whereIn('provider_status', ['failed', 'undelivered', 'error'])
+                ->count(),
+
+            'ai_replies_7d' => DB::table('message_logs')
+                ->where('company_id', $companyId)
+                ->where('channel', 'whatsapp')
+                ->where('is_ai', true)
+                ->where('created_at', '>=', $waStart)
                 ->count(),
         ];
 
-        $waTimeline = WhatsAppMessage::forCompany($companyId)
-            ->with(['template:id,name'])
+        $waTimeline = DB::table('message_logs')
+            ->where('company_id', $companyId)
+            ->where('channel', 'whatsapp')
             ->orderByDesc('created_at')
             ->limit(50)
-            ->get(['id','direction','status','to','template_id','campaign_id','error_message','created_at']);
-
-        $baseOutbound = WhatsAppMessage::forCompany($companyId)
-            ->where('direction', 'out')
-            ->where('created_at', '>=', now()->subHours($lookbackHours));
-
-        $dueCount = (clone $baseOutbound)->whereRaw("
-            NOT EXISTS (
-              SELECT 1 FROM whatsapp_messages wi
-               WHERE wi.company_id = whatsapp_messages.company_id
-                 AND wi.direction = 'in'
-                 AND wi.`to` = whatsapp_messages.`to`
-                 AND wi.created_at BETWEEN whatsapp_messages.created_at
-                                      AND DATE_ADD(whatsapp_messages.created_at, INTERVAL ? MINUTE)
-            )
-        ", [$ackWindowMins])->count();
-
-        $overdueCount = (clone $baseOutbound)
-            ->where('created_at', '<', now()->subMinutes($slaMins))
-            ->whereRaw("
-                NOT EXISTS (
-                    SELECT 1 FROM whatsapp_messages wi
-                      WHERE wi.company_id = whatsapp_messages.company_id
-                        AND wi.direction = 'in'
-                        AND wi.`to` = whatsapp_messages.`to`
-                        AND wi.created_at > whatsapp_messages.created_at
-                )
-            ")
-            ->count();
-
-        // Global system health metric, intentionally not company-scoped.
-        $failedJobsCount = DB::table('failed_jobs')->count();
+            ->get([
+                'id',
+                'direction',
+                'provider_status',
+                'to_number',
+                'from_number',
+                'template',
+                'is_ai',
+                'created_at',
+            ]);
 
         $waDashboard = [
             'kpis'          => $waKpis,
             'timeline'      => $waTimeline,
-            'due_count'     => $dueCount,
-            'overdue_count' => $overdueCount,
-            'failed_jobs'   => $failedJobsCount,
-            'ack_window'    => $ackWindowMins,
-            'sla_mins'      => $slaMins,
+            'due_count'     => 0,
+            'overdue_count' => 0,
+            'failed_jobs'   => DB::table('failed_jobs')->count(),
+            'ack_window'    => 20,
+            'sla_mins'      => 120,
         ];
 
         return view('admin.dashboard.index', compact(
@@ -275,7 +412,68 @@ class DashboardController extends Controller
             'followUpsDue',
             'smartKPIs',
             'waDashboard',
-            'aiStatus'
+            'aiStatus',
+            'leadPipeline',
+            'opportunityPipeline',
+            'revenueSummary',
+            'alerts'
         ));
+    }
+
+    private function resolveCalendarStart($booking): ?Carbon
+    {
+        if (!empty($booking->scheduled_at)) {
+            return Carbon::parse($booking->scheduled_at);
+        }
+
+        $date = $booking->booking_date ?? null;
+
+        if (!$date) {
+            return null;
+        }
+
+        $start = Carbon::parse($date);
+
+        $slot = strtolower((string) $booking->slot);
+
+        if (str_contains($slot, 'morning')) {
+            return $start->setTime(9, 0);
+        }
+
+        if (str_contains($slot, 'afternoon')) {
+            return $start->setTime(13, 0);
+        }
+
+        if (str_contains($slot, 'evening')) {
+            return $start->setTime(16, 0);
+        }
+
+        return $start->setTime(10, 0);
+    }
+
+    private function resolveCalendarEnd($booking, Carbon $start): Carbon
+    {
+        if (!empty($booking->scheduled_end_at)) {
+            return Carbon::parse($booking->scheduled_end_at);
+        }
+
+        $hours = is_numeric($booking->expected_duration)
+            ? max((int) $booking->expected_duration, 1)
+            : 2;
+
+        return $start->copy()->addHours($hours);
+    }
+
+    private function calendarStatusColor($status): string
+    {
+        return match (strtolower((string) $status)) {
+            Booking::STATUS_CONFIRMED => '#22c55e',
+            Booking::STATUS_PENDING => '#f59e0b',
+            Booking::STATUS_SCHEDULED => '#6366f1',
+            Booking::STATUS_VEHICLE_RECEIVED => '#8b5cf6',
+            Booking::STATUS_COMPLETED => '#0ea5e9',
+            Booking::STATUS_CANCELED => '#ef4444',
+            default => '#6b7280',
+        };
     }
 }

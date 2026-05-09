@@ -8,9 +8,32 @@ use App\Support\NotifyFormatters as F;
 
 return [
 
+    /*
+    |--------------------------------------------------------------------------
+    | Legacy Notification Config
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    | WhatsApp has been intentionally removed from this config.
+    |
+    | WhatsApp journeys must now go through:
+    |
+    |   App\Services\WhatsApp\SendWhatsAppMessage::fireEvent()
+    |
+    | using DB-driven mappings instead of hardcoded template names.
+    |
+    | This prevents duplicate WhatsApp sends from the old notification path:
+    |
+    |   DispatchNotificationJob / config/notify.php
+    |
+    | Email is kept here because email notifications can still use the
+    | legacy notification formatter flow safely.
+    |
+    */
+
     /* ---------- Lead Created ---------- */
     LeadCreated::class => [
-        'channels'      => ['whatsapp', 'email'],
+        'channels'      => ['email'],
         'template'      => 'lead_created',
         'subject'       => [F::class, 'leadCreatedSubject'],
         'body'          => [F::class, 'leadCreatedBody'],
@@ -21,7 +44,7 @@ return [
 
     /* ---------- Opportunity status updates ---------- */
     OpportunityStatusUpdated::class => [
-        'channels'      => ['whatsapp', 'email'],
+        'channels'      => ['email'],
         'template'      => [F::class, 'oppTemplate'],
         'subject'       => [F::class, 'oppSubject'],
         'body'          => [F::class, 'oppBody'],
@@ -32,7 +55,7 @@ return [
 
     /* ---------- Booking status updates ---------- */
     BookingStatusUpdated::class => [
-        'channels'      => ['whatsapp', 'email'],
+        'channels'      => ['email'],
         'template'      => [F::class, 'bookingTemplate'],
         'subject'       => [F::class, 'bookingSubject'],
         'body'          => [F::class, 'bookingBody'],
@@ -43,7 +66,7 @@ return [
 
     /* ---------- Job completed ---------- */
     JobCompleted::class => [
-        'channels'      => ['whatsapp', 'email'],
+        'channels'      => ['email'],
         'template'      => 'job_completed',
         'subject'       => [F::class, 'jobCompletedSubject'],
         'body'          => [F::class, 'jobCompletedBody'],

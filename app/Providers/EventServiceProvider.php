@@ -12,17 +12,23 @@ class EventServiceProvider extends ServiceProvider
         |--------------------------------------------------------------------------
         | Lead lifecycle
         |--------------------------------------------------------------------------
+        |
+        | SendUnifiedNotification:
+        | - Email only now.
+        | - WhatsApp has been removed from config/notify.php.
+        |
+        | StartJourneyForLead:
+        | - Marketing / journey automation.
+        |
+        | HandleLeadCreatedOutbound:
+        | - WhatsApp customer acknowledgement.
+        | - Must use SendWhatsAppMessage::fireEvent() with DB mappings.
+        |
         */
 
         \App\Events\LeadCreated::class => [
-
-            // Core notification system
             \App\Listeners\SendUnifiedNotification::class,
-
-            // Marketing journey automation
             \App\Listeners\StartJourneyForLead::class,
-
-            // WhatsApp automation (single source of truth)
             \App\Listeners\HandleLeadCreatedOutbound::class,
         ],
 
@@ -30,10 +36,18 @@ class EventServiceProvider extends ServiceProvider
         |--------------------------------------------------------------------------
         | Opportunity lifecycle
         |--------------------------------------------------------------------------
+        |
+        | SendUnifiedNotification:
+        | - Email only.
+        |
+        | SendManagerBookingNotification:
+        | - Notifies manager when opportunity becomes ready for booking.
+        |
         */
 
         \App\Events\OpportunityStatusUpdated::class => [
             \App\Listeners\SendUnifiedNotification::class,
+            \App\Listeners\SendManagerBookingNotification::class,
         ],
 
         \App\Events\OpportunityStageChanged::class => [
@@ -44,16 +58,31 @@ class EventServiceProvider extends ServiceProvider
         |--------------------------------------------------------------------------
         | Booking lifecycle
         |--------------------------------------------------------------------------
+        |
+        | SendUnifiedNotification:
+        | - Email only.
+        |
+        | SendManagerBookingNotification:
+        | - Sends WhatsApp booking confirmation when booking becomes scheduled.
+        |
         */
 
         \App\Events\BookingStatusUpdated::class => [
             \App\Listeners\SendUnifiedNotification::class,
+            \App\Listeners\SendManagerBookingNotification::class,
         ],
 
         /*
         |--------------------------------------------------------------------------
         | Job lifecycle
         |--------------------------------------------------------------------------
+        |
+        | SendUnifiedNotification:
+        | - Email only.
+        |
+        | JobCompletedFeedback:
+        | - Needs review later to ensure WhatsApp uses DB-mapped fireEvent().
+        |
         */
 
         \App\Events\JobCompleted::class => [

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company\CompanySetting;
 use App\Models\LeadSource;
 use App\Models\MetaPage;
-use App\Models\Company\CompanySetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -25,24 +25,28 @@ class LeadSourceController extends Controller
     {
         $companyId = $this->companyId();
 
-        $sources = LeadSource::where('company_id', $companyId)
+        $sources = LeadSource::forCompany($companyId)
             ->get()
-            ->keyBy('type');
+            ->groupBy('type');
 
-        /** ---------------- WhatsApp ---------------- */
+        /*
+        |--------------------------------------------------------------------------
+        | WhatsApp
+        |--------------------------------------------------------------------------
+        */
         $waFrom = trim((string) config('services.whatsapp.twilio.from'));
         $waConfigured = $waFrom !== '';
 
-        $wa = $sources->get('whatsapp');
+        $wa = $sources->get('whatsapp')?->first();
 
-        if ($waConfigured && !$wa) {
+        if ($waConfigured && ! $wa) {
             $wa = LeadSource::updateOrCreate(
                 [
                     'company_id' => $companyId,
                     'type'       => 'whatsapp',
+                    'name'       => 'WhatsApp',
                 ],
                 [
-                    'name'   => 'WhatsApp',
                     'status' => 'connected',
                     'config' => [
                         'provider' => 'twilio',
@@ -52,48 +56,70 @@ class LeadSourceController extends Controller
             );
         }
 
-        /** ---------------- Website ---------------- */
-        $websiteExists = LeadSource::where('company_id', $companyId)
-            ->where('type', 'website')
-            ->exists();
+        /*
+        |--------------------------------------------------------------------------
+        | Website
+        |--------------------------------------------------------------------------
+        */
+        $websiteCount = LeadSource::forCompany($companyId)
+            ->type('website')
+            ->count();
 
-        /** ---------------- Meta ---------------- */
+        /*
+        |--------------------------------------------------------------------------
+        | Meta
+        |--------------------------------------------------------------------------
+        */
         $metaRow = MetaPage::where('company_id', $companyId)->first();
+
+        if ($metaRow && $metaRow->page_access_token) {
+            $this->syncMetaLeadSources($companyId, $metaRow);
+        }
+
+        $metaFormsCount = LeadSource::forCompany($companyId)
+            ->type('meta')
+            ->count();
+
+        $metaActiveFormsCount = LeadSource::forCompany($companyId)
+            ->type('meta')
+            ->active()
+            ->count();
+
         $metaConnected = (bool) ($metaRow && $metaRow->page_access_token);
 
         $cards = [
             [
-                'key' => 'whatsapp',
-                'title' => 'WhatsApp',
-                'subtitle' => 'Inbound leads & conversations',
-                'status' => $waConfigured ? 'Connected' : 'Not configured',
-                'statusTone' => $waConfigured ? 'green' : 'gray',
-                'meta' => $waConfigured ? "From: {$waFrom}" : 'Not configured',
-                'route' => route('admin.lead-sources.whatsapp'),
+                'key'         => 'whatsapp',
+                'title'       => 'WhatsApp',
+                'subtitle'    => 'Inbound leads & conversations',
+                'status'      => $waConfigured ? 'Connected' : 'Not configured',
+                'statusTone'  => $waConfigured ? 'green' : 'gray',
+                'meta'        => $waConfigured ? "From: {$waFrom}" : 'Not configured',
+                'route'       => route('admin.lead-sources.whatsapp'),
                 'actionLabel' => 'Manage',
             ],
             [
-                'key' => 'website',
-                'title' => 'Website Forms',
-                'subtitle' => 'Embed forms on your website',
-                'status' => $websiteExists ? 'Active' : 'Not configured',
-                'statusTone' => $websiteExists ? 'green' : 'gray',
-                'meta' => $websiteExists
-                    ? 'Multiple forms supported'
+                'key'         => 'website',
+                'title'       => 'Website Forms',
+                'subtitle'    => 'Embed forms on your website',
+                'status'      => $websiteCount > 0 ? 'Active' : 'Not configured',
+                'statusTone'  => $websiteCount > 0 ? 'green' : 'gray',
+                'meta'        => $websiteCount > 0
+                    ? "{$websiteCount} form(s) created"
                     : 'No form created',
-                'route' => route('admin.lead-sources.website.index'),
-                'actionLabel' => $websiteExists ? 'Manage' : 'Create',
+                'route'       => route('admin.lead-sources.website.index'),
+                'actionLabel' => $websiteCount > 0 ? 'Manage' : 'Create',
             ],
             [
-                'key' => 'meta',
-                'title' => 'Meta (Facebook / Instagram)',
-                'subtitle' => 'Lead Ads & instant forms',
-                'status' => $metaConnected ? 'Connected' : 'Not connected',
-                'statusTone' => $metaConnected ? 'green' : 'gray',
-                'meta' => $metaConnected
-                    ? 'Page: ' . $metaRow->page_name
+                'key'         => 'meta',
+                'title'       => 'Meta (Facebook / Instagram)',
+                'subtitle'    => 'Lead Ads & instant forms',
+                'status'      => $metaConnected ? 'Connected' : 'Not connected',
+                'statusTone'  => $metaConnected ? 'green' : 'gray',
+                'meta'        => $metaConnected
+                    ? 'Page: ' . $metaRow->page_name . " | {$metaActiveFormsCount}/{$metaFormsCount} active form(s)"
                     : 'No page connected',
-                'route' => route('admin.lead-sources.meta'),
+                'route'       => route('admin.lead-sources.meta'),
                 'actionLabel' => $metaConnected ? 'Manage' : 'Setup',
             ],
         ];
@@ -108,8 +134,8 @@ class LeadSourceController extends Controller
     */
     public function websiteIndex()
     {
-        $forms = LeadSource::where('company_id', $this->companyId())
-            ->where('type', 'website')
+        $forms = LeadSource::forCompany($this->companyId())
+            ->type('website')
             ->latest()
             ->get();
 
@@ -118,17 +144,13 @@ class LeadSourceController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Website Forms — SHOW (Embed + Preview)
+    | Website Forms — SHOW
     |--------------------------------------------------------------------------
     */
     public function websiteShow(LeadSource $leadSource)
     {
-        abort_if(
-            $leadSource->company_id !== $this->companyId(),
-            403
-        );
+        abort_if($leadSource->company_id !== $this->companyId(), 403);
 
-        // ✅ correct route name
         $formUrl = route('api.website-leads.store', $leadSource->form_token);
 
         $embed = view(
@@ -144,7 +166,7 @@ class LeadSourceController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Website Forms — STORE (FIXED: NO overwrite)
+    | Website Forms — STORE
     |--------------------------------------------------------------------------
     */
     public function storeWebsite(Request $request)
@@ -197,8 +219,125 @@ class LeadSourceController extends Controller
     */
     public function meta()
     {
-        $meta = MetaPage::where('company_id', $this->companyId())->first();
+        $companyId = $this->companyId();
 
-        return view('admin.lead_sources.meta', compact('meta'));
+        $meta = MetaPage::where('company_id', $companyId)->first();
+
+        if ($meta && $meta->page_access_token) {
+            $this->syncMetaLeadSources($companyId, $meta);
+        }
+
+        $sources = LeadSource::forCompany($companyId)
+            ->type('meta')
+            ->latest()
+            ->get();
+
+        return view('admin.lead_sources.meta', compact('meta', 'sources'));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Internal: Sync Meta Forms into Lead Sources
+    |--------------------------------------------------------------------------
+    | MetaPage = connected Facebook Page.
+    | LeadSource = individual CRM source/form used for attribution.
+    |--------------------------------------------------------------------------
+    */
+    private function syncMetaLeadSources(int $companyId, MetaPage $meta): void
+    {
+        $forms = $this->normalizeMetaForms($meta);
+
+        if (empty($forms)) {
+            return;
+        }
+
+        $existingSources = LeadSource::forCompany($companyId)
+            ->type('meta')
+            ->get()
+            ->keyBy(function (LeadSource $source) {
+                return (string) data_get($source->config ?? [], 'form_id', '');
+            });
+
+        $seenFormIds = [];
+
+        foreach ($forms as $form) {
+            $formId = (string) ($form['id'] ?? '');
+
+            if ($formId === '') {
+                continue;
+            }
+
+            $seenFormIds[] = $formId;
+
+            $formName = (string) ($form['name'] ?? "Meta Form {$formId}");
+
+            $config = [
+                'platform'      => 'meta',
+                'page_id'       => (string) $meta->page_id,
+                'page_name'     => (string) $meta->page_name,
+                'form_id'       => $formId,
+                'form_name'     => $formName,
+                'raw_form'      => $form,
+                'field_mapping' => data_get($existingSources->get($formId)?->config ?? [], 'field_mapping', []),
+            ];
+
+            $existing = $existingSources->get($formId);
+
+            if ($existing) {
+                $existing->update([
+                    'name'   => "Meta - {$formName}",
+                    'status' => $existing->status ?: 'active',
+                    'config' => array_merge($existing->config ?? [], $config),
+                ]);
+
+                continue;
+            }
+
+            LeadSource::create([
+                'company_id' => $companyId,
+                'type'       => 'meta',
+                'name'       => "Meta - {$formName}",
+                'status'     => 'active',
+                'config'     => $config,
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Soft-disable forms that are no longer returned by Meta.
+        |--------------------------------------------------------------------------
+        */
+        LeadSource::forCompany($companyId)
+            ->type('meta')
+            ->get()
+            ->each(function (LeadSource $source) use ($seenFormIds) {
+                $formId = (string) data_get($source->config ?? [], 'form_id', '');
+
+                if ($formId !== '' && ! in_array($formId, $seenFormIds, true)) {
+                    $source->update([
+                        'status' => 'inactive',
+                    ]);
+                }
+            });
+    }
+
+    private function normalizeMetaForms(MetaPage $meta): array
+    {
+        $forms = $meta->forms_json ?? [];
+
+        if (is_string($forms)) {
+            $decoded = json_decode($forms, true);
+            $forms = is_array($decoded) ? $decoded : [];
+        }
+
+        if (! is_array($forms)) {
+            return [];
+        }
+
+        if (array_key_exists('data', $forms) && is_array($forms['data'])) {
+            return $forms['data'];
+        }
+
+        return array_values($forms);
     }
 }

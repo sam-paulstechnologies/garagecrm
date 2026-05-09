@@ -60,7 +60,7 @@ Route::get('/_ops/flush', function (Request $r) {
 Route::get('/db-counts', function () {
     $companyId = (int) (auth()->user()?->company_id ?? auth()->user()?->company?->id ?? 0);
 
-    abort_if(!$companyId, 403);
+    abort_if(! $companyId, 403);
 
     $counts = DB::selectOne("
         SELECT
@@ -79,8 +79,11 @@ Route::get('/db-counts', function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['web', 'auth', 'active'])->group(function () {
-    Route::get('password/force',  [PasswordForceController::class, 'edit'])->name('password.force.edit');
-    Route::post('password/force', [PasswordForceController::class, 'update'])->name('password.force.update');
+    Route::get('password/force', [PasswordForceController::class, 'edit'])
+        ->name('password.force.edit');
+
+    Route::post('password/force', [PasswordForceController::class, 'update'])
+        ->name('password.force.update');
 });
 
 /*
@@ -94,7 +97,7 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
 
         $user = Auth::user();
 
-        abort_if(!$user || blank($user->role), 403);
+        abort_if(! $user || blank($user->role), 403);
 
         return match (strtolower(trim((string) $user->role))) {
             'admin'    => redirect()->route('admin.dashboard'),
@@ -111,14 +114,16 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Webhooks
+| Legacy Public Webhooks
+|--------------------------------------------------------------------------
+| Kept for backward compatibility with already-configured Twilio/email URLs.
 |--------------------------------------------------------------------------
 */
-Route::match(['GET','POST'], '/webhooks/twilio/whatsapp',
+Route::match(['GET', 'POST'], '/webhooks/twilio/whatsapp',
     [TwilioWhatsAppWebhookController::class, 'handle']
 )->withoutMiddleware(VerifyCsrfToken::class);
 
-Route::match(['GET','POST'], '/webhooks/twilio/whatsapp/status',
+Route::match(['GET', 'POST'], '/webhooks/twilio/whatsapp/status',
     [TwilioWhatsAppWebhookController::class, 'status']
 )->withoutMiddleware(VerifyCsrfToken::class);
 
@@ -132,8 +137,23 @@ Route::post('/webhooks/email/inbound',
 |--------------------------------------------------------------------------
 */
 require __DIR__.'/auth.php';
-require __DIR__.'/admin.php';
-require __DIR__.'/manager.php';
-require __DIR__.'/tenant.php';
-require __DIR__.'/mechanic.php';
-require __DIR__.'/whatsapp.php';
+
+if (file_exists(__DIR__.'/admin.php')) {
+    require __DIR__.'/admin.php';
+}
+
+if (file_exists(__DIR__.'/manager.php')) {
+    require __DIR__.'/manager.php';
+}
+
+if (file_exists(__DIR__.'/tenant.php')) {
+    require __DIR__.'/tenant.php';
+}
+
+if (file_exists(__DIR__.'/mechanic.php')) {
+    require __DIR__.'/mechanic.php';
+}
+
+if (file_exists(__DIR__.'/whatsapp.php')) {
+    require __DIR__.'/whatsapp.php';
+}

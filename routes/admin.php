@@ -39,6 +39,7 @@ use App\Http\Controllers\Admin\{
     SmartReplyController,
     JourneyTimelineController,
     AudienceController,
+    AudienceSegmentationController,
     DuplicateClientsController,
     MetaConnectController,
     DocumentInboxController,
@@ -53,7 +54,7 @@ use App\Http\Controllers\Public\ManagerBookingController;
 
 /*
 |--------------------------------------------------------------------------
-| 🔴 PHASE 3 — PUBLIC MANAGER BOOKING (NO LOGIN)
+| PUBLIC MANAGER BOOKING — NO LOGIN
 |--------------------------------------------------------------------------
 */
 Route::get('/manager/booking/{token}', [ManagerBookingController::class, 'show'])
@@ -73,9 +74,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
     ->group(function () {
 
         /*
-        |----------------------------------------------------------------------
-        | Lead Sources — Slice 0.5 (LOCKED)
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Lead Sources
+        |--------------------------------------------------------------------------
         */
         Route::prefix('lead-sources')->name('lead-sources.')->group(function () {
 
@@ -116,9 +117,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         });
 
         /*
-        |----------------------------------------------------------------------
-        | Route parameter patterns
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Route Parameter Patterns
+        |--------------------------------------------------------------------------
         */
         Route::pattern('booking', '[0-9]+');
         Route::pattern('client', '[0-9]+');
@@ -133,15 +134,16 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::pattern('conversation', '[0-9]+');
         Route::pattern('enrollment', '[0-9]+');
         Route::pattern('audience', '[0-9]+');
+        Route::pattern('audienceSegmentation', '[0-9]+');
         Route::pattern('candidate', '[0-9]+');
         Route::pattern('doc', '[0-9]+');
         Route::pattern('campaign', '[0-9]+');
         Route::pattern('trigger', '[0-9]+');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Dashboard
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('dashboard', [DashboardController::class, 'index'])
             ->name('dashboard');
@@ -150,9 +152,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('sla_dashboard');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Calendar
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('calendar', [CalendarController::class, 'index'])
             ->name('calendar.index');
@@ -161,9 +163,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('calendar.events');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Profile
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('profile', [ProfileController::class, 'edit'])
             ->name('profile.edit');
@@ -175,9 +177,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('profile.destroy');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Settings
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('settings', [SettingsController::class, 'index'])
             ->name('settings.index');
@@ -192,9 +194,20 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('settings.test-twilio');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Audience Segmentation
+        |--------------------------------------------------------------------------
+        */
+        Route::get('settings/audience-segmentation', [AudienceSegmentationController::class, 'index'])
+            ->name('audience-segmentations.index');
+
+        Route::patch('settings/audience-segmentation/{audienceSegmentation}/toggle', [AudienceSegmentationController::class, 'toggle'])
+            ->name('audience-segmentations.toggle');
+
+        /*
+        |--------------------------------------------------------------------------
         | Launch Setup
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('settings/launch-setup', [LaunchSetupController::class, 'edit'])
             ->name('settings.launch-setup.edit');
@@ -203,9 +216,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('settings.launch-setup.update');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Documents Inbox
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('documents', [DocumentInboxController::class, 'index'])
             ->name('documents.index');
@@ -217,9 +230,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('documents.assign');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Clients & Vehicles
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('clients/archived', [ClientController::class, 'archived'])
             ->name('clients.archived');
@@ -255,9 +268,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('vehicles', VehicleController::class);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Leads
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('leads/qualified', [LeadController::class, 'qualified'])
             ->name('leads.qualified');
@@ -265,18 +278,40 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::get('leads/disqualified', [LeadController::class, 'disqualified'])
             ->name('leads.disqualified');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Lead Import
+        |--------------------------------------------------------------------------
+        */
         Route::get('leads/import', [LeadController::class, 'importOptions'])
             ->name('leads.import.options');
 
-        Route::get('leads/import/excel', [LeadController::class, 'importExcel'])
+        Route::get('leads/import/excel', [LeadImportController::class, 'showCsvForm'])
             ->name('leads.import.upload');
+
+        Route::post('leads/import/excel', [LeadImportController::class, 'importFromCsv'])
+            ->name('leads.import.process');
+
+        Route::get('leads/import/sample', function () {
+            return response()->download(public_path('samples/sample_lead_import.csv'));
+        })->name('leads.import.sample');
 
         Route::get('leads/import/custom-form', [LeadController::class, 'customForm'])
             ->name('leads.custom-form');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Lead Actions
+        |--------------------------------------------------------------------------
+        */
         Route::patch('leads/{lead}/toggle-hot', [LeadController::class, 'toggleHot'])
             ->name('leads.toggleHot');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Lead Duplicates
+        |--------------------------------------------------------------------------
+        */
         Route::get('leads/duplicates', [LeadDuplicateController::class, 'index'])
             ->name('leads.duplicates.index');
 
@@ -286,9 +321,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('leads', LeadController::class);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Opportunities
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('opportunities/archived', [OpportunityController::class, 'archived'])
             ->name('opportunities.archived');
@@ -299,9 +334,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('opportunities', OpportunityController::class);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Bookings
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('bookings/archived', [BookingController::class, 'archived'])
             ->name('bookings.archived');
@@ -315,10 +350,13 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('bookings', BookingController::class);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Jobs
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+        Route::get('jobs/completed', [JobController::class, 'completed'])
+            ->name('jobs.completed');
+
         Route::get('jobs/archived', [JobController::class, 'archived'])
             ->name('jobs.archived');
 
@@ -334,9 +372,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('jobs', JobController::class)->except(['destroy']);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Invoices
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('invoices/{invoice}/download', [InvoiceController::class, 'download'])
             ->name('invoices.download');
@@ -344,9 +382,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::resource('invoices', InvoiceController::class);
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Communications
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('communications/followups', [CommunicationController::class, 'followUps'])
             ->name('communications.followups');
@@ -360,9 +398,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             ->name('communication-logs.index');
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Marketing
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::prefix('marketing')->name('marketing.')->group(function () {
             Route::get('campaigns', [MarketingCampaignController::class, 'index'])
@@ -406,9 +444,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         });
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | AI
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::prefix('ai')->name('ai.')->group(function () {
             Route::get('/', [AiSettingController::class, 'edit'])
@@ -431,9 +469,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         });
 
         /*
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         | Health
-        |----------------------------------------------------------------------
+        |--------------------------------------------------------------------------
         */
         Route::get('example', fn () =>
             response()->json(['message' => 'Garage CRM Admin routes working'])
@@ -445,7 +483,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
         /*
         |--------------------------------------------------------------------------
-        | WhatsApp Inbox Popup (Admin Only)
+        | WhatsApp Inbox Popup
         |--------------------------------------------------------------------------
         */
         Route::prefix('inbox')->name('inbox.')->group(function () {

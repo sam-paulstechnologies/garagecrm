@@ -8,8 +8,8 @@ use App\Models\Job\Booking;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use App\Services\Booking\BookingService;
-use App\Services\Leads\LeadConversionService;
 use App\Services\Conversation\ConversationGuard;
+use App\Services\Leads\LeadConversionService;
 use App\Services\WhatsApp\ManagerNotificationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -37,7 +37,8 @@ class BookingFlow
         | Invalid date/time
         |--------------------------------------------------------------------------
         */
-        if (!$date instanceof Carbon) {
+
+        if (! $date instanceof Carbon) {
             return $this->retryTimeslot(
                 lead: $lead,
                 reason: 'Invalid date/time received: ' . $text,
@@ -51,6 +52,7 @@ class BookingFlow
         | Past date/time protection
         |--------------------------------------------------------------------------
         */
+
         if ($date->isPast()) {
             return $this->retryTimeslot(
                 lead: $lead,
@@ -68,6 +70,7 @@ class BookingFlow
         | Outside-hours should guide the customer, not count as a failed attempt.
         |--------------------------------------------------------------------------
         */
+
         $workingHoursViolation = $this->bookingService->workingHoursViolation($lead, $date);
 
         if ($workingHoursViolation) {
@@ -86,34 +89,40 @@ class BookingFlow
         | Reset attempts + store pending booking
         |--------------------------------------------------------------------------
         */
+
         $data = $this->conversationData($lead);
 
         $slot = $this->bookingService->inferSlotFromTime($date, 'Morning');
 
         $data['timeslot_attempts'] = 0;
         $data['pending_booking'] = [
-            'date' => $date->toIso8601String(),
-            'slot' => $slot,
-            'raw_text' => $text,
+            'date'        => $date->toIso8601String(),
+            'slot'        => $slot,
+            'raw_text'    => $text,
             'captured_at' => now()->toIso8601String(),
         ];
 
         $lead->conversation_data = $data;
         $lead->conversation_state = 'confirm_booking';
+        $lead->conversation_updated_at = now();
         $lead->save();
 
-        return [
-            'template' => 'confirm_booking_v1',
-            'placeholders' => [
-                $this->getVehicleLabel($lead),
-                $date->format('d M Y, h:i A'),
+        $vehicleLabel = $this->getVehicleLabel($lead);
+        $dateLabel = $date->format('d M Y, h:i A');
+
+        return $this->sessionResponse(
+            template: 'confirm_booking_v1',
+            action: 'confirm_booking',
+            body: $this->confirmBookingBody($vehicleLabel, $dateLabel),
+            placeholders: [
+                $vehicleLabel,
+                $dateLabel,
             ],
-            'action' => 'confirm_booking',
-            'context' => [
+            context: [
                 'pending_date' => $date->toIso8601String(),
-                'slot' => $slot,
-            ],
-        ];
+                'slot'         => $slot,
+            ]
+        );
     }
 
     /**
@@ -128,6 +137,7 @@ class BookingFlow
         | If user rejects/cancels confirmation
         |--------------------------------------------------------------------------
         */
+
         if ($this->looksLikeRejection($input)) {
             $data = $this->conversationData($lead);
 
@@ -135,16 +145,18 @@ class BookingFlow
 
             $lead->conversation_state = 'awaiting_timeslot';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
-            return [
-                'template' => 'ask_preferred_time_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'change_timeslot',
-                'context' => [
+            return $this->sessionResponse(
+                template: 'ask_preferred_time_v1',
+                action: 'change_timeslot',
+                body: $this->askPreferredTimeBody($lead, 'No problem. Please share another preferred booking date and time.'),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
                     'reason' => 'User rejected pending booking time',
-                ],
-            ];
+                ]
+            );
         }
 
         /*
@@ -152,11 +164,12 @@ class BookingFlow
         | If user sends another date/time while in confirm state
         |--------------------------------------------------------------------------
         */
+
         $maybeDate = $this->bookingService->parsePreferredDateTime(
             $this->normalizeTimeslotText($text, $lead)
         );
 
-        if ($maybeDate instanceof Carbon && !$this->looksLikeConfirmation($input)) {
+        if ($maybeDate instanceof Carbon && ! $this->looksLikeConfirmation($input)) {
             return $this->handleTimeslot($lead, $text);
         }
 
@@ -165,7 +178,8 @@ class BookingFlow
         | Confirmation unclear
         |--------------------------------------------------------------------------
         */
-        if (!$this->looksLikeConfirmation($input)) {
+
+        if (! $this->looksLikeConfirmation($input)) {
             return $this->retryConfirmation(
                 lead: $lead,
                 reason: 'User did not confirm booking clearly: ' . $text
@@ -177,11 +191,12 @@ class BookingFlow
         | Validate pending booking exists
         |--------------------------------------------------------------------------
         */
+
         $data = $this->conversationData($lead);
 
         $pending = $data['pending_booking'] ?? null;
 
-        if (!$pending || empty($pending['date'])) {
+        if (! $pending || empty($pending['date'])) {
             return $this->guard->escalateToManager(
                 $lead,
                 'Booking confirmation failed: missing pending booking data'
@@ -196,21 +211,24 @@ class BookingFlow
         | Past date protection again before creation
         |--------------------------------------------------------------------------
         */
+
         if ($date->isPast()) {
             unset($data['pending_booking']);
 
             $lead->conversation_state = 'awaiting_timeslot';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
-            return [
-                'template' => 'ask_preferred_time_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'retry_timeslot',
-                'context' => [
+            return $this->sessionResponse(
+                template: 'ask_preferred_time_v1',
+                action: 'retry_timeslot',
+                body: $this->askPreferredTimeBody($lead, 'The selected booking time is already in the past. Please share a new preferred date and time.'),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
                     'reason' => 'Pending booking time is already in the past',
-                ],
-            ];
+                ]
+            );
         }
 
         /*
@@ -220,6 +238,7 @@ class BookingFlow
         | Re-check before booking creation in case pending data is stale.
         |--------------------------------------------------------------------------
         */
+
         $workingHoursViolation = $this->bookingService->workingHoursViolation($lead, $date);
 
         if ($workingHoursViolation) {
@@ -227,6 +246,7 @@ class BookingFlow
 
             $lead->conversation_state = 'awaiting_timeslot';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
             return $this->retryTimeslot(
@@ -244,6 +264,7 @@ class BookingFlow
         | Ensure client + opportunity before booking
         |--------------------------------------------------------------------------
         */
+
         try {
             $this->leadConversionService->ensureClientAndOpportunity($lead->id);
             $lead->refresh();
@@ -259,28 +280,33 @@ class BookingFlow
         | Slot validation
         |--------------------------------------------------------------------------
         */
-        if (!$this->isSlotAvailable($lead, $date, $slot)) {
+
+        if (! $this->isSlotAvailable($lead, $date, $slot)) {
             unset($data['pending_booking']);
 
             $lead->conversation_state = 'awaiting_timeslot';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
-            return [
-                'template' => 'ask_preferred_time_retry_v1',
-                'placeholders' => [
+            $message = 'That slot is already unavailable. Please choose another date/time.';
+
+            return $this->sessionResponse(
+                template: 'ask_preferred_time_retry_v1',
+                action: 'retry_timeslot',
+                body: $this->askPreferredTimeBody($lead, $message),
+                placeholders: [
                     $lead->name ?: 'there',
-                    'That slot is already unavailable. Please choose another date/time.',
+                    $message,
                 ],
-                'action' => 'retry_timeslot',
-                'context' => [
-                    'reason' => 'Slot unavailable',
-                    'customer_message' => 'That slot is already unavailable. Please choose another date/time.',
-                    'date' => $date->toDateString(),
-                    'slot' => $slot,
-                    'retry_signature' => sha1('slot_unavailable|' . $date->toIso8601String() . '|' . $slot),
-                ],
-            ];
+                context: [
+                    'reason'           => 'Slot unavailable',
+                    'customer_message' => $message,
+                    'date'             => $date->toDateString(),
+                    'slot'             => $slot,
+                    'retry_signature'  => sha1('slot_unavailable|' . $date->toIso8601String() . '|' . $slot),
+                ]
+            );
         }
 
         /*
@@ -288,10 +314,10 @@ class BookingFlow
         | Create booking
         |--------------------------------------------------------------------------
         */
+
         try {
             $booking = $this->bookingService->create($lead, $date, $slot);
         } catch (\Throwable $e) {
-
             /*
             |--------------------------------------------------------------------------
             | Working Hours Retry
@@ -300,6 +326,7 @@ class BookingFlow
             | Ask customer to select another time.
             |--------------------------------------------------------------------------
             */
+
             if (
                 str_contains($e->getMessage(), 'working hours')
                 || str_contains($e->getMessage(), 'Garage is closed')
@@ -308,6 +335,7 @@ class BookingFlow
 
                 $lead->conversation_state = 'awaiting_timeslot';
                 $lead->conversation_data = $data;
+                $lead->conversation_updated_at = now();
                 $lead->save();
 
                 return $this->retryTimeslot(
@@ -331,14 +359,15 @@ class BookingFlow
         | Update opportunity
         |--------------------------------------------------------------------------
         */
+
         $lead->refresh();
 
         if ($lead->opportunity) {
             $lead->opportunity->update([
-                'stage' => Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING,
-                'next_follow_up' => $date->toDateString(),
+                'stage'               => Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING,
+                'next_follow_up'      => $date->toDateString(),
                 'expected_close_date' => $date->toDateString(),
-                'notes' => $this->appendNote(
+                'notes'               => $this->appendNote(
                     $lead->opportunity->notes,
                     'Booking requested via WhatsApp for ' . $date->format('Y-m-d H:i')
                 ),
@@ -349,11 +378,13 @@ class BookingFlow
         |--------------------------------------------------------------------------
         | Notify manager via WhatsApp template
         |--------------------------------------------------------------------------
-        | This uses manager_attention_required_v1 and force_template=true inside
-        | ManagerNotificationService, so it works even if the manager has no
-        | active 24-hour session.
+        |
+        | This is proactive manager notification, so it must remain Meta-template
+        | based through ManagerNotificationService.
+        |
         |--------------------------------------------------------------------------
         */
+
         try {
             $this->managerNotificationService->notifyForLead(
                 lead: $lead,
@@ -361,16 +392,16 @@ class BookingFlow
                 preferredAt: $date,
                 bookingId: (int) $booking->id,
                 extra: [
-                    'slot' => $slot,
-                    'source' => 'booking_flow',
+                    'slot'            => $slot,
+                    'source'          => 'booking_flow',
                     'customer_action' => 'confirmed_booking_request',
                 ]
             );
         } catch (\Throwable $e) {
             Log::warning('[BookingFlow] Manager notification failed', [
-                'lead_id' => $lead->id,
+                'lead_id'    => $lead->id,
                 'booking_id' => $booking->id ?? null,
-                'error' => $e->getMessage(),
+                'error'      => $e->getMessage(),
             ]);
         }
 
@@ -383,6 +414,7 @@ class BookingFlow
         | That value belongs to opportunities.stage only.
         |--------------------------------------------------------------------------
         */
+
         unset($data['pending_booking']);
 
         $data['last_booking_at'] = now()->toIso8601String();
@@ -391,20 +423,22 @@ class BookingFlow
 
         $lead->conversation_data = $data;
         $lead->conversation_state = 'human';
+        $lead->conversation_updated_at = now();
         $lead->save();
 
-        return [
-            'template' => 'manager_handoff_v1',
-            'placeholders' => [],
-            'action' => 'booking_handoff',
-            'context' => [
+        return $this->sessionResponse(
+            template: 'manager_handoff_v1',
+            action: 'booking_handoff',
+            body: $this->bookingHandoffBody($lead),
+            placeholders: [$lead->name ?: 'there'],
+            context: [
                 'booking_id' => $booking->id,
-                'date' => $date->toDateString(),
-                'time' => $date->format('H:i'),
-                'slot' => $slot,
-                'reason' => 'Booking confirmed by user and sent to manager',
-            ],
-        ];
+                'date'       => $date->toDateString(),
+                'time'       => $date->format('H:i'),
+                'slot'       => $slot,
+                'reason'     => 'Booking confirmed by user and sent to manager',
+            ]
+        );
     }
 
     /**
@@ -435,6 +469,7 @@ class BookingFlow
 
         $lead->conversation_state = 'awaiting_timeslot';
         $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
         $lead->save();
 
         /*
@@ -443,6 +478,7 @@ class BookingFlow
         | Outside-hours retries pass incrementAttempt=false, so they keep guiding.
         |--------------------------------------------------------------------------
         */
+
         if ($incrementAttempt && $attempts >= 3) {
             return $this->guard->escalateToManager(
                 $lead,
@@ -452,21 +488,22 @@ class BookingFlow
 
         $message = $customerMessage ?: 'Please share your preferred date/time for the booking. Example: Tuesday 10 AM.';
 
-        return [
-            'template' => 'ask_preferred_time_retry_v1',
-            'placeholders' => [
+        return $this->sessionResponse(
+            template: 'ask_preferred_time_retry_v1',
+            action: 'retry_timeslot',
+            body: $this->askPreferredTimeBody($lead, $message),
+            placeholders: [
                 $lead->name ?: 'there',
                 $message,
             ],
-            'action' => 'retry_timeslot',
-            'context' => [
-                'reason' => $reason,
-                'customer_message' => $message,
-                'attempts' => $attempts,
-                'selected_text' => $selectedText,
-                'selected_at' => $selectedAt?->toIso8601String(),
+            context: [
+                'reason'                => $reason,
+                'customer_message'      => $message,
+                'attempts'              => $attempts,
+                'selected_text'         => $selectedText,
+                'selected_at'           => $selectedAt?->toIso8601String(),
                 'working_hours_message' => $this->bookingService->workingHoursMessage($lead),
-                'retry_signature' => sha1(
+                'retry_signature'       => sha1(
                     implode('|', [
                         $lead->id,
                         $reason,
@@ -476,8 +513,8 @@ class BookingFlow
                         now()->format('Y-m-d H:i:s'),
                     ])
                 ),
-            ],
-        ];
+            ]
+        );
     }
 
     /**
@@ -493,6 +530,7 @@ class BookingFlow
         $data['confirm_attempts'] = $attempts;
 
         $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
         $lead->save();
 
         if ($attempts >= 2) {
@@ -501,24 +539,31 @@ class BookingFlow
 
         $pending = $data['pending_booking'] ?? null;
 
-        $pendingDate = !empty($pending['date'])
+        $pendingDate = ! empty($pending['date'])
             ? Carbon::parse($pending['date'])
             : null;
 
-        return [
-            'template' => 'confirm_booking_v1',
-            'placeholders' => [
-                $this->getVehicleLabel($lead),
-                $pendingDate
-                    ? $pendingDate->format('d M Y, h:i A')
-                    : 'the selected date/time',
+        $vehicleLabel = $this->getVehicleLabel($lead);
+        $dateLabel = $pendingDate
+            ? $pendingDate->format('d M Y, h:i A')
+            : 'the selected date/time';
+
+        return $this->sessionResponse(
+            template: 'confirm_booking_v1',
+            action: 'confirm_booking',
+            body: "Please confirm your booking request.\n\n"
+                . "Vehicle: {$vehicleLabel}\n"
+                . "Preferred date/time: {$dateLabel}\n\n"
+                . "Reply Yes to confirm or No to change.",
+            placeholders: [
+                $vehicleLabel,
+                $dateLabel,
             ],
-            'action' => 'confirm_booking',
-            'context' => [
-                'reason' => $reason,
+            context: [
+                'reason'   => $reason,
                 'attempts' => $attempts,
-            ],
-        ];
+            ]
+        );
     }
 
     /**
@@ -528,7 +573,7 @@ class BookingFlow
     {
         $slot = $slot ?: $this->bookingService->inferSlotFromTime($date, 'Morning');
 
-        return !Booking::where('company_id', $lead->company_id)
+        return ! Booking::where('company_id', $lead->company_id)
             ->whereDate('booking_date', $date->toDateString())
             ->where('slot', $slot)
             ->whereNotIn('status', [
@@ -603,6 +648,7 @@ class BookingFlow
         | System: uses the previous selected date and changes only the time.
         |--------------------------------------------------------------------------
         */
+
         if (
             $lead
             && (
@@ -624,11 +670,12 @@ class BookingFlow
         | Handle "tomorrow at 10" / "today at 4"
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b(today|tomorrow)\s+(?:at\s+)?(\d{1,2})\b/i', $lower, $m)) {
             $day = $m[1];
             $hour = (int) $m[2];
 
-            if (!str_contains($lower, 'am') && !str_contains($lower, 'pm')) {
+            if (! str_contains($lower, 'am') && ! str_contains($lower, 'pm')) {
                 $suffix = ($hour >= 8 && $hour <= 11) ? 'am' : 'pm';
 
                 return "{$day} {$hour}{$suffix}";
@@ -640,11 +687,12 @@ class BookingFlow
         | Handle weekday bare hour
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:at\s+)?(\d{1,2})\b/i', $lower, $m)) {
             $day = $m[1];
             $hour = (int) $m[2];
 
-            if (!str_contains($lower, 'am') && !str_contains($lower, 'pm')) {
+            if (! str_contains($lower, 'am') && ! str_contains($lower, 'pm')) {
                 $suffix = ($hour >= 8 && $hour <= 11) ? 'am' : 'pm';
 
                 return "{$day} {$hour}{$suffix}";
@@ -656,11 +704,12 @@ class BookingFlow
         | Handle "10 tomorrow"
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b(\d{1,2})\s+(today|tomorrow)\b/i', $lower, $m)) {
             $hour = (int) $m[1];
             $day = $m[2];
 
-            if (!str_contains($lower, 'am') && !str_contains($lower, 'pm')) {
+            if (! str_contains($lower, 'am') && ! str_contains($lower, 'pm')) {
                 $suffix = ($hour >= 8 && $hour <= 11) ? 'am' : 'pm';
 
                 return "{$day} {$hour}{$suffix}";
@@ -679,7 +728,7 @@ class BookingFlow
 
         $lastSelectedAt = $data['last_timeslot_retry_selected_at'] ?? null;
 
-        if (!$lastSelectedAt) {
+        if (! $lastSelectedAt) {
             return null;
         }
 
@@ -691,7 +740,7 @@ class BookingFlow
 
         $time = $this->extractTimeFromText($text);
 
-        if (!$time) {
+        if (! $time) {
             return null;
         }
 
@@ -715,6 +764,7 @@ class BookingFlow
         | Explicit AM/PM: 4 PM, 4:30 PM
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i', $lower, $m)) {
             $hour = (int) $m[1];
             $minute = isset($m[2]) ? (int) $m[2] : 0;
@@ -740,6 +790,7 @@ class BookingFlow
         | 24-hour time: 16:00, 16:30
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b([01]?\d|2[0-3]):([0-5]\d)\b/', $lower, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
@@ -750,6 +801,7 @@ class BookingFlow
         | "same day 4", "how about 4 same day"
         |--------------------------------------------------------------------------
         */
+
         if (preg_match('/\b(?:same day|same date|that day|same)\s+(?:at\s+)?(\d{1,2})\b/i', $lower, $m)) {
             return $this->normalizeBareHour((int) $m[1]);
         }
@@ -867,6 +919,72 @@ class BookingFlow
         $label = trim(($lead->other_make ?? '') . ' ' . ($lead->other_model ?? ''));
 
         return $label !== '' ? $label : 'your vehicle';
+    }
+
+    /**
+     * Session response helper
+     */
+    protected function sessionResponse(
+        string $template,
+        string $action,
+        string $body,
+        array $placeholders = [],
+        array $context = []
+    ): array {
+        return [
+            /*
+            |--------------------------------------------------------------------------
+            | Important
+            |--------------------------------------------------------------------------
+            |
+            | BookingFlow is used by ProcessInboundWhatsApp.
+            | This is an inbound/session flow, so body/text/message should be sent
+            | from the app inside the 24-hour WhatsApp customer service window.
+            |
+            | template is kept only as a compatibility/logging hint.
+            |
+            */
+
+            'body'    => $body,
+            'text'    => $body,
+            'message' => $body,
+
+            'template'      => $template,
+            'template_hint' => $template,
+
+            'placeholders' => $placeholders,
+            'action'       => $action,
+
+            'context' => array_merge([
+                'send_mode'     => 'session_message',
+                'template_hint' => $template,
+            ], $context),
+        ];
+    }
+
+    protected function confirmBookingBody(string $vehicleLabel, string $dateLabel): string
+    {
+        return "Please confirm your booking request.\n\n"
+            . "Vehicle: {$vehicleLabel}\n"
+            . "Preferred date/time: {$dateLabel}\n\n"
+            . "Reply Yes to confirm or No to change.";
+    }
+
+    protected function askPreferredTimeBody(Lead $lead, ?string $intro = null): string
+    {
+        $name = $lead->name ?: 'there';
+
+        $intro = $intro ?: "Thanks {$name}. Please share your preferred booking date and time.";
+
+        return "{$intro}\n\nExample: Tomorrow morning or Friday 4 PM";
+    }
+
+    protected function bookingHandoffBody(Lead $lead): string
+    {
+        $name = $lead->name ?: 'there';
+
+        return "Thanks {$name}. Your booking request has been shared with our service manager.\n\n"
+            . "They will contact you shortly to confirm the slot.";
     }
 
     /**

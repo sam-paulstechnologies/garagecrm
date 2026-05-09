@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -31,5 +32,30 @@ class LeadSource extends Model
                 $source->form_token = Str::random(32);
             }
         });
+    }
+
+    public function scopeForCompany(Builder $query, int $companyId): Builder
+    {
+        return $query->where('company_id', $companyId);
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereIn('status', ['active', 'connected']);
+    }
+
+    public function scopeType(Builder $query, string $type): Builder
+    {
+        return $query->where('type', $type);
+    }
+
+    public function configValue(string $key, mixed $default = null): mixed
+    {
+        return data_get($this->config ?? [], $key, $default);
+    }
+
+    public function isActive(): bool
+    {
+        return in_array($this->status, ['active', 'connected'], true);
     }
 }

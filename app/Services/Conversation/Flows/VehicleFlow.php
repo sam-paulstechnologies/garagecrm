@@ -23,27 +23,23 @@ class VehicleFlow
     {
         [$makeId, $modelId, $otherMake, $otherModel] = $this->vehicleResolver->resolve($text);
 
-        if (!$makeId && !$otherMake) {
-
-            $data = $lead->conversation_data ?? [];
-
-            if (!is_array($data)) {
-                $data = [];
-            }
+        if (! $makeId && ! $otherMake) {
+            $data = $this->conversationData($lead);
 
             $data['vehicle_attempts'] = 0;
             $data['booking_started_at'] = now()->toIso8601String();
 
             $lead->conversation_state = 'awaiting_vehicle';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
-            return [
-                'template' => 'ask_make_model_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'collect_vehicle',
-                'context' => [],
-            ];
+            return $this->sessionResponse(
+                template: 'ask_make_model_v1',
+                action: 'collect_vehicle',
+                body: $this->askVehicleBody($lead),
+                placeholders: [$lead->name ?: 'there']
+            );
         }
 
         return $this->handle($lead, $text);
@@ -59,13 +55,8 @@ class VehicleFlow
         |--------------------------------------------------------------------------
         */
 
-        if (!$makeId && !$otherMake) {
-
-            $data = $lead->conversation_data ?? [];
-
-            if (!is_array($data)) {
-                $data = [];
-            }
+        if (! $makeId && ! $otherMake) {
+            $data = $this->conversationData($lead);
 
             $attempts = (int) ($data['vehicle_attempts'] ?? 0);
             $attempts++;
@@ -73,6 +64,7 @@ class VehicleFlow
             $data['vehicle_attempts'] = $attempts;
 
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
             if ($attempts >= 3) {
@@ -82,12 +74,15 @@ class VehicleFlow
                 );
             }
 
-            return [
-                'template' => 'ask_make_model_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'retry_vehicle',
-                'context' => [],
-            ];
+            return $this->sessionResponse(
+                template: 'ask_make_model_v1',
+                action: 'retry_vehicle',
+                body: "Sorry, I could not clearly identify the vehicle.\n\n" . $this->askVehicleBody($lead),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'vehicle_attempts' => $attempts,
+                ]
+            );
         }
 
         /*
@@ -111,16 +106,13 @@ class VehicleFlow
         $lead->other_make       = $otherMake ?: null;
         $lead->other_model      = $otherModel ?: null;
 
-        $data = $lead->conversation_data ?? [];
-
-        if (!is_array($data)) {
-            $data = [];
-        }
+        $data = $this->conversationData($lead);
 
         $data['vehicle_attempts'] = 0;
         $data['vehicle_captured_at'] = now()->toIso8601String();
 
         $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
         $lead->save();
 
         /*
@@ -135,7 +127,6 @@ class VehicleFlow
         $opportunity = $lead->opportunity;
 
         if ($opportunity) {
-
             /*
             |--------------------------------------------------------------------------
             | Resolve make/model records
@@ -170,7 +161,6 @@ class VehicleFlow
             */
 
             if ($make) {
-
                 $vehicle = Vehicle::where([
                     'company_id' => $lead->company_id,
                     'client_id'  => $lead->client_id,
@@ -178,7 +168,7 @@ class VehicleFlow
                     'model_id'   => $model?->id,
                 ])->first();
 
-                if (!$vehicle) {
+                if (! $vehicle) {
                     $vehicle = Vehicle::create([
                         'company_id' => $lead->company_id,
                         'client_id'  => $lead->client_id,
@@ -191,9 +181,6 @@ class VehicleFlow
                 |--------------------------------------------------------------------------
                 | Sync resolved vehicle back to lead
                 |--------------------------------------------------------------------------
-                | This keeps the lead clean after unknown text like Audi Q5 is resolved
-                | into vehicle_makes / vehicle_models / vehicles.
-                |--------------------------------------------------------------------------
                 */
 
                 $lead->update([
@@ -201,6 +188,7 @@ class VehicleFlow
                     'vehicle_model_id' => $model?->id,
                     'other_make'       => null,
                     'other_model'      => null,
+                    'conversation_updated_at' => now(),
                 ]);
 
                 $opportunity->update([
@@ -226,28 +214,86 @@ class VehicleFlow
 
         $this->updateState($lead, 'awaiting_timeslot');
 
+        return $this->sessionResponse(
+            template: 'ask_preferred_time_v1',
+            action: 'collect_timeslot',
+            body: $this->askPreferredTimeBody($lead),
+            placeholders: [$lead->name ?: 'there']
+        );
+    }
+
+    protected function sessionResponse(
+        string $template,
+        string $action,
+        string $body,
+        array $placeholders = [],
+        array $context = []
+    ): array {
         return [
-            'template' => 'ask_preferred_time_v1',
-            'placeholders' => [$lead->name ?: 'there'],
-            'action' => 'collect_timeslot',
-            'context' => [],
+            /*
+            |--------------------------------------------------------------------------
+            | Important
+            |--------------------------------------------------------------------------
+            |
+            | VehicleFlow is used by ProcessInboundWhatsApp.
+            | This is an inbound/session flow, so body/text/message should be sent
+            | from the app inside the 24-hour WhatsApp customer service window.
+            |
+            | template is kept only as a compatibility/logging hint.
+            |
+            */
+
+            'body' => $body,
+            'text' => $body,
+            'message' => $body,
+
+            'template' => $template,
+            'template_hint' => $template,
+
+            'placeholders' => $placeholders,
+            'action' => $action,
+
+            'context' => array_merge([
+                'send_mode' => 'session_message',
+                'template_hint' => $template,
+            ], $context),
         ];
+    }
+
+    protected function askVehicleBody(Lead $lead): string
+    {
+        $name = $lead->name ?: 'there';
+
+        return "Sure {$name}. Please share your vehicle make and model.\n\n"
+            . "Example: Toyota Camry 2020";
+    }
+
+    protected function askPreferredTimeBody(Lead $lead): string
+    {
+        $name = $lead->name ?: 'there';
+
+        return "Thanks {$name}. Please share your preferred booking date and time.\n\n"
+            . "Example: Tomorrow morning or Friday 4 PM";
     }
 
     protected function updateState(Lead $lead, string $state): void
     {
-        $data = $lead->conversation_data ?? [];
-
-        if (!is_array($data)) {
-            $data = [];
-        }
+        $data = $this->conversationData($lead);
 
         $lead->conversation_state = $state;
         $lead->conversation_data = array_merge($data, [
             'last_state_at' => now()->toIso8601String(),
         ]);
+        $lead->conversation_updated_at = now();
 
         $lead->save();
+    }
+
+    protected function conversationData(Lead $lead): array
+    {
+        $data = $lead->conversation_data ?? [];
+
+        return is_array($data) ? $data : [];
     }
 
     protected function formatVehicleName(string $value): string

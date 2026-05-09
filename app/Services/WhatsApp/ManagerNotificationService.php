@@ -2,7 +2,6 @@
 
 namespace App\Services\WhatsApp;
 
-use App\Jobs\SendWhatsAppFromTemplate;
 use App\Models\Client\Lead;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
@@ -12,7 +11,23 @@ use Illuminate\Support\Facades\Log;
 
 class ManagerNotificationService
 {
-    public const TEMPLATE_MANAGER_ATTENTION = 'manager_attention_required_v1';
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Event Key
+    |--------------------------------------------------------------------------
+    |
+    | Manager alerts are proactive system-to-manager messages.
+    | They must use approved Meta templates through DB mapping.
+    |
+    | Expected DB event key:
+    |   manager.attention_required
+    |
+    | Recommended Meta template:
+    |   manager_attention_required_v1
+    |
+    */
+
+    public const EVENT_MANAGER_ATTENTION = 'manager.attention_required';
 
     public function notifyForLead(
         Lead $lead,
@@ -25,11 +40,11 @@ class ManagerNotificationService
 
         $company = $this->companyForLead($lead);
 
-        if (!$company) {
+        if (! $company) {
             Log::warning('[ManagerNotification] Company missing, notification skipped', [
-                'lead_id' => $lead->id,
+                'lead_id'    => $lead->id,
                 'company_id' => $lead->company_id,
-                'reason' => $reason,
+                'reason'     => $reason,
             ]);
 
             return;
@@ -37,10 +52,10 @@ class ManagerNotificationService
 
         if ((int) $lead->company_id !== (int) $company->id) {
             Log::warning('[ManagerNotification] Lead company mismatch, notification skipped', [
-                'lead_id' => $lead->id,
+                'lead_id'         => $lead->id,
                 'lead_company_id' => $lead->company_id,
-                'company_id' => $company->id,
-                'reason' => $reason,
+                'company_id'      => $company->id,
+                'reason'          => $reason,
             ]);
 
             return;
@@ -48,51 +63,98 @@ class ManagerNotificationService
 
         $managerPhone = $this->managerPhone($company);
 
-        if (!$managerPhone) {
+        if (! $managerPhone) {
             Log::warning('[ManagerNotification] Manager phone missing, notification skipped', [
-                'lead_id' => $lead->id,
+                'lead_id'    => $lead->id,
                 'company_id' => $company->id,
-                'reason' => $reason,
+                'reason'     => $reason,
             ]);
 
             return;
         }
 
-        $placeholders = [
-            $this->customerName($lead),
-            $this->customerPhone($lead),
-            $this->safeText($reason, 'Manager attention required'),
-            $this->vehicleLabel($lead),
-            $this->preferredDateTimeLabel($preferredAt),
-        ];
+        $customerName   = $this->customerName($lead);
+        $customerPhone  = $this->customerPhone($lead);
+        $safeReason     = $this->safeText($reason, 'Manager attention required');
+        $vehicleLabel   = $this->vehicleLabel($lead);
+        $preferredLabel = $this->preferredDateTimeLabel($preferredAt);
 
-        SendWhatsAppFromTemplate::dispatch(
-            companyId: (int) $company->id,
-            leadId: (int) $lead->id,
-            toNumberE164: $managerPhone,
-            templateName: self::TEMPLATE_MANAGER_ATTENTION,
-            placeholders: $placeholders,
-            links: [],
-            context: array_merge([
-                'force_template' => true,
-                'recipient_type' => 'manager',
+        try {
+            /** @var SendWhatsAppMessage $sender */
+            $sender = app(SendWhatsAppMessage::class);
+
+            /*
+            |--------------------------------------------------------------------------
+            | fireEvent signature
+            |--------------------------------------------------------------------------
+            |
+            | Actual method:
+            | fireEvent(int $companyId, string $eventKey, string $toE164, array $vars = [])
+            |
+            | Use positional parameters only.
+            |
+            */
+
+            $sender->fireEvent(
+                (int) $company->id,
+                self::EVENT_MANAGER_ATTENTION,
+                (string) $managerPhone,
+                array_merge([
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Template variables
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'customer_name'      => $customerName,
+                    'name'               => $customerName,
+                    'lead_name'          => $customerName,
+                    'customer_phone'     => $customerPhone,
+                    'phone'              => $customerPhone,
+                    'reason'             => $safeReason,
+                    'vehicle'            => $vehicleLabel,
+                    'vehicle_label'      => $vehicleLabel,
+                    'preferred_datetime' => $preferredLabel,
+                    'preferred_time'     => $preferredLabel,
+                    'booking_id'         => $bookingId ? (string) $bookingId : '-',
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Context variables
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'company_id'         => (int) $company->id,
+                    'lead_id'            => (int) $lead->id,
+                    'recipient_type'     => 'manager',
+                    'manager_phone'      => $managerPhone,
+                    'opportunity_id'     => $lead->opportunity?->id,
+                    'source'             => 'manager_notification_service',
+                    'event_key'          => self::EVENT_MANAGER_ATTENTION,
+                    'action'             => 'manager_attention',
+                    'send_mode'          => 'meta_template',
+                ], $extra ?? [])
+            );
+
+            Log::info('[ManagerNotification] Manager WhatsApp event fired', [
+                'lead_id'       => $lead->id,
+                'company_id'    => $company->id,
                 'manager_phone' => $managerPhone,
-                'reason' => $reason,
-                'booking_id' => $bookingId,
-                'opportunity_id' => $lead->opportunity?->id,
-                'source' => 'manager_notification_service',
-            ], $extra ?? []),
-            action: 'manager_attention'
-        );
-
-        Log::info('[ManagerNotification] Manager WhatsApp notification queued', [
-            'lead_id' => $lead->id,
-            'company_id' => $company->id,
-            'manager_phone' => $managerPhone,
-            'template' => self::TEMPLATE_MANAGER_ATTENTION,
-            'reason' => $reason,
-            'booking_id' => $bookingId,
-        ]);
+                'event_key'     => self::EVENT_MANAGER_ATTENTION,
+                'reason'        => $safeReason,
+                'booking_id'    => $bookingId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('[ManagerNotification] Manager WhatsApp event failed', [
+                'lead_id'       => $lead->id,
+                'company_id'    => $company->id,
+                'manager_phone' => $managerPhone,
+                'event_key'     => self::EVENT_MANAGER_ATTENTION,
+                'reason'        => $safeReason,
+                'booking_id'    => $bookingId,
+                'error'         => $e->getMessage(),
+            ]);
+        }
     }
 
     public function notifyForBooking(
@@ -104,11 +166,11 @@ class ManagerNotificationService
 
         $lead = $this->leadForBooking($booking);
 
-        if (!$lead) {
+        if (! $lead) {
             Log::warning('[ManagerNotification] Lead missing for booking, notification skipped', [
                 'booking_id' => $booking->id,
                 'company_id' => $booking->company_id,
-                'reason' => $reason,
+                'reason'     => $reason,
             ]);
 
             return;
@@ -116,11 +178,11 @@ class ManagerNotificationService
 
         if ((int) $lead->company_id !== (int) $booking->company_id) {
             Log::warning('[ManagerNotification] Booking lead company mismatch, notification skipped', [
-                'booking_id' => $booking->id,
+                'booking_id'         => $booking->id,
                 'booking_company_id' => $booking->company_id,
-                'lead_id' => $lead->id,
-                'lead_company_id' => $lead->company_id,
-                'reason' => $reason,
+                'lead_id'            => $lead->id,
+                'lead_company_id'    => $lead->company_id,
+                'reason'             => $reason,
             ]);
 
             return;
@@ -135,7 +197,7 @@ class ManagerNotificationService
             bookingId: (int) $booking->id,
             extra: array_merge([
                 'booking_status' => $booking->status,
-                'booking_slot' => $booking->slot,
+                'booking_slot'   => $booking->slot,
             ], $extra ?? [])
         );
     }
@@ -208,7 +270,7 @@ class ManagerNotificationService
 
     protected function preferredDateTimeLabel(?Carbon $preferredAt): string
     {
-        if (!$preferredAt) {
+        if (! $preferredAt) {
             return 'Not selected';
         }
 
@@ -223,7 +285,7 @@ class ManagerNotificationService
             return (int) $lead->company_id === (int) $booking->company_id ? $lead : null;
         }
 
-        if (!empty($booking->lead_id)) {
+        if (! empty($booking->lead_id)) {
             return Lead::where('company_id', $booking->company_id)
                 ->find($booking->lead_id);
         }
@@ -242,15 +304,15 @@ class ManagerNotificationService
 
     protected function bookingDateTime(Booking $booking): ?Carbon
     {
-        if (!empty($booking->scheduled_at)) {
+        if (! empty($booking->scheduled_at)) {
             return Carbon::parse($booking->scheduled_at);
         }
 
-        if (!empty($booking->booking_date) && !empty($booking->booking_time)) {
+        if (! empty($booking->booking_date) && ! empty($booking->booking_time)) {
             return Carbon::parse($booking->booking_date . ' ' . $booking->booking_time);
         }
 
-        if (!empty($booking->booking_date)) {
+        if (! empty($booking->booking_date)) {
             return Carbon::parse($booking->booking_date);
         }
 

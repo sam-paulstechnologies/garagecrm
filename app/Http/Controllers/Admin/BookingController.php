@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\SendWhatsAppFromTemplate;
 use App\Models\Client\Client;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
@@ -13,39 +12,115 @@ use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
+    protected const STATUS_PENDING = 'pending';
+    protected const STATUS_SCHEDULED = 'scheduled';
+    protected const STATUS_CONVERTED_TO_JOB = 'converted_to_job';
+    protected const STATUS_LOST = 'lost';
+
+    protected const ACTIVE_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_SCHEDULED,
+    ];
+
+    protected const BOOKING_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_SCHEDULED,
+        self::STATUS_CONVERTED_TO_JOB,
+        self::STATUS_LOST,
+    ];
+
+    protected const LOST_REASONS = [
+        'cancelled_by_customer',
+        'rejected_by_garage',
+        'no_show',
+        'slot_unavailable',
+        'duplicate',
+        'wrong_booking',
+        'price_issue',
+        'customer_postponed',
+        'other',
+    ];
+
     protected function companyId(): int
     {
         $companyId = (int) (auth()->user()?->company_id ?? 0);
 
-        abort_if(!$companyId, 403);
+        abort_if(! $companyId, 403);
 
         return $companyId;
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $companyId = $this->companyId();
+
+        $q = trim((string) $request->get('q', ''));
+        $status = trim((string) $request->get('status', ''));
+        $bucket = trim((string) $request->get('bucket', ''));
 
         $bookings = Booking::with([
                 'client',
                 'opportunity',
                 'vehicleData.make',
                 'vehicleData.model',
-                'assignedUser'
+                'assignedUser',
             ])
             ->where('company_id', $companyId)
             ->where('is_archived', false)
+            ->when($status !== '', function ($query) use ($status) {
+                $query->where('status', $status);
+            }, function ($query) {
+                $query->whereIn('status', self::ACTIVE_STATUSES);
+            })
+            ->when($bucket !== '', function ($query) use ($bucket) {
+                $this->applyBookingBucketFilter($query, $bucket);
+            })
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('name', 'like', "%{$q}%")
+                        ->orWhere('service_type', 'like', "%{$q}%")
+                        ->orWhere('slot', 'like', "%{$q}%")
+                        ->orWhere('status', 'like', "%{$q}%")
+                        ->orWhere('priority', 'like', "%{$q}%")
+                        ->orWhereHas('client', function ($clientQuery) use ($q) {
+                            $clientQuery->where('name', 'like', "%{$q}%")
+                                ->orWhere('phone', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%")
+                                ->orWhere('whatsapp', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicleData.make', function ($makeQuery) use ($q) {
+                            $makeQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicleData.model', function ($modelQuery) use ($q) {
+                            $modelQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicleData', function ($vehicleQuery) use ($q) {
+                            $vehicleQuery->where('plate_number', 'like', "%{$q}%")
+                                ->orWhere('vin', 'like', "%{$q}%");
+                        });
+                });
+            })
             ->latest()
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('admin.bookings.index', compact('bookings'));
+        return view('admin.bookings.index', [
+            'bookings' => $bookings,
+            'q' => $q,
+            'status' => $status,
+            'bucket' => $bucket,
+            'bookingCounts' => $this->bookingCounts($companyId),
+            'bucketCounts' => $this->bookingBucketCounts($companyId),
+        ]);
     }
 
     public function archived()
@@ -57,7 +132,7 @@ class BookingController extends Controller
                 'opportunity',
                 'vehicleData.make',
                 'vehicleData.model',
-                'assignedUser'
+                'assignedUser',
             ])
             ->where('company_id', $companyId)
             ->where('is_archived', true)
@@ -72,13 +147,29 @@ class BookingController extends Controller
         $companyId = $this->companyId();
 
         return view('admin.bookings.create', [
-            'clients'       => Client::where('company_id', $companyId)->get(),
-            'opportunities' => Opportunity::where('company_id', $companyId)->get(),
-            'vehicles'      => Vehicle::with(['make', 'model'])->where('company_id', $companyId)->get(),
-            'users'         => User::where('company_id', $companyId)->get(),
+            'clients' => Client::where('company_id', $companyId)->orderBy('name')->get(),
 
-            'vehicleMakes'  => VehicleMake::orderBy('name')->get(),
+            'opportunities' => Opportunity::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->with(['client:id,name,phone', 'vehicleMake:id,name', 'vehicleModel:id,name'])
+                ->latest()
+                ->get(),
+
+            'vehicles' => Vehicle::with(['make', 'model'])
+                ->where('company_id', $companyId)
+                ->latest()
+                ->get(),
+
+            'users' => $this->assignableUsers($companyId),
+
+            'vehicleMakes' => VehicleMake::orderBy('name')->get(),
             'vehicleModels' => VehicleModel::orderBy('name')->get(),
+
+            'bookingStatuses' => self::BOOKING_STATUSES,
+            'lostReasons' => self::LOST_REASONS,
+
+            'slotUsage' => $this->slotUsage($companyId),
+            'slotCapacities' => $this->slotCapacities($companyId),
         ]);
     }
 
@@ -86,102 +177,83 @@ class BookingController extends Controller
     {
         $companyId = $this->companyId();
 
-        $data = $request->validate([
-            'client_id' => [
-                'required',
-                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'opportunity_id' => [
-                'nullable',
-                Rule::exists('opportunities', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'vehicle_id' => [
-                'nullable',
-                Rule::exists('vehicles', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'name'         => 'required|string|max:255',
-            'service_type' => 'nullable|string|max:255',
-
-            'booking_date' => 'required|date',
-            'slot'         => 'required|in:morning,afternoon,evening,full_day',
-
-            'assigned_to' => [
-                'nullable',
-                Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'pickup_required'       => 'boolean',
-            'pickup_address'        => 'nullable|string|max:255',
-            'pickup_contact_number' => 'nullable|string|max:20',
-
-            'priority'            => 'nullable|in:low,medium,high',
-            'expected_duration'   => 'nullable|integer|min:1',
-            'expected_close_date' => 'nullable|date',
-
-            'notes'  => 'nullable|string',
-            'status' => [
-                'nullable',
-                Rule::in([
-                    Booking::STATUS_PENDING,
-                    Booking::STATUS_CONFIRMED,
-                    Booking::STATUS_SCHEDULED,
-                    Booking::STATUS_VEHICLE_RECEIVED,
-                    Booking::STATUS_COMPLETED,
-                    Booking::STATUS_CANCELED,
-                ]),
-            ],
-        ]);
-
-        $this->validateLinkedRecords($data, $companyId);
+        $data = $this->validatedData($request, $companyId, true);
 
         try {
-            DB::transaction(function () use ($data, $companyId, $request) {
+            DB::transaction(function () use (&$data, $companyId, $request) {
+                $data['client_id'] = $this->resolveClientId($data, $companyId);
 
-                $slotExists = Booking::where('company_id', $companyId)
-                    ->where('booking_date', $data['booking_date'])
-                    ->where('slot', $data['slot'])
-                    ->where('status', '!=', Booking::STATUS_CANCELED)
-                    ->lockForUpdate()
-                    ->exists();
+                $this->preventDuplicateOpportunityBooking($data, $companyId);
 
-                if ($slotExists) {
-                    throw new \Exception('Slot already booked');
-                }
-
-                $data['company_id']       = $companyId;
-                $data['pickup_required']  = $request->boolean('pickup_required');
-                $data['is_archived']      = false;
-                $data['state_changed_at'] = now();
-                $data['state_changed_by'] = auth()->id();
-                $data['status']           = $data['status'] ?? Booking::STATUS_PENDING;
-
-                if (empty($data['vehicle_id']) && !empty($data['opportunity_id'])) {
+                if (empty($data['vehicle_id']) && ! empty($data['opportunity_id'])) {
                     $opportunity = Opportunity::where('company_id', $companyId)
-                        ->where('id', $data['opportunity_id'])
-                        ->first();
+                        ->find($data['opportunity_id']);
 
                     if ($opportunity?->vehicle_id) {
                         $data['vehicle_id'] = $opportunity->vehicle_id;
                     }
                 }
 
-                $booking = Booking::create($data);
+                if (empty($data['vehicle_id'])) {
+                    $data['vehicle_id'] = $this->resolveVehicleId($data, $companyId);
+                }
 
-                if ($booking->status === Booking::STATUS_SCHEDULED) {
+                $this->validateLinkedRecords($data, $companyId);
+
+                $data['status'] = $data['status'] ?? self::STATUS_SCHEDULED;
+
+                $this->validateStatusRequirements($data);
+
+                $allowOverbooking = $request->boolean('allow_overbooking');
+                $overbookingReason = trim((string) $request->input('overbooking_reason', ''));
+
+                $this->ensureSlotAvailable(
+                    companyId: $companyId,
+                    bookingDate: $data['booking_date'],
+                    slot: $data['slot'],
+                    excludeBookingId: null,
+                    allowOverbooking: $allowOverbooking,
+                    overbookingReason: $overbookingReason
+                );
+
+                $data['company_id'] = $companyId;
+                $data['pickup_required'] = $request->boolean('pickup_required');
+                $data['is_archived'] = false;
+                $data['state_changed_at'] = now();
+                $data['state_changed_by'] = auth()->id();
+
+                if ($data['status'] !== self::STATUS_LOST) {
+                    $data['lost_reason'] = null;
+                }
+
+                if ($allowOverbooking) {
+                    $data['notes'] = trim(($data['notes'] ?? '') . "\n\nOverbooking exception: " . $overbookingReason);
+                }
+
+                $booking = Booking::create($this->bookingPayload($data));
+
+                if (
+                    $booking->status === self::STATUS_SCHEDULED
+                    && ! $this->bookingConfirmationAlreadySent($booking)
+                ) {
                     $this->handleScheduledBooking($booking);
                 }
-            });
 
+                if ($booking->status === self::STATUS_CONVERTED_TO_JOB) {
+                    $this->createJobFromBooking($booking);
+                }
+
+                if ($booking->status === self::STATUS_LOST) {
+                    $this->markOpportunityLostFromBooking($booking);
+                }
+            });
         } catch (\Throwable $e) {
             Log::error('[BookingController] Store failed', [
                 'error' => $e->getMessage(),
             ]);
 
             return back()
-                ->withErrors(['slot' => $e->getMessage() ?: 'Slot already booked'])
+                ->withErrors(['slot' => $e->getMessage() ?: 'Unable to create booking.'])
                 ->withInput();
         }
 
@@ -199,7 +271,7 @@ class BookingController extends Controller
             'opportunity',
             'vehicleData.make',
             'vehicleData.model',
-            'assignedUser'
+            'assignedUser',
         ]);
 
         $communications = Communication::where('company_id', $booking->company_id)
@@ -216,15 +288,40 @@ class BookingController extends Controller
 
         $companyId = $this->companyId();
 
-        return view('admin.bookings.edit', [
-            'booking'       => $booking,
-            'clients'       => Client::where('company_id', $companyId)->get(),
-            'opportunities' => Opportunity::where('company_id', $companyId)->get(),
-            'vehicles'      => Vehicle::with(['make', 'model'])->where('company_id', $companyId)->get(),
-            'users'         => User::where('company_id', $companyId)->get(),
+        $booking->load([
+            'client',
+            'opportunity',
+            'vehicleData.make',
+            'vehicleData.model',
+            'assignedUser',
+        ]);
 
-            'vehicleMakes'  => VehicleMake::orderBy('name')->get(),
+        return view('admin.bookings.edit', [
+            'booking' => $booking,
+
+            'clients' => Client::where('company_id', $companyId)->orderBy('name')->get(),
+
+            'opportunities' => Opportunity::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->with(['client:id,name,phone', 'vehicleMake:id,name', 'vehicleModel:id,name'])
+                ->latest()
+                ->get(),
+
+            'vehicles' => Vehicle::with(['make', 'model'])
+                ->where('company_id', $companyId)
+                ->latest()
+                ->get(),
+
+            'users' => $this->assignableUsers($companyId),
+
+            'vehicleMakes' => VehicleMake::orderBy('name')->get(),
             'vehicleModels' => VehicleModel::orderBy('name')->get(),
+
+            'bookingStatuses' => self::BOOKING_STATUSES,
+            'lostReasons' => self::LOST_REASONS,
+
+            'slotUsage' => $this->slotUsage($companyId, $booking->id),
+            'slotCapacities' => $this->slotCapacities($companyId),
         ]);
     }
 
@@ -234,62 +331,45 @@ class BookingController extends Controller
 
         $companyId = $this->companyId();
 
-        $data = $request->validate([
-            'name'         => 'required|string|max:255',
-            'service_type' => 'nullable|string|max:255',
-
-            'booking_date' => 'required|date',
-            'slot'         => 'required|in:morning,afternoon,evening,full_day',
-
-            'assigned_to' => [
-                'nullable',
-                Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'pickup_required'       => 'boolean',
-            'pickup_address'        => 'nullable|string|max:255',
-            'pickup_contact_number' => 'nullable|string|max:20',
-
-            'priority'            => 'nullable|in:low,medium,high',
-            'expected_duration'   => 'nullable|integer|min:1',
-            'expected_close_date' => 'nullable|date',
-
-            'notes'  => 'nullable|string',
-            'status' => [
-                'nullable',
-                Rule::in([
-                    Booking::STATUS_PENDING,
-                    Booking::STATUS_CONFIRMED,
-                    Booking::STATUS_SCHEDULED,
-                    Booking::STATUS_VEHICLE_RECEIVED,
-                    Booking::STATUS_COMPLETED,
-                    Booking::STATUS_CANCELED,
-                ]),
-            ],
-        ]);
+        $data = $this->validatedData($request, $companyId, false);
 
         try {
-            DB::transaction(function () use ($data, $booking, $request) {
+            DB::transaction(function () use (&$data, $booking, $request) {
+                $data['client_id'] = $booking->client_id;
+                $data['opportunity_id'] = $booking->opportunity_id;
 
-                $oldStatus = $booking->status;
-
-                $slotExists = Booking::where('company_id', $booking->company_id)
-                    ->where('booking_date', $data['booking_date'])
-                    ->where('slot', $data['slot'])
-                    ->where('status', '!=', Booking::STATUS_CANCELED)
-                    ->where('id', '!=', $booking->id)
-                    ->lockForUpdate()
-                    ->exists();
-
-                if ($slotExists) {
-                    throw new \Exception('Slot already booked');
+                if (empty($data['vehicle_id'])) {
+                    $data['vehicle_id'] = $this->resolveVehicleId($data, $booking->company_id);
                 }
 
-                $data['pickup_required']  = $request->boolean('pickup_required');
+                $this->validateLinkedRecords($data, $booking->company_id);
+                $this->validateStatusRequirements($data);
+
+                $allowOverbooking = $request->boolean('allow_overbooking');
+                $overbookingReason = trim((string) $request->input('overbooking_reason', ''));
+
+                $this->ensureSlotAvailable(
+                    companyId: $booking->company_id,
+                    bookingDate: $data['booking_date'],
+                    slot: $data['slot'],
+                    excludeBookingId: $booking->id,
+                    allowOverbooking: $allowOverbooking,
+                    overbookingReason: $overbookingReason
+                );
+
+                $data['pickup_required'] = $request->boolean('pickup_required');
                 $data['state_changed_at'] = now();
                 $data['state_changed_by'] = auth()->id();
 
-                $booking->update($data);
+                if ($data['status'] !== self::STATUS_LOST) {
+                    $data['lost_reason'] = null;
+                }
+
+                if ($allowOverbooking) {
+                    $data['notes'] = trim(($data['notes'] ?? '') . "\n\nOverbooking exception: " . $overbookingReason);
+                }
+
+                $booking->update($this->bookingPayload($data));
 
                 $freshBooking = $booking->fresh([
                     'client',
@@ -300,32 +380,20 @@ class BookingController extends Controller
                 ]);
 
                 if (
-                    $oldStatus !== Booking::STATUS_SCHEDULED
-                    && $freshBooking->status === Booking::STATUS_SCHEDULED
+                    $freshBooking->status === self::STATUS_SCHEDULED
+                    && ! $this->bookingConfirmationAlreadySent($freshBooking)
                 ) {
                     $this->handleScheduledBooking($freshBooking);
                 }
 
-                if ($freshBooking->status === Booking::STATUS_CONFIRMED) {
-                    $this->markOpportunityAppointment($freshBooking);
+                if ($freshBooking->status === self::STATUS_CONVERTED_TO_JOB) {
+                    $this->createJobFromBooking($freshBooking);
                 }
 
-                if ($freshBooking->status === Booking::STATUS_VEHICLE_RECEIVED) {
-                    Job::firstOrCreate(
-                        [
-                            'company_id'  => $freshBooking->company_id,
-                            'booking_id'  => $freshBooking->id,
-                        ],
-                        [
-                            'client_id'   => $freshBooking->client_id,
-                            'description' => $freshBooking->service_type ?? 'Service job',
-                            'status'      => 'pending',
-                            'assigned_to' => $freshBooking->assigned_to,
-                        ]
-                    );
+                if ($freshBooking->status === self::STATUS_LOST) {
+                    $this->markOpportunityLostFromBooking($freshBooking);
                 }
             });
-
         } catch (\Throwable $e) {
             Log::error('[BookingController] Update failed', [
                 'booking_id' => $booking->id,
@@ -333,7 +401,7 @@ class BookingController extends Controller
             ]);
 
             return back()
-                ->withErrors(['slot' => $e->getMessage() ?: 'Slot already booked'])
+                ->withErrors(['slot' => $e->getMessage() ?: 'Unable to update booking.'])
                 ->withInput();
         }
 
@@ -369,89 +437,692 @@ class BookingController extends Controller
         return back()->with('success', 'Booking archived.');
     }
 
-    protected function validateLinkedRecords(array $data, int $companyId): void
+    protected function validatedData(Request $request, int $companyId, bool $isCreate): array
     {
-        if (!empty($data['opportunity_id'])) {
-            $opportunity = Opportunity::where('company_id', $companyId)
-                ->where('client_id', $data['client_id'])
-                ->find($data['opportunity_id']);
+        $rules = [
+            'opportunity_id' => [
+                'nullable',
+                Rule::exists('opportunities', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+            ],
 
-            abort_if(!$opportunity, 422, 'Selected opportunity does not belong to the selected client.');
+            'vehicle_id' => [
+                'nullable',
+                Rule::exists('vehicles', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+            ],
+
+            'new_vehicle_make_id' => [
+                'nullable',
+                Rule::exists('vehicle_makes', 'id'),
+            ],
+
+            'new_vehicle_model_id' => [
+                'nullable',
+                Rule::exists('vehicle_models', 'id'),
+            ],
+
+            'new_vehicle_plate_number' => ['nullable', 'string', 'max:50'],
+            'new_vehicle_year' => ['nullable', 'string', 'max:10'],
+            'new_vehicle_color' => ['nullable', 'string', 'max:50'],
+
+            'name' => ['required', 'string', 'max:255'],
+            'service_type' => ['nullable', 'string', 'max:255'],
+
+            'booking_date' => ['required', 'date'],
+            'slot' => ['required', Rule::in(['morning', 'afternoon', 'evening', 'full_day'])],
+
+            'assigned_to' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+            ],
+
+            'pickup_required' => ['nullable', 'boolean'],
+            'pickup_address' => ['nullable', 'string', 'max:255'],
+            'pickup_contact_number' => ['nullable', 'string', 'max:20'],
+
+            'priority' => ['nullable', Rule::in(['low', 'medium', 'high', 'urgent'])],
+            'expected_duration' => ['nullable', 'integer', 'min:1'],
+            'expected_close_date' => ['nullable', 'date'],
+
+            'notes' => ['nullable', 'string'],
+
+            'status' => [
+                'nullable',
+                Rule::in(self::BOOKING_STATUSES),
+            ],
+
+            'lost_reason' => [
+                Rule::requiredIf(fn () => $request->input('status') === self::STATUS_LOST),
+                'nullable',
+                Rule::in(self::LOST_REASONS),
+            ],
+
+            'allow_overbooking' => ['nullable', 'boolean'],
+
+            'overbooking_reason' => [
+                Rule::requiredIf(fn () => $request->boolean('allow_overbooking')),
+                'nullable',
+                'string',
+                'max:500',
+            ],
+        ];
+
+        if ($isCreate) {
+            $rules['client_id'] = [
+                'nullable',
+                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+            ];
+
+            $rules['new_client_name'] = [
+                'required_without_all:client_id,opportunity_id',
+                'nullable',
+                'string',
+                'max:255',
+            ];
+
+            $rules['new_client_phone'] = [
+                'nullable',
+                'string',
+                'max:50',
+            ];
+
+            $rules['new_client_email'] = [
+                'nullable',
+                'email',
+                'max:255',
+            ];
         }
 
-        if (!empty($data['vehicle_id'])) {
+        return $request->validate($rules);
+    }
+
+    protected function bookingPayload(array $data): array
+    {
+        return collect($data)
+            ->except([
+                'new_client_name',
+                'new_client_phone',
+                'new_client_email',
+                'new_vehicle_make_id',
+                'new_vehicle_model_id',
+                'new_vehicle_plate_number',
+                'new_vehicle_year',
+                'new_vehicle_color',
+                'allow_overbooking',
+                'overbooking_reason',
+            ])
+            ->toArray();
+    }
+
+    protected function resolveClientId(array $data, int $companyId): int
+    {
+        if (! empty($data['client_id'])) {
+            return (int) $data['client_id'];
+        }
+
+        if (! empty($data['opportunity_id'])) {
+            $opportunity = Opportunity::where('company_id', $companyId)
+                ->find($data['opportunity_id']);
+
+            abort_if(! $opportunity?->client_id, 422, 'Selected opportunity does not have a client linked.');
+
+            return (int) $opportunity->client_id;
+        }
+
+        $phone = trim((string) ($data['new_client_phone'] ?? ''));
+        $email = trim((string) ($data['new_client_email'] ?? ''));
+
+        if ($phone !== '' || $email !== '') {
+            $existingClient = Client::where('company_id', $companyId)
+                ->where(function ($query) use ($phone, $email) {
+                    if ($phone !== '') {
+                        $query->where('phone', $phone)
+                            ->orWhere('whatsapp', $phone);
+                    }
+
+                    if ($email !== '') {
+                        $query->orWhere('email', $email);
+                    }
+                })
+                ->first();
+
+            if ($existingClient) {
+                return (int) $existingClient->id;
+            }
+        }
+
+        $client = Client::create([
+            'company_id' => $companyId,
+            'name' => $data['new_client_name'],
+            'phone' => $phone ?: null,
+            'whatsapp' => $phone ?: null,
+            'email' => $email ?: null,
+            'source' => 'walk-in booking',
+            'status' => 'active',
+        ]);
+
+        return (int) $client->id;
+    }
+
+    protected function resolveVehicleId(array $data, int $companyId): ?int
+    {
+        if (! empty($data['vehicle_id'])) {
+            return (int) $data['vehicle_id'];
+        }
+
+        if (empty($data['new_vehicle_make_id']) && empty($data['new_vehicle_model_id'])) {
+            return null;
+        }
+
+        abort_if(empty($data['client_id']), 422, 'Please select or create a client before adding a vehicle.');
+
+        if (! empty($data['new_vehicle_model_id']) && ! empty($data['new_vehicle_make_id'])) {
+            $model = VehicleModel::where('id', $data['new_vehicle_model_id'])
+                ->where('make_id', $data['new_vehicle_make_id'])
+                ->first();
+
+            abort_if(! $model, 422, 'Selected vehicle model does not belong to the selected make.');
+        }
+
+        $vehicle = Vehicle::create([
+            'company_id' => $companyId,
+            'client_id' => $data['client_id'],
+            'make_id' => $data['new_vehicle_make_id'] ?? null,
+            'model_id' => $data['new_vehicle_model_id'] ?? null,
+            'plate_number' => $data['new_vehicle_plate_number'] ?? null,
+            'year' => $data['new_vehicle_year'] ?? null,
+            'color' => $data['new_vehicle_color'] ?? null,
+        ]);
+
+        return (int) $vehicle->id;
+    }
+
+    protected function preventDuplicateOpportunityBooking(array $data, int $companyId): void
+    {
+        if (empty($data['opportunity_id'])) {
+            return;
+        }
+
+        $existingBooking = Booking::where('company_id', $companyId)
+            ->where('opportunity_id', $data['opportunity_id'])
+            ->where('is_archived', false)
+            ->first();
+
+        abort_if(
+            $existingBooking,
+            422,
+            'This opportunity already has a booking. Please edit the existing booking instead.'
+        );
+    }
+
+    protected function validateLinkedRecords(array $data, int $companyId): void
+    {
+        if (! empty($data['opportunity_id'])) {
+            $opportunity = Opportunity::where('company_id', $companyId)
+                ->find($data['opportunity_id']);
+
+            abort_if(! $opportunity, 422, 'Selected opportunity does not belong to this company.');
+
+            abort_if(
+                (int) $opportunity->client_id !== (int) $data['client_id'],
+                422,
+                'Selected opportunity does not belong to the selected client.'
+            );
+        }
+
+        if (! empty($data['vehicle_id'])) {
             $vehicle = Vehicle::where('company_id', $companyId)
                 ->where('client_id', $data['client_id'])
                 ->find($data['vehicle_id']);
 
-            abort_if(!$vehicle, 422, 'Selected vehicle does not belong to the selected client.');
+            abort_if(! $vehicle, 422, 'Selected vehicle does not belong to the selected client.');
         }
     }
 
-    protected function handleScheduledBooking(Booking $booking): void
+    protected function validateStatusRequirements(array $data): void
     {
-        try {
-            $booking->loadMissing([
-                'client',
-                'opportunity.lead',
-                'vehicleData.make',
-                'vehicleData.model',
-            ]);
+        $status = $data['status'] ?? self::STATUS_SCHEDULED;
 
-            $this->markOpportunityAppointment($booking);
+        if ($status === self::STATUS_LOST && empty($data['lost_reason'])) {
+            abort(422, 'Please select a lost booking reason.');
+        }
 
-            $lead = $booking->opportunity?->lead;
+        if ($status === self::STATUS_CONVERTED_TO_JOB && empty($data['vehicle_id'])) {
+            abort(422, 'Please link or create a vehicle before converting this booking to a job.');
+        }
+    }
 
-            if (!$lead) {
-                Log::warning('[BookingController] Scheduled notification skipped - no lead found', [
-                    'booking_id' => $booking->id,
-                ]);
+    protected function ensureSlotAvailable(
+        int $companyId,
+        string $bookingDate,
+        string $slot,
+        ?int $excludeBookingId = null,
+        bool $allowOverbooking = false,
+        ?string $overbookingReason = null
+    ): void {
+        $baseQuery = Booking::where('company_id', $companyId)
+            ->whereDate('booking_date', $bookingDate)
+            ->where('is_archived', false)
+            ->whereIn('status', self::ACTIVE_STATUSES);
 
-                return;
-            }
+        if ($excludeBookingId) {
+            $baseQuery->where('id', '!=', $excludeBookingId);
+        }
 
-            $dateLabel = $booking->booking_date
-                ? $booking->booking_date->format('D, d M Y')
-                : 'your selected date';
+        $fullDayExists = (clone $baseQuery)
+            ->where('slot', 'full_day')
+            ->exists();
 
-            $slotLabel = $booking->slot_label ?? ucfirst((string) $booking->slot);
-
-            SendWhatsAppFromTemplate::dispatch(
-                companyId: $booking->company_id,
-                leadId: $lead->id,
-                toNumberE164: $lead->phone ?: $lead->phone_norm,
-                templateName: 'booking_scheduled_v1',
-                placeholders: [
-                    $booking->client?->name ?: $lead->name ?: 'Customer',
-                    $dateLabel,
-                    $slotLabel,
-                ],
-                links: [],
-                context: [
-                    'company_id' => $booking->company_id,
-                    'lead_id' => $lead->id,
-                    'booking_id' => $booking->id,
-                    'source' => 'manager_scheduled_booking',
-                ],
-                action: 'booking_scheduled'
+        if ($slot !== 'full_day' && $fullDayExists) {
+            $this->handleSlotCapacityFailure(
+                allowOverbooking: $allowOverbooking,
+                overbookingReason: $overbookingReason,
+                message: 'A full-day booking already exists for this date.'
             );
 
-            Log::info('[BookingController] Scheduled booking WhatsApp dispatched', [
-                'booking_id' => $booking->id,
-                'lead_id' => $lead->id,
-            ]);
+            return;
+        }
 
-        } catch (\Throwable $e) {
-            Log::error('[BookingController] Scheduled notification failed', [
-                'booking_id' => $booking->id,
-                'error' => $e->getMessage(),
-            ]);
+        if ($slot === 'full_day') {
+            $dayBookingCount = (clone $baseQuery)->count();
+
+            if ($dayBookingCount > 0) {
+                $this->handleSlotCapacityFailure(
+                    allowOverbooking: $allowOverbooking,
+                    overbookingReason: $overbookingReason,
+                    message: 'This date already has bookings. Full-day booking would overbook the day.'
+                );
+            }
+
+            return;
+        }
+
+        $capacity = $this->slotCapacity($companyId, $slot);
+
+        $slotBookingCount = (clone $baseQuery)
+            ->where('slot', $slot)
+            ->count();
+
+        if ($slotBookingCount >= $capacity) {
+            $this->handleSlotCapacityFailure(
+                allowOverbooking: $allowOverbooking,
+                overbookingReason: $overbookingReason,
+                message: "The {$slot} slot is already full for this date. Capacity: {$capacity}."
+            );
         }
     }
 
-    protected function markOpportunityAppointment(Booking $booking): void
+    protected function handleSlotCapacityFailure(
+        bool $allowOverbooking,
+        ?string $overbookingReason,
+        string $message
+    ): void {
+        if (! $allowOverbooking) {
+            abort(422, $message);
+        }
+
+        abort_if(
+            ! $this->canOverrideSlotCapacity(),
+            403,
+            'Only admin or manager can override slot capacity.'
+        );
+
+        abort_if(
+            trim((string) $overbookingReason) === '',
+            422,
+            'Please provide overbooking reason.'
+        );
+    }
+
+    protected function slotCapacity(int $companyId, string $slot): int
     {
-        if (!$booking->opportunity) {
+        $defaults = [
+            'morning' => 3,
+            'afternoon' => 3,
+            'evening' => 3,
+            'full_day' => 1,
+        ];
+
+        $default = $defaults[$slot] ?? 1;
+
+        if (! Schema::hasTable('company_settings')) {
+            return $default;
+        }
+
+        $keys = [
+            "booking_slot_capacity_{$slot}",
+            "slot_capacity_{$slot}",
+        ];
+
+        foreach ($keys as $key) {
+            $value = DB::table('company_settings')
+                ->where('company_id', $companyId)
+                ->where('key', $key)
+                ->value('value');
+
+            if (is_numeric($value) && (int) $value > 0) {
+                return (int) $value;
+            }
+        }
+
+        return $default;
+    }
+
+    protected function slotUsage(int $companyId, ?int $excludeBookingId = null): array
+    {
+        $query = Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->whereIn('status', self::ACTIVE_STATUSES);
+
+        if ($excludeBookingId) {
+            $query->where('id', '!=', $excludeBookingId);
+        }
+
+        return $query
+            ->get(['booking_date', 'slot'])
+            ->groupBy(fn ($booking) => optional($booking->booking_date)->format('Y-m-d'))
+            ->map(function ($items) {
+                return $items
+                    ->groupBy(fn ($booking) => strtolower((string) $booking->slot))
+                    ->map(fn ($slotItems) => $slotItems->count())
+                    ->toArray();
+            })
+            ->toArray();
+    }
+
+    protected function slotCapacities(int $companyId): array
+    {
+        return [
+            'morning' => $this->slotCapacity($companyId, 'morning'),
+            'afternoon' => $this->slotCapacity($companyId, 'afternoon'),
+            'evening' => $this->slotCapacity($companyId, 'evening'),
+            'full_day' => $this->slotCapacity($companyId, 'full_day'),
+        ];
+    }
+
+    protected function canOverrideSlotCapacity(): bool
+    {
+        $role = strtolower((string) (auth()->user()?->role ?? ''));
+
+        return in_array($role, ['admin', 'manager', 'superadmin', 'super_admin'], true);
+    }
+
+    protected function bookingCounts(int $companyId): array
+    {
+        $today = now()->toDateString();
+
+        $scheduledCount = Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->where('status', self::STATUS_SCHEDULED)
+            ->count();
+
+        $convertedCount = Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->where('status', self::STATUS_CONVERTED_TO_JOB)
+            ->count();
+
+        return [
+            'today' => Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->whereIn('status', self::ACTIVE_STATUSES)
+                ->whereDate('booking_date', $today)
+                ->count(),
+
+            'upcoming' => Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->whereIn('status', self::ACTIVE_STATUSES)
+                ->whereDate('booking_date', '>=', $today)
+                ->count(),
+
+            'pending' => Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->where('status', self::STATUS_PENDING)
+                ->count(),
+
+            'scheduled' => $scheduledCount,
+
+            'converted_to_job' => $convertedCount,
+
+            'lost' => Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->where('status', self::STATUS_LOST)
+                ->count(),
+
+            'confirmed' => $scheduledCount,
+            'completed' => $convertedCount,
+        ];
+    }
+
+    protected function bookingBucketCounts(int $companyId): array
+    {
+        $base = Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->whereIn('status', self::ACTIVE_STATUSES);
+
+        return [
+            'morning' => (clone $base)->where('slot', 'morning')->count(),
+            'afternoon' => (clone $base)->where('slot', 'afternoon')->count(),
+            'evening' => (clone $base)->where('slot', 'evening')->count(),
+            'pending' => (clone $base)->where('status', self::STATUS_PENDING)->count(),
+
+            'overdue' => (clone $base)
+                ->where('status', self::STATUS_PENDING)
+                ->whereDate('booking_date', '<', now()->toDateString())
+                ->count(),
+
+            'no_vehicle' => (clone $base)
+                ->whereNull('vehicle_id')
+                ->count(),
+
+            'high_priority' => (clone $base)
+                ->whereIn('priority', ['high', 'urgent'])
+                ->count(),
+        ];
+    }
+
+    protected function applyBookingBucketFilter($query, string $bucket): void
+    {
+        match ($bucket) {
+            'today' => $query->whereDate('booking_date', now()->toDateString()),
+            'upcoming' => $query->whereDate('booking_date', '>=', now()->toDateString()),
+            'morning' => $query->where('slot', 'morning'),
+            'afternoon' => $query->where('slot', 'afternoon'),
+            'evening' => $query->where('slot', 'evening'),
+            'pending' => $query->where('status', self::STATUS_PENDING),
+
+            'overdue' => $query
+                ->where('status', self::STATUS_PENDING)
+                ->whereDate('booking_date', '<', now()->toDateString()),
+
+            'no_vehicle' => $query->whereNull('vehicle_id'),
+            'high_priority' => $query->whereIn('priority', ['high', 'urgent']),
+
+            default => null,
+        };
+    }
+
+protected function handleScheduledBooking(Booking $booking): void
+{
+    try {
+        $booking->loadMissing([
+            'client',
+            'opportunity.lead',
+            'vehicleData.make',
+            'vehicleData.model',
+        ]);
+
+        $this->markOpportunityBookingConfirmed($booking);
+
+        $lead = $booking->opportunity?->lead;
+
+        $customerName =
+            $booking->client?->name
+            ?: $lead?->name
+            ?: $booking->name
+            ?: 'Customer';
+
+        $toNumber =
+            $booking->client?->whatsapp
+            ?: $booking->client?->phone
+            ?: $lead?->phone_norm
+            ?: $lead?->phone
+            ?: '';
+
+        $toNumber = trim((string) $toNumber);
+
+        if ($toNumber === '') {
+            Log::warning('[BookingController] booking.confirmed WhatsApp skipped: phone missing', [
+                'booking_id' => $booking->id,
+                'company_id' => $booking->company_id,
+                'client_id'  => $booking->client_id,
+                'lead_id'    => $lead?->id,
+            ]);
+
+            return;
+        }
+
+        $dateLabel = $booking->booking_date
+            ? $booking->booking_date->format('d M Y')
+            : 'your selected date';
+
+        $slotLabel = $booking->slot_label
+            ?? ucwords(str_replace('_', ' ', (string) $booking->slot));
+
+        $dateTimeLabel = trim($dateLabel . ' ' . $slotLabel);
+
+        $vehicleLabel = $this->bookingVehicleLabel($booking);
+
+        $garageName =
+            $this->companySetting((int) $booking->company_id, 'garage_name')
+            ?: $this->companySetting((int) $booking->company_id, 'business_name')
+            ?: config('app.name', 'Garage');
+
+        $location =
+            $this->companySetting((int) $booking->company_id, 'garage_location_link')
+            ?: $this->companySetting((int) $booking->company_id, 'whatsapp.garage_location_link')
+            ?: $garageName;
+
+        DB::afterCommit(function () use (
+            $booking,
+            $lead,
+            $customerName,
+            $toNumber,
+            $vehicleLabel,
+            $dateLabel,
+            $slotLabel,
+            $dateTimeLabel,
+            $garageName,
+            $location
+        ) {
+            try {
+                $freshBooking = $booking->fresh([
+                    'client',
+                    'opportunity.lead',
+                    'vehicleData.make',
+                    'vehicleData.model',
+                ]);
+
+                if (! $freshBooking) {
+                    return;
+                }
+
+                if ($this->bookingConfirmationAlreadySent($freshBooking)) {
+                    Log::info('[BookingController] booking.confirmed WhatsApp skipped: already sent', [
+                        'booking_id' => $freshBooking->id,
+                        'company_id' => $freshBooking->company_id,
+                    ]);
+
+                    return;
+                }
+
+                app(SendWhatsAppMessage::class)->fireEvent(
+                    (int) $freshBooking->company_id,
+                    'booking.confirmed',
+                    (string) $toNumber,
+                    [
+                        /*
+                        |--------------------------------------------------------------------------
+                        | Template variables
+                        |--------------------------------------------------------------------------
+                        */
+
+                        'name'          => $customerName,
+                        'customer_name' => $customerName,
+                        'vehicle'       => $vehicleLabel,
+                        'vehicle_label' => $vehicleLabel,
+                        'date'          => $dateLabel,
+                        'slot'          => $slotLabel,
+                        'date_time'     => $dateTimeLabel,
+                        'booking_time'  => $dateTimeLabel,
+                        'garage'        => $garageName,
+                        'garage_name'   => $garageName,
+                        'location'      => $location,
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | Context variables
+                        |--------------------------------------------------------------------------
+                        */
+
+                        'company_id'    => (int) $freshBooking->company_id,
+                        'booking_id'    => (int) $freshBooking->id,
+                        'lead_id'       => $lead?->id,
+                        'client_id'     => $freshBooking->client_id,
+                        'phone'         => $toNumber,
+                        'event_key'     => 'booking.confirmed',
+                        'source'        => 'manager_scheduled_booking',
+                        'action'        => 'booking_confirmed_by_manager',
+                        'send_mode'     => 'meta_template',
+                    ]
+                );
+
+                Log::info('[BookingController] booking.confirmed WhatsApp event fired', [
+                    'booking_id' => $freshBooking->id,
+                    'company_id' => $freshBooking->company_id,
+                    'to'         => $toNumber,
+                    'event_key'  => 'booking.confirmed',
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('[BookingController] booking.confirmed WhatsApp failed', [
+                    'booking_id' => $booking->id,
+                    'company_id' => $booking->company_id,
+                    'to'         => $toNumber,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        });
+    } catch (\Throwable $e) {
+        Log::error('[BookingController] Scheduled booking handling failed', [
+            'booking_id' => $booking->id,
+            'error'      => $e->getMessage(),
+        ]);
+    }
+}
+
+protected function bookingConfirmationAlreadySent(Booking $booking): bool
+{
+    if (! Schema::hasTable('whatsapp_messages')) {
+        return false;
+    }
+
+    return DB::table('whatsapp_messages')
+        ->where('company_id', $booking->company_id)
+        ->whereIn('status', ['queued', 'sent', 'delivered', 'read'])
+        ->where(function ($query) use ($booking) {
+            $query
+                ->where('payload', 'like', '%"event_key":"booking.confirmed"%')
+                ->orWhere('payload', 'like', '%booking.confirmed%');
+        })
+        ->where(function ($query) use ($booking) {
+            $query
+                ->where('payload', 'like', '%"booking_id":' . $booking->id . '%')
+                ->orWhere('payload', 'like', '%"booking_id":"' . $booking->id . '"%');
+        })
+        ->exists();
+}
+
+    protected function markOpportunityLostFromBooking(Booking $booking): void
+    {
+        if (! $booking->opportunity) {
             return;
         }
 
@@ -461,10 +1132,86 @@ class BookingController extends Controller
         );
 
         $booking->opportunity->update([
-            'stage' => Opportunity::STAGE_APPOINTMENT,
-            'next_follow_up' => $booking->booking_date,
-            'expected_close_date' => $booking->booking_date,
+            'stage' => Opportunity::STAGE_CLOSED_LOST,
+            'is_converted' => false,
+            'close_reason' => $booking->lost_reason ?? 'Booking lost',
         ]);
+    }
+
+    protected function createJobFromBooking(Booking $booking): Job
+    {
+        $booking->loadMissing(['client', 'vehicleData.make', 'vehicleData.model']);
+
+        return Job::firstOrCreate(
+            [
+                'company_id' => $booking->company_id,
+                'booking_id' => $booking->id,
+            ],
+            [
+                'client_id' => $booking->client_id,
+                'vehicle_id' => $booking->vehicle_id,
+                'description' => $booking->service_type ?? $booking->name ?? 'Service job',
+                'status' => 'pending',
+                'assigned_to' => $booking->assigned_to,
+                'start_time' => now(),
+            ]
+        );
+    }
+
+    protected function bookingVehicleLabel(Booking $booking): string
+    {
+        $make = $booking->vehicleData?->make?->name;
+        $model = $booking->vehicleData?->model?->name;
+        $plate = $booking->vehicleData?->plate_number;
+
+        $vehicle = trim(implode(' ', array_filter([
+            $make,
+            $model,
+        ])));
+
+        if ($vehicle !== '' && $plate) {
+            return "{$vehicle} ({$plate})";
+        }
+
+        if ($vehicle !== '') {
+            return $vehicle;
+        }
+
+        if ($plate) {
+            return "Vehicle {$plate}";
+        }
+
+        return 'your vehicle';
+    }
+
+    protected function companySetting(int $companyId, string $key): ?string
+    {
+        if (! $companyId || ! Schema::hasTable('company_settings')) {
+            return null;
+        }
+
+        $value = DB::table('company_settings')
+            ->where('company_id', $companyId)
+            ->where('group', 'whatsapp')
+            ->where('key', $key)
+            ->value('value');
+
+        if ($value === null) {
+            $value = DB::table('company_settings')
+                ->where('company_id', $companyId)
+                ->where('key', $key)
+                ->value('value');
+        }
+
+        return is_string($value) ? trim($value) : $value;
+    }
+
+    protected function assignableUsers(int $companyId)
+    {
+        return User::where('company_id', $companyId)
+            ->whereIn('role', ['admin', 'manager'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
     }
 
     protected function authorizeBooking(Booking $booking): void

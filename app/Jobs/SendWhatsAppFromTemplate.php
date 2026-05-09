@@ -2,20 +2,21 @@
 
 namespace App\Jobs;
 
-use App\Models\MessageLog;
 use App\Models\Client\Lead;
 use App\Models\Conversation;
+use App\Models\MessageLog;
 use App\Services\WhatsApp\WhatsAppService;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Queue\Middleware\RateLimited;
-use Illuminate\Queue\Middleware\WithoutOverlapping;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class SendWhatsAppFromTemplate implements ShouldQueue
 {
@@ -48,11 +49,18 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         'fallback',
         'acknowledge',
         'manual_reply',
+
+        // Manual lead journey
+        'manual_lead_welcome',
+        'manual_lead_follow_up',
+        'manual_lead_booking_push',
     ];
 
     protected const FOLLOWUP_TEMPLATES = [
         'ask_make_model_v1',
         'ask_intent_v1',
+        'manual_lead_welcome_v1',
+        'manual_lead_booking_push_v1',
     ];
 
     public string $action;
@@ -78,7 +86,9 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("wa-send-{$this->companyId}-{$this->leadId}-{$this->templateName}-{$this->action}"))->expireAfter(120),
+            (new WithoutOverlapping("wa-send-{$this->companyId}-{$this->leadId}-{$this->templateName}-{$this->action}"))
+                ->expireAfter(120),
+
             new RateLimited('wa-sends'),
         ];
     }
@@ -88,7 +98,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $lead = Lead::where('company_id', $this->companyId)
             ->find($this->leadId);
 
-        if (!$lead) {
+        if (! $lead) {
             Log::warning('[WA] Lead missing or company mismatch, skipping send', [
                 'company_id' => $this->companyId,
                 'lead_id' => $this->leadId,
@@ -97,7 +107,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             return;
         }
 
-        if (!$this->toNumberE164) {
+        if (! $this->toNumberE164) {
             Log::warning('[WA] Missing recipient number, skipping send', [
                 'company_id' => $this->companyId,
                 'lead_id' => $this->leadId,
@@ -117,7 +127,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         ]);
 
         if ($this->action === 'follow_up') {
-            $since = !empty($this->context['since'])
+            $since = ! empty($this->context['since'])
                 ? Carbon::parse($this->context['since'])
                 : now()->subMinutes(15);
 
@@ -152,13 +162,11 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | FORCE META TEMPLATE MODE
+        | Force Template Mode
         |--------------------------------------------------------------------------
-        | Manager notifications and daily reports must go as Meta templates because
-        | the manager may not have an open 24-hour WhatsApp session.
-        |
-        | Pass this in context:
-        | ['force_template' => true]
+        | Manager notifications, daily reports, and manual campaign initiations
+        | may need template mode because the recipient may not have an open
+        | WhatsApp 24-hour service window.
         |--------------------------------------------------------------------------
         */
         $forceTemplate = (bool) ($this->context['force_template'] ?? false);
@@ -174,19 +182,42 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $localLogCompleted = false;
 
         try {
-            $text = $wa->assembleTemplateAsText(
-                $this->templateName,
-                $this->placeholders,
-                $this->links
-            );
+            /*
+            |--------------------------------------------------------------------------
+            | Manual Manager Reply
+            |--------------------------------------------------------------------------
+            | Manual replies are free-text replies from the manager.
+            | They must not be assembled as template text.
+            |--------------------------------------------------------------------------
+            */
+            if ($this->action === 'manual_reply' || $this->templateName === 'manual_reply') {
+                $text = trim((string) ($this->placeholders[0] ?? ''));
 
-            if ($sessionOpen) {
-                Log::info('[WA] Sending session message', [
+                if ($text === '') {
+                    Log::warning('[WA][ManualReply] Empty manual reply skipped', [
+                        'company_id' => $this->companyId,
+                        'lead_id' => $this->leadId,
+                    ]);
+
+                    return;
+                }
+
+                if (! $sessionOpen) {
+                    Log::warning('[WA][ManualReply] Session closed, manual reply skipped', [
+                        'company_id' => $this->companyId,
+                        'lead_id' => $this->leadId,
+                        'to' => $this->toNumberE164,
+                    ]);
+
+                    return;
+                }
+
+                $sendMode = 'session';
+
+                Log::info('[WA][ManualReply] Sending manager session reply', [
                     'company_id' => $this->companyId,
-                    'lead_id'  => $this->leadId,
-                    'template' => $this->templateName,
-                    'action'   => $this->action,
-                    'to'       => $this->toNumberE164,
+                    'lead_id' => $this->leadId,
+                    'to' => $this->toNumberE164,
                 ]);
 
                 $res = $wa->sendText(
@@ -197,29 +228,52 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
                 $providerSendCompleted = true;
                 $resArr = $this->normalizeProviderResponse($res);
-
             } else {
-                Log::info('[WA] Sending template message', [
-                    'company_id'     => $this->companyId,
-                    'lead_id'        => $this->leadId,
-                    'template'       => $this->templateName,
-                    'action'         => $this->action,
-                    'to'             => $this->toNumberE164,
-                    'force_template' => $forceTemplate,
-                ]);
-
-                $res = $wa->sendTemplate(
-                    toE164: $this->toNumberE164,
-                    templateName: $this->templateName,
-                    params: $this->placeholders,
-                    links: $this->links,
-                    context: $ctx
+                $text = $wa->assembleTemplateAsText(
+                    $this->templateName,
+                    $this->placeholders,
+                    $this->links
                 );
 
-                $providerSendCompleted = true;
-                $resArr = $this->normalizeProviderResponse($res);
-            }
+                if ($sessionOpen) {
+                    Log::info('[WA] Sending session message', [
+                        'company_id' => $this->companyId,
+                        'lead_id'  => $this->leadId,
+                        'template' => $this->templateName,
+                        'action'   => $this->action,
+                        'to'       => $this->toNumberE164,
+                    ]);
 
+                    $res = $wa->sendText(
+                        $this->toNumberE164,
+                        $text,
+                        $ctx
+                    );
+
+                    $providerSendCompleted = true;
+                    $resArr = $this->normalizeProviderResponse($res);
+                } else {
+                    Log::info('[WA] Sending template message', [
+                        'company_id'     => $this->companyId,
+                        'lead_id'        => $this->leadId,
+                        'template'       => $this->templateName,
+                        'action'         => $this->action,
+                        'to'             => $this->toNumberE164,
+                        'force_template' => $forceTemplate,
+                    ]);
+
+                    $res = $wa->sendTemplate(
+                        toE164: $this->toNumberE164,
+                        templateName: $this->templateName,
+                        params: $this->placeholders,
+                        links: $this->links,
+                        context: $ctx
+                    );
+
+                    $providerSendCompleted = true;
+                    $resArr = $this->normalizeProviderResponse($res);
+                }
+            }
         } catch (\Throwable $e) {
             Log::error('[WA][Send] provider exception ' . $e->getMessage(), [
                 'company_id' => $this->companyId,
@@ -235,12 +289,11 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | LOCAL MESSAGE LOGGING
+        | Local Message Logging
         |--------------------------------------------------------------------------
         | If provider send succeeded, do not throw after this point.
         |--------------------------------------------------------------------------
         */
-
         try {
             MessageLog::out([
                 'company_id'      => $this->companyId,
@@ -254,7 +307,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 'body'            => $text,
                 'provider_message_id' => $resArr['sid'] ?? ($resArr['id'] ?? ($resArr['message_id'] ?? null)),
                 'provider_status'     => $resArr['status'] ?? 'queued',
-                'source'              => 'bot',
+                'source'              => $this->action === 'manual_reply' ? 'human' : 'bot',
                 'meta' => array_merge($ctx, [
                     'send_mode' => $sendMode,
                     'force_template' => $forceTemplate,
@@ -264,7 +317,6 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ]);
 
             $localLogCompleted = true;
-
         } catch (\Throwable $e) {
             Log::error('[WA][Send] local log failed after provider send - NOT retrying to avoid duplicate ' . $e->getMessage(), [
                 'company_id' => $this->companyId,
@@ -286,8 +338,16 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             $this->markConversationRequiresAttention($conversation);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Auto Follow-up
+        |--------------------------------------------------------------------------
+        | For selected templates, schedule a follow-up if the customer has not
+        | replied. This now includes manual lead booking initiation templates.
+        |--------------------------------------------------------------------------
+        */
         if (
-            $this->action === 'initial'
+            in_array($this->action, ['initial', 'manual_lead_welcome', 'manual_lead_booking_push'], true)
             && in_array($this->templateName, self::FOLLOWUP_TEMPLATES, true)
         ) {
             $followups = DB::table('message_logs')
@@ -298,7 +358,9 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 ->where('channel', 'whatsapp')
                 ->where(function ($q) {
                     $q->where('meta->action', 'follow_up')
-                      ->orWhere('meta->action', 'initial');
+                        ->orWhere('meta->action', 'initial')
+                        ->orWhere('meta->action', 'manual_lead_welcome')
+                        ->orWhere('meta->action', 'manual_lead_booking_push');
                 })
                 ->where('created_at', '>=', now()->subHours(24))
                 ->count();
@@ -308,7 +370,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                     companyId: $this->companyId,
                     leadId: $this->leadId,
                     toNumberE164: $this->toNumberE164,
-                    templateName: $this->templateName,
+                    templateName: 'manual_lead_follow_up_v1',
                     placeholders: $this->placeholders,
                     links: $this->links,
                     context: array_merge($ctx, [
@@ -351,7 +413,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ->first();
 
         if ($conversation) {
-            if (!$conversation->lead_id || (int) $conversation->lead_id !== (int) $lead->id) {
+            if (! $conversation->lead_id || (int) $conversation->lead_id !== (int) $lead->id) {
                 $conversation->update([
                     'lead_id' => $lead->id,
                     'client_id' => $lead->client_id ?: $conversation->client_id,
@@ -387,7 +449,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
     protected function updateConversationAfterSend(?Conversation $conversation, string $text): void
     {
-        if (!$conversation) {
+        if (! $conversation) {
             return;
         }
 
@@ -407,7 +469,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
     protected function markConversationRequiresAttention(?Conversation $conversation): void
     {
-        if (!$conversation) {
+        if (! $conversation) {
             return;
         }
 
@@ -416,11 +478,11 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 'last_message_at' => now(),
             ];
 
-            if (\Illuminate\Support\Facades\Schema::hasColumn('conversations', 'status')) {
+            if (Schema::hasColumn('conversations', 'status')) {
                 $updates['status'] = 'requires_attention';
             }
 
-            if (\Illuminate\Support\Facades\Schema::hasColumn('conversations', 'requires_attention')) {
+            if (Schema::hasColumn('conversations', 'requires_attention')) {
                 $updates['requires_attention'] = true;
             }
 
@@ -476,7 +538,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             ->where('created_at', '>=', now()->subMinutes($minutes))
             ->where(function ($q) use ($placeholders) {
                 $q->where('meta->placeholders_hash', $this->hashArray($placeholders))
-                  ->orWhereNull('meta->placeholders_hash');
+                    ->orWhereNull('meta->placeholders_hash');
             })
             ->exists();
     }

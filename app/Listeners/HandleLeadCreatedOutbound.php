@@ -3,11 +3,13 @@
 namespace App\Listeners;
 
 use App\Events\LeadCreated;
-use App\Models\MessageLog;
+use App\Models\AudienceSegmentation;
 use App\Models\Client\Lead;
+use App\Models\CompanyAudienceSegmentationSetting;
+use App\Models\MessageLog;
 use App\Notifications\ManagerLeadHandoffNotification;
+use App\Services\WhatsApp\SendWhatsAppMessage;
 use App\Services\WhatsApp\WhatsAppService;
-use App\Jobs\SendWhatsAppFromTemplate;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
@@ -22,12 +24,31 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
     /*
     |--------------------------------------------------------------------------
-    | IMPORTANT
+    | WhatsApp Event Key
     |--------------------------------------------------------------------------
-    | Use Utility template for website lead acknowledgement.
-    | Marketing template lead_conversation_start_v1 was getting blocked with 131049.
+    |
+    | This is a proactive / first outbound lead acknowledgement.
+    |
+    | DB mapping should be:
+    |
+    |   lead.created -> new_lead_ack_v1
+    |
     */
-    protected string $welcomeTemplate = 'follow_up_new_lead_v1';
+
+    protected string $eventKey = 'lead.created';
+
+    /*
+    |--------------------------------------------------------------------------
+    | Audience Segmentation Key
+    |--------------------------------------------------------------------------
+    |
+    | This listener respects the enable/disable toggle from:
+    |
+    |   Settings -> Audience Segmentation -> New Lead Conversation
+    |
+    */
+
+    protected string $audienceSegmentationKey = 'new_lead_conversation';
 
     public function handle(LeadCreated $event): void
     {
@@ -35,11 +56,11 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | Guard 1 — sanity
+        | Guard 1 — Sanity
         |--------------------------------------------------------------------------
         */
 
-        if (!$lead || !$lead->company_id || !$lead->id) {
+        if (! $lead || ! $lead->company_id || ! $lead->id) {
             Log::warning('[LeadCreatedOutbound] invalid lead');
             return;
         }
@@ -48,28 +69,32 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | Guard 2 — Cache lock to prevent duplicate event/listener execution
+        | Guard 2 — Cache lock to prevent duplicate listener execution
         |--------------------------------------------------------------------------
         */
 
         $lockKey = 'lead_created_outbound_processed_' . $lead->id;
 
-        if (!Cache::add($lockKey, true, now()->addMinutes(10))) {
+        if (! Cache::add($lockKey, true, now()->addMinutes(10))) {
             Log::info('[LeadCreatedOutbound] duplicate listener skipped by cache lock', [
                 'lead_id' => $lead->id,
             ]);
+
             return;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Guard 3 — Skip ONLY WhatsApp-origin leads
+        | Guard 3 — Skip WhatsApp-origin leads
         |--------------------------------------------------------------------------
+        |
+        | WhatsApp-origin leads are handled by inbound conversation flow.
+        | Inbound replies are session messages from the app, not template ACKs.
+        |
         */
 
         if ($this->isWhatsAppOrigin($lead)) {
-
-            Log::info('[LeadCreatedOutbound] skipping WA-origin lead', [
+            Log::info('[LeadCreatedOutbound] skipping WhatsApp-origin lead', [
                 'lead_id'         => $lead->id,
                 'source'          => $lead->source,
                 'external_source' => $lead->external_source,
@@ -80,12 +105,11 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | Guard 3.5 — Skip bulk import leads (CSV/Excel)
+        | Guard 4 — Skip bulk import leads
         |--------------------------------------------------------------------------
         */
 
         if ($this->isBulkImport($lead)) {
-
             Log::info('[LeadCreatedOutbound] skipping bulk import lead', [
                 'lead_id' => $lead->id,
                 'source'  => $lead->source,
@@ -96,32 +120,51 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | Guard 4 — Prevent duplicate sends if activity already exists
+        | Guard 5 — Audience Segmentation Toggle
+        |--------------------------------------------------------------------------
+        |
+        | If New Lead Conversation is disabled from Settings -> Audience
+        | Segmentation, do not send the new lead ACK.
+        |
+        */
+
+        if (! $this->isAudienceSegmentationEnabled((int) $lead->company_id, $this->audienceSegmentationKey)) {
+            Log::info('[LeadCreatedOutbound] audience segmentation disabled, ACK skipped', [
+                'lead_id'     => $lead->id,
+                'company_id'  => $lead->company_id,
+                'segment_key' => $this->audienceSegmentationKey,
+                'event_key'   => $this->eventKey,
+            ]);
+
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Guard 6 — Prevent duplicate WhatsApp sends
         |--------------------------------------------------------------------------
         */
 
         if ($this->hasAnyWhatsAppActivity($lead->id)) {
-
-            Log::info('[LeadCreatedOutbound] WA activity already exists', [
+            Log::info('[LeadCreatedOutbound] WhatsApp activity already exists', [
                 'lead_id' => $lead->id,
             ]);
 
             return;
         }
 
-        /** @var WhatsAppService $wa */
-        $wa = app(WhatsAppService::class);
-
         /*
         |--------------------------------------------------------------------------
-        | Guard 5 — WhatsApp availability
+        | Guard 7 — WhatsApp availability
         |--------------------------------------------------------------------------
         */
 
-        if (method_exists($wa, 'isActiveForCompany') && !$wa->isActiveForCompany($lead->company_id)) {
+        /** @var WhatsAppService $wa */
+        $wa = app(WhatsAppService::class);
 
+        if (method_exists($wa, 'isActiveForCompany') && ! $wa->isActiveForCompany($lead->company_id)) {
             $this->handoffToManager(
-                lead:   $lead,
+                lead: $lead,
                 reason: 'WhatsApp inactive or not configured'
             );
 
@@ -136,8 +179,7 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         $phone = $lead->phone ?: $lead->phone_norm;
 
-        if (!$phone) {
-
+        if (! $phone) {
             Log::warning('[LeadCreatedOutbound] lead has no phone', [
                 'lead_id' => $lead->id,
             ]);
@@ -147,32 +189,67 @@ class HandleLeadCreatedOutbound implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
-        | Dispatch Utility welcome message
+        | Send via DB-mapped WhatsApp event
         |--------------------------------------------------------------------------
         */
 
-        Log::info('[LeadCreatedOutbound] sending welcome message', [
-            'lead_id'  => $lead->id,
-            'phone'    => $phone,
-            'source'   => $lead->source,
-            'template' => $this->welcomeTemplate,
-        ]);
+        try {
+            Log::info('[LeadCreatedOutbound] firing WhatsApp event', [
+                'lead_id'     => $lead->id,
+                'company_id'  => $lead->company_id,
+                'phone'       => $phone,
+                'source'      => $lead->source,
+                'event_key'   => $this->eventKey,
+                'segment_key' => $this->audienceSegmentationKey,
+            ]);
 
-        SendWhatsAppFromTemplate::dispatch(
-            companyId:    $lead->company_id,
-            leadId:       $lead->id,
-            toNumberE164: $phone,
-            templateName: $this->welcomeTemplate,
-            placeholders: [$lead->name ?? 'Customer'],
-            links:        [],
-            context: [
-                'company_id' => $lead->company_id,
+            /** @var SendWhatsAppMessage $sender */
+            $sender = app(SendWhatsAppMessage::class);
+
+            $sender->fireEvent(
+                (int) $lead->company_id,
+                $this->eventKey,
+                (string) $phone,
+                [
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Template variables
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'name'          => $lead->name ?? 'Customer',
+                    'customer_name' => $lead->name ?? 'Customer',
+                    'lead_name'     => $lead->name ?? 'Customer',
+                    'phone'         => $phone,
+                    'source'        => $lead->source ?? '-',
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Context variables
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'company_id'               => (int) $lead->company_id,
+                    'lead_id'                  => (int) $lead->id,
+                    'action'                   => 'initial',
+                    'event_key'                => $this->eventKey,
+                    'send_mode'                => 'meta_template',
+                    'audience_segmentation_key'=> $this->audienceSegmentationKey,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error('[LeadCreatedOutbound] failed to fire WhatsApp event', [
                 'lead_id'    => $lead->id,
-                'source'     => $lead->source,
-                'template_category' => 'utility',
-            ],
-            action: 'initial'
-        );
+                'company_id' => $lead->company_id,
+                'event_key'  => $this->eventKey,
+                'error'      => $e->getMessage(),
+            ]);
+
+            $this->handoffToManager(
+                lead: $lead,
+                reason: 'Lead acknowledgement WhatsApp event failed: ' . $e->getMessage()
+            );
+        }
     }
 
     /*
@@ -187,10 +264,10 @@ class HandleLeadCreatedOutbound implements ShouldQueue
         $externalSource = strtolower(trim((string) $lead->external_source));
 
         return in_array($source, [
-                'whatsapp',
-                'wa',
-                'meta whatsapp',
-            ], true)
+            'whatsapp',
+            'wa',
+            'meta whatsapp',
+        ], true)
             || in_array($externalSource, [
                 'whatsapp',
                 'wa',
@@ -217,6 +294,33 @@ class HandleLeadCreatedOutbound implements ShouldQueue
             ->exists();
     }
 
+    protected function isAudienceSegmentationEnabled(int $companyId, string $segmentKey): bool
+    {
+        $segmentation = AudienceSegmentation::query()
+            ->where('key', $segmentKey)
+            ->first();
+
+        if (! $segmentation) {
+            Log::warning('[LeadCreatedOutbound] audience segmentation missing, defaulting enabled', [
+                'company_id'  => $companyId,
+                'segment_key' => $segmentKey,
+            ]);
+
+            return true;
+        }
+
+        $setting = CompanyAudienceSegmentationSetting::query()
+            ->where('company_id', $companyId)
+            ->where('audience_segmentation_id', $segmentation->id)
+            ->first();
+
+        if (! $setting) {
+            return (bool) $segmentation->default_enabled;
+        }
+
+        return (bool) $setting->is_enabled;
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Manager handoff
@@ -226,7 +330,6 @@ class HandleLeadCreatedOutbound implements ShouldQueue
     protected function handoffToManager(Lead $lead, string $reason): void
     {
         try {
-
             MessageLog::out([
                 'company_id' => $lead->company_id,
                 'lead_id'    => $lead->id,
@@ -240,22 +343,19 @@ class HandleLeadCreatedOutbound implements ShouldQueue
             ]);
 
             if ($lead->assignee && method_exists($lead->assignee, 'notify')) {
-
                 $lead->assignee->notify(
                     new ManagerLeadHandoffNotification(
                         companyId: $lead->company_id,
-                        leadId:    $lead->id,
-                        name:      $lead->name ?? 'Lead',
-                        phone:     $lead->phone ?? 'N/A',
-                        source:    $lead->source ?? '-',
-                        reason:    $reason
+                        leadId: $lead->id,
+                        name: $lead->name ?? 'Lead',
+                        phone: $lead->phone ?? 'N/A',
+                        source: $lead->source ?? '-',
+                        reason: $reason
                     )
                 );
             }
-
         } catch (\Throwable $e) {
-
-            Log::error('[LeadCreated][ManagerHandoff] '.$e->getMessage(), [
+            Log::error('[LeadCreatedOutbound][ManagerHandoff] ' . $e->getMessage(), [
                 'lead_id' => $lead->id,
             ]);
         }

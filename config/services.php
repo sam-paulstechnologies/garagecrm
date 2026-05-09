@@ -44,40 +44,43 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | WhatsApp (SaaS Safe Configuration)
+    | WhatsApp SaaS Safe Configuration
     |--------------------------------------------------------------------------
     */
 
     'whatsapp' => [
 
         // Default fallback provider
-        'provider' => 'meta',
+        'provider' => env('WHATSAPP_PROVIDER', 'meta'),
 
         'meta' => [
-            'graph_base'  => 'https://graph.facebook.com',
-            'api_version' => 'v20.0',
+            'graph_base'  => env('WHATSAPP_META_GRAPH_BASE', 'https://graph.facebook.com'),
+            'api_version' => env('WHATSAPP_META_API_VERSION', 'v20.0'),
         ],
 
         'twilio' => [
-            'base_uri' => 'https://api.twilio.com',
+            'base_uri' => env('TWILIO_BASE_URI', 'https://api.twilio.com'),
         ],
 
         'gupshup' => [
-            'base_uri' => 'https://api.gupshup.io',
+            'base_uri' => env('GUPSHUP_BASE_URI', 'https://api.gupshup.io'),
         ],
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Meta Lead Ads / Webhooks (GLOBAL APP ONLY)
+    | Meta Lead Ads / Facebook Lead Forms
+    |--------------------------------------------------------------------------
+    | This is for Meta Lead Ads only, not WhatsApp Cloud API.
     |--------------------------------------------------------------------------
     */
 
     'meta_leads' => [
         'app_id'        => env('META_APP_ID'),
         'app_secret'    => env('META_APP_SECRET'),
-        'graph_base'    => 'https://graph.facebook.com',
-        'graph_version' => 'v20.0',
+        'verify_token'  => env('META_VERIFY_TOKEN'),
+        'graph_base'    => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v20.0'),
     ],
 
     /*

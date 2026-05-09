@@ -1,0 +1,3 @@
+﻿name,phone,email,source,notes,preferred_channel,service_category,service_type,vehicle_make,vehicle_model,vehicle_year,plate_number,lead_temperature,lead_priority,customer_type,follow_up_required,follow_up_date,campaign_name,retention_tag,assigned_to
+Sam Abhishek,971587000000,sam@example.com,website,Interested in service booking,whatsapp,service,general service,Toyota,Camry,2020,Dubai A 12345,warm,medium,new,yes,2026-05-07,May Service Offer,service_due,manager@example.com
+Karen,9716079901,karen@example.com,walk-in,Asked for quote,phone,quote,detailing,Nissan,Altima,2019,,hot,high,new,yes,2026-05-08,Walk-in Quote Drive,quote_followup,manager@example.com

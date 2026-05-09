@@ -7,6 +7,7 @@ use App\Models\Client\Client;
 use App\Models\Client\Note;
 use App\Models\Job\Job;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class ClientController extends Controller
@@ -19,14 +20,28 @@ class ClientController extends Controller
         $companyId = auth()->user()->company_id;
         $q = trim((string) $request->get('q', ''));
 
-        $clients = Client::where('company_id', $companyId)
+        $clients = Client::with([
+                'vehicles.make',
+                'vehicles.model',
+            ])
+            ->where('company_id', $companyId)
             ->where('is_archived', false)
             ->when($q, function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     $sub->where('name', 'like', "%{$q}%")
                         ->orWhere('phone', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('whatsapp', 'like', "%{$q}%");
+                        ->orWhere('whatsapp', 'like', "%{$q}%")
+                        ->orWhereHas('vehicles.make', function ($vehicleMakeQuery) use ($q) {
+                            $vehicleMakeQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicles.model', function ($vehicleModelQuery) use ($q) {
+                            $vehicleModelQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicles', function ($vehicleQuery) use ($q) {
+                            $vehicleQuery->where('plate_number', 'like', "%{$q}%")
+                                ->orWhere('vin', 'like', "%{$q}%");
+                        });
                 });
             })
             ->orderBy('name')
@@ -42,7 +57,7 @@ class ClientController extends Controller
     }
 
     /**
-     * 💾 Store client (logical dedupe only)
+     * 💾 Store client safely
      */
     public function store(Request $request)
     {
@@ -52,7 +67,7 @@ class ClientController extends Controller
             'whatsapp'          => 'nullable|string|max:20',
             'email'             => 'nullable|email|max:255',
             'dob'               => 'nullable|date',
-            'gender'            => ['nullable', Rule::in(['male','female','other'])],
+            'gender'            => ['nullable', Rule::in(['male', 'female', 'other'])],
             'address'           => 'nullable|string',
             'city'              => 'nullable|string|max:100',
             'state'             => 'nullable|string|max:100',
@@ -61,42 +76,41 @@ class ClientController extends Controller
             'source'            => 'nullable|string|max:255',
             'status'            => 'nullable|string|max:50',
             'notes'             => 'nullable|string',
-            'preferred_channel' => ['nullable', Rule::in(['email','phone','whatsapp'])],
+            'preferred_channel' => ['nullable', Rule::in(['email', 'phone', 'whatsapp'])],
             'is_vip'            => 'nullable|boolean',
         ]);
 
         $companyId = auth()->user()->company_id;
 
-        /** ---------------------------
-         * LOGICAL DEDUPE (WARNING ONLY)
-         * --------------------------- */
         $possibleDuplicate = Client::where('company_id', $companyId)
             ->where(function ($q) use ($data) {
-                if (!empty($data['phone'])) {
+                if (! empty($data['phone'])) {
                     $q->orWhere('phone', $data['phone']);
                 }
-                if (!empty($data['whatsapp'])) {
+
+                if (! empty($data['whatsapp'])) {
                     $q->orWhere('whatsapp', $data['whatsapp']);
                 }
-                if (!empty($data['email'])) {
+
+                if (! empty($data['email'])) {
                     $q->orWhere('email', $data['email']);
                 }
             })
             ->first();
 
+        if ($possibleDuplicate) {
+            return redirect()
+                ->route('admin.clients.show', $possibleDuplicate->id)
+                ->with('warning', 'Client already exists. Opened the existing client instead.');
+        }
+
         $data['company_id'] = $companyId;
-        $data['is_vip']     = $request->boolean('is_vip');
+        $data['is_vip'] = $request->boolean('is_vip');
 
         $client = Client::create($data);
 
-        if ($possibleDuplicate) {
-            return redirect()
-                ->route('admin.clients.show', $client->id)
-                ->with('warning', 'Possible duplicate client detected. Please review.');
-        }
-
         return redirect()
-            ->route('admin.clients.index')
+            ->route('admin.clients.show', $client->id)
             ->with('success', 'Client created successfully.');
     }
 
@@ -118,7 +132,6 @@ class ClientController extends Controller
             'files',
         ]);
 
-        /** ✅ SERVICE HISTORY */
         $serviceHistory = Job::where('company_id', auth()->user()->company_id)
             ->where('client_id', $client->id)
             ->where('status', 'completed')
@@ -126,7 +139,6 @@ class ClientController extends Controller
             ->take(10)
             ->get();
 
-        /** VEHICLE COUNT */
         $vehicleCount = $client->vehicles?->count() ?? 0;
 
         if ($vehicleCount === 0) {
@@ -140,25 +152,118 @@ class ClientController extends Controller
                 ->count();
         }
 
-        /** PROFILE SCORE */
+        $primaryVehicle = $client->vehicles?->first();
+
+        $missingItems = [];
         $score = 0;
-        if ($client->name) $score += 10;
-        if ($client->phone) $score += 10;
-        if ($client->email || $client->whatsapp) $score += 10;
-        if ($client->city || $client->country || $client->address) $score += 10;
-        if ($vehicleCount > 0) $score += 20;
-        if ($client->leads?->count()) $score += 10;
-        if ($client->opportunities?->count()) $score += 10;
-        if ($client->bookings?->count()) $score += 10;
-        if ($client->notes?->count()) $score += 10;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Garage Customer Profile Completion Score
+        |--------------------------------------------------------------------------
+        | Total = 100
+        |--------------------------------------------------------------------------
+        */
+
+        if ($client->name) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'Customer name';
+        }
+
+        if ($client->phone || $client->whatsapp) {
+            $score += 15;
+        } else {
+            $missingItems[] = 'Phone or WhatsApp number';
+        }
+
+        if ($client->email) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'Email address';
+        }
+
+        if ($client->city || $client->country || $client->address) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'Address / location';
+        }
+
+        if ($vehicleCount > 0) {
+            $score += 15;
+        } else {
+            $missingItems[] = 'Vehicle details';
+        }
+
+        if ($primaryVehicle?->plate_number) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'Plate number';
+        }
+
+        if ($primaryVehicle?->vin) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'VIN';
+        }
+
+        if ($primaryVehicle?->registration_expiry_date) {
+            $score += 10;
+        } else {
+            $missingItems[] = 'Mulkia / registration expiry date';
+        }
+
+        if ($primaryVehicle?->insurance_expiry_date) {
+            $score += 5;
+        } else {
+            $missingItems[] = 'Insurance expiry date';
+        }
+
+        if ($primaryVehicle?->current_mileage) {
+            $score += 5;
+        } else {
+            $missingItems[] = 'Current mileage';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Service History + Next Service Logic
+        |--------------------------------------------------------------------------
+        | Current rule:
+        | - Last Service = latest completed job end_time
+        | - Next Service = Last Service + 6 months
+        |--------------------------------------------------------------------------
+        */
+        $lastCompletedJob = $serviceHistory->first();
+
+        $lastServiceDate = $lastCompletedJob?->end_time;
+
+        $nextServiceDate = $lastServiceDate
+            ? Carbon::parse($lastServiceDate)->addMonths(6)
+            : null;
+
+        $nextServiceStatus = 'not_available';
+
+        if ($nextServiceDate) {
+            if ($nextServiceDate->isPast()) {
+                $nextServiceStatus = 'overdue';
+            } elseif ($nextServiceDate->diffInDays(now()) <= 30) {
+                $nextServiceStatus = 'due_soon';
+            } else {
+                $nextServiceStatus = 'scheduled';
+            }
+        }
 
         $kpis = [
-            'cars'         => $vehicleCount,
-            'ltv'          => 0,
-            'avg_spend'    => 0,
-            'last_service' => null,
-            'next_service' => null,
-            'profile_pct'  => min(100, $score),
+            'cars'                => $vehicleCount,
+            'ltv'                 => 0,
+            'avg_spend'           => 0,
+            'last_service'        => $lastServiceDate,
+            'next_service'        => $nextServiceDate,
+            'next_service_status' => $nextServiceStatus,
+            'last_service_type'   => $lastCompletedJob?->description,
+            'profile_pct'         => min(100, $score),
+            'missing_items'       => $missingItems,
         ];
 
         return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory'));
@@ -167,11 +272,12 @@ class ClientController extends Controller
     public function edit(Client $client)
     {
         $this->authorizeClient($client);
+
         return view('admin.clients.edit', compact('client'));
     }
 
     /**
-     * 🔁 Update client (logical dedupe warning)
+     * 🔁 Update client safely
      */
     public function update(Request $request, Client $client)
     {
@@ -183,7 +289,7 @@ class ClientController extends Controller
             'whatsapp'          => 'nullable|string|max:20',
             'email'             => 'nullable|email|max:255',
             'dob'               => 'nullable|date',
-            'gender'            => ['nullable', Rule::in(['male','female','other'])],
+            'gender'            => ['nullable', Rule::in(['male', 'female', 'other'])],
             'address'           => 'nullable|string',
             'city'              => 'nullable|string|max:100',
             'state'             => 'nullable|string|max:100',
@@ -192,36 +298,46 @@ class ClientController extends Controller
             'source'            => 'nullable|string|max:255',
             'status'            => 'nullable|string|max:50',
             'notes'             => 'nullable|string',
-            'preferred_channel' => ['nullable', Rule::in(['email','phone','whatsapp'])],
+            'preferred_channel' => ['nullable', Rule::in(['email', 'phone', 'whatsapp'])],
             'is_vip'            => 'nullable|boolean',
         ]);
 
         $possibleDuplicate = Client::where('company_id', auth()->user()->company_id)
             ->where('id', '!=', $client->id)
             ->where(function ($q) use ($data) {
-                if (!empty($data['phone'])) $q->orWhere('phone', $data['phone']);
-                if (!empty($data['whatsapp'])) $q->orWhere('whatsapp', $data['whatsapp']);
-                if (!empty($data['email'])) $q->orWhere('email', $data['email']);
+                if (! empty($data['phone'])) {
+                    $q->orWhere('phone', $data['phone']);
+                }
+
+                if (! empty($data['whatsapp'])) {
+                    $q->orWhere('whatsapp', $data['whatsapp']);
+                }
+
+                if (! empty($data['email'])) {
+                    $q->orWhere('email', $data['email']);
+                }
             })
             ->first();
 
-        $data['is_vip'] = $request->boolean('is_vip');
-        $client->update($data);
-
         if ($possibleDuplicate) {
             return redirect()
-                ->route('admin.clients.show', $client->id)
-                ->with('warning', 'Possible duplicate client detected. Please review.');
+                ->route('admin.clients.show', $possibleDuplicate->id)
+                ->with('warning', 'Another client already exists with the same phone, WhatsApp, or email.');
         }
 
+        $data['is_vip'] = $request->boolean('is_vip');
+
+        $client->update($data);
+
         return redirect()
-            ->route('admin.clients.index')
+            ->route('admin.clients.show', $client->id)
             ->with('success', 'Client updated successfully.');
     }
 
     public function archive(Client $client)
     {
         $this->authorizeClient($client);
+
         $client->update(['is_archived' => true]);
 
         return redirect()
@@ -231,7 +347,11 @@ class ClientController extends Controller
 
     public function archived()
     {
-        $clients = Client::where('company_id', auth()->user()->company_id)
+        $clients = Client::with([
+                'vehicles.make',
+                'vehicles.model',
+            ])
+            ->where('company_id', auth()->user()->company_id)
             ->where('is_archived', true)
             ->orderBy('name')
             ->paginate(20);
@@ -242,6 +362,7 @@ class ClientController extends Controller
     public function restore(Client $client)
     {
         $this->authorizeClient($client);
+
         $client->update(['is_archived' => false]);
 
         return redirect()
@@ -259,8 +380,6 @@ class ClientController extends Controller
 
     /**
      * 📥 Import clients
-     * Basic placeholder-safe import handler.
-     * You can later connect this to Excel/CSV import logic.
      */
     public function import(Request $request)
     {
@@ -287,11 +406,12 @@ class ClientController extends Controller
             ->with('success', 'Client deleted successfully.');
     }
 
-    /** Notes */
     public function notesIndex(Client $client)
     {
         $this->authorizeClient($client);
+
         $client->load(['notes.creator']);
+
         return view('admin.clients.notes.index', compact('client'));
     }
 
@@ -320,6 +440,6 @@ class ClientController extends Controller
      */
     protected function authorizeClient(Client $client): void
     {
-        abort_if($client->company_id !== auth()->user()->company_id, 403);
+        abort_if((int) $client->company_id !== (int) auth()->user()->company_id, 403);
     }
 }

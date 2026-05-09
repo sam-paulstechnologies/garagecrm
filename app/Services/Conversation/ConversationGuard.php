@@ -49,6 +49,7 @@ class ConversationGuard
         $data['last_user_message_at'] = now()->toIso8601String();
 
         $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
         $lead->save();
 
         return false;
@@ -89,16 +90,18 @@ class ConversationGuard
         | Prevent multiple escalation mutations
         |--------------------------------------------------------------------------
         */
+
         if (($data['is_escalated'] ?? false) === true) {
-            return [
-                'template' => 'manager_handoff_v1',
-                'placeholders' => [],
-                'action' => 'handoff_manager',
-                'context' => [
+            return $this->sessionResponse(
+                template: 'manager_handoff_v1',
+                action: 'handoff_manager',
+                body: $this->managerHandoffBody($lead),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
                     'reason' => $reason,
                     'already_escalated' => true,
-                ],
-            ];
+                ]
+            );
         }
 
         /*
@@ -106,6 +109,7 @@ class ConversationGuard
         | Human lock
         |--------------------------------------------------------------------------
         */
+
         $this->updateState($lead, 'human', [
             'is_escalated' => true,
             'escalated_at' => now()->toIso8601String(),
@@ -117,6 +121,7 @@ class ConversationGuard
         | Ensure client/opportunity exists
         |--------------------------------------------------------------------------
         */
+
         try {
             $this->leadConversionService->ensureClientAndOpportunity($lead->id);
             $lead->refresh();
@@ -132,11 +137,13 @@ class ConversationGuard
         |--------------------------------------------------------------------------
         | Update opportunity only
         |--------------------------------------------------------------------------
+        |
         | IMPORTANT:
         | Do NOT save manager_confirmation_pending into leads.status.
         | That value belongs to opportunities.stage only.
-        |--------------------------------------------------------------------------
+        |
         */
+
         try {
             if ($lead->opportunity) {
                 $lead->opportunity->update([
@@ -159,11 +166,12 @@ class ConversationGuard
         |--------------------------------------------------------------------------
         | Notify manager via WhatsApp template
         |--------------------------------------------------------------------------
-        | This uses manager_attention_required_v1 and force_template=true inside
-        | ManagerNotificationService, so it works even if the manager has no
-        | active 24-hour session.
-        |--------------------------------------------------------------------------
+        |
+        | This is proactive manager notification.
+        | It must remain Meta-template based through ManagerNotificationService.
+        |
         */
+
         try {
             $this->managerNotificationService->notifyForLead(
                 lead: $lead,
@@ -171,26 +179,38 @@ class ConversationGuard
                 preferredAt: null,
                 bookingId: null,
                 extra: [
-                    'source' => 'conversation_guard',
+                    'source'          => 'conversation_guard',
                     'escalation_type' => 'bot_escalation',
                 ]
             );
         } catch (\Throwable $e) {
             Log::warning('[ConversationGuard] Manager notification failed', [
                 'lead_id' => $lead->id,
-                'reason' => $reason,
-                'error' => $e->getMessage(),
+                'reason'  => $reason,
+                'error'   => $e->getMessage(),
             ]);
         }
 
-        return [
-            'template' => 'manager_handoff_v1',
-            'placeholders' => [],
-            'action' => 'handoff_manager',
-            'context' => [
+        /*
+        |--------------------------------------------------------------------------
+        | Customer response
+        |--------------------------------------------------------------------------
+        |
+        | This response is consumed by ProcessInboundWhatsApp.
+        | Because this is triggered by inbound customer message, it should be sent
+        | as a normal app/session message inside the 24-hour window.
+        |
+        */
+
+        return $this->sessionResponse(
+            template: 'manager_handoff_v1',
+            action: 'handoff_manager',
+            body: $this->managerHandoffBody($lead),
+            placeholders: [$lead->name ?: 'there'],
+            context: [
                 'reason' => $reason,
-            ],
-        ];
+            ]
+        );
     }
 
     protected function updateState(Lead $lead, string $state, array $extra = []): void
@@ -201,8 +221,55 @@ class ConversationGuard
         $lead->conversation_data = array_merge($data, $extra, [
             'last_state_at' => now()->toIso8601String(),
         ]);
+        $lead->conversation_updated_at = now();
 
         $lead->save();
+    }
+
+    protected function sessionResponse(
+        string $template,
+        string $action,
+        string $body,
+        array $placeholders = [],
+        array $context = []
+    ): array {
+        return [
+            /*
+            |--------------------------------------------------------------------------
+            | Important
+            |--------------------------------------------------------------------------
+            |
+            | ConversationGuard is used by ProcessInboundWhatsApp.
+            | This is an inbound/session flow, so body/text/message should be sent
+            | from the app inside the 24-hour WhatsApp customer service window.
+            |
+            | template is kept only as a compatibility/logging hint.
+            |
+            */
+
+            'body'    => $body,
+            'text'    => $body,
+            'message' => $body,
+
+            'template'      => $template,
+            'template_hint' => $template,
+
+            'placeholders' => $placeholders,
+            'action'       => $action,
+
+            'context' => array_merge([
+                'send_mode'     => 'session_message',
+                'template_hint' => $template,
+            ], $context),
+        ];
+    }
+
+    protected function managerHandoffBody(Lead $lead): string
+    {
+        $name = $lead->name ?: 'there';
+
+        return "Thanks {$name}. I am connecting you with our manager.\n\n"
+            . "Someone from the team will assist you shortly.";
     }
 
     protected function conversationData(Lead $lead): array
@@ -217,7 +284,7 @@ class ConversationGuard
         $text = strtolower(trim($text));
         $text = preg_replace('/\s+/', ' ', $text);
 
-        return trim($text);
+        return trim((string) $text);
     }
 
     protected function appendNote(?string $existing, string $line): string

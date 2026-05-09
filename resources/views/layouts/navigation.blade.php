@@ -18,46 +18,69 @@
                     @endif
                 </div>
 
-                {{-- Primary Nav --}}
+                {{-- Desktop Primary Nav --}}
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex items-center">
 
-                    <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                        Dashboard
-                    </x-nav-link>
+                    @if(Route::has('admin.dashboard'))
+                        <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
+                            Dashboard
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.clients.index')" :active="request()->routeIs('admin.clients.*')">
-                        Clients
-                    </x-nav-link>
+                    @if(Route::has('admin.clients.index'))
+                        <x-nav-link :href="route('admin.clients.index')" :active="request()->routeIs('admin.clients.*')">
+                            Clients
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.leads.index')" :active="request()->routeIs('admin.leads.*')">
-                        Leads
-                    </x-nav-link>
+                    @if(Route::has('admin.leads.index'))
+                        <x-nav-link :href="route('admin.leads.index')" :active="request()->routeIs('admin.leads.*')">
+                            Leads
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.opportunities.index')" :active="request()->routeIs('admin.opportunities.*')">
-                        Opportunities
-                    </x-nav-link>
+                    @if(Route::has('admin.opportunities.index'))
+                        <x-nav-link :href="route('admin.opportunities.index')" :active="request()->routeIs('admin.opportunities.*')">
+                            Opportunities
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.bookings.index')" :active="request()->routeIs('admin.bookings.*')">
-                        Bookings
-                    </x-nav-link>
+                    @if(Route::has('admin.bookings.index'))
+                        <x-nav-link :href="route('admin.bookings.index')" :active="request()->routeIs('admin.bookings.*')">
+                            Bookings
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.jobs.index')" :active="request()->routeIs('admin.jobs.*')">
-                        Jobs
-                    </x-nav-link>
+                    @if(Route::has('admin.jobs.index'))
+                        <x-nav-link :href="route('admin.jobs.index')" :active="request()->routeIs('admin.jobs.*')">
+                            Jobs
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.invoices.index')" :active="request()->routeIs('admin.invoices.*')">
-                        Invoices
-                    </x-nav-link>
+                    @if(Route::has('admin.invoices.index'))
+                        <x-nav-link :href="route('admin.invoices.index')" :active="request()->routeIs('admin.invoices.*')">
+                            Invoices
+                        </x-nav-link>
+                    @endif
 
-                    <x-nav-link :href="route('admin.calendar.index')" :active="request()->routeIs('admin.calendar.*')">
-                        Calendar
-                    </x-nav-link>
+                    @if(Route::has('admin.calendar.index'))
+                        <x-nav-link :href="route('admin.calendar.index')" :active="request()->routeIs('admin.calendar.*')">
+                            Calendar
+                        </x-nav-link>
+                    @endif
+
+                    @if(Route::has('admin.inbox.index'))
+                        <x-nav-link :href="route('admin.inbox.index')" :active="request()->routeIs('admin.inbox.*')">
+                            Inbox
+                        </x-nav-link>
+                    @endif
 
                     {{-- SETTINGS DROPDOWN --}}
                     <div x-data="{ settingsOpen: false }" class="relative">
                         <button
                             @click="settingsOpen = !settingsOpen"
-                            class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-indigo-600"
+                            type="button"
+                            class="inline-flex items-center text-sm font-medium {{ request()->routeIs('admin.business-profile.*') || request()->routeIs('admin.settings.*') || request()->routeIs('admin.ai.*') || request()->routeIs('admin.whatsapp.*') || request()->routeIs('admin.lead-sources.*') || request()->routeIs('admin.audience-segmentations.*') ? 'text-indigo-600' : 'text-gray-700 hover:text-indigo-600' }}"
                         >
                             <span>Settings</span>
                             <svg class="ml-1 w-4 h-4 transform transition-transform"
@@ -74,54 +97,55 @@
                             @click.outside="settingsOpen = false"
                             class="absolute left-0 mt-2 w-64 bg-white border rounded shadow-lg z-50 py-2"
                         >
-                            {{-- Business --}}
                             @if(Route::has('admin.business-profile.edit'))
                                 <a href="{{ route('admin.business-profile.edit') }}"
-                                   class="block px-4 py-2 text-sm hover:bg-gray-100">
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.business-profile.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
                                     Business Profile
                                 </a>
                             @endif
 
-                            {{-- Launch Setup --}}
                             @if(Route::has('admin.settings.launch-setup.edit'))
                                 <a href="{{ route('admin.settings.launch-setup.edit') }}"
-                                   class="block px-4 py-2 text-sm hover:bg-gray-100">
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.settings.launch-setup.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
                                     Launch Setup
                                 </a>
                             @endif
 
-                            {{-- AI --}}
                             @if(Route::has('admin.ai.edit'))
                                 <a href="{{ route('admin.ai.edit') }}"
-                                   class="block px-4 py-2 text-sm hover:bg-gray-100">
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.ai.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
                                     AI Settings
                                 </a>
                             @endif
 
-                            {{-- WhatsApp --}}
                             @if(Route::has('admin.whatsapp.settings.edit'))
                                 <a href="{{ route('admin.whatsapp.settings.edit') }}"
-                                   class="block px-4 py-2 text-sm hover:bg-gray-100">
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.whatsapp.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
                                     WhatsApp Settings
+                                </a>
+                            @endif
+
+                            @if(Route::has('admin.audience-segmentations.index'))
+                                <a href="{{ route('admin.audience-segmentations.index') }}"
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.audience-segmentations.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
+                                    Audience Segmentation
                                 </a>
                             @endif
 
                             <div class="border-t my-2"></div>
 
-                            {{-- Lead Sources --}}
                             @if(Route::has('admin.lead-sources.index'))
                                 <a href="{{ route('admin.lead-sources.index') }}"
-                                   class="block px-4 py-2 text-sm hover:bg-gray-100 font-medium">
+                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.lead-sources.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }} font-medium">
                                     Lead Sources
                                 </a>
                             @endif
                         </div>
                     </div>
-
                 </div>
             </div>
 
-            {{-- RIGHT --}}
+            {{-- Desktop Right --}}
             <div class="hidden sm:flex sm:items-center sm:ms-6">
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
@@ -136,9 +160,11 @@
                     </x-slot>
 
                     <x-slot name="content">
-                        <x-dropdown-link :href="route('admin.profile.edit')">
-                            Profile
-                        </x-dropdown-link>
+                        @if(Route::has('admin.profile.edit'))
+                            <x-dropdown-link :href="route('admin.profile.edit')">
+                                Profile
+                            </x-dropdown-link>
+                        @endif
 
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
@@ -151,6 +177,162 @@
                 </x-dropdown>
             </div>
 
+            {{-- Mobile Hamburger --}}
+            <div class="-me-2 flex items-center sm:hidden">
+                <button
+                    @click="open = !open"
+                    type="button"
+                    class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none"
+                >
+                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                        <path
+                            :class="{ 'hidden': open, 'inline-flex': !open }"
+                            class="inline-flex"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16"
+                        />
+                        <path
+                            :class="{ 'hidden': !open, 'inline-flex': open }"
+                            class="hidden"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                        />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {{-- Mobile Menu --}}
+    <div x-show="open" x-cloak class="sm:hidden border-t border-gray-100 bg-white">
+
+        <div class="pt-2 pb-3 space-y-1">
+            @if(Route::has('admin.dashboard'))
+                <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
+                    Dashboard
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.clients.index'))
+                <x-responsive-nav-link :href="route('admin.clients.index')" :active="request()->routeIs('admin.clients.*')">
+                    Clients
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.leads.index'))
+                <x-responsive-nav-link :href="route('admin.leads.index')" :active="request()->routeIs('admin.leads.*')">
+                    Leads
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.opportunities.index'))
+                <x-responsive-nav-link :href="route('admin.opportunities.index')" :active="request()->routeIs('admin.opportunities.*')">
+                    Opportunities
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.bookings.index'))
+                <x-responsive-nav-link :href="route('admin.bookings.index')" :active="request()->routeIs('admin.bookings.*')">
+                    Bookings
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.jobs.index'))
+                <x-responsive-nav-link :href="route('admin.jobs.index')" :active="request()->routeIs('admin.jobs.*')">
+                    Jobs
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.invoices.index'))
+                <x-responsive-nav-link :href="route('admin.invoices.index')" :active="request()->routeIs('admin.invoices.*')">
+                    Invoices
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.calendar.index'))
+                <x-responsive-nav-link :href="route('admin.calendar.index')" :active="request()->routeIs('admin.calendar.*')">
+                    Calendar
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.inbox.index'))
+                <x-responsive-nav-link :href="route('admin.inbox.index')" :active="request()->routeIs('admin.inbox.*')">
+                    Inbox
+                </x-responsive-nav-link>
+            @endif
+
+            <div class="border-t my-2"></div>
+
+            <div class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Settings
+            </div>
+
+            @if(Route::has('admin.business-profile.edit'))
+                <x-responsive-nav-link :href="route('admin.business-profile.edit')" :active="request()->routeIs('admin.business-profile.*')">
+                    Business Profile
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.settings.launch-setup.edit'))
+                <x-responsive-nav-link :href="route('admin.settings.launch-setup.edit')" :active="request()->routeIs('admin.settings.launch-setup.*')">
+                    Launch Setup
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.ai.edit'))
+                <x-responsive-nav-link :href="route('admin.ai.edit')" :active="request()->routeIs('admin.ai.*')">
+                    AI Settings
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.whatsapp.settings.edit'))
+                <x-responsive-nav-link :href="route('admin.whatsapp.settings.edit')" :active="request()->routeIs('admin.whatsapp.*')">
+                    WhatsApp Settings
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.audience-segmentations.index'))
+                <x-responsive-nav-link :href="route('admin.audience-segmentations.index')" :active="request()->routeIs('admin.audience-segmentations.*')">
+                    Audience Segmentation
+                </x-responsive-nav-link>
+            @endif
+
+            @if(Route::has('admin.lead-sources.index'))
+                <x-responsive-nav-link :href="route('admin.lead-sources.index')" :active="request()->routeIs('admin.lead-sources.*')">
+                    Lead Sources
+                </x-responsive-nav-link>
+            @endif
+        </div>
+
+        <div class="pt-4 pb-1 border-t border-gray-200">
+            <div class="px-4">
+                <div class="font-medium text-base text-gray-800">
+                    {{ auth()->user()->name }}
+                </div>
+                <div class="font-medium text-sm text-gray-500">
+                    {{ auth()->user()->email }}
+                </div>
+            </div>
+
+            <div class="mt-3 space-y-1">
+                @if(Route::has('admin.profile.edit'))
+                    <x-responsive-nav-link :href="route('admin.profile.edit')">
+                        Profile
+                    </x-responsive-nav-link>
+                @endif
+
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <x-responsive-nav-link :href="route('logout')"
+                        onclick="event.preventDefault(); this.closest('form').submit();">
+                        Log Out
+                    </x-responsive-nav-link>
+                </form>
+            </div>
         </div>
     </div>
 </nav>

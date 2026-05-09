@@ -3,8 +3,8 @@
 namespace App\Services\Conversation;
 
 use App\Models\Client\Lead;
-use App\Services\Conversation\Flows\VehicleFlow;
 use App\Services\Conversation\Flows\BookingFlow;
+use App\Services\Conversation\Flows\VehicleFlow;
 
 class ConversationEngine
 {
@@ -24,6 +24,7 @@ class ConversationEngine
         | 0. Hard stop if human takeover is active
         |--------------------------------------------------------------------------
         */
+
         $lead->refresh();
 
         if ($lead->conversation_state === 'human') {
@@ -35,6 +36,7 @@ class ConversationEngine
         | 1. Timeout reset
         |--------------------------------------------------------------------------
         */
+
         if (
             $lead->conversation_updated_at &&
             now()->diffInMinutes($lead->conversation_updated_at) > 30
@@ -48,6 +50,7 @@ class ConversationEngine
         | 2. Duplicate message protection
         |--------------------------------------------------------------------------
         */
+
         if ($this->guard->isDuplicateMessage($lead, $text)) {
             return $this->skip();
         }
@@ -57,6 +60,7 @@ class ConversationEngine
         | 3. Profanity / urgent handoff
         |--------------------------------------------------------------------------
         */
+
         if ($this->guard->containsProfanity($text)) {
             return $this->guard->escalateToManager($lead, 'Profanity: ' . $text);
         }
@@ -76,6 +80,7 @@ class ConversationEngine
         | 4. Resolve current state + intent
         |--------------------------------------------------------------------------
         */
+
         $lead->refresh();
 
         $state = $lead->conversation_state ?: 'idle';
@@ -83,7 +88,7 @@ class ConversationEngine
         $intent = $nlp['intent'] ?? null;
         $confidence = (float) ($nlp['confidence'] ?? 0);
 
-        if (!$intent || $confidence < 0.6) {
+        if (! $intent || $confidence < 0.6) {
             $intent = $this->intentResolver->resolve($text);
         }
 
@@ -92,6 +97,7 @@ class ConversationEngine
         | 5. Capture service type wherever possible
         |--------------------------------------------------------------------------
         */
+
         $this->intentResolver->captureServiceType($lead, $text);
         $lead->refresh();
 
@@ -99,7 +105,13 @@ class ConversationEngine
         |--------------------------------------------------------------------------
         | 6. State-based flows always win
         |--------------------------------------------------------------------------
+        |
+        | These flows are still reviewed separately.
+        | They may return template hints, but ProcessInboundWhatsApp now converts
+        | them into app/session messages inside the 24-hour window.
+        |
         */
+
         if ($state === 'awaiting_vehicle') {
             return $this->vehicleFlow->handle($lead, $text);
         }
@@ -130,21 +142,21 @@ class ConversationEngine
         }
 
         if ($intent === 'gratitude') {
-            return [
-                'template' => 'gratitude_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'gratitude',
-                'context' => [],
-            ];
+            return $this->sessionResponse(
+                template: 'gratitude_v1',
+                action: 'gratitude',
+                body: "You're welcome " . ($lead->name ?: 'there') . ". Happy to help.",
+                placeholders: [$lead->name ?: 'there']
+            );
         }
 
         if ($intent === 'greeting') {
-            return [
-                'template' => 'ask_intent_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'start',
-                'context' => [],
-            ];
+            return $this->sessionResponse(
+                template: 'ask_intent_v1',
+                action: 'start',
+                body: $this->intentQuestionBody($lead),
+                placeholders: [$lead->name ?: 'there']
+            );
         }
 
         if ($intent === 'booking') {
@@ -159,14 +171,15 @@ class ConversationEngine
 
             $lead->conversation_state = 'awaiting_general_enquiry';
             $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
             $lead->save();
 
-            return [
-                'template' => 'ask_general_enquiry_v1',
-                'placeholders' => [$lead->name ?: 'there'],
-                'action' => 'collect_general_enquiry',
-                'context' => [],
-            ];
+            return $this->sessionResponse(
+                template: 'follow_up_general_enquiry_v1',
+                action: 'collect_general_enquiry',
+                body: 'Sure ' . ($lead->name ?: 'there') . '. Please share your question or requirement, and our team will help you.',
+                placeholders: [$lead->name ?: 'there']
+            );
         }
 
         /*
@@ -174,11 +187,13 @@ class ConversationEngine
         | 8. Fallback
         |--------------------------------------------------------------------------
         */
+
         $data = $this->conversationData($lead);
 
         $data['fallback_count'] = (int) ($data['fallback_count'] ?? 0) + 1;
 
         $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
         $lead->save();
 
         if ($data['fallback_count'] >= 2) {
@@ -188,12 +203,64 @@ class ConversationEngine
             );
         }
 
+        return $this->sessionResponse(
+            template: 'ask_intent_v1',
+            action: 'retry',
+            body: $this->intentQuestionBody($lead),
+            placeholders: [$lead->name ?: 'there'],
+            context: [
+                'fallback_count' => $data['fallback_count'],
+            ]
+        );
+    }
+
+    protected function sessionResponse(
+        string $template,
+        string $action,
+        string $body,
+        array $placeholders = [],
+        array $context = []
+    ): array {
         return [
-            'template' => 'ask_intent_v1',
-            'placeholders' => [$lead->name ?: 'there'],
-            'action' => 'retry',
-            'context' => [],
+            /*
+            |--------------------------------------------------------------------------
+            | Important
+            |--------------------------------------------------------------------------
+            |
+            | This response is consumed by ProcessInboundWhatsApp.
+            | Because this is an inbound/session flow, body/text is sent from the app
+            | within the 24-hour WhatsApp customer service window.
+            |
+            | template is kept only as a compatibility/logging hint.
+            |
+            */
+
+            'body' => $body,
+            'text' => $body,
+            'message' => $body,
+
+            'template' => $template,
+            'template_hint' => $template,
+
+            'placeholders' => $placeholders,
+            'action' => $action,
+
+            'context' => array_merge([
+                'send_mode' => 'session_message',
+                'template_hint' => $template,
+            ], $context),
         ];
+    }
+
+    protected function intentQuestionBody(Lead $lead): string
+    {
+        $name = $lead->name ?: 'there';
+
+        return "Hi {$name}, thanks for reaching out. How can we help you today?\n\n"
+            . "You can reply with:\n"
+            . "1. Book a service\n"
+            . "2. Ask a question\n"
+            . "3. Talk to manager";
     }
 
     protected function conversationData(Lead $lead): array
@@ -208,6 +275,7 @@ class ConversationEngine
         return [
             'action' => 'skip',
             'template' => null,
+            'template_hint' => null,
             'placeholders' => [],
             'context' => [],
         ];
