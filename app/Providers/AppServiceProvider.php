@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -29,6 +30,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        /*
+        |--------------------------------------------------------------------------
+        | Force HTTPS in production
+        |--------------------------------------------------------------------------
+        | Azure terminates SSL before the request reaches Laravel.
+        | Without this, Laravel may generate http:// URLs and browser blocks login.
+        */
+        if (app()->environment('production')) {
+            URL::forceScheme('https');
+        }
+
         Vite::prefetch(concurrency: 3);
 
         // ✅ R2: Auto-generate AI suggestions when inbound messages are logged
