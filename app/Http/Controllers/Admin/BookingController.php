@@ -241,6 +241,7 @@ class BookingController extends Controller
 
                 if ($booking->status === self::STATUS_CONVERTED_TO_JOB) {
                     $this->createJobFromBooking($booking);
+                    $this->markOpportunityConvertedToJob($booking);
                 }
 
                 if ($booking->status === self::STATUS_LOST) {
@@ -338,6 +339,15 @@ class BookingController extends Controller
                 $data['client_id'] = $booking->client_id;
                 $data['opportunity_id'] = $booking->opportunity_id;
 
+                if (empty($data['vehicle_id']) && ! empty($data['opportunity_id'])) {
+                    $opportunity = Opportunity::where('company_id', $booking->company_id)
+                        ->find($data['opportunity_id']);
+
+                    if ($opportunity?->vehicle_id) {
+                        $data['vehicle_id'] = $opportunity->vehicle_id;
+                    }
+                }
+
                 if (empty($data['vehicle_id'])) {
                     $data['vehicle_id'] = $this->resolveVehicleId($data, $booking->company_id);
                 }
@@ -356,6 +366,8 @@ class BookingController extends Controller
                     allowOverbooking: $allowOverbooking,
                     overbookingReason: $overbookingReason
                 );
+
+                $oldStatus = (string) $booking->status;
 
                 $data['pickup_required'] = $request->boolean('pickup_required');
                 $data['state_changed_at'] = now();
@@ -379,6 +391,19 @@ class BookingController extends Controller
                     'assignedUser',
                 ]);
 
+                if (! $freshBooking) {
+                    throw new \RuntimeException('Booking could not be refreshed after update.');
+                }
+
+                Log::info('[BookingController] Booking updated', [
+                    'booking_id' => $freshBooking->id,
+                    'old_status' => $oldStatus,
+                    'new_status' => $freshBooking->status,
+                    'client_id' => $freshBooking->client_id,
+                    'vehicle_id' => $freshBooking->vehicle_id,
+                    'opportunity_id' => $freshBooking->opportunity_id,
+                ]);
+
                 if (
                     $freshBooking->status === self::STATUS_SCHEDULED
                     && ! $this->bookingConfirmationAlreadySent($freshBooking)
@@ -387,7 +412,14 @@ class BookingController extends Controller
                 }
 
                 if ($freshBooking->status === self::STATUS_CONVERTED_TO_JOB) {
-                    $this->createJobFromBooking($freshBooking);
+                    $job = $this->createJobFromBooking($freshBooking);
+                    $this->markOpportunityConvertedToJob($freshBooking);
+
+                    Log::info('[BookingController] Booking converted to job', [
+                        'booking_id' => $freshBooking->id,
+                        'job_id' => $job->id,
+                        'client_id' => $freshBooking->client_id,
+                    ]);
                 }
 
                 if ($freshBooking->status === self::STATUS_LOST) {
@@ -940,185 +972,211 @@ class BookingController extends Controller
         };
     }
 
-protected function handleScheduledBooking(Booking $booking): void
-{
-    try {
-        $booking->loadMissing([
-            'client',
-            'opportunity.lead',
-            'vehicleData.make',
-            'vehicleData.model',
-        ]);
-
-        $this->markOpportunityBookingConfirmed($booking);
-
-        $lead = $booking->opportunity?->lead;
-
-        $customerName =
-            $booking->client?->name
-            ?: $lead?->name
-            ?: $booking->name
-            ?: 'Customer';
-
-        $toNumber =
-            $booking->client?->whatsapp
-            ?: $booking->client?->phone
-            ?: $lead?->phone_norm
-            ?: $lead?->phone
-            ?: '';
-
-        $toNumber = trim((string) $toNumber);
-
-        if ($toNumber === '') {
-            Log::warning('[BookingController] booking.confirmed WhatsApp skipped: phone missing', [
-                'booking_id' => $booking->id,
-                'company_id' => $booking->company_id,
-                'client_id'  => $booking->client_id,
-                'lead_id'    => $lead?->id,
+    protected function handleScheduledBooking(Booking $booking): void
+    {
+        try {
+            $booking->loadMissing([
+                'client',
+                'opportunity.lead',
+                'vehicleData.make',
+                'vehicleData.model',
             ]);
 
+            $this->markOpportunityBookingConfirmed($booking);
+
+            $lead = $booking->opportunity?->lead;
+
+            $customerName =
+                $booking->client?->name
+                ?: $lead?->name
+                ?: $booking->name
+                ?: 'Customer';
+
+            $toNumber =
+                $booking->client?->whatsapp
+                ?: $booking->client?->phone
+                ?: $lead?->phone_norm
+                ?: $lead?->phone
+                ?: '';
+
+            $toNumber = trim((string) $toNumber);
+
+            if ($toNumber === '') {
+                Log::warning('[BookingController] booking.confirmed WhatsApp skipped: phone missing', [
+                    'booking_id' => $booking->id,
+                    'company_id' => $booking->company_id,
+                    'client_id' => $booking->client_id,
+                    'lead_id' => $lead?->id,
+                ]);
+
+                return;
+            }
+
+            $dateLabel = $booking->booking_date
+                ? $booking->booking_date->format('d M Y')
+                : 'your selected date';
+
+            $slotLabel = $booking->slot_label
+                ?? ucwords(str_replace('_', ' ', (string) $booking->slot));
+
+            $dateTimeLabel = trim($dateLabel . ' ' . $slotLabel);
+
+            $vehicleLabel = $this->bookingVehicleLabel($booking);
+
+            $garageName =
+                $this->companySetting((int) $booking->company_id, 'garage_name')
+                ?: $this->companySetting((int) $booking->company_id, 'business_name')
+                ?: config('app.name', 'Garage');
+
+            $location =
+                $this->companySetting((int) $booking->company_id, 'garage_location_link')
+                ?: $this->companySetting((int) $booking->company_id, 'whatsapp.garage_location_link')
+                ?: $garageName;
+
+            DB::afterCommit(function () use (
+                $booking,
+                $lead,
+                $customerName,
+                $toNumber,
+                $vehicleLabel,
+                $dateLabel,
+                $slotLabel,
+                $dateTimeLabel,
+                $garageName,
+                $location
+            ) {
+                try {
+                    $freshBooking = $booking->fresh([
+                        'client',
+                        'opportunity.lead',
+                        'vehicleData.make',
+                        'vehicleData.model',
+                    ]);
+
+                    if (! $freshBooking) {
+                        return;
+                    }
+
+                    if ($this->bookingConfirmationAlreadySent($freshBooking)) {
+                        Log::info('[BookingController] booking.confirmed WhatsApp skipped: already sent', [
+                            'booking_id' => $freshBooking->id,
+                            'company_id' => $freshBooking->company_id,
+                        ]);
+
+                        return;
+                    }
+
+                    app(SendWhatsAppMessage::class)->fireEvent(
+                        (int) $freshBooking->company_id,
+                        'booking.confirmed',
+                        (string) $toNumber,
+                        [
+                            'name' => $customerName,
+                            'customer_name' => $customerName,
+                            'vehicle' => $vehicleLabel,
+                            'vehicle_label' => $vehicleLabel,
+                            'date' => $dateLabel,
+                            'slot' => $slotLabel,
+                            'date_time' => $dateTimeLabel,
+                            'booking_time' => $dateTimeLabel,
+                            'garage' => $garageName,
+                            'garage_name' => $garageName,
+                            'location' => $location,
+
+                            'company_id' => (int) $freshBooking->company_id,
+                            'booking_id' => (int) $freshBooking->id,
+                            'lead_id' => $lead?->id,
+                            'client_id' => $freshBooking->client_id,
+                            'phone' => $toNumber,
+                            'event_key' => 'booking.confirmed',
+                            'source' => 'manager_scheduled_booking',
+                            'action' => 'booking_confirmed_by_manager',
+                            'send_mode' => 'meta_template',
+                        ]
+                    );
+
+                    Log::info('[BookingController] booking.confirmed WhatsApp event fired', [
+                        'booking_id' => $freshBooking->id,
+                        'company_id' => $freshBooking->company_id,
+                        'to' => $toNumber,
+                        'event_key' => 'booking.confirmed',
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::error('[BookingController] booking.confirmed WhatsApp failed', [
+                        'booking_id' => $booking->id,
+                        'company_id' => $booking->company_id,
+                        'to' => $toNumber,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('[BookingController] Scheduled booking handling failed', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function markOpportunityBookingConfirmed(Booking $booking): void
+    {
+        if (! $booking->opportunity) {
             return;
         }
 
-        $dateLabel = $booking->booking_date
-            ? $booking->booking_date->format('d M Y')
-            : 'your selected date';
+        abort_if(
+            (int) $booking->opportunity->company_id !== (int) $booking->company_id,
+            403
+        );
 
-        $slotLabel = $booking->slot_label
-            ?? ucwords(str_replace('_', ' ', (string) $booking->slot));
-
-        $dateTimeLabel = trim($dateLabel . ' ' . $slotLabel);
-
-        $vehicleLabel = $this->bookingVehicleLabel($booking);
-
-        $garageName =
-            $this->companySetting((int) $booking->company_id, 'garage_name')
-            ?: $this->companySetting((int) $booking->company_id, 'business_name')
-            ?: config('app.name', 'Garage');
-
-        $location =
-            $this->companySetting((int) $booking->company_id, 'garage_location_link')
-            ?: $this->companySetting((int) $booking->company_id, 'whatsapp.garage_location_link')
-            ?: $garageName;
-
-        DB::afterCommit(function () use (
-            $booking,
-            $lead,
-            $customerName,
-            $toNumber,
-            $vehicleLabel,
-            $dateLabel,
-            $slotLabel,
-            $dateTimeLabel,
-            $garageName,
-            $location
-        ) {
-            try {
-                $freshBooking = $booking->fresh([
-                    'client',
-                    'opportunity.lead',
-                    'vehicleData.make',
-                    'vehicleData.model',
-                ]);
-
-                if (! $freshBooking) {
-                    return;
-                }
-
-                if ($this->bookingConfirmationAlreadySent($freshBooking)) {
-                    Log::info('[BookingController] booking.confirmed WhatsApp skipped: already sent', [
-                        'booking_id' => $freshBooking->id,
-                        'company_id' => $freshBooking->company_id,
-                    ]);
-
-                    return;
-                }
-
-                app(SendWhatsAppMessage::class)->fireEvent(
-                    (int) $freshBooking->company_id,
-                    'booking.confirmed',
-                    (string) $toNumber,
-                    [
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Template variables
-                        |--------------------------------------------------------------------------
-                        */
-
-                        'name'          => $customerName,
-                        'customer_name' => $customerName,
-                        'vehicle'       => $vehicleLabel,
-                        'vehicle_label' => $vehicleLabel,
-                        'date'          => $dateLabel,
-                        'slot'          => $slotLabel,
-                        'date_time'     => $dateTimeLabel,
-                        'booking_time'  => $dateTimeLabel,
-                        'garage'        => $garageName,
-                        'garage_name'   => $garageName,
-                        'location'      => $location,
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Context variables
-                        |--------------------------------------------------------------------------
-                        */
-
-                        'company_id'    => (int) $freshBooking->company_id,
-                        'booking_id'    => (int) $freshBooking->id,
-                        'lead_id'       => $lead?->id,
-                        'client_id'     => $freshBooking->client_id,
-                        'phone'         => $toNumber,
-                        'event_key'     => 'booking.confirmed',
-                        'source'        => 'manager_scheduled_booking',
-                        'action'        => 'booking_confirmed_by_manager',
-                        'send_mode'     => 'meta_template',
-                    ]
-                );
-
-                Log::info('[BookingController] booking.confirmed WhatsApp event fired', [
-                    'booking_id' => $freshBooking->id,
-                    'company_id' => $freshBooking->company_id,
-                    'to'         => $toNumber,
-                    'event_key'  => 'booking.confirmed',
-                ]);
-            } catch (\Throwable $e) {
-                Log::error('[BookingController] booking.confirmed WhatsApp failed', [
-                    'booking_id' => $booking->id,
-                    'company_id' => $booking->company_id,
-                    'to'         => $toNumber,
-                    'error'      => $e->getMessage(),
-                ]);
-            }
-        });
-    } catch (\Throwable $e) {
-        Log::error('[BookingController] Scheduled booking handling failed', [
-            'booking_id' => $booking->id,
-            'error'      => $e->getMessage(),
+        $booking->opportunity->update([
+            'stage' => 'appointment',
+            'next_follow_up' => $booking->booking_date,
+            'expected_close_date' => $booking->expected_close_date ?: $booking->booking_date,
+            'is_converted' => false,
         ]);
     }
-}
 
-protected function bookingConfirmationAlreadySent(Booking $booking): bool
-{
-    if (! Schema::hasTable('whatsapp_messages')) {
-        return false;
+    protected function bookingConfirmationAlreadySent(Booking $booking): bool
+    {
+        if (! Schema::hasTable('whatsapp_messages')) {
+            return false;
+        }
+
+        return DB::table('whatsapp_messages')
+            ->where('company_id', $booking->company_id)
+            ->whereIn('status', ['queued', 'sent', 'delivered', 'read'])
+            ->where(function ($query) {
+                $query
+                    ->where('payload', 'like', '%"event_key":"booking.confirmed"%')
+                    ->orWhere('payload', 'like', '%booking.confirmed%');
+            })
+            ->where(function ($query) use ($booking) {
+                $query
+                    ->where('payload', 'like', '%"booking_id":' . $booking->id . '%')
+                    ->orWhere('payload', 'like', '%"booking_id":"' . $booking->id . '"%');
+            })
+            ->exists();
     }
 
-    return DB::table('whatsapp_messages')
-        ->where('company_id', $booking->company_id)
-        ->whereIn('status', ['queued', 'sent', 'delivered', 'read'])
-        ->where(function ($query) use ($booking) {
-            $query
-                ->where('payload', 'like', '%"event_key":"booking.confirmed"%')
-                ->orWhere('payload', 'like', '%booking.confirmed%');
-        })
-        ->where(function ($query) use ($booking) {
-            $query
-                ->where('payload', 'like', '%"booking_id":' . $booking->id . '%')
-                ->orWhere('payload', 'like', '%"booking_id":"' . $booking->id . '"%');
-        })
-        ->exists();
-}
+    protected function markOpportunityConvertedToJob(Booking $booking): void
+    {
+        if (! $booking->opportunity) {
+            return;
+        }
+
+        abort_if(
+            (int) $booking->opportunity->company_id !== (int) $booking->company_id,
+            403
+        );
+
+        $booking->opportunity->update([
+            'stage' => 'closed_won',
+            'is_converted' => true,
+            'close_reason' => null,
+            'expected_close_date' => $booking->expected_close_date ?: $booking->booking_date,
+        ]);
+    }
 
     protected function markOpportunityLostFromBooking(Booking $booking): void
     {
@@ -1142,20 +1200,52 @@ protected function bookingConfirmationAlreadySent(Booking $booking): bool
     {
         $booking->loadMissing(['client', 'vehicleData.make', 'vehicleData.model']);
 
-        return Job::firstOrCreate(
-            [
-                'company_id' => $booking->company_id,
-                'booking_id' => $booking->id,
-            ],
-            [
-                'client_id' => $booking->client_id,
-                'vehicle_id' => $booking->vehicle_id,
-                'description' => $booking->service_type ?? $booking->name ?? 'Service job',
-                'status' => 'pending',
-                'assigned_to' => $booking->assigned_to,
-                'start_time' => now(),
-            ]
-        );
+        $lookup = [
+            'company_id' => $booking->company_id,
+            'booking_id' => $booking->id,
+        ];
+
+        $payload = [
+            'client_id' => $booking->client_id,
+            'description' => $booking->service_type ?: $booking->name ?: 'Service job',
+            'status' => 'pending',
+            'assigned_to' => $booking->assigned_to,
+            'start_time' => now(),
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Column-safe job payload
+        |--------------------------------------------------------------------------
+        | Azure DB currently has no jobs.vehicle_id column.
+        | Keep this safe for older/newer DBs.
+        */
+
+        if (Schema::hasColumn('jobs', 'vehicle_id')) {
+            $payload['vehicle_id'] = $booking->vehicle_id;
+        }
+
+        if (Schema::hasColumn('jobs', 'job_code')) {
+            $payload['job_code'] = $this->nextJobCode($booking);
+        }
+
+        Log::info('[BookingController] Creating job from booking', [
+            'booking_id' => $booking->id,
+            'company_id' => $booking->company_id,
+            'client_id' => $booking->client_id,
+            'payload' => $payload,
+        ]);
+
+        return Job::firstOrCreate($lookup, $payload);
+    }
+
+    protected function nextJobCode(Booking $booking): string
+    {
+        $prefix = 'JOB-' . now()->format('Ymd') . '-';
+
+        $latestId = (int) Job::where('company_id', $booking->company_id)->max('id');
+
+        return $prefix . str_pad((string) ($latestId + 1), 4, '0', STR_PAD_LEFT);
     }
 
     protected function bookingVehicleLabel(Booking $booking): string
