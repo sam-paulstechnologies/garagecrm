@@ -43,6 +43,31 @@
         </div>
     @endif
 
+    {{-- UAT Reset Summary --}}
+    @if(session('uat_reset_summary'))
+        @php
+            $summary = session('uat_reset_summary');
+            $deleted = $summary['deleted'] ?? [];
+        @endphp
+
+        <div class="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+            <p class="font-semibold mb-2">
+                UAT reset completed for +{{ $summary['phone'] ?? '' }}
+            </p>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div>Clients: <strong>{{ $deleted['clients'] ?? 0 }}</strong></div>
+                <div>Leads: <strong>{{ $deleted['leads'] ?? 0 }}</strong></div>
+                <div>Opportunities: <strong>{{ $deleted['opportunities'] ?? 0 }}</strong></div>
+                <div>Bookings: <strong>{{ $deleted['bookings'] ?? 0 }}</strong></div>
+                <div>Jobs: <strong>{{ $deleted['jobs'] ?? 0 }}</strong></div>
+                <div>Invoices: <strong>{{ $deleted['invoices'] ?? 0 }}</strong></div>
+                <div>Messages: <strong>{{ $deleted['message_logs'] ?? 0 }}</strong></div>
+                <div>Conversations: <strong>{{ $deleted['conversations'] ?? 0 }}</strong></div>
+            </div>
+        </div>
+    @endif
+
     {{-- Errors --}}
     @if($errors->any())
         <div class="rounded-xl bg-red-50 border border-red-100 p-4 text-red-800 text-sm">
@@ -67,9 +92,10 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {{-- LEFT: FORM --}}
-        <div class="lg:col-span-2">
+        {{-- LEFT --}}
+        <div class="lg:col-span-2 space-y-6">
 
+            {{-- SETTINGS FORM --}}
             <form method="POST"
                   action="{{ route('admin.whatsapp.settings.update') }}"
                   class="bg-white rounded-xl border shadow-sm p-5 space-y-5">
@@ -210,6 +236,68 @@
 
             </form>
 
+            {{-- UAT RESET TOOL --}}
+            <div class="bg-white rounded-xl border border-amber-200 shadow-sm p-5 space-y-4">
+
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        UAT WhatsApp Reset Tool
+                    </h2>
+
+                    <p class="text-sm text-gray-500 mt-1">
+                        Use this only for testing. It deletes test records linked to a phone number so the WhatsApp journey can start fresh.
+                    </p>
+                </div>
+
+                <div class="rounded-lg bg-amber-50 border border-amber-100 p-3 text-sm text-amber-900">
+                    This will delete matching client, lead, opportunity, booking, job, invoice, messages, and conversation records for your company only.
+                </div>
+
+                <form method="POST"
+                      action="{{ route('admin.whatsapp.settings.uat-reset') }}"
+                      class="space-y-4"
+                      onsubmit="return confirm('Are you sure? This will permanently delete UAT records for this phone number.');">
+
+                    @csrf
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Test Phone Number
+                        </label>
+
+                        <input type="text"
+                               name="uat_phone"
+                               class="w-full border rounded-lg px-3 py-2 text-sm"
+                               placeholder="+971586934377"
+                               value="{{ old('uat_phone') }}">
+
+                        <p class="text-xs text-gray-500 mt-1">
+                            Example: +971586934377 or 971586934377. UAE local format like 0586934377 is also accepted.
+                        </p>
+                    </div>
+
+                    <label class="flex items-start gap-2 text-sm text-gray-700">
+                        <input type="checkbox"
+                               name="confirm_uat_reset"
+                               value="1"
+                               class="mt-1 rounded border-gray-300">
+
+                        <span>
+                            I understand this will permanently delete test data for the entered phone number.
+                        </span>
+                    </label>
+
+                    <div class="flex justify-end">
+                        <button type="submit"
+                                class="px-5 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">
+                            Delete Test Records
+                        </button>
+                    </div>
+
+                </form>
+
+            </div>
+
         </div>
 
         {{-- RIGHT: INFO --}}
@@ -275,6 +363,23 @@
                         Manage Mappings
                     </a>
                 @endif
+
+            </div>
+
+            <div class="bg-gray-900 rounded-xl shadow-sm p-5 text-white">
+
+                <h3 class="font-semibold">
+                    Testing order
+                </h3>
+
+                <ol class="mt-3 text-sm text-gray-200 space-y-2 list-decimal list-inside">
+                    <li>Reset the test phone number.</li>
+                    <li>Start the queue worker.</li>
+                    <li>Send “hi” to Sayara WhatsApp.</li>
+                    <li>Complete booking journey.</li>
+                    <li>Convert booking to job.</li>
+                    <li>Complete job and test feedback.</li>
+                </ol>
 
             </div>
 

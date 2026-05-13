@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Company\CompanySetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class WhatsAppSettingController extends Controller
 {
@@ -109,5 +112,305 @@ class WhatsAppSettingController extends Controller
         }
 
         return back()->with('success', 'WhatsApp settings saved successfully.');
+    }
+
+    public function resetUatByPhone(Request $request)
+    {
+        $companyId = $this->companyId();
+
+        $data = $request->validate([
+            'uat_phone' => ['required', 'string', 'max:32'],
+            'confirm_uat_reset' => ['accepted'],
+        ], [
+            'confirm_uat_reset.accepted' => 'Please confirm that you want to delete this test data.',
+        ]);
+
+        $phone = $this->normalizePhone($data['uat_phone']);
+
+        if (! $phone) {
+            return back()->withErrors([
+                'uat_phone' => 'Please enter a valid phone number.',
+            ]);
+        }
+
+        $summary = DB::transaction(function () use ($companyId, $phone) {
+            $clientIds = collect();
+
+            if (Schema::hasTable('clients')) {
+                $clientQuery = DB::table('clients')->where('company_id', $companyId);
+
+                $clientQuery->where(function ($query) use ($phone) {
+                    if (Schema::hasColumn('clients', 'phone')) {
+                        $query->orWhere('phone', $phone);
+                    }
+
+                    if (Schema::hasColumn('clients', 'phone_norm')) {
+                        $query->orWhere('phone_norm', $phone);
+                    }
+
+                    if (Schema::hasColumn('clients', 'whatsapp')) {
+                        $query->orWhere('whatsapp', $phone);
+                    }
+                });
+
+                $clientIds = $clientQuery->pluck('id');
+            }
+
+            $leadIds = collect();
+
+            if (Schema::hasTable('leads')) {
+                $leadQuery = DB::table('leads')->where('company_id', $companyId);
+
+                $leadQuery->where(function ($query) use ($phone, $clientIds) {
+                    if (Schema::hasColumn('leads', 'phone')) {
+                        $query->orWhere('phone', $phone);
+                    }
+
+                    if (Schema::hasColumn('leads', 'phone_norm')) {
+                        $query->orWhere('phone_norm', $phone);
+                    }
+
+                    if (Schema::hasColumn('leads', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+                });
+
+                $leadIds = $leadQuery->pluck('id');
+            }
+
+            $opportunityIds = collect();
+
+            if (Schema::hasTable('opportunities')) {
+                $opportunityQuery = DB::table('opportunities')->where('company_id', $companyId);
+
+                $opportunityQuery->where(function ($query) use ($clientIds, $leadIds) {
+                    if (Schema::hasColumn('opportunities', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+
+                    if (Schema::hasColumn('opportunities', 'lead_id') && $leadIds->isNotEmpty()) {
+                        $query->orWhereIn('lead_id', $leadIds);
+                    }
+                });
+
+                $opportunityIds = $opportunityQuery->pluck('id');
+            }
+
+            $bookingIds = collect();
+
+            if (Schema::hasTable('bookings')) {
+                $bookingQuery = DB::table('bookings')->where('company_id', $companyId);
+
+                $bookingQuery->where(function ($query) use ($clientIds, $opportunityIds) {
+                    if (Schema::hasColumn('bookings', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+
+                    if (Schema::hasColumn('bookings', 'opportunity_id') && $opportunityIds->isNotEmpty()) {
+                        $query->orWhereIn('opportunity_id', $opportunityIds);
+                    }
+                });
+
+                $bookingIds = $bookingQuery->pluck('id');
+            }
+
+            $jobIds = collect();
+
+            if (Schema::hasTable('jobs')) {
+                $jobQuery = DB::table('jobs')->where('company_id', $companyId);
+
+                $jobQuery->where(function ($query) use ($clientIds, $bookingIds) {
+                    if (Schema::hasColumn('jobs', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+
+                    if (Schema::hasColumn('jobs', 'booking_id') && $bookingIds->isNotEmpty()) {
+                        $query->orWhereIn('booking_id', $bookingIds);
+                    }
+                });
+
+                $jobIds = $jobQuery->pluck('id');
+            }
+
+            $deleted = [
+                'message_logs' => 0,
+                'whatsapp_messages' => 0,
+                'conversations' => 0,
+                'invoices' => 0,
+                'jobs' => 0,
+                'bookings' => 0,
+                'opportunities' => 0,
+                'leads' => 0,
+                'clients' => 0,
+            ];
+
+            if (Schema::hasTable('message_logs')) {
+                $messageQuery = DB::table('message_logs')->where(function ($query) use ($phone, $leadIds) {
+                    if (Schema::hasColumn('message_logs', 'lead_id') && $leadIds->isNotEmpty()) {
+                        $query->orWhereIn('lead_id', $leadIds);
+                    }
+
+                    if (Schema::hasColumn('message_logs', 'from_number')) {
+                        $query->orWhere('from_number', $phone);
+                    }
+
+                    if (Schema::hasColumn('message_logs', 'to_number')) {
+                        $query->orWhere('to_number', $phone);
+                    }
+                });
+
+                if (Schema::hasColumn('message_logs', 'company_id')) {
+                    $messageQuery->where('company_id', $companyId);
+                }
+
+                $deleted['message_logs'] = $messageQuery->delete();
+            }
+
+            if (Schema::hasTable('whatsapp_messages')) {
+                $waQuery = DB::table('whatsapp_messages')->where(function ($query) use ($phone, $leadIds) {
+                    if (Schema::hasColumn('whatsapp_messages', 'lead_id') && $leadIds->isNotEmpty()) {
+                        $query->orWhereIn('lead_id', $leadIds);
+                    }
+
+                    if (Schema::hasColumn('whatsapp_messages', 'to')) {
+                        $query->orWhere('to', $phone)->orWhere('to', '+' . $phone);
+                    }
+
+                    if (Schema::hasColumn('whatsapp_messages', 'phone')) {
+                        $query->orWhere('phone', $phone)->orWhere('phone', '+' . $phone);
+                    }
+
+                    if (Schema::hasColumn('whatsapp_messages', 'payload')) {
+                        $query->orWhere('payload', 'like', '%' . $phone . '%');
+                    }
+                });
+
+                if (Schema::hasColumn('whatsapp_messages', 'company_id')) {
+                    $waQuery->where('company_id', $companyId);
+                }
+
+                $deleted['whatsapp_messages'] = $waQuery->delete();
+            }
+
+            if (Schema::hasTable('conversations')) {
+                $conversationQuery = DB::table('conversations')->where(function ($query) use ($clientIds, $leadIds, $phone) {
+                    if (Schema::hasColumn('conversations', 'lead_id') && $leadIds->isNotEmpty()) {
+                        $query->orWhereIn('lead_id', $leadIds);
+                    }
+
+                    if (Schema::hasColumn('conversations', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+
+                    if (Schema::hasColumn('conversations', 'phone')) {
+                        $query->orWhere('phone', $phone);
+                    }
+                });
+
+                if (Schema::hasColumn('conversations', 'company_id')) {
+                    $conversationQuery->where('company_id', $companyId);
+                }
+
+                $deleted['conversations'] = $conversationQuery->delete();
+            }
+
+            if (Schema::hasTable('invoices')) {
+                $invoiceQuery = DB::table('invoices')->where('company_id', $companyId);
+
+                $invoiceQuery->where(function ($query) use ($clientIds, $jobIds) {
+                    if (Schema::hasColumn('invoices', 'client_id') && $clientIds->isNotEmpty()) {
+                        $query->orWhereIn('client_id', $clientIds);
+                    }
+
+                    if (Schema::hasColumn('invoices', 'job_id') && $jobIds->isNotEmpty()) {
+                        $query->orWhereIn('job_id', $jobIds);
+                    }
+                });
+
+                $deleted['invoices'] = $invoiceQuery->delete();
+            }
+
+            if (Schema::hasTable('jobs') && $jobIds->isNotEmpty()) {
+                $deleted['jobs'] = DB::table('jobs')
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $jobIds)
+                    ->delete();
+            }
+
+            if (Schema::hasTable('bookings') && $bookingIds->isNotEmpty()) {
+                $deleted['bookings'] = DB::table('bookings')
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $bookingIds)
+                    ->delete();
+            }
+
+            if (Schema::hasTable('opportunities') && $opportunityIds->isNotEmpty()) {
+                $deleted['opportunities'] = DB::table('opportunities')
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $opportunityIds)
+                    ->delete();
+            }
+
+            if (Schema::hasTable('leads') && $leadIds->isNotEmpty()) {
+                $deleted['leads'] = DB::table('leads')
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $leadIds)
+                    ->delete();
+            }
+
+            if (Schema::hasTable('clients') && $clientIds->isNotEmpty()) {
+                $deleted['clients'] = DB::table('clients')
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $clientIds)
+                    ->delete();
+            }
+
+            $summary = [
+                'phone' => $phone,
+                'client_ids' => $clientIds->values()->all(),
+                'lead_ids' => $leadIds->values()->all(),
+                'opportunity_ids' => $opportunityIds->values()->all(),
+                'booking_ids' => $bookingIds->values()->all(),
+                'job_ids' => $jobIds->values()->all(),
+                'deleted' => $deleted,
+            ];
+
+            Log::warning('[UAT Reset] WhatsApp test data deleted', [
+                'company_id' => $companyId,
+                'user_id' => auth()->id(),
+                'summary' => $summary,
+            ]);
+
+            return $summary;
+        });
+
+        return back()
+            ->with('success', 'UAT test data deleted for +' . $summary['phone'])
+            ->with('uat_reset_summary', $summary);
+    }
+
+    protected function normalizePhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+
+        if ($phone === '') {
+            return null;
+        }
+
+        $phone = preg_replace('/[^0-9+]/', '', $phone);
+
+        if (str_starts_with($phone, '+')) {
+            $phone = substr($phone, 1);
+        }
+
+        if (str_starts_with($phone, '00')) {
+            $phone = substr($phone, 2);
+        }
+
+        if (str_starts_with($phone, '05')) {
+            $phone = '971' . substr($phone, 1);
+        }
+
+        return preg_match('/^\d{8,20}$/', $phone) ? $phone : null;
     }
 }
