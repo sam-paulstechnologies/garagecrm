@@ -2,10 +2,10 @@
 
 namespace App\Models\System;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\System\Plan;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 
 class Company extends Model
 {
@@ -47,7 +47,7 @@ class Company extends Model
 
         /*
         |--------------------------------------------------------------------------
-        | Meta WhatsApp Credentials
+        | SF-WA Connect / Meta WhatsApp Credentials
         |--------------------------------------------------------------------------
         */
         'meta_phone_number_id',
@@ -102,7 +102,7 @@ class Company extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | Helpers
+    | Plan Helpers
     |--------------------------------------------------------------------------
     */
 
@@ -120,19 +120,87 @@ class Company extends Model
         return Plan::find(1); // Freemium fallback
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | SF-WA Connect Helpers
+    |--------------------------------------------------------------------------
+    */
+
     public function hasMetaWhatsApp(): bool
     {
-        return !empty($this->meta_phone_number_id)
-            && !empty($this->meta_access_token);
+        return filled($this->meta_phone_number_id)
+            && filled($this->meta_access_token);
     }
 
     public function hasActiveMetaWhatsApp(): bool
     {
-        return !empty($this->meta_phone_number_id)
-            && !empty($this->meta_waba_id)
-            && !empty($this->meta_access_token)
+        return filled($this->meta_phone_number_id)
+            && filled($this->meta_access_token)
             && (bool) ($this->is_whatsapp_active ?? false);
     }
+
+    public function hasCompleteMetaWhatsAppSetup(): bool
+    {
+        return filled($this->meta_phone_number_id)
+            && filled($this->meta_waba_id)
+            && filled($this->meta_access_token)
+            && (bool) ($this->is_whatsapp_active ?? false);
+    }
+
+    public function getWhatsappConnectionStatusAttribute(): string
+    {
+        if ($this->hasCompleteMetaWhatsAppSetup()) {
+            return 'connected';
+        }
+
+        if ($this->hasMetaWhatsApp()) {
+            return 'partial';
+        }
+
+        return 'not_connected';
+    }
+
+    public function getWhatsappConnectionLabelAttribute(): string
+    {
+        return match ($this->whatsapp_connection_status) {
+            'connected' => 'Connected',
+            'partial' => 'Partially Connected',
+            default => 'Not Connected',
+        };
+    }
+
+    public function getWhatsappConnectionBadgeClassAttribute(): string
+    {
+        return match ($this->whatsapp_connection_status) {
+            'connected' => 'success',
+            'partial' => 'warning',
+            default => 'danger',
+        };
+    }
+
+    public function getDecryptedMetaAccessTokenAttribute(): ?string
+    {
+        if (blank($this->meta_access_token)) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($this->meta_access_token);
+        } catch (\Throwable) {
+            return trim((string) $this->meta_access_token);
+        }
+    }
+
+    public function shouldUseMetaWhatsApp(): bool
+    {
+        return $this->hasActiveMetaWhatsApp();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Launch Setup Helpers
+    |--------------------------------------------------------------------------
+    */
 
     public function getLaunchSetupCompletionAttribute(): int
     {
@@ -141,22 +209,22 @@ class Company extends Model
         $serviceAreas = is_array($this->service_areas) ? $this->service_areas : [];
 
         $items = [
-            !empty($this->legal_name),
-            !empty($this->business_phone),
-            !empty($this->business_email),
-            !empty($this->address),
-            !empty($this->location_pin),
+            filled($this->legal_name),
+            filled($this->business_phone),
+            filled($this->business_email),
+            filled($this->address),
+            filled($this->location_pin),
 
-            !empty($this->manager_name)
-                && !empty($this->manager_phone)
-                && !empty($this->manager_email),
+            filled($this->manager_name)
+                && filled($this->manager_phone)
+                && filled($this->manager_email),
 
-            !empty($workingHours['open_time'] ?? null)
-                && !empty($workingHours['close_time'] ?? null),
+            filled($workingHours['open_time'] ?? null)
+                && filled($workingHours['close_time'] ?? null),
 
-            !empty($bookingRules['max_bookings_per_slot'] ?? null),
+            filled($bookingRules['max_bookings_per_slot'] ?? null),
 
-            !empty($serviceAreas) && is_array($serviceAreas),
+            ! empty($serviceAreas) && is_array($serviceAreas),
 
             $this->hasActiveMetaWhatsApp(),
         ];

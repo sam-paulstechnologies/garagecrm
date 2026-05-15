@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 {
@@ -21,41 +23,62 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
     public function __construct(int $companyId)
     {
-        $this->company = Company::findOrFail($companyId);
+        $this->company = Company::query()->findOrFail($companyId);
 
-        $this->graphBase  = config('services.whatsapp.meta.graph_base', 'https://graph.facebook.com');
-        $this->apiVersion = config('services.whatsapp.meta.api_version', 'v20.0');
+        $this->graphBase = rtrim(
+            (string) config('services.whatsapp.meta.graph_base', 'https://graph.facebook.com'),
+            '/'
+        );
+
+        $this->apiVersion = trim(
+            (string) config('services.whatsapp.meta.api_version', 'v20.0'),
+            '/'
+        );
 
         $this->phoneNumberId = $this->resolvePhoneNumberId($companyId);
-        $this->accessToken   = $this->resolveAccessToken($companyId);
+        $this->accessToken = $this->resolveAccessToken($companyId);
     }
 
     public function sendText(string $toE164, string $message): array
     {
         $this->assertConfigured();
 
-        $url = rtrim($this->graphBase, '/') . "/{$this->apiVersion}/{$this->phoneNumberId}/messages";
+        $url = $this->messagesUrl();
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'   => ltrim($this->normalizeNumber($toE164), '+'),
+            'to' => ltrim($this->normalizeNumber($toE164), '+'),
             'type' => 'text',
-            'text' => ['body' => $message],
+            'text' => [
+                'body' => $message,
+            ],
         ];
 
-        $resp = Http::withToken($this->accessToken)->post($url, $payload);
+        $resp = Http::timeout(30)
+            ->withToken($this->accessToken)
+            ->acceptJson()
+            ->post($url, $payload);
+
         $body = $resp->json() ?? [];
 
-        Log::info('[WA][META] sendText', [
-            'company_id'      => $this->company->id,
+        Log::info('[SF-WA Connect][META] sendText', [
+            'company_id' => $this->company->id,
             'phone_number_id' => $this->phoneNumberId,
-            'to'              => $toE164,
-            'status'          => $resp->status(),
-            'body'            => $body,
+            'to' => $toE164,
+            'status' => $resp->status(),
+            'message_id' => $body['messages'][0]['id'] ?? null,
         ]);
 
-        if (!$resp->successful()) {
-            throw new \Exception('[META] sendText failed: ' . json_encode($body));
+        if (! $resp->successful()) {
+            Log::error('[SF-WA Connect][META] sendText failed', [
+                'company_id' => $this->company->id,
+                'phone_number_id' => $this->phoneNumberId,
+                'to' => $toE164,
+                'status' => $resp->status(),
+                'body' => $body,
+            ]);
+
+            throw new \Exception('[META] sendText failed: '.json_encode($body));
         }
 
         return $this->normalizeMetaResponse($body, $resp->status());
@@ -65,15 +88,18 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
     {
         $this->assertConfigured();
 
-        $url = rtrim($this->graphBase, '/') . "/{$this->apiVersion}/{$this->phoneNumberId}/messages";
+        $url = $this->messagesUrl();
 
         $components = [];
 
-        if (!empty($variables)) {
+        if (! empty($variables)) {
             $components[] = [
                 'type' => 'body',
                 'parameters' => array_map(
-                    fn ($v) => ['type' => 'text', 'text' => (string) $v],
+                    fn ($v) => [
+                        'type' => 'text',
+                        'text' => (string) $v,
+                    ],
                     $variables
                 ),
             ];
@@ -81,29 +107,44 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'   => ltrim($this->normalizeNumber($toE164), '+'),
+            'to' => ltrim($this->normalizeNumber($toE164), '+'),
             'type' => 'template',
             'template' => [
-                'name'     => $template,
-                'language' => ['code' => 'en'],
+                'name' => $template,
+                'language' => [
+                    'code' => 'en',
+                ],
                 'components' => $components,
             ],
         ];
 
-        $resp = Http::withToken($this->accessToken)->post($url, $payload);
+        $resp = Http::timeout(30)
+            ->withToken($this->accessToken)
+            ->acceptJson()
+            ->post($url, $payload);
+
         $body = $resp->json() ?? [];
 
-        Log::info('[WA][META] sendTemplate', [
-            'company_id'      => $this->company->id,
+        Log::info('[SF-WA Connect][META] sendTemplate', [
+            'company_id' => $this->company->id,
             'phone_number_id' => $this->phoneNumberId,
-            'to'              => $toE164,
-            'template'        => $template,
-            'status'          => $resp->status(),
-            'body'            => $body,
+            'to' => $toE164,
+            'template' => $template,
+            'status' => $resp->status(),
+            'message_id' => $body['messages'][0]['id'] ?? null,
         ]);
 
-        if (!$resp->successful()) {
-            throw new \Exception('[META] sendTemplate failed: ' . json_encode($body));
+        if (! $resp->successful()) {
+            Log::error('[SF-WA Connect][META] sendTemplate failed', [
+                'company_id' => $this->company->id,
+                'phone_number_id' => $this->phoneNumberId,
+                'to' => $toE164,
+                'template' => $template,
+                'status' => $resp->status(),
+                'body' => $body,
+            ]);
+
+            throw new \Exception('[META] sendTemplate failed: '.json_encode($body));
         }
 
         return $this->normalizeMetaResponse($body, $resp->status());
@@ -111,7 +152,11 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
     protected function assertConfigured(): void
     {
-        if (!$this->phoneNumberId || !$this->accessToken) {
+        if (! $this->company->is_whatsapp_active) {
+            throw new \Exception("Meta WhatsApp is inactive for company_id={$this->company->id}");
+        }
+
+        if (! $this->phoneNumberId || ! $this->accessToken) {
             throw new \Exception("Meta WhatsApp not configured for company_id={$this->company->id}");
         }
     }
@@ -120,8 +165,12 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
     {
         $fromCompany = $this->company->meta_phone_number_id ?: null;
 
-        if ($fromCompany) {
+        if (filled($fromCompany)) {
             return trim((string) $fromCompany);
+        }
+
+        if (! Schema::hasTable('company_settings')) {
+            return null;
         }
 
         $fromSettings = DB::table('company_settings')
@@ -134,13 +183,17 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
             ])
             ->value('value');
 
-        return $fromSettings ? trim((string) $fromSettings) : null;
+        return filled($fromSettings) ? trim((string) $fromSettings) : null;
     }
 
     protected function resolveAccessToken(int $companyId): ?string
     {
-        if (!empty($this->company->meta_access_token)) {
+        if (filled($this->company->meta_access_token)) {
             return $this->decryptIfNeeded($this->company->meta_access_token);
+        }
+
+        if (! Schema::hasTable('company_settings')) {
+            return null;
         }
 
         $row = DB::table('company_settings')
@@ -154,7 +207,7 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
             ->select('value', 'is_encrypted')
             ->first();
 
-        if (!$row || empty($row->value)) {
+        if (! $row || blank($row->value)) {
             return null;
         }
 
@@ -170,12 +223,16 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
         return [
             'ok' => true,
+            'provider' => 'meta',
             'http_status' => $httpStatus,
             'id' => $message['id'] ?? null,
             'sid' => $message['id'] ?? null,
             'message_id' => $message['id'] ?? null,
+            'provider_message_id' => $message['id'] ?? null,
             'status' => $message['message_status'] ?? 'accepted',
             'wa_id' => $contact['wa_id'] ?? null,
+            'phone_number_id' => $this->phoneNumberId,
+            'company_id' => $this->company->id,
             'raw' => $body,
         ];
     }
@@ -183,15 +240,20 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
     protected function normalizeNumber(?string $number): string
     {
         $number = trim((string) $number);
+
         $number = preg_replace('/^whatsapp:/i', '', $number);
         $number = preg_replace('/\D+/', '', $number);
 
+        if (str_starts_with($number, '00')) {
+            $number = substr($number, 2);
+        }
+
         if (str_starts_with($number, '05')) {
-            $number = '971' . substr($number, 1);
+            $number = '971'.substr($number, 1);
         }
 
         if (str_starts_with($number, '9710')) {
-            $number = '971' . substr($number, 3);
+            $number = '971'.substr($number, 3);
         }
 
         return $number;
@@ -199,14 +261,19 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
     protected function decryptIfNeeded(?string $value): ?string
     {
-        if (!$value) {
+        if (blank($value)) {
             return null;
         }
 
         try {
             return Crypt::decryptString($value);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return trim((string) $value);
         }
+    }
+
+    protected function messagesUrl(): string
+    {
+        return "{$this->graphBase}/{$this->apiVersion}/{$this->phoneNumberId}/messages";
     }
 }

@@ -4,12 +4,26 @@
 
 @section('content')
 @php
+    use Illuminate\Support\Facades\Route;
+
     $cardClass = 'rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20 overflow-hidden';
     $cardHeaderClass = 'border-b border-white/10 px-6 py-4 bg-slate-950/35';
     $cardBodyClass = 'px-6 py-6';
     $labelClass = 'block text-xs font-extrabold uppercase tracking-wide text-slate-400 mb-1.5';
     $inputClass = 'block w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-semibold text-white placeholder:text-slate-600 outline-none transition focus:border-orange-400/50 focus:ring-2 focus:ring-orange-500/10';
     $selectClass = $inputClass;
+
+    $company = auth()->user()?->company;
+    $waPhoneNumberId = $company?->meta_phone_number_id ?? null;
+    $waWabaId = $company?->meta_waba_id ?? null;
+    $waTokenExpiry = $company?->meta_token_expires_at ?? null;
+    $waIsActive = (bool) ($company?->is_whatsapp_active ?? false);
+
+    $waIsConnected = filled($waPhoneNumberId) && filled($company?->meta_access_token ?? null) && $waIsActive;
+
+    $connectUrl = Route::has('admin.whatsapp.connect')
+        ? route('admin.whatsapp.connect')
+        : url('/admin/whatsapp/connect');
 @endphp
 
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -26,19 +40,26 @@
             </h1>
 
             <p class="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-400">
-                Configure manager alerts, review links, WhatsApp automation controls, UAT reset, and journey mappings.
+                Configure SF-WA Connect, manager alerts, review links, WhatsApp automation controls, UAT reset, and journey mappings.
             </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            @if(\Illuminate\Support\Facades\Route::has('admin.whatsapp.templates.index'))
+            @if(Route::has('admin.whatsapp.connect'))
+                <a href="{{ route('admin.whatsapp.connect') }}"
+                   class="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">
+                    SF-WA Connect
+                </a>
+            @endif
+
+            @if(Route::has('admin.whatsapp.templates.index'))
                 <a href="{{ route('admin.whatsapp.templates.index') }}"
                    class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-sm font-extrabold text-slate-200 transition hover:border-orange-400/30 hover:text-white">
                     Templates
                 </a>
             @endif
 
-            @if(\Illuminate\Support\Facades\Route::has('admin.whatsapp.mappings.index'))
+            @if(Route::has('admin.whatsapp.mappings.index'))
                 <a href="{{ route('admin.whatsapp.mappings.index') }}"
                    class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-sm font-extrabold text-slate-200 transition hover:border-orange-400/30 hover:text-white">
                     Template Mappings
@@ -91,6 +112,66 @@
             </ul>
         </div>
     @endif
+
+    {{-- SF-WA Connect Status --}}
+    <div class="mb-6 rounded-3xl border border-orange-400/20 bg-gradient-to-br from-slate-900 to-slate-950 px-6 py-5 shadow-xl shadow-black/20">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <div class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                    SF-WA Connect
+                </div>
+
+                <h2 class="mt-3 text-xl font-black tracking-tight text-white">
+                    Garage WhatsApp Connection
+                </h2>
+
+                <p class="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-400">
+                    Each garage can connect its own WhatsApp Business number. Outbound messages use the garage’s number,
+                    inbound messages are routed using Meta phone number ID, Meta charges SayaraForce, and SayaraForce can bill the garage.
+                </p>
+            </div>
+
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                @if($waIsConnected)
+                    <span class="inline-flex items-center justify-center rounded-full border border-green-400/20 bg-green-500/10 px-4 py-2 text-sm font-extrabold text-green-300">
+                        Connected
+                    </span>
+                @else
+                    <span class="inline-flex items-center justify-center rounded-full border border-yellow-400/20 bg-yellow-500/10 px-4 py-2 text-sm font-extrabold text-yellow-300">
+                        Not Connected
+                    </span>
+                @endif
+
+                <a href="{{ $connectUrl }}"
+                   class="inline-flex items-center justify-center rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">
+                    {{ $waIsConnected ? 'Manage Connection' : 'Connect WhatsApp' }}
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div class="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">WABA ID</div>
+                <div class="mt-2 break-all text-sm font-bold text-slate-200">
+                    {{ $waWabaId ?: 'Not connected' }}
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Phone Number ID</div>
+                <div class="mt-2 break-all text-sm font-bold text-slate-200">
+                    {{ $waPhoneNumberId ?: 'Not connected' }}
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Token Expiry</div>
+                <div class="mt-2 break-all text-sm font-bold text-slate-200">
+                    {{ $waTokenExpiry ?: 'Not available' }}
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- Info --}}
     <div class="mb-6 rounded-3xl border border-blue-400/20 bg-blue-500/10 px-6 py-5">
@@ -174,7 +255,7 @@
                         </select>
 
                         <p class="mt-2 text-xs font-medium text-slate-500">
-                            Provider routing should match your configured WhatsApp service.
+                            For SF-WA Connect, use Meta Cloud API.
                         </p>
                     </div>
 
@@ -341,6 +422,35 @@
             <div class="{{ $cardClass }}">
                 <div class="{{ $cardHeaderClass }}">
                     <h3 class="text-lg font-extrabold text-white">
+                        SF-WA Connect
+                    </h3>
+                </div>
+
+                <div class="{{ $cardBodyClass }}">
+                    <div class="space-y-3 text-sm font-medium leading-6 text-slate-400">
+                        <p>
+                            Connect the garage’s own WhatsApp Business number using Meta Embedded Signup.
+                        </p>
+
+                        <div class="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Status</div>
+
+                            <div class="mt-2 text-sm font-black {{ $waIsConnected ? 'text-green-300' : 'text-yellow-300' }}">
+                                {{ $waIsConnected ? 'Connected' : 'Not Connected' }}
+                            </div>
+                        </div>
+
+                        <a href="{{ $connectUrl }}"
+                           class="inline-flex w-full justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">
+                            {{ $waIsConnected ? 'Manage SF-WA Connect' : 'Connect WhatsApp' }}
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="{{ $cardClass }}">
+                <div class="{{ $cardHeaderClass }}">
+                    <h3 class="text-lg font-extrabold text-white">
                         How this is used
                     </h3>
                 </div>
@@ -396,7 +506,7 @@
                         </div>
                     </div>
 
-                    @if(\Illuminate\Support\Facades\Route::has('admin.whatsapp.mappings.index'))
+                    @if(Route::has('admin.whatsapp.mappings.index'))
                         <a href="{{ route('admin.whatsapp.mappings.index') }}"
                            class="mt-5 inline-flex w-full justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">
                             Manage Mappings

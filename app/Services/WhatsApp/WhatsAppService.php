@@ -2,10 +2,12 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppMessage;
 use App\Services\WhatsApp\Drivers\MetaCloudWhatsApp;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Twilio\Rest\Client as TwilioClient;
 
@@ -60,7 +62,7 @@ class WhatsAppService
         $toE164 = $this->normalizeNumber($toE164);
 
         if (! $this->isActiveForCompany($companyId)) {
-            throw new \Exception("WhatsApp is not configured for company {$companyId}");
+            throw new \Exception("WhatsApp is not configured or inactive for company {$companyId}");
         }
 
         return match ($provider) {
@@ -99,7 +101,7 @@ class WhatsAppService
         $toE164 = $this->normalizeNumber($toE164);
 
         if (! $this->isActiveForCompany($companyId)) {
-            throw new \Exception("WhatsApp is not configured for company {$companyId}");
+            throw new \Exception("WhatsApp is not configured or inactive for company {$companyId}");
         }
 
         return match ($provider) {
@@ -216,6 +218,12 @@ class WhatsAppService
 
     protected function getTwilioSettings(int $companyId): array
     {
+        if (! Schema::hasTable('company_settings')) {
+            throw new \Exception(
+                "company_settings table not found. Twilio not configured for company {$companyId}"
+            );
+        }
+
         $sid = DB::table('company_settings')
             ->where('company_id', $companyId)
             ->whereIn('key', ['twilio.sid', 'twilio_sid'])
@@ -266,16 +274,16 @@ class WhatsAppService
 
     protected function hasMetaSettings(int $companyId): bool
     {
-        $company = DB::table('companies')
-            ->where('id', $companyId)
-            ->first();
+        $company = Company::query()->find($companyId);
 
-        if (
-            $company
-            && ! empty($company->meta_phone_number_id)
-            && ! empty($company->meta_access_token)
-        ) {
-            return true;
+        if ($company) {
+            return filled($company->meta_phone_number_id)
+                && filled($company->meta_access_token)
+                && (bool) ($company->is_whatsapp_active ?? false);
+        }
+
+        if (! Schema::hasTable('company_settings')) {
+            return false;
         }
 
         $keys = DB::table('company_settings')
@@ -291,6 +299,8 @@ class WhatsAppService
                 'whatsapp_phone_number_id',
                 'whatsapp.access_token',
                 'whatsapp_access_token',
+                'whatsapp.active',
+                'whatsapp_active',
             ])
             ->pluck('value', 'key')
             ->toArray();
@@ -309,7 +319,14 @@ class WhatsAppService
             ?? $keys['whatsapp_access_token']
             ?? null;
 
-        return ! empty($phoneNumberId) && ! empty($accessToken);
+        $active =
+            $keys['whatsapp.active']
+            ?? $keys['whatsapp_active']
+            ?? '1';
+
+        return ! empty($phoneNumberId)
+            && ! empty($accessToken)
+            && (string) $active !== '0';
     }
 
     /*
@@ -578,6 +595,10 @@ class WhatsAppService
         $number = preg_replace('/^whatsapp:/i', '', $number);
         $number = preg_replace('/\D+/', '', $number);
 
+        if (str_starts_with($number, '00')) {
+            $number = substr($number, 2);
+        }
+
         if (str_starts_with($number, '05')) {
             $number = '971' . substr($number, 1);
         }
@@ -597,6 +618,10 @@ class WhatsAppService
 
     protected function getTenantProvider(int $companyId): string
     {
+        if (! Schema::hasTable('company_settings')) {
+            return 'meta';
+        }
+
         $provider = DB::table('company_settings')
             ->where('company_id', $companyId)
             ->whereIn('key', [

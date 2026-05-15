@@ -44,6 +44,40 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Meta / Facebook Shared Configuration
+    |--------------------------------------------------------------------------
+    | Used by:
+    | - Meta Lead Ads
+    | - WhatsApp Cloud API webhook signature validation
+    | - SF-WA Connect embedded signup
+    |--------------------------------------------------------------------------
+    */
+
+    'meta' => [
+        'app_id'     => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+
+        'graph_base' => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
+
+        /*
+        |--------------------------------------------------------------------------
+        | Keep both names because different parts of the app may read either.
+        |--------------------------------------------------------------------------
+        */
+        'api_version'   => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v20.0')),
+        'graph_version' => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v20.0')),
+
+        /*
+        |--------------------------------------------------------------------------
+        | SF-WA Connect
+        |--------------------------------------------------------------------------
+        */
+        'whatsapp_embedded_signup_config_id' => env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
+        'whatsapp_verify_token'              => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | WhatsApp SaaS Safe Configuration
     |--------------------------------------------------------------------------
     */
@@ -54,8 +88,16 @@ return [
         'provider' => env('WHATSAPP_PROVIDER', 'meta'),
 
         'meta' => [
-            'graph_base'  => env('WHATSAPP_META_GRAPH_BASE', 'https://graph.facebook.com'),
-            'api_version' => env('WHATSAPP_META_API_VERSION', 'v20.0'),
+            'graph_base'  => env('WHATSAPP_META_GRAPH_BASE', env('META_GRAPH_BASE', 'https://graph.facebook.com')),
+            'api_version' => env('WHATSAPP_META_API_VERSION', env('META_GRAPH_VERSION', 'v20.0')),
+
+            /*
+            |--------------------------------------------------------------------------
+            | SF-WA Connect
+            |--------------------------------------------------------------------------
+            */
+            'embedded_signup_config_id' => env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
+            'verify_token'              => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
         ],
 
         'twilio' => [
@@ -71,7 +113,8 @@ return [
     |--------------------------------------------------------------------------
     | Meta Lead Ads / Facebook Lead Forms
     |--------------------------------------------------------------------------
-    | This is for Meta Lead Ads only, not WhatsApp Cloud API.
+    | This is for Meta Lead Ads only.
+    | Kept for backward compatibility with existing Meta lead form code.
     |--------------------------------------------------------------------------
     */
 

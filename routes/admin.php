@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\{
     SlaDashboardController,
     WhatsAppPerformanceController,
     WhatsAppSettingController,
+    WhatsAppEmbeddedSignupController,
     InboxController,
     ConversationController,
     SmartReplyController,
@@ -221,6 +222,26 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
         Route::post('settings/whatsapp/uat-reset', [WhatsAppSettingController::class, 'resetUatByPhone'])
             ->name('whatsapp.settings.uat-reset.alt');
+
+        /*
+        |--------------------------------------------------------------------------
+        | SF-WA Connect
+        |--------------------------------------------------------------------------
+        | Each garage connects its own WhatsApp Business number.
+        | Meta charges SayaraForce. SayaraForce bills the garage.
+        |--------------------------------------------------------------------------
+        */
+        Route::get('whatsapp/connect', [WhatsAppEmbeddedSignupController::class, 'index'])
+            ->name('whatsapp.connect');
+
+        Route::get('whatsapp/connect/status', [WhatsAppEmbeddedSignupController::class, 'status'])
+            ->name('whatsapp.connect.status');
+
+        Route::post('whatsapp/embedded-signup/callback', [WhatsAppEmbeddedSignupController::class, 'callback'])
+            ->name('whatsapp.connect.callback');
+
+        Route::post('whatsapp/disconnect', [WhatsAppEmbeddedSignupController::class, 'disconnect'])
+            ->name('whatsapp.connect.disconnect');
 
         /*
         |--------------------------------------------------------------------------
