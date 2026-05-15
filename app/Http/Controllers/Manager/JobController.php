@@ -95,10 +95,12 @@ class JobController extends Controller
         ]);
 
         $teamMembers = $this->teamMembers($job->company_id);
+        $invoice = $this->findInvoiceForJob($job);
 
         return view('manager.jobs.show', [
             'job' => $job,
             'teamMembers' => $teamMembers,
+            'invoice' => $invoice,
         ]);
     }
 
@@ -121,6 +123,59 @@ class JobController extends Controller
         } catch (\Throwable $e) {
             return back()->withErrors([
                 'job' => $e->getMessage() ?: 'Unable to update job status.',
+            ]);
+        }
+    }
+
+    public function completeWithInvoice(Request $request, Job $job)
+    {
+        $this->authorizeJob($job);
+
+        $data = $request->validate([
+            'labour_amount' => ['nullable', 'numeric', 'min:0'],
+            'parts_amount' => ['nullable', 'numeric', 'min:0'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'invoice_notes' => ['nullable', 'string', 'max:2000'],
+            'work_summary' => ['nullable', 'string', 'max:4000'],
+            'issues_found' => ['nullable', 'string', 'max:4000'],
+            'parts_used' => ['nullable', 'string', 'max:4000'],
+            'vehicle_mileage' => ['nullable', 'integer', 'min:0'],
+            'total_time_minutes' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            DB::transaction(function () use ($job, $data) {
+                $this->jobActionService->updateWorkDetails(
+                    $job,
+                    [
+                        'work_summary' => $data['work_summary'] ?? $job->work_summary,
+                        'issues_found' => $data['issues_found'] ?? $job->issues_found,
+                        'parts_used' => $data['parts_used'] ?? $job->parts_used,
+                        'vehicle_mileage' => $data['vehicle_mileage'] ?? $job->vehicle_mileage,
+                        'total_time_minutes' => $data['total_time_minutes'] ?? $job->total_time_minutes,
+                    ],
+                    (int) auth()->id()
+                );
+
+                if (Schema::hasTable('invoices')) {
+                    $this->createOrUpdateInvoice($job->fresh(['client', 'booking']), $data);
+                }
+
+                $this->jobActionService->updateStatus(
+                    $job->fresh(),
+                    'completed',
+                    (int) auth()->id()
+                );
+            });
+
+            return back()->with('success', Schema::hasTable('invoices')
+                ? 'Job completed and invoice captured successfully.'
+                : 'Job completed successfully. Invoice table was not found, so invoice was not created.'
+            );
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'job' => $e->getMessage() ?: 'Unable to complete job and capture invoice.',
             ]);
         }
     }
@@ -206,5 +261,134 @@ class JobController extends Controller
             ])
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
+    }
+
+    protected function createOrUpdateInvoice(Job $job, array $data): void
+    {
+        if (! Schema::hasTable('invoices')) {
+            return;
+        }
+
+        $labourAmount = (float) ($data['labour_amount'] ?? 0);
+        $partsAmount = (float) ($data['parts_amount'] ?? 0);
+        $discountAmount = (float) ($data['discount_amount'] ?? 0);
+        $vatRate = (float) ($data['vat_rate'] ?? 5);
+
+        $subTotal = max(0, $labourAmount + $partsAmount);
+        $taxableAmount = max(0, $subTotal - $discountAmount);
+        $vatAmount = round($taxableAmount * ($vatRate / 100), 2);
+        $totalAmount = round($taxableAmount + $vatAmount, 2);
+
+        $existingInvoice = $this->findInvoiceForJob($job);
+
+        $payload = [];
+
+        $this->setIfColumnExists($payload, 'company_id', $job->company_id);
+        $this->setIfColumnExists($payload, 'job_id', $job->id);
+        $this->setIfColumnExists($payload, 'booking_id', $job->booking_id ?? null);
+        $this->setIfColumnExists($payload, 'client_id', $job->client_id ?? $job->booking?->client_id ?? null);
+        $this->setIfColumnExists($payload, 'invoice_number', $existingInvoice->invoice_number ?? $this->nextInvoiceNumber($job->company_id));
+        $this->setIfColumnExists($payload, 'reference_number', $existingInvoice->reference_number ?? $this->nextInvoiceNumber($job->company_id));
+
+        $this->setIfColumnExists($payload, 'labour_amount', $labourAmount);
+        $this->setIfColumnExists($payload, 'labor_amount', $labourAmount);
+        $this->setIfColumnExists($payload, 'parts_amount', $partsAmount);
+        $this->setIfColumnExists($payload, 'subtotal', $subTotal);
+        $this->setIfColumnExists($payload, 'sub_total', $subTotal);
+        $this->setIfColumnExists($payload, 'discount_amount', $discountAmount);
+        $this->setIfColumnExists($payload, 'vat_rate', $vatRate);
+        $this->setIfColumnExists($payload, 'tax_rate', $vatRate);
+        $this->setIfColumnExists($payload, 'vat_amount', $vatAmount);
+        $this->setIfColumnExists($payload, 'tax_amount', $vatAmount);
+        $this->setIfColumnExists($payload, 'total_amount', $totalAmount);
+        $this->setIfColumnExists($payload, 'grand_total', $totalAmount);
+        $this->setIfColumnExists($payload, 'amount', $totalAmount);
+
+        $this->setIfColumnExists($payload, 'status', 'issued');
+        $this->setIfColumnExists($payload, 'payment_status', 'unpaid');
+        $this->setIfColumnExists($payload, 'notes', $data['invoice_notes'] ?? null);
+        $this->setIfColumnExists($payload, 'invoice_notes', $data['invoice_notes'] ?? null);
+        $this->setIfColumnExists($payload, 'issued_at', now());
+        $this->setIfColumnExists($payload, 'invoice_date', now()->toDateString());
+        $this->setIfColumnExists($payload, 'created_by', auth()->id());
+        $this->setIfColumnExists($payload, 'updated_by', auth()->id());
+
+        $payload['updated_at'] = now();
+
+        if ($existingInvoice) {
+            DB::table('invoices')
+                ->where('id', $existingInvoice->id)
+                ->update($payload);
+
+            return;
+        }
+
+        if (Schema::hasColumn('invoices', 'created_at')) {
+            $payload['created_at'] = now();
+        }
+
+        $invoiceId = DB::table('invoices')->insertGetId($payload);
+
+        if (Schema::hasColumn('jobs', 'invoice_id')) {
+            DB::table('jobs')
+                ->where('id', $job->id)
+                ->update([
+                    'invoice_id' => $invoiceId,
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+
+    protected function findInvoiceForJob(Job $job)
+    {
+        if (! Schema::hasTable('invoices')) {
+            return null;
+        }
+
+        $query = DB::table('invoices');
+
+        if (Schema::hasColumn('invoices', 'company_id')) {
+            $query->where('company_id', $job->company_id);
+        }
+
+        $query->where(function ($sub) use ($job) {
+            if (Schema::hasColumn('invoices', 'job_id')) {
+                $sub->orWhere('job_id', $job->id);
+            }
+
+            if (Schema::hasColumn('jobs', 'invoice_id') && ! empty($job->invoice_id)) {
+                $sub->orWhere('id', $job->invoice_id);
+            }
+
+            if (Schema::hasColumn('invoices', 'booking_id') && ! empty($job->booking_id)) {
+                $sub->orWhere('booking_id', $job->booking_id);
+            }
+        });
+
+        return $query->latest('id')->first();
+    }
+
+    protected function nextInvoiceNumber(int $companyId): string
+    {
+        $nextId = 1;
+
+        if (Schema::hasTable('invoices')) {
+            $query = DB::table('invoices');
+
+            if (Schema::hasColumn('invoices', 'company_id')) {
+                $query->where('company_id', $companyId);
+            }
+
+            $nextId = ((int) $query->max('id')) + 1;
+        }
+
+        return 'INV-' . now()->format('Ymd') . '-' . str_pad((string) $nextId, 5, '0', STR_PAD_LEFT);
+    }
+
+    protected function setIfColumnExists(array &$payload, string $column, mixed $value): void
+    {
+        if (Schema::hasColumn('invoices', $column)) {
+            $payload[$column] = $value;
+        }
     }
 }

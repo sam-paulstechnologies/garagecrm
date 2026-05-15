@@ -239,6 +239,217 @@ class OpportunityController extends Controller
         return back()->with('success', 'Opportunity follow-up updated successfully.');
     }
 
+    public function scheduleBooking(Request $request, Opportunity $opportunity)
+    {
+        $this->authorizeOpportunity($opportunity);
+
+        $validated = $request->validate([
+            'booking_date' => ['required', 'date'],
+            'booking_time' => ['nullable', 'date_format:H:i'],
+            'slot' => ['nullable', 'string', 'max:100'],
+            'service_type' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $bookingId = null;
+
+        DB::transaction(function () use ($opportunity, $validated, &$bookingId) {
+            $bookingClass = $this->bookingModelClass();
+
+            $booking = new $bookingClass();
+
+            if (Schema::hasColumn('bookings', 'company_id')) {
+                $booking->company_id = $opportunity->company_id;
+            }
+
+            if (Schema::hasColumn('bookings', 'opportunity_id')) {
+                $booking->opportunity_id = $opportunity->id;
+            }
+
+            if (Schema::hasColumn('bookings', 'lead_id') && ! empty($opportunity->lead_id)) {
+                $booking->lead_id = $opportunity->lead_id;
+            }
+
+            if (Schema::hasColumn('bookings', 'client_id') && ! empty($opportunity->client_id)) {
+                $booking->client_id = $opportunity->client_id;
+            }
+
+            $customerName = $opportunity->customer_name
+                ?? $opportunity->client_name
+                ?? $opportunity->name
+                ?? $opportunity->title
+                ?? null;
+
+            if (Schema::hasColumn('bookings', 'customer_name')) {
+                $booking->customer_name = $customerName;
+            }
+
+            if (Schema::hasColumn('bookings', 'name')) {
+                $booking->name = $customerName;
+            }
+
+            $phone = $opportunity->phone
+                ?? $opportunity->mobile
+                ?? $opportunity->phone_number
+                ?? $opportunity->whatsapp_number
+                ?? null;
+
+            if (Schema::hasColumn('bookings', 'phone')) {
+                $booking->phone = $phone;
+            }
+
+            if (Schema::hasColumn('bookings', 'mobile')) {
+                $booking->mobile = $phone;
+            }
+
+            if (Schema::hasColumn('bookings', 'phone_number')) {
+                $booking->phone_number = $phone;
+            }
+
+            if (Schema::hasColumn('bookings', 'whatsapp_number')) {
+                $booking->whatsapp_number = $phone;
+            }
+
+            if (Schema::hasColumn('bookings', 'email')) {
+                $booking->email = $opportunity->email ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'vehicle_make')) {
+                $booking->vehicle_make = $opportunity->vehicle_make ?? $opportunity->make ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'vehicle_model')) {
+                $booking->vehicle_model = $opportunity->vehicle_model ?? $opportunity->model ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'vehicle_year')) {
+                $booking->vehicle_year = $opportunity->vehicle_year ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'plate_number')) {
+                $booking->plate_number = $opportunity->plate_number ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'booking_date')) {
+                $booking->booking_date = $validated['booking_date'];
+            }
+
+            if (Schema::hasColumn('bookings', 'scheduled_date')) {
+                $booking->scheduled_date = $validated['booking_date'];
+            }
+
+            if (Schema::hasColumn('bookings', 'date')) {
+                $booking->date = $validated['booking_date'];
+            }
+
+            if (Schema::hasColumn('bookings', 'booking_time')) {
+                $booking->booking_time = $validated['booking_time'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'scheduled_time')) {
+                $booking->scheduled_time = $validated['booking_time'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'time')) {
+                $booking->time = $validated['booking_time'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'slot')) {
+                $booking->slot = $validated['slot'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'time_slot')) {
+                $booking->time_slot = $validated['slot'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'service_type')) {
+                $booking->service_type = $validated['service_type']
+                    ?? $opportunity->service_type
+                    ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'service_category')) {
+                $booking->service_category = $opportunity->service_category ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'status')) {
+                $booking->status = 'scheduled';
+            }
+
+            if (Schema::hasColumn('bookings', 'notes')) {
+                $booking->notes = $validated['notes'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'manager_notes')) {
+                $booking->manager_notes = $validated['notes'] ?? null;
+            }
+
+            if (Schema::hasColumn('bookings', 'created_by')) {
+                $booking->created_by = auth()->id();
+            }
+
+            if (Schema::hasColumn('bookings', 'scheduled_by')) {
+                $booking->scheduled_by = auth()->id();
+            }
+
+            if (Schema::hasColumn('bookings', 'scheduled_at')) {
+                $booking->scheduled_at = now();
+            }
+
+            $booking->save();
+
+            $bookingId = $booking->id;
+
+            if (Schema::hasColumn('opportunities', 'stage')) {
+                $opportunity->stage = 'appointment';
+            }
+
+            if (Schema::hasColumn('opportunities', 'status')) {
+                $opportunity->status = 'open';
+            }
+
+            if (Schema::hasColumn('opportunities', 'booking_id')) {
+                $opportunity->booking_id = $booking->id;
+            }
+
+            if (Schema::hasColumn('opportunities', 'follow_up_required')) {
+                $opportunity->follow_up_required = false;
+            }
+
+            if (Schema::hasColumn('opportunities', 'follow_up_date')) {
+                $opportunity->follow_up_date = null;
+            }
+
+            $bookingNote = 'Booking scheduled for ' . $validated['booking_date'];
+
+            if (! empty($validated['booking_time'])) {
+                $bookingNote .= ' at ' . $validated['booking_time'];
+            }
+
+            if (! empty($validated['slot'])) {
+                $bookingNote .= ' (' . $validated['slot'] . ')';
+            }
+
+            if (! empty($validated['notes'])) {
+                $bookingNote .= '. Notes: ' . $validated['notes'];
+            }
+
+            $this->appendNotes($opportunity, $bookingNote);
+
+            $opportunity->save();
+        });
+
+        if ($bookingId && app('router')->has('manager.bookings.show')) {
+            return redirect()
+                ->route('manager.bookings.show', $bookingId)
+                ->with('success', 'Booking scheduled successfully from opportunity.');
+        }
+
+        return redirect()
+            ->route('manager.bookings.index')
+            ->with('success', 'Booking scheduled successfully from opportunity.');
+    }
+
     public function markLost(Request $request, Opportunity $opportunity)
     {
         $this->authorizeOpportunity($opportunity);
@@ -285,15 +496,6 @@ class OpportunityController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Temporary behaviour
-        |--------------------------------------------------------------------------
-        | This only fixes the stage/status mismatch.
-        | Booking creation from closed_won will be added in the next correction batch
-        | through the full Manager Opportunity edit/capture flow.
-        |--------------------------------------------------------------------------
-        */
         DB::transaction(function () use ($opportunity, $validated) {
             if (Schema::hasColumn('opportunities', 'stage')) {
                 $opportunity->stage = 'closed_won';
@@ -316,7 +518,7 @@ class OpportunityController extends Controller
 
         return redirect()
             ->route('manager.opportunities.index')
-            ->with('success', 'Opportunity marked as won. Booking capture will be handled from the Manage Opportunity screen.');
+            ->with('success', 'Opportunity marked as won.');
     }
 
     protected function authorizeOpportunity(Opportunity $opportunity): void
@@ -388,5 +590,18 @@ class OpportunityController extends Controller
         }
 
         return null;
+    }
+
+    protected function bookingModelClass(): string
+    {
+        if (class_exists(\App\Models\Booking\Booking::class)) {
+            return \App\Models\Booking\Booking::class;
+        }
+
+        if (class_exists(\App\Models\Booking::class)) {
+            return \App\Models\Booking::class;
+        }
+
+        abort(500, 'Booking model not found.');
     }
 }

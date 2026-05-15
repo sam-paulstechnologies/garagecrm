@@ -1,0 +1,1 @@
+import{j as r}from"./app-aVOI692Y.js";function x({suggestions:e,onSelect:l}){return!e||e.length===0?null:r.jsx("div",{className:"border-t bg-white p-3 flex flex-wrap gap-2",children:e.map((t,a)=>r.jsx("button",{className:"px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 transition",onClick:()=>l(t.text),children:t.text},a))})}export{x as default};

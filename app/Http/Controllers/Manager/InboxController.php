@@ -4,254 +4,389 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client\Lead;
+use App\Models\Conversation;
+use App\Models\MessageLog;
+use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class InboxController extends Controller
 {
-    protected function companyId(): int
+    public function index(Request $request): Response
     {
-        $companyId = (int) (auth()->user()?->company_id ?? 0);
-
-        abort_if(! $companyId, 403);
-
-        return $companyId;
-    }
-
-    public function index(Request $request)
-    {
-        return $this->renderInbox($request);
-    }
-
-    public function show(Request $request, Lead $lead)
-    {
-        $this->authorizeLead($lead);
-
-        return $this->renderInbox($request, $lead);
-    }
-
-    public function reply(Request $request, Lead $lead)
-    {
-        $this->authorizeLead($lead);
-
-        $validated = $request->validate([
-            'message' => ['required', 'string', 'max:4000'],
+        return Inertia::render('Manager/Inbox/Index', [
+            'selectedConversationId' => $request->query('conversation'),
         ]);
+    }
 
-        $message = trim($validated['message']);
+    public function jsonList(Request $request)
+    {
+        $companyId = $this->companyId($request);
+        $search = trim((string) $request->query('search', ''));
 
-        if ($message === '') {
-            return back()->withErrors([
-                'message' => 'Please enter a reply message.',
+        $query = Conversation::query()
+            ->where('company_id', $companyId)
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%")
+                        ->orWhere('last_message_preview', 'like', "%{$search}%");
+                });
+            })
+            ->orderByDesc('last_message_at')
+            ->limit(100);
+
+        $items = $query->get()->map(function ($conversation) {
+            return [
+                'id' => $conversation->id,
+                'customer_name' => $conversation->customer_name,
+                'customer_phone' => $conversation->customer_phone,
+                'last_message_preview' => $conversation->last_message_preview,
+                'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                'unread_count' => (int) ($conversation->unread_count ?? 0),
+                'lead_id' => $conversation->lead_id ?? null,
+            ];
+        });
+
+        return response()->json([
+            'ok' => true,
+            'conversations' => $items,
+        ]);
+    }
+
+    public function jsonMessages(Request $request, Conversation $conversation)
+    {
+        $companyId = $this->companyId($request);
+
+        abort_if((int) $conversation->company_id !== $companyId, 403);
+
+        $messages = $conversation->messages()
+            ->orderBy('id')
+            ->get()
+            ->map(function ($message) {
+                return [
+                    'id' => $message->id,
+                    'direction' => $message->direction,
+                    'body' => $message->body,
+                    'created_at' => optional($message->created_at)->toIso8601String(),
+                    'is_ai' => (bool) ($message->is_ai ?? false),
+                    'source' => $message->source,
+                    'provider_status' => $message->provider_status,
+                    'template' => $message->template,
+                    'read_at' => optional($message->read_at)->toIso8601String(),
+                ];
+            });
+
+        $context = $this->conversationContext($conversation);
+
+        if (method_exists($conversation, 'markAllRead')) {
+            $conversation->markAllRead();
+        } else {
+            $conversation->update([
+                'unread_count' => 0,
             ]);
         }
 
-        $this->storeMessageLog($lead, $message);
-
-        $this->touchLeadAfterManagerReply($lead);
-
-        return redirect()
-            ->route('manager.inbox.show', $lead)
-            ->with('success', 'Reply saved successfully. WhatsApp sending can now be connected to the unified messaging service.');
+        return response()->json([
+            'ok' => true,
+            'messages' => $messages,
+            'context' => $context,
+        ]);
     }
 
-    public function resumeBot(Lead $lead)
+    public function send(Request $request, WhatsAppService $wa)
     {
-        $this->authorizeLead($lead);
+        $request->validate([
+            'conversation_id' => ['required', 'integer', 'exists:conversations,id'],
+            'message' => ['required', 'string', 'max:4000'],
+        ]);
 
-        if (Schema::hasColumn('leads', 'bot_paused')) {
-            $lead->bot_paused = false;
-        }
+        $companyId = $this->companyId($request);
 
-        if (Schema::hasColumn('leads', 'manager_takeover')) {
-            $lead->manager_takeover = false;
-        }
-
-        if (Schema::hasColumn('leads', 'assigned_to_manager')) {
-            $lead->assigned_to_manager = false;
-        }
-
-        if (Schema::hasColumn('leads', 'escalated_at')) {
-            $lead->escalated_at = null;
-        }
-
-        $lead->save();
-
-        return redirect()
-            ->route('manager.inbox.show', $lead)
-            ->with('success', 'Bot resumed for this conversation.');
-    }
-
-    protected function renderInbox(Request $request, ?Lead $selectedLead = null)
-    {
-        $companyId = $this->companyId();
-
-        $q = trim((string) $request->get('q', ''));
-        $status = trim((string) $request->get('status', ''));
-
-        $leads = Lead::query()
+        $conversation = Conversation::query()
+            ->where('id', $request->conversation_id)
             ->where('company_id', $companyId)
-            ->when(Schema::hasColumn('leads', 'is_active'), function ($query) {
-                $query->where('is_active', 1);
-            })
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    foreach ([
-                        'name',
-                        'full_name',
-                        'customer_name',
-                        'phone',
-                        'mobile',
-                        'phone_number',
-                        'whatsapp_number',
-                        'email',
-                        'vehicle_make',
-                        'vehicle_model',
-                        'notes',
-                    ] as $column) {
-                        if (Schema::hasColumn('leads', $column)) {
-                            $sub->orWhere($column, 'like', '%' . $q . '%');
-                        }
-                    }
-                });
-            })
-            ->when($status !== '' && Schema::hasColumn('leads', 'status'), function ($query) use ($status) {
-                $query->where('status', $status);
-            })
-            ->when(Schema::hasColumn('leads', 'status'), function ($query) {
-                $query->whereNotIn('status', [
-                    'Disqualified',
-                    'Closed',
-                    'Converted',
-                    'Converted to Opportunity',
-                ]);
-            })
-            ->when(Schema::hasColumn('leads', 'manager_takeover'), function ($query) {
-                $query->orderByDesc('manager_takeover');
-            })
-            ->when(Schema::hasColumn('leads', 'escalated_at'), function ($query) {
-                $query->orderByDesc('escalated_at');
-            })
-            ->latest('id')
-            ->paginate(15)
-            ->withQueryString();
+            ->firstOrFail();
 
-        if (! $selectedLead && $leads->count()) {
-            $selectedLead = $leads->first();
+        if ($conversation->lead) {
+            $conversation->lead->update([
+                'conversation_state' => 'human',
+            ]);
         }
 
-        $messages = $selectedLead
-            ? $this->messagesForLead($selectedLead)
-            : collect();
+        $wa->sendText(
+            $conversation->customer_phone,
+            $request->message,
+            ['company_id' => $companyId]
+        );
 
-        return view('manager.inbox.index', compact(
-            'leads',
-            'selectedLead',
-            'messages',
-            'q',
-            'status'
-        ));
+        MessageLog::out([
+            'company_id' => $companyId,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $conversation->lead_id,
+            'channel' => 'whatsapp',
+            'to_number' => $conversation->customer_phone,
+            'from_number' => null,
+            'body' => $request->message,
+            'source' => 'human',
+            'provider_status' => 'queued',
+        ]);
+
+        $conversation->update([
+            'last_message_preview' => Str::limit($request->message, 120),
+            'last_message_at' => now(),
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Message sent',
+        ]);
     }
 
-    protected function authorizeLead(Lead $lead): void
+    public function suggestReply(Request $request)
     {
-        abort_if((int) $lead->company_id !== $this->companyId(), 403);
-    }
+        $request->validate([
+            'conversation_id' => ['required', 'integer', 'exists:conversations,id'],
+            'tone' => ['nullable', 'string', 'in:friendly,professional,short,urgent'],
+        ]);
 
-    protected function messagesForLead(Lead $lead)
-    {
-        if (! Schema::hasTable('message_logs')) {
-            return collect();
-        }
+        $companyId = $this->companyId($request);
+        $tone = $request->input('tone', 'professional');
 
-        $query = DB::table('message_logs');
+        $conversation = Conversation::query()
+            ->where('id', $request->conversation_id)
+            ->where('company_id', $companyId)
+            ->firstOrFail();
 
-        if (Schema::hasColumn('message_logs', 'company_id')) {
-            $query->where('company_id', $this->companyId());
-        }
-
-        if (Schema::hasColumn('message_logs', 'lead_id')) {
-            $query->where('lead_id', $lead->id);
-        } elseif (Schema::hasColumn('message_logs', 'conversation_id') && ! empty($lead->conversation_id)) {
-            $query->where('conversation_id', $lead->conversation_id);
-        } else {
-            return collect();
-        }
-
-        return $query
-            ->latest('id')
-            ->limit(50)
+        $recentMessages = MessageLog::query()
+            ->where('company_id', $companyId)
+            ->where('conversation_id', $conversation->id)
+            ->where('channel', 'whatsapp')
+            ->orderByDesc('id')
+            ->limit(10)
             ->get()
             ->reverse()
             ->values();
+
+        $lastInbound = $recentMessages
+            ->where('direction', 'in')
+            ->last();
+
+        $lastText = strtolower((string) ($lastInbound->body ?? ''));
+
+        $suggestion = $this->basicAiSuggestion($lastText, $tone, $conversation);
+
+        return response()->json([
+            'ok' => true,
+            'suggestion' => $suggestion,
+            'tone' => $tone,
+        ]);
     }
 
-    protected function storeMessageLog(Lead $lead, string $message): void
+    public function markRead(Request $request)
     {
-        if (! Schema::hasTable('message_logs')) {
-            return;
+        $request->validate([
+            'conversation_id' => ['required', 'integer', 'exists:conversations,id'],
+        ]);
+
+        $companyId = $this->companyId($request);
+
+        $conversation = Conversation::query()
+            ->where('id', $request->conversation_id)
+            ->where('company_id', $companyId)
+            ->firstOrFail();
+
+        if (method_exists($conversation, 'markAllRead')) {
+            $conversation->markAllRead();
+        } else {
+            $conversation->update([
+                'unread_count' => 0,
+            ]);
         }
 
-        $data = [];
-
-        $this->putIfColumnExists($data, 'message_logs', 'company_id', $this->companyId());
-        $this->putIfColumnExists($data, 'message_logs', 'lead_id', $lead->id);
-
-        if (! empty($lead->conversation_id)) {
-            $this->putIfColumnExists($data, 'message_logs', 'conversation_id', $lead->conversation_id);
-        }
-
-        $this->putIfColumnExists($data, 'message_logs', 'channel', 'whatsapp');
-        $this->putIfColumnExists($data, 'message_logs', 'direction', 'outbound');
-        $this->putIfColumnExists($data, 'message_logs', 'message_type', 'text');
-        $this->putIfColumnExists($data, 'message_logs', 'type', 'manager_reply');
-        $this->putIfColumnExists($data, 'message_logs', 'status', 'created');
-        $this->putIfColumnExists($data, 'message_logs', 'provider', 'meta');
-        $this->putIfColumnExists($data, 'message_logs', 'sent_by', auth()->id());
-        $this->putIfColumnExists($data, 'message_logs', 'created_by', auth()->id());
-
-        foreach (['content', 'message', 'body', 'text'] as $column) {
-            if (Schema::hasColumn('message_logs', $column)) {
-                $data[$column] = $message;
-                break;
-            }
-        }
-
-        if (Schema::hasColumn('message_logs', 'created_at')) {
-            $data['created_at'] = now();
-        }
-
-        if (Schema::hasColumn('message_logs', 'updated_at')) {
-            $data['updated_at'] = now();
-        }
-
-        if (! empty($data)) {
-            DB::table('message_logs')->insert($data);
-        }
+        return response()->json([
+            'ok' => true,
+        ]);
     }
 
-    protected function touchLeadAfterManagerReply(Lead $lead): void
+    /*
+    |--------------------------------------------------------------------------
+    | Backward Compatible Old Lead-Based Methods
+    |--------------------------------------------------------------------------
+    */
+
+    public function show(Request $request, Lead $lead)
     {
-        if (Schema::hasColumn('leads', 'last_contacted_at')) {
-            $lead->last_contacted_at = now();
+        $companyId = $this->companyId($request);
+
+        abort_if((int) $lead->company_id !== $companyId, 403);
+
+        $conversation = Conversation::query()
+            ->where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->latest('last_message_at')
+            ->first();
+
+        if (! $conversation) {
+            return redirect()
+                ->route('manager.inbox.index')
+                ->with('error', 'No conversation found for this lead yet.');
         }
 
-        if (Schema::hasColumn('leads', 'last_manager_reply_at')) {
-            $lead->last_manager_reply_at = now();
-        }
-
-        if (Schema::hasColumn('leads', 'status') && in_array((string) $lead->status, ['New', 'Assigned'], true)) {
-            $lead->status = 'Attempting Contact';
-        }
-
-        $lead->save();
+        return redirect()
+            ->route('manager.inbox.index', ['conversation' => $conversation->id]);
     }
 
-    protected function putIfColumnExists(array &$data, string $table, string $column, mixed $value): void
+    public function reply(Request $request, Lead $lead, WhatsAppService $wa)
     {
-        if (Schema::hasColumn($table, $column)) {
-            $data[$column] = $value;
+        $request->validate([
+            'message' => ['required', 'string', 'max:4000'],
+        ]);
+
+        $companyId = $this->companyId($request);
+
+        abort_if((int) $lead->company_id !== $companyId, 403);
+
+        $conversation = Conversation::query()
+            ->where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->latest('last_message_at')
+            ->first();
+
+        if (! $conversation) {
+            return back()->with('error', 'No conversation found for this lead yet.');
         }
+
+        $lead->update([
+            'conversation_state' => 'human',
+        ]);
+
+        $wa->sendText(
+            $conversation->customer_phone,
+            $request->message,
+            ['company_id' => $companyId]
+        );
+
+        MessageLog::out([
+            'company_id' => $companyId,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $lead->id,
+            'channel' => 'whatsapp',
+            'to_number' => $conversation->customer_phone,
+            'from_number' => null,
+            'body' => $request->message,
+            'source' => 'human',
+            'provider_status' => 'queued',
+        ]);
+
+        $conversation->update([
+            'last_message_preview' => Str::limit($request->message, 120),
+            'last_message_at' => now(),
+        ]);
+
+        return redirect()
+            ->route('manager.inbox.index', ['conversation' => $conversation->id])
+            ->with('success', 'Reply sent.');
+    }
+
+    public function resumeBot(Request $request, Lead $lead)
+    {
+        $companyId = $this->companyId($request);
+
+        abort_if((int) $lead->company_id !== $companyId, 403);
+
+        $lead->update([
+            'conversation_state' => 'bot',
+        ]);
+
+        $conversation = Conversation::query()
+            ->where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->latest('last_message_at')
+            ->first();
+
+        return redirect()
+            ->route('manager.inbox.index', $conversation ? ['conversation' => $conversation->id] : [])
+            ->with('success', 'Bot resumed for this conversation.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    protected function companyId(Request $request): int
+    {
+        return (int) $request->user()->company_id;
+    }
+
+    protected function conversationContext(Conversation $conversation): array
+    {
+        $lead = $conversation->lead;
+
+        return [
+            'conversation_id' => $conversation->id,
+            'lead_id' => $lead?->id,
+            'lead_name' => $lead?->name,
+            'lead_status' => $lead?->status,
+            'conversation_state' => $lead?->conversation_state,
+            'phone' => $conversation->customer_phone,
+            'name' => $conversation->customer_name,
+        ];
+    }
+
+    protected function basicAiSuggestion(string $lastText, string $tone, Conversation $conversation): string
+    {
+        $name = $conversation->customer_name ?: 'there';
+
+        if (
+            str_contains($lastText, 'price') ||
+            str_contains($lastText, 'cost') ||
+            str_contains($lastText, 'how much')
+        ) {
+            return match ($tone) {
+                'short' => "Hi {$name}, pricing depends on the vehicle and service needed. Please share your car make/model and issue so we can guide you.",
+                'urgent' => "Hi {$name}, we can help quickly. Please share your vehicle make/model and the service required so our team can confirm the best price.",
+                'friendly' => "Hi {$name}, happy to help 😊 The price depends on your vehicle and the service needed. Could you please share the car make/model and issue?",
+                default => "Hi {$name}, thank you for reaching out. Pricing depends on the vehicle make/model and the service required. Please share those details and we’ll guide you with the next steps.",
+            };
+        }
+
+        if (
+            str_contains($lastText, 'book') ||
+            str_contains($lastText, 'appointment') ||
+            str_contains($lastText, 'slot')
+        ) {
+            return match ($tone) {
+                'short' => "Hi {$name}, sure. Please share your preferred date and time slot for the booking.",
+                'urgent' => "Hi {$name}, we can arrange this. Please send your preferred date/time and vehicle details so we can confirm quickly.",
+                'friendly' => "Hi {$name}, sure 😊 Please share your preferred date and time, and we’ll help arrange the booking.",
+                default => "Hi {$name}, sure. Please share your preferred date, time, vehicle details, and service requirement so we can confirm the booking.",
+            };
+        }
+
+        if (
+            str_contains($lastText, 'complaint') ||
+            str_contains($lastText, 'bad') ||
+            str_contains($lastText, 'not happy') ||
+            str_contains($lastText, 'angry')
+        ) {
+            return match ($tone) {
+                'short' => "Hi {$name}, sorry about this. Please share the issue and we’ll escalate it to the team.",
+                'urgent' => "Hi {$name}, sorry for the inconvenience. We’re escalating this immediately. Please share the details so we can assist.",
+                'friendly' => "Hi {$name}, really sorry to hear this. Please share what happened and we’ll make sure the right person looks into it.",
+                default => "Hi {$name}, we’re sorry for the inconvenience. Please share the details of the issue, and we’ll escalate it to the concerned team for immediate review.",
+            };
+        }
+
+        return match ($tone) {
+            'short' => "Hi {$name}, thanks for your message. Please share a few more details so we can assist.",
+            'urgent' => "Hi {$name}, thanks for reaching out. Please share the details and our team will assist as soon as possible.",
+            'friendly' => "Hi {$name}, thanks for messaging 😊 Could you please share a few more details so we can help you better?",
+            default => "Hi {$name}, thank you for your message. Please share a few more details about your requirement, and our team will assist you.",
+        };
     }
 }

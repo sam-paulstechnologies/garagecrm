@@ -3,420 +3,1342 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SayaraForce — Lead Recovery System for Garages</title>
+    <title>SayaraForce — Lead Recovery & Retention CRM for UAE Garages</title>
+    <meta name="description" content="SayaraForce helps UAE garages recover missed leads, track WhatsApp follow-ups, manage bookings, and bring old customers back with retention campaigns.">
 
-    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
+    <style>
+        :root {
+            --bg: #050914;
+            --bg-soft: #0b1220;
+            --surface: #111827;
+            --surface-2: #172033;
+            --text: #f8fafc;
+            --muted: #9ca3af;
+            --muted-2: #64748b;
+            --orange: #ff6b14;
+            --orange-dark: #ea580c;
+            --green: #22c55e;
+            --blue: #60a5fa;
+            --border: rgba(255, 255, 255, 0.10);
+            --shadow: 0 30px 70px rgba(0, 0, 0, 0.32);
+            --radius: 22px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.5;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .page {
+            min-height: 100vh;
+            overflow-x: hidden;
+            background:
+                radial-gradient(circle at top right, rgba(255, 107, 20, 0.18), transparent 34%),
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+                var(--bg);
+        }
+
+        .container {
+            width: min(1040px, calc(100% - 36px));
+            margin: 0 auto;
+        }
+
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(5, 9, 20, 0.86);
+            backdrop-filter: blur(18px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-inner {
+            min-height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 900;
+        }
+
+        .logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--orange), #f97316);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 950;
+            box-shadow: 0 10px 24px rgba(255, 107, 20, 0.24);
+        }
+
+        .brand-name {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.05;
+        }
+
+        .brand-title {
+            font-size: 13px;
+            color: #ffffff;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-subtitle {
+            margin-top: 3px;
+            font-size: 9px;
+            color: var(--muted);
+            font-weight: 800;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            font-size: 12px;
+            font-weight: 850;
+            color: #cbd5e1;
+        }
+
+        .nav-links a:hover {
+            color: #ffffff;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .login-link {
+            font-size: 12px;
+            font-weight: 850;
+            color: #cbd5e1;
+        }
+
+        .login-link:hover {
+            color: #ffffff;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            border-radius: 10px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            font-size: 12px;
+            font-weight: 950;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: transform 0.16s ease, filter 0.16s ease, background 0.16s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            color: #ffffff;
+            background: linear-gradient(135deg, var(--orange), #f97316);
+            box-shadow: 0 14px 26px rgba(255, 107, 20, 0.24);
+        }
+
+        .btn-secondary {
+            color: #ffffff;
+            background: rgba(15, 23, 42, 0.68);
+            border-color: var(--border);
+        }
+
+        .section {
+            padding: 72px 0;
+        }
+
+        .hero {
+            padding: 86px 0 84px;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1fr 0.95fr;
+            gap: 54px;
+            align-items: center;
+        }
+
+        .eyebrow {
+            width: fit-content;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            background: rgba(255, 107, 20, 0.12);
+            border: 1px solid rgba(255, 107, 20, 0.20);
+            color: #fdba74;
+            font-size: 11px;
+            font-weight: 950;
+        }
+
+        .hero h1 {
+            margin: 20px 0 0;
+            font-size: clamp(42px, 5.4vw, 70px);
+            line-height: 0.94;
+            letter-spacing: -0.065em;
+            font-weight: 950;
+        }
+
+        .accent {
+            color: var(--orange);
+        }
+
+        .hero-copy {
+            margin: 20px 0 0;
+            max-width: 560px;
+            color: #aeb8c9;
+            font-size: 14px;
+            font-weight: 650;
+        }
+
+        .hero-badges {
+            margin-top: 18px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .badge-247 {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 520px;
+            padding: 12px 16px;
+            border-radius: 999px;
+            background: rgba(255, 107, 20, 0.12);
+            border: 1px solid rgba(255, 107, 20, 0.30);
+            color: #fdba74;
+            box-shadow: 0 14px 30px rgba(255, 107, 20, 0.12);
+        }
+
+        .badge-247-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #ff6b14, #f97316);
+            color: #ffffff;
+            flex: 0 0 34px;
+            box-shadow: 0 12px 22px rgba(255, 107, 20, 0.26);
+        }
+
+        .badge-247-content {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .badge-247-title {
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 950;
+            letter-spacing: -0.01em;
+            line-height: 1;
+        }
+
+        .badge-247-title span {
+            color: #fdba74;
+        }
+
+        .badge-247-line {
+            color: #cbd5e1;
+            font-size: 12px;
+            font-weight: 750;
+            line-height: 1.35;
+        }
+
+        .hero-actions {
+            margin-top: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .hero-stats {
+            margin-top: 26px;
+            display: flex;
+            gap: 48px;
+            flex-wrap: wrap;
+        }
+
+        .stat-value {
+            display: block;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 950;
+            letter-spacing: -0.04em;
+        }
+
+        .stat-label {
+            margin-top: 4px;
+            display: block;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .dashboard-card {
+            position: relative;
+            border-radius: 28px;
+            padding: 18px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .dashboard-inner {
+            border-radius: 20px;
+            background: #101827;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 22px;
+        }
+
+        .dashboard-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        .dash-small {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 850;
+        }
+
+        .dash-title {
+            margin-top: 2px;
+            font-size: 18px;
+            font-weight: 950;
+            letter-spacing: -0.04em;
+        }
+
+        .live {
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: rgba(34, 197, 94, 0.12);
+            color: #86efac;
+            font-size: 10px;
+            font-weight: 950;
+        }
+
+        .dash-grid {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .dash-metric {
+            border-radius: 14px;
+            background: #1b2435;
+            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .dash-metric-label {
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 850;
+        }
+
+        .dash-metric-value {
+            margin-top: 8px;
+            color: #ffffff;
+            font-size: 24px;
+            line-height: 1;
+            font-weight: 950;
+        }
+
+        .dash-metric-note {
+            margin-top: 8px;
+            color: #86efac;
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .dash-metric-note.orange {
+            color: #fdba74;
+        }
+
+        .next-action {
+            margin-top: 14px;
+            padding: 16px;
+            border-radius: 16px;
+            background: rgba(255, 107, 20, 0.09);
+            border: 1px solid rgba(255, 107, 20, 0.16);
+        }
+
+        .next-action strong {
+            display: block;
+            font-size: 12px;
+            color: #ffffff;
+        }
+
+        .next-action p {
+            margin: 6px 0 0;
+            color: #fcd9c5;
+            font-size: 11px;
+            font-weight: 750;
+        }
+
+        .section-kicker {
+            color: var(--orange);
+            font-size: 11px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .section-title {
+            margin: 12px 0 0;
+            max-width: 700px;
+            color: #ffffff;
+            font-size: clamp(34px, 4.5vw, 52px);
+            line-height: 0.98;
+            letter-spacing: -0.055em;
+            font-weight: 950;
+        }
+
+        .section-copy {
+            margin: 18px 0 0;
+            max-width: 680px;
+            color: #aeb8c9;
+            font-size: 14px;
+            font-weight: 650;
+        }
+
+        .cards-3 {
+            margin-top: 32px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .card {
+            border-radius: var(--radius);
+            background: rgba(17, 24, 39, 0.92);
+            border: 1px solid var(--border);
+            padding: 22px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
+        }
+
+        .card h3 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 950;
+            letter-spacing: -0.025em;
+        }
+
+        .card p {
+            margin: 10px 0 0;
+            color: #9ca3af;
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        .solution-grid,
+        .retention-grid {
+            display: grid;
+            grid-template-columns: 0.95fr 1.05fr;
+            gap: 56px;
+            align-items: center;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+        }
+
+        .feature {
+            min-height: 112px;
+            border-radius: 18px;
+            padding: 18px;
+            background: rgba(17, 24, 39, 0.92);
+            border: 1px solid var(--border);
+        }
+
+        .feature h3 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 950;
+        }
+
+        .feature p {
+            margin: 9px 0 0;
+            color: #9ca3af;
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        .retention {
+            background:
+                radial-gradient(circle at bottom left, rgba(34, 197, 94, 0.10), transparent 28%),
+                linear-gradient(180deg, #080d19, #0b1220);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .retention-panel {
+            border-radius: 24px;
+            padding: 26px;
+            background: rgba(17, 24, 39, 0.92);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .retention-panel h3 {
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.05;
+            letter-spacing: -0.04em;
+        }
+
+        .retention-list {
+            margin: 22px 0 0;
+            display: grid;
+            gap: 13px;
+        }
+
+        .retention-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 750;
+        }
+
+        .check {
+            width: 21px;
+            height: 21px;
+            flex: 0 0 21px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(34, 197, 94, 0.12);
+            color: #86efac;
+            font-size: 11px;
+            font-weight: 950;
+        }
+
+        .orange-band {
+            background: var(--orange);
+            color: #111827;
+            padding: 42px 0;
+        }
+
+        .orange-grid {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 36px;
+            align-items: center;
+        }
+
+        .orange-band h2 {
+            margin: 0;
+            max-width: 710px;
+            color: #0b1220;
+            font-size: clamp(28px, 4vw, 40px);
+            line-height: 1.03;
+            letter-spacing: -0.05em;
+            font-weight: 950;
+        }
+
+        .orange-band p {
+            margin: 12px 0 0;
+            color: #33160b;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .orange-card {
+            border-radius: 18px;
+            background: #ffffff;
+            padding: 22px;
+            box-shadow: 0 20px 45px rgba(68, 24, 6, 0.18);
+        }
+
+        .orange-card .mini {
+            color: var(--muted-2);
+            font-size: 10px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .orange-card strong {
+            margin-top: 6px;
+            display: block;
+            font-size: 20px;
+            font-weight: 950;
+            color: #111827;
+            letter-spacing: -0.04em;
+        }
+
+        .orange-card p {
+            color: #475569;
+            font-size: 12px;
+        }
+
+        .pricing {
+            text-align: center;
+        }
+
+        .pricing .section-title,
+        .pricing .section-copy {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .pricing-grid {
+            margin-top: 42px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            text-align: left;
+        }
+
+        .price-card {
+            position: relative;
+            border-radius: 22px;
+            padding: 28px;
+            background: rgba(17, 24, 39, 0.92);
+            border: 1px solid var(--border);
+        }
+
+        .price-card.featured {
+            background: #ffffff;
+            color: #111827;
+            transform: translateY(-10px);
+            box-shadow: var(--shadow);
+        }
+
+        .recommended {
+            position: absolute;
+            top: -13px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: var(--orange);
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .plan-name {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 950;
+        }
+
+        .plan-desc {
+            min-height: 44px;
+            margin: 9px 0 0;
+            color: #9ca3af;
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        .featured .plan-desc {
+            color: #64748b;
+        }
+
+        .old-price {
+            margin-top: 26px;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 900;
+            text-decoration: line-through;
+        }
+
+        .price {
+            margin-top: 4px;
+            font-size: 34px;
+            font-weight: 950;
+            letter-spacing: -0.06em;
+        }
+
+        .price span {
+            font-size: 14px;
+            letter-spacing: 0;
+            font-weight: 850;
+            color: #9ca3af;
+        }
+
+        .features-list {
+            margin: 24px 0 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 10px;
+            color: #cbd5e1;
+            font-size: 12px;
+            font-weight: 750;
+        }
+
+        .featured .features-list {
+            color: #334155;
+        }
+
+        .features-list li::before {
+            content: "✓ ";
+            color: var(--green);
+            font-weight: 950;
+        }
+
+        .price-card .btn {
+            width: 100%;
+            margin-top: 26px;
+        }
+
+        .audit {
+            background: #0b1220;
+        }
+
+        .audit-box {
+            width: min(760px, 100%);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 0.92fr 1.08fr;
+            gap: 32px;
+            align-items: center;
+            border-radius: 28px;
+            background: #1b2435;
+            border: 1px solid var(--border);
+            padding: 34px;
+            box-shadow: var(--shadow);
+        }
+
+        .audit h2 {
+            margin: 10px 0 0;
+            font-size: clamp(34px, 4vw, 48px);
+            line-height: 0.98;
+            letter-spacing: -0.055em;
+        }
+
+        .audit p {
+            margin: 16px 0 0;
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 650;
+        }
+
+        .audit-points {
+            margin-top: 18px;
+            display: grid;
+            gap: 8px;
+            color: #e5e7eb;
+            font-size: 12px;
+            font-weight: 750;
+        }
+
+        .audit-points span::before {
+            content: "✓ ";
+            color: var(--green);
+            font-weight: 950;
+        }
+
+        .form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .form label {
+            display: grid;
+            gap: 6px;
+            color: #cbd5e1;
+            font-size: 11px;
+            font-weight: 850;
+        }
+
+        .form input,
+        .form select {
+            width: 100%;
+            height: 42px;
+            border: 0;
+            outline: 0;
+            border-radius: 11px;
+            background: #050914;
+            color: #ffffff;
+            padding: 0 14px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .form input::placeholder {
+            color: #64748b;
+        }
+
+        .form-note {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .footer {
+            padding: 28px 0;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .footer-inner {
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding-top: 70px;
+            }
+
+            .hero-grid,
+            .solution-grid,
+            .retention-grid,
+            .orange-grid,
+            .audit-box {
+                grid-template-columns: 1fr;
+            }
+
+            .cards-3,
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .price-card.featured {
+                transform: none;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .container {
+                width: min(100% - 26px, 1040px);
+            }
+
+            .nav-actions {
+                gap: 8px;
+            }
+
+            .login-link {
+                display: none;
+            }
+
+            .btn {
+                min-height: 40px;
+                padding: 0 13px;
+            }
+
+            .section {
+                padding: 62px 0;
+            }
+
+            .hero h1 {
+                font-size: 43px;
+            }
+
+            .dash-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-stats {
+                gap: 24px;
+            }
+
+            .audit-box {
+                padding: 24px;
+            }
+        }
+    </style>
 </head>
 
-<body class="bg-slate-950 text-white antialiased">
+<body>
+<div class="page">
 
-    {{-- Header --}}
-    <header class="sticky top-0 z-50 border-b border-white/10 bg-slate-950/90 backdrop-blur">
-        <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <a href="{{ route('public.home') }}" class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 font-black text-white">
-                    SF
-                </div>
-                <div>
-                    <div class="text-lg font-bold tracking-tight">SayaraForce</div>
-                    <div class="text-xs text-slate-400">Garage Growth CRM</div>
-                </div>
+    <nav class="nav">
+        <div class="container nav-inner">
+            <a href="#top" class="brand">
+                <span class="logo">SF</span>
+                <span class="brand-name">
+                    <span class="brand-title">SayaraForce</span>
+                    <span class="brand-subtitle">Garage Growth CRM</span>
+                </span>
             </a>
 
-            <nav class="hidden items-center gap-8 text-sm text-slate-300 md:flex">
-                <a href="#problem" class="hover:text-white">Problem</a>
-                <a href="#solution" class="hover:text-white">Solution</a>
-                <a href="#pricing" class="hover:text-white">Pricing</a>
-                <a href="#audit" class="hover:text-white">Audit</a>
-            </nav>
+            <div class="nav-links">
+                <a href="#problem">Problem</a>
+                <a href="#solution">Solution</a>
+                <a href="#retention">Retention</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#audit">Audit</a>
+            </div>
 
-            <div class="flex items-center gap-3">
-                <a href="{{ route('login') }}"
-                   class="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">
-                    Login
-                </a>
+            <div class="nav-actions">
+                <a href="https://app.sayaraforce.com/login" class="login-link">Login</a>
+                <a href="#audit" class="btn btn-primary">Get Free Audit</a>
+            </div>
+        </div>
+    </nav>
 
-                <a href="#audit"
-                   class="rounded-xl bg-orange-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600">
-                    Get Free Audit
-                </a>
+    <header id="top" class="hero">
+        <div class="container hero-grid">
+            <div>
+                <div class="eyebrow">Founders offer for selected UAE garages</div>
+
+                <h1>
+                    Recover missed leads.
+                    <span class="accent">Retain more garage customers.</span>
+                </h1>
+
+                <p class="hero-copy">
+                    SayaraForce helps garages capture every enquiry, follow up faster, convert more bookings,
+                    and bring old customers back with WhatsApp-first lead recovery and retention.
+                </p>
+
+                <div class="hero-badges">
+                    <div class="badge-247">
+                        <span class="badge-247-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M12 7v5l3 2"></path>
+                            </svg>
+                        </span>
+
+                        <span class="badge-247-content">
+                            <span class="badge-247-title">
+                                <span>24/7</span> Lead Desk
+                            </span>
+
+                            <span class="badge-247-line">
+                                Never miss a lead just because your garage is closed.
+                            </span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="hero-actions">
+                    <a href="#audit" class="btn btn-primary">Request Free 7-Day Lead Recovery Audit</a>
+                    <a href="#pricing" class="btn btn-secondary">View Founders Pricing</a>
+                </div>
+
+                <div class="hero-stats">
+                    <div>
+                        <span class="stat-value">1</span>
+                        <span class="stat-label">Lead inbox</span>
+                    </div>
+                    <div>
+                        <span class="stat-value">24/7</span>
+                        <span class="stat-label">Follow-up tracking</span>
+                    </div>
+                    <div>
+                        <span class="stat-value">UAE</span>
+                        <span class="stat-label">Garage focused</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="dashboard-inner">
+                    <div class="dashboard-top">
+                        <div>
+                            <div class="dash-small">Today's Lead Recovery</div>
+                            <div class="dash-title">Garage Dashboard</div>
+                        </div>
+
+                        <span class="live">Live</span>
+                    </div>
+
+                    <div class="dash-grid">
+                        <div class="dash-metric">
+                            <div class="dash-metric-label">New Leads</div>
+                            <div class="dash-metric-value">18</div>
+                            <div class="dash-metric-note">+5 from WhatsApp</div>
+                        </div>
+
+                        <div class="dash-metric">
+                            <div class="dash-metric-label">Pending Follow-ups</div>
+                            <div class="dash-metric-value">7</div>
+                            <div class="dash-metric-note orange">Action required</div>
+                        </div>
+
+                        <div class="dash-metric">
+                            <div class="dash-metric-label">Bookings</div>
+                            <div class="dash-metric-value">5</div>
+                            <div class="dash-metric-note">Confirmed today</div>
+                        </div>
+
+                        <div class="dash-metric">
+                            <div class="dash-metric-label">Recovered Jobs</div>
+                            <div class="dash-metric-value">3</div>
+                            <div class="dash-metric-note">From old leads</div>
+                        </div>
+                    </div>
+
+                    <div class="next-action">
+                        <strong>Next best action</strong>
+                        <p>4 customers asked for price but were not followed up. Send WhatsApp follow-up now.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
 
-    {{-- Hero --}}
-    <section class="relative overflow-hidden">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.25),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_35%)]"></div>
+    <section id="problem" class="section">
+        <div class="container">
+            <div class="section-kicker">The Problem</div>
 
-        <div class="relative mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 lg:grid-cols-2 lg:py-28">
+            <h2 class="section-title">
+                Garages do not lose customers because of bad service.
+                They lose them because follow-up is scattered.
+            </h2>
+
+            <div class="cards-3">
+                <div class="card">
+                    <h3>WhatsApp chaos</h3>
+                    <p>Customer enquiries sit inside personal phones with no proper tracking.</p>
+                </div>
+
+                <div class="card">
+                    <h3>Missed follow-ups</h3>
+                    <p>Staff forget to follow up with customers who asked for prices, appointments, or service reminders.</p>
+                </div>
+
+                <div class="card">
+                    <h3>No clear pipeline</h3>
+                    <p>Owners cannot see how many leads came in, who followed up, and which jobs were won or lost.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="solution" class="section">
+        <div class="container solution-grid">
             <div>
-                <div class="mb-6 inline-flex rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300">
-                    Founders offer for selected UAE garages
-                </div>
+                <div class="section-kicker">The Solution</div>
 
-                <h1 class="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
-                    Stop losing garage leads from
-                    <span class="text-orange-400">WhatsApp, Meta, calls & website forms.</span>
-                </h1>
-
-                <p class="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-                    SayaraForce helps garages capture every enquiry, follow up faster, convert more bookings,
-                    and bring old customers back with WhatsApp-first lead recovery.
-                </p>
-
-                <div class="mt-8 flex flex-col gap-4 sm:flex-row">
-                    <a href="#audit"
-                       class="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-6 py-4 text-base font-bold text-white shadow-xl shadow-orange-500/20 hover:bg-orange-600">
-                        Request Free 7-Day Lead Recovery Audit
-                    </a>
-
-                    <a href="#pricing"
-                       class="inline-flex items-center justify-center rounded-2xl border border-white/15 px-6 py-4 text-base font-bold text-white hover:bg-white/10">
-                        View Founders Pricing
-                    </a>
-                </div>
-
-                <div class="mt-8 grid max-w-xl grid-cols-3 gap-4 text-sm text-slate-400">
-                    <div>
-                        <div class="text-2xl font-black text-white">1</div>
-                        Lead inbox
-                    </div>
-                    <div>
-                        <div class="text-2xl font-black text-white">24/7</div>
-                        Follow-up tracking
-                    </div>
-                    <div>
-                        <div class="text-2xl font-black text-white">UAE</div>
-                        Garage focused
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-[2rem] border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
-                <div class="rounded-[1.5rem] bg-slate-900 p-6">
-                    <div class="mb-5 flex items-center justify-between">
-                        <div>
-                            <div class="text-sm text-slate-400">Today’s Lead Recovery</div>
-                            <div class="text-2xl font-black">Garage Dashboard</div>
-                        </div>
-                        <span class="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-300">
-                            Live
-                        </span>
-                    </div>
-
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-800 p-5">
-                            <div class="text-sm text-slate-400">New Leads</div>
-                            <div class="mt-2 text-3xl font-black">18</div>
-                            <div class="mt-2 text-xs text-emerald-300">+6 from WhatsApp</div>
-                        </div>
-
-                        <div class="rounded-2xl bg-slate-800 p-5">
-                            <div class="text-sm text-slate-400">Pending Follow-ups</div>
-                            <div class="mt-2 text-3xl font-black">7</div>
-                            <div class="mt-2 text-xs text-orange-300">Action required</div>
-                        </div>
-
-                        <div class="rounded-2xl bg-slate-800 p-5">
-                            <div class="text-sm text-slate-400">Bookings</div>
-                            <div class="mt-2 text-3xl font-black">5</div>
-                            <div class="mt-2 text-xs text-blue-300">Confirmed today</div>
-                        </div>
-
-                        <div class="rounded-2xl bg-slate-800 p-5">
-                            <div class="text-sm text-slate-400">Recovered Jobs</div>
-                            <div class="mt-2 text-3xl font-black">3</div>
-                            <div class="mt-2 text-xs text-emerald-300">From old leads</div>
-                        </div>
-                    </div>
-
-                    <div class="mt-5 rounded-2xl border border-orange-400/20 bg-orange-500/10 p-5">
-                        <div class="text-sm font-bold text-orange-300">Next best action</div>
-                        <p class="mt-2 text-sm text-slate-300">
-                            4 customers asked for price but were not followed up. Send WhatsApp follow-up now.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    {{-- Problem --}}
-    <section id="problem" class="border-t border-white/10 bg-slate-900/70 py-20">
-        <div class="mx-auto max-w-7xl px-6">
-            <div class="max-w-3xl">
-                <p class="text-sm font-bold uppercase tracking-widest text-orange-400">The problem</p>
-                <h2 class="mt-3 text-3xl font-black tracking-tight md:text-5xl">
-                    Garages do not lose customers because of bad service.
-                    They lose them because follow-up is scattered.
+                <h2 class="section-title">
+                    SayaraForce is not just a CRM. It is a lead recovery and follow-up system built for garages.
                 </h2>
-            </div>
 
-            <div class="mt-12 grid gap-6 md:grid-cols-3">
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-6">
-                    <div class="text-xl font-bold">WhatsApp chaos</div>
-                    <p class="mt-3 text-slate-400">
-                        Customer enquiries sit inside personal phones with no proper lead tracking.
-                    </p>
-                </div>
-
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-6">
-                    <div class="text-xl font-bold">Missed follow-ups</div>
-                    <p class="mt-3 text-slate-400">
-                        Staff forget to follow up with customers who asked for prices, appointments, or service reminders.
-                    </p>
-                </div>
-
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-6">
-                    <div class="text-xl font-bold">No clear pipeline</div>
-                    <p class="mt-3 text-slate-400">
-                        Owners cannot see how many leads came in, who followed up, and which jobs were won or lost.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    {{-- Solution --}}
-    <section id="solution" class="py-20">
-        <div class="mx-auto max-w-7xl px-6">
-            <div class="grid gap-12 lg:grid-cols-2">
-                <div>
-                    <p class="text-sm font-bold uppercase tracking-widest text-orange-400">The solution</p>
-                    <h2 class="mt-3 text-3xl font-black tracking-tight md:text-5xl">
-                        SayaraForce is not just a CRM. It is a lead recovery and follow-up system built for garages.
-                    </h2>
-                    <p class="mt-6 text-lg leading-8 text-slate-300">
-                        Capture leads from WhatsApp, website forms, Meta campaigns and manual enquiries.
-                        Assign follow-ups, confirm bookings, track jobs, and bring customers back with campaigns.
-                    </p>
-                </div>
-
-                <div class="grid gap-4 sm:grid-cols-2">
-                    @php
-                        $features = [
-                            ['title' => 'Lead Flow Management', 'desc' => 'Capture, assign and track every garage enquiry.'],
-                            ['title' => 'WhatsApp Follow-ups', 'desc' => 'Keep conversations and follow-ups organized.'],
-                            ['title' => 'Booking Pipeline', 'desc' => 'Move enquiries into confirmed service bookings.'],
-                            ['title' => 'Job Tracking', 'desc' => 'Track work progress from booking to job completion.'],
-                            ['title' => 'Retention Campaigns', 'desc' => 'Bring old customers back for service reminders.'],
-                            ['title' => 'Owner Dashboard', 'desc' => 'See leads, jobs, revenue and staff activity.'],
-                        ];
-                    @endphp
-
-                    @foreach($features as $feature)
-                        <div class="rounded-3xl border border-white/10 bg-white/5 p-6">
-                            <div class="font-bold text-white">{{ $feature['title'] }}</div>
-                            <p class="mt-2 text-sm leading-6 text-slate-400">{{ $feature['desc'] }}</p>
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </section>
-
-    {{-- ROI --}}
-    <section class="border-y border-white/10 bg-orange-500 py-14 text-slate-950">
-        <div class="mx-auto max-w-7xl px-6">
-            <div class="grid items-center gap-8 md:grid-cols-3">
-                <div class="md:col-span-2">
-                    <h2 class="text-3xl font-black tracking-tight md:text-4xl">
-                        If your garage misses even 2–3 jobs a month, SayaraForce can pay for itself.
-                    </h2>
-                    <p class="mt-4 max-w-3xl text-lg font-medium text-slate-900/80">
-                        The launch offer is designed to help early garages recover missed leads before spending more on ads.
-                    </p>
-                </div>
-
-                <div class="rounded-3xl bg-white p-6 shadow-xl">
-                    <div class="text-sm font-bold uppercase tracking-widest text-slate-500">Launch focus</div>
-                    <div class="mt-2 text-2xl font-black">Lead Recovery First</div>
-                    <p class="mt-2 text-sm text-slate-600">
-                        We help you identify missed enquiries and improve follow-up before scaling campaigns.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    {{-- Pricing --}}
-    <section id="pricing" class="py-20">
-        <div class="mx-auto max-w-7xl px-6">
-            <div class="mx-auto max-w-3xl text-center">
-                <p class="text-sm font-bold uppercase tracking-widest text-orange-400">Founders pricing</p>
-                <h2 class="mt-3 text-3xl font-black tracking-tight md:text-5xl">
-                    Launch pricing for selected early garages.
-                </h2>
-                <p class="mt-5 text-lg text-slate-300">
-                    Founders pricing is available for the first 10 selected garages only.
-                    Includes guided setup, onboarding support and early access to new features.
+                <p class="section-copy">
+                    Capture leads from WhatsApp, website forms, Meta campaigns, and manual enquiries.
+                    Assign follow-ups, confirm bookings, track jobs, and bring customers back with campaigns.
                 </p>
             </div>
 
-            <div class="mt-12 grid gap-6 lg:grid-cols-3">
-                {{-- Starter --}}
-                <div class="rounded-[2rem] border border-white/10 bg-white/5 p-7">
-                    <div class="text-xl font-black">Starter</div>
-                    <p class="mt-2 min-h-12 text-sm text-slate-400">
-                        For small garages starting with lead tracking and WhatsApp follow-up.
-                    </p>
-
-                    <div class="mt-8">
-                        <div class="text-sm font-semibold text-slate-500 line-through">AED 1,999/month</div>
-                        <div class="mt-1 text-4xl font-black text-white">AED 999</div>
-                        <div class="text-sm text-slate-400">per month</div>
-                    </div>
-
-                    <ul class="mt-8 space-y-3 text-sm text-slate-300">
-                        <li>✓ Lead capture</li>
-                        <li>✓ Client management</li>
-                        <li>✓ WhatsApp follow-up tracking</li>
-                        <li>✓ Basic booking pipeline</li>
-                        <li>✓ Guided setup</li>
-                    </ul>
-
-                    <a href="#audit"
-                       class="mt-8 inline-flex w-full justify-center rounded-2xl border border-white/15 px-5 py-3 font-bold hover:bg-white/10">
-                        Claim Founders Offer
-                    </a>
+            <div class="feature-grid">
+                <div class="feature">
+                    <h3>Lead Flow Management</h3>
+                    <p>Capture, assign, and track every garage enquiry.</p>
                 </div>
 
-                {{-- Growth --}}
-                <div class="relative rounded-[2rem] border border-orange-400 bg-white p-7 text-slate-950 shadow-2xl shadow-orange-500/20">
-                    <div class="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-orange-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-white">
-                        Recommended
-                    </div>
-
-                    <div class="text-xl font-black">Growth</div>
-                    <p class="mt-2 min-h-12 text-sm text-slate-600">
-                        For garages handling WhatsApp, Meta, website leads and follow-up campaigns.
-                    </p>
-
-                    <div class="mt-8">
-                        <div class="text-sm font-semibold text-slate-400 line-through">AED 2,999/month</div>
-                        <div class="mt-1 text-4xl font-black">AED 1,499</div>
-                        <div class="text-sm text-slate-500">per month</div>
-                    </div>
-
-                    <ul class="mt-8 space-y-3 text-sm text-slate-700">
-                        <li>✓ Everything in Starter</li>
-                        <li>✓ Meta / website lead handling</li>
-                        <li>✓ Opportunity pipeline</li>
-                        <li>✓ Retention segments</li>
-                        <li>✓ Campaign tracking</li>
-                        <li>✓ Manager dashboard</li>
-                    </ul>
-
-                    <a href="#audit"
-                       class="mt-8 inline-flex w-full justify-center rounded-2xl bg-orange-500 px-5 py-3 font-bold text-white hover:bg-orange-600">
-                        Claim Founders Offer
-                    </a>
+                <div class="feature">
+                    <h3>WhatsApp Follow-ups</h3>
+                    <p>Keep conversations and follow-ups organized.</p>
                 </div>
 
-                {{-- Pro --}}
-                <div class="rounded-[2rem] border border-white/10 bg-white/5 p-7">
-                    <div class="text-xl font-black">Pro</div>
-                    <p class="mt-2 min-h-12 text-sm text-slate-400">
-                        For garages that want full lead recovery, reports, team workflows and campaigns.
-                    </p>
+                <div class="feature">
+                    <h3>Booking Pipeline</h3>
+                    <p>Move enquiries into confirmed service bookings.</p>
+                </div>
 
-                    <div class="mt-8">
-                        <div class="text-sm font-semibold text-slate-500 line-through">AED 3,999/month</div>
-                        <div class="mt-1 text-4xl font-black text-white">AED 1,999</div>
-                        <div class="text-sm text-slate-400">per month</div>
-                    </div>
+                <div class="feature">
+                    <h3>Job Tracking</h3>
+                    <p>Track work progress from booking to job completion.</p>
+                </div>
 
-                    <ul class="mt-8 space-y-3 text-sm text-slate-300">
-                        <li>✓ Everything in Growth</li>
-                        <li>✓ Advanced dashboard</li>
-                        <li>✓ Jobs and invoice tracking</li>
-                        <li>✓ Team roles and permissions</li>
-                        <li>✓ Advanced campaign reports</li>
-                        <li>✓ Priority onboarding</li>
-                    </ul>
+                <div class="feature">
+                    <h3>Retention Campaigns</h3>
+                    <p>Bring old customers back for service reminders.</p>
+                </div>
 
-                    <a href="#audit"
-                       class="mt-8 inline-flex w-full justify-center rounded-2xl border border-white/15 px-5 py-3 font-bold hover:bg-white/10">
-                        Claim Founders Offer
-                    </a>
+                <div class="feature">
+                    <h3>Owner Dashboard</h3>
+                    <p>See leads, jobs, revenue, and staff activity.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="retention" class="section retention">
+        <div class="container retention-grid">
+            <div>
+                <div class="section-kicker">Retention Engine</div>
+
+                <h2 class="section-title">
+                    Do not just win new customers.
+                    Bring old customers back.
+                </h2>
+
+                <p class="section-copy">
+                    Most garages already have money sitting inside old WhatsApp chats, service history,
+                    invoices, and forgotten customer lists. SayaraForce helps you turn that data into repeat jobs.
+                </p>
+
+                <div class="hero-actions">
+                    <a href="#audit" class="btn btn-primary">Find My Lost Customers</a>
+                    <a href="#pricing" class="btn btn-secondary">See Retention Plan</a>
                 </div>
             </div>
 
-            <p class="mt-8 text-center text-sm text-slate-400">
-                Not sure which plan fits? Start with a free 7-day lead recovery audit.
+            <div class="retention-panel">
+                <h3>Repeat service revenue is where garages win.</h3>
+
+                <div class="retention-list">
+                    <div class="retention-row">
+                        <span class="check">✓</span>
+                        <span><strong>Service reminders:</strong> oil change, AC check, tyres, battery, general service, and seasonal checks.</span>
+                    </div>
+
+                    <div class="retention-row">
+                        <span class="check">✓</span>
+                        <span><strong>Lost customer follow-up:</strong> identify customers who have not returned in 3, 6, or 12 months.</span>
+                    </div>
+
+                    <div class="retention-row">
+                        <span class="check">✓</span>
+                        <span><strong>Feedback and review push:</strong> collect feedback after jobs and push happy customers toward Google reviews.</span>
+                    </div>
+
+                    <div class="retention-row">
+                        <span class="check">✓</span>
+                        <span><strong>WhatsApp campaigns:</strong> send structured offers and reminders to the right customer segment.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="orange-band">
+        <div class="container orange-grid">
+            <div>
+                <h2>
+                    If your garage misses even 2–3 jobs a month,
+                    SayaraForce can pay for itself.
+                </h2>
+
+                <p>
+                    The launch offer is designed to help early garages recover missed leads and bring back old customers before spending more on ads.
+                </p>
+            </div>
+
+            <div class="orange-card">
+                <div class="mini">Launch Focus</div>
+                <strong>Lead Recovery + Retention First</strong>
+                <p>We help you identify missed enquiries, forgotten customers, and weak follow-up before scaling campaigns.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="section pricing">
+        <div class="container">
+            <div class="section-kicker">Founders Pricing</div>
+
+            <h2 class="section-title">
+                Launch pricing for selected early garages.
+            </h2>
+
+            <p class="section-copy">
+                Founders pricing is available for the first 10 selected garages only.
+                Includes guided setup, onboarding support, and early access to new features.
+            </p>
+
+            <div class="pricing-grid">
+                <div class="price-card">
+                    <h3 class="plan-name">Starter</h3>
+                    <p class="plan-desc">For small garages starting with lead tracking and WhatsApp follow-up.</p>
+
+                    <div class="old-price">AED 1,999/month</div>
+                    <div class="price">AED 999 <span>/month</span></div>
+
+                    <ul class="features-list">
+                        <li>Lead capture</li>
+                        <li>Client management</li>
+                        <li>WhatsApp follow-up tracking</li>
+                        <li>Basic booking pipeline</li>
+                        <li>Guided setup</li>
+                    </ul>
+
+                    <a href="#audit" class="btn btn-secondary">Claim Founders Offer</a>
+                </div>
+
+                <div class="price-card featured">
+                    <div class="recommended">Recommended</div>
+
+                    <h3 class="plan-name">Growth</h3>
+                    <p class="plan-desc">For garages handling WhatsApp, Meta, website leads and retention follow-ups.</p>
+
+                    <div class="old-price">AED 2,999/month</div>
+                    <div class="price">AED 1,499 <span>/month</span></div>
+
+                    <ul class="features-list">
+                        <li>Everything in Starter</li>
+                        <li>Meta / website lead handling</li>
+                        <li>Opportunity pipeline</li>
+                        <li>Retention segments</li>
+                        <li>WhatsApp campaign tracking</li>
+                        <li>Manager dashboard</li>
+                    </ul>
+
+                    <a href="#audit" class="btn btn-primary">Claim Founders Offer</a>
+                </div>
+
+                <div class="price-card">
+                    <h3 class="plan-name">Pro</h3>
+                    <p class="plan-desc">For garages that want full lead recovery, reports, team workflow, and campaigns.</p>
+
+                    <div class="old-price">AED 3,999/month</div>
+                    <div class="price">AED 1,999 <span>/month</span></div>
+
+                    <ul class="features-list">
+                        <li>Everything in Growth</li>
+                        <li>Advanced dashboard</li>
+                        <li>Jobs and invoice tracking</li>
+                        <li>Team roles and permissions</li>
+                        <li>Advanced campaign reports</li>
+                        <li>Priority onboarding</li>
+                    </ul>
+
+                    <a href="#audit" class="btn btn-secondary">Claim Founders Offer</a>
+                </div>
+            </div>
+
+            <p class="section-copy" style="font-size: 12px; margin-top: 28px;">
+                Not sure which plan fits? Start with a free 7-day lead recovery and retention audit.
             </p>
         </div>
     </section>
 
-    {{-- Audit CTA --}}
-    <section id="audit" class="border-t border-white/10 bg-slate-900 py-20">
-        <div class="mx-auto max-w-5xl px-6">
-            <div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 md:p-12">
-                <div class="grid gap-10 lg:grid-cols-2">
-                    <div>
-                        <p class="text-sm font-bold uppercase tracking-widest text-orange-400">Free audit</p>
-                        <h2 class="mt-3 text-3xl font-black tracking-tight md:text-5xl">
-                            Get a free 7-day lead recovery audit.
-                        </h2>
-                        <p class="mt-5 text-lg leading-8 text-slate-300">
-                            We will review how your garage handles WhatsApp, website, Meta and manual enquiries,
-                            then show where leads are being missed.
-                        </p>
+    <section id="audit" class="section audit">
+        <div class="container">
+            <div class="audit-box">
+                <div>
+                    <div class="section-kicker">Free Audit</div>
 
-                        <div class="mt-8 space-y-3 text-sm text-slate-300">
-                            <div>✓ No long contract required</div>
-                            <div>✓ Setup guidance included</div>
-                            <div>✓ Built specifically for garage lead follow-up</div>
-                        </div>
+                    <h2>
+                        Get a free 7-day lead recovery audit.
+                    </h2>
+
+                    <p>
+                        We will review how your garage handles WhatsApp, website, Meta, manual enquiries,
+                        and old customer follow-ups. Then we show where leads and repeat jobs are missed.
+                    </p>
+
+                    <div class="audit-points">
+                        <span>No contract required</span>
+                        <span>Setup guidance included</span>
+                        <span>Built specifically for garage lead recovery and retention</span>
                     </div>
-
-                    <form method="POST" action="#" class="space-y-4">
-                        <div>
-                            <label class="mb-2 block text-sm font-semibold text-slate-300">Garage Name</label>
-                            <input type="text"
-                                   placeholder="Example: City Auto Garage"
-                                   class="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-orange-500 placeholder:text-slate-600 focus:ring-2">
-                        </div>
-
-                        <div>
-                            <label class="mb-2 block text-sm font-semibold text-slate-300">Your Name</label>
-                            <input type="text"
-                                   placeholder="Owner / Manager name"
-                                   class="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-orange-500 placeholder:text-slate-600 focus:ring-2">
-                        </div>
-
-                        <div>
-                            <label class="mb-2 block text-sm font-semibold text-slate-300">WhatsApp Number</label>
-                            <input type="text"
-                                   placeholder="+971 5X XXX XXXX"
-                                   class="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-orange-500 placeholder:text-slate-600 focus:ring-2">
-                        </div>
-
-                        <button type="button"
-                                class="w-full rounded-2xl bg-orange-500 px-6 py-4 text-base font-black text-white shadow-xl shadow-orange-500/20 hover:bg-orange-600">
-                            Request Free Audit
-                        </button>
-
-                        <p class="text-xs leading-5 text-slate-500">
-                            Form connection can be enabled after UAT. For now, use this section as the conversion block.
-                        </p>
-                    </form>
                 </div>
+
+                <form class="form" method="POST" action="#">
+                    @csrf
+
+                    <label>
+                        Garage Name
+                        <input type="text" name="garage_name" placeholder="Example: City Auto Garage">
+                    </label>
+
+                    <label>
+                        Your Name
+                        <input type="text" name="name" placeholder="Owner / Manager name">
+                    </label>
+
+                    <label>
+                        WhatsApp Number
+                        <input type="text" name="phone" placeholder="+971 5X XXX XXXX">
+                    </label>
+
+                    <label>
+                        Cars Serviced Monthly
+                        <select name="monthly_cars">
+                            <option value="">Select approximate volume</option>
+                            <option value="under_50">Under 50 cars</option>
+                            <option value="50_100">50–100 cars</option>
+                            <option value="100_200">100–200 cars</option>
+                            <option value="200_plus">200+ cars</option>
+                        </select>
+                    </label>
+
+                    <button type="submit" class="btn btn-primary">
+                        Request Free Audit
+                    </button>
+
+                    <p class="form-note">
+                        Form connection can be enabled after UAT. For now, use this section as the conversion block.
+                    </p>
+                </form>
             </div>
         </div>
     </section>
 
-    {{-- Footer --}}
-    <footer class="border-t border-white/10 py-8">
-        <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 text-sm text-slate-500 md:flex-row">
+    <footer class="footer">
+        <div class="container footer-inner">
             <div>© {{ date('Y') }} SayaraForce. Built for UAE garages.</div>
-            <div class="flex gap-5">
-                <a href="{{ route('login') }}" class="hover:text-white">Login</a>
-                <a href="#pricing" class="hover:text-white">Pricing</a>
-                <a href="#audit" class="hover:text-white">Audit</a>
+
+            <div class="footer-links">
+                <a href="https://app.sayaraforce.com/login">Login</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#audit">Audit</a>
             </div>
         </div>
     </footer>
 
+</div>
 </body>
 </html>

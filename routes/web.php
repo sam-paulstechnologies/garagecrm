@@ -13,14 +13,28 @@ use App\Http\Middleware\VerifyCsrfToken;
 
 /*
 |--------------------------------------------------------------------------
-| Public Landing Page
+| Public Landing Page / App Root Redirect
 |--------------------------------------------------------------------------
-| Public SayaraForce landing page.
+| sayaraforce.com              => Public landing page
+| www.sayaraforce.com          => Public landing page
+| app.sayaraforce.com          => Redirect to /login
+| Azure default app domain     => Redirect to /login
+|
 | Login remains available at /login.
 | Logged-in users should use /dashboard.
 |--------------------------------------------------------------------------
 */
-Route::get('/', function () {
+Route::get('/', function (Request $request) {
+    $host = strtolower((string) $request->getHost());
+
+    $isAppDomain =
+        $host === 'app.sayaraforce.com' ||
+        str_contains($host, 'azurewebsites.net');
+
+    if ($isAppDomain) {
+        return redirect()->to('/login');
+    }
+
     return view('public.home');
 })->name('public.home');
 

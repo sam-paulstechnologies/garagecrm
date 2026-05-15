@@ -1,299 +1,509 @@
-@extends('layouts.app')
+@extends('layouts.manager')
+
+@section('title', 'Manager Dashboard')
 
 @section('content')
-<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+<div class="space-y-6">
 
     {{-- Header --}}
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">
+            <h1 class="sf-page-title">
                 Manager Dashboard
             </h1>
-            <p class="text-sm text-gray-500 mt-1">
+            <p class="sf-page-subtitle">
                 Track escalations, bookings, jobs, leads, and customer conversations.
             </p>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('manager.escalations') }}"
-               class="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">
-                View Escalations
-            </a>
+        <div class="d-flex flex-wrap gap-2">
+            @if(Route::has('manager.escalations'))
+                <a href="{{ route('manager.escalations') }}"
+                   class="sf-action-button danger">
+                    View Escalations
+                </a>
+            @endif
 
-            <a href="{{ route('manager.bookings.index') }}"
-               class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
-                View Bookings
-            </a>
+            @if(Route::has('manager.bookings.index'))
+                <a href="{{ route('manager.bookings.index') }}"
+                   class="sf-action-button primary">
+                    View Bookings
+                </a>
+            @endif
         </div>
     </div>
+
 
     {{-- Stat Cards --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="row g-4 mb-4">
 
-        <a href="{{ route('manager.escalations') }}"
-           class="bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Human Escalations</p>
-            <p class="text-3xl font-bold text-red-600 mt-2">
-                {{ $stats['human_escalations'] ?? 0 }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
-                Customers waiting for manager
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.escalations'))
+                <a href="{{ route('manager.escalations') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Human Escalations</p>
+                    <p class="sf-stat-value text-danger">
+                        {{ $stats['human_escalations'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Customers waiting for manager
+                    </p>
+                </div>
+            @if(Route::has('manager.escalations'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.bookings.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Pending Bookings</p>
-            <p class="text-3xl font-bold text-amber-600 mt-2">
-                {{ $stats['pending_bookings'] ?? 0 }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
-                Need confirmation
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.bookings.index'))
+                <a href="{{ route('manager.bookings.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Pending Bookings</p>
+                    <p class="sf-stat-value text-warning">
+                        {{ $stats['pending_bookings'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Need confirmation
+                    </p>
+                </div>
+            @if(Route::has('manager.bookings.index'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.bookings.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Scheduled Bookings</p>
-            <p class="text-3xl font-bold text-blue-600 mt-2">
-                {{ $stats['scheduled_bookings'] ?? 0 }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
-                Confirmed appointments
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.bookings.index'))
+                <a href="{{ route('manager.bookings.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Scheduled Bookings</p>
+                    <p class="sf-stat-value text-primary">
+                        {{ $stats['scheduled_bookings'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Confirmed appointments
+                    </p>
+                </div>
+            @if(Route::has('manager.bookings.index'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.jobs.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Active Jobs</p>
-            <p class="text-3xl font-bold text-green-600 mt-2">
-                {{ ($stats['jobs_pending'] ?? 0) + ($stats['jobs_in_progress'] ?? 0) }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
-                Pending / in progress
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.jobs.index'))
+                <a href="{{ route('manager.jobs.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Active Jobs</p>
+                    <p class="sf-stat-value text-success">
+                        {{ ($stats['jobs_pending'] ?? 0) + ($stats['jobs_in_progress'] ?? 0) }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Pending / in progress
+                    </p>
+                </div>
+            @if(Route::has('manager.jobs.index'))
+                </a>
+            @endif
+        </div>
 
     </div>
+
 
     {{-- Secondary Stats --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="row g-4 mb-4">
 
-        <a href="{{ route('manager.leads.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Open Leads</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-                {{ $stats['open_leads'] ?? 0 }}
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.leads.index'))
+                <a href="{{ route('manager.leads.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Open Leads</p>
+                    <p class="sf-stat-value">
+                        {{ $stats['open_leads'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Leads needing action
+                    </p>
+                </div>
+            @if(Route::has('manager.leads.index'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.bookings.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Converted Bookings</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-                {{ $stats['converted_bookings'] ?? 0 }}
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.bookings.index'))
+                <a href="{{ route('manager.bookings.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Converted Bookings</p>
+                    <p class="sf-stat-value">
+                        {{ $stats['converted_bookings'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Moved into jobs
+                    </p>
+                </div>
+            @if(Route::has('manager.bookings.index'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.jobs.index') }}"
-           class="bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Completed Jobs</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-                {{ $stats['jobs_completed'] ?? 0 }}
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.jobs.index'))
+                <a href="{{ route('manager.jobs.index') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Completed Jobs</p>
+                    <p class="sf-stat-value">
+                        {{ $stats['jobs_completed'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Finished service work
+                    </p>
+                </div>
+            @if(Route::has('manager.jobs.index'))
+                </a>
+            @endif
+        </div>
 
-        <a href="{{ route('manager.escalations') }}"
-           class="bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition">
-            <p class="text-sm text-gray-500">Unread Messages</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-                {{ $stats['unread_messages'] ?? 0 }}
-            </p>
-        </a>
+        <div class="col-12 col-sm-6 col-xl-3">
+            @if(Route::has('manager.escalations'))
+                <a href="{{ route('manager.escalations') }}" class="text-decoration-none">
+            @endif
+                <div class="sf-stat-card h-100">
+                    <p class="sf-stat-label">Unread Messages</p>
+                    <p class="sf-stat-value">
+                        {{ $stats['unread_messages'] ?? 0 }}
+                    </p>
+                    <p class="sf-stat-help">
+                        Customer replies pending
+                    </p>
+                </div>
+            @if(Route::has('manager.escalations'))
+                </a>
+            @endif
+        </div>
 
     </div>
+
 
     {{-- Main Work Queues --}}
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="row g-4 mb-4">
 
         {{-- Pending Bookings --}}
-        <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div class="p-5 border-b flex items-center justify-between">
-                <div>
-                    <h2 class="font-semibold text-gray-900">Pending / Scheduled Bookings</h2>
-                    <p class="text-xs text-gray-500 mt-1">Latest booking actions</p>
+        <div class="col-12 col-xl-4">
+            <div class="sf-panel h-100 overflow-hidden">
+                <div class="sf-panel-header">
+                    <div>
+                        <h2 class="sf-panel-title">Pending / Scheduled Bookings</h2>
+                        <p class="sf-panel-subtitle">Latest booking actions</p>
+                    </div>
+
+                    @if(Route::has('manager.bookings.index'))
+                        <a href="{{ route('manager.bookings.index') }}"
+                           class="fw-bold text-primary small">
+                            View all
+                        </a>
+                    @endif
                 </div>
 
-                <a href="{{ route('manager.bookings.index') }}"
-                   class="text-sm text-blue-600 hover:underline">
-                    View all
-                </a>
-            </div>
+                <div class="divide-y">
+                    @forelse($pendingBookings ?? [] as $booking)
+                        <div class="p-3 border-bottom">
+                            <div class="d-flex justify-content-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="fw-bold text-dark mb-1">
+                                        {{ $booking->name ?? $booking->client?->name ?? 'Customer' }}
+                                    </p>
 
-            <div class="divide-y">
-                @forelse($pendingBookings ?? [] as $booking)
-                    <div class="p-4">
-                        <div class="flex justify-between gap-3">
-                            <div>
-                                <p class="font-medium text-gray-900">
-                                    {{ $booking->name ?? 'Customer' }}
-                                </p>
-                                <p class="text-sm text-gray-500">
-                                    {{ $booking->booking_date ?? 'No date' }}
-                                    @if(!empty($booking->slot))
-                                        · {{ ucfirst(str_replace('_', ' ', $booking->slot)) }}
-                                    @endif
-                                </p>
+                                    <p class="small text-muted mb-0">
+                                        {{ $booking->booking_date ?? $booking->scheduled_at ?? 'No date' }}
+
+                                        @if(!empty($booking->slot))
+                                            · {{ ucfirst(str_replace('_', ' ', $booking->slot)) }}
+                                        @endif
+                                    </p>
+                                </div>
+
+                                <span class="badge bg-light text-dark border h-fit">
+                                    {{ ucfirst(str_replace('_', ' ', $booking->status ?? 'pending')) }}
+                                </span>
                             </div>
 
-                            <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 h-fit">
-                                {{ ucfirst(str_replace('_', ' ', $booking->status ?? 'pending')) }}
-                            </span>
+                            @if(Route::has('manager.bookings.show'))
+                                <div class="mt-2">
+                                    <a href="{{ route('manager.bookings.show', $booking->id) }}"
+                                       class="small fw-bold text-primary">
+                                        Open booking
+                                    </a>
+                                </div>
+                            @endif
                         </div>
-                    </div>
-                @empty
-                    <div class="p-5 text-sm text-gray-500">
-                        No pending bookings.
-                    </div>
-                @endforelse
+                    @empty
+                        <div class="sf-panel-body">
+                            <p class="text-muted mb-0">
+                                No pending bookings.
+                            </p>
+                        </div>
+                    @endforelse
+                </div>
             </div>
         </div>
+
 
         {{-- Escalated Leads --}}
-        <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div class="p-5 border-b flex items-center justify-between">
-                <div>
-                    <h2 class="font-semibold text-gray-900">Escalated Leads</h2>
-                    <p class="text-xs text-gray-500 mt-1">Customers needing human takeover</p>
+        <div class="col-12 col-xl-4">
+            <div class="sf-panel h-100 overflow-hidden">
+                <div class="sf-panel-header">
+                    <div>
+                        <h2 class="sf-panel-title">Escalated Leads</h2>
+                        <p class="sf-panel-subtitle">Customers needing human takeover</p>
+                    </div>
+
+                    @if(Route::has('manager.escalations'))
+                        <a href="{{ route('manager.escalations') }}"
+                           class="fw-bold text-primary small">
+                            View all
+                        </a>
+                    @endif
                 </div>
 
-                <a href="{{ route('manager.escalations') }}"
-                   class="text-sm text-blue-600 hover:underline">
-                    View all
-                </a>
-            </div>
+                <div class="divide-y">
+                    @forelse($escalatedLeads ?? [] as $lead)
+                        <div class="p-3 border-bottom">
+                            <p class="fw-bold text-dark mb-1">
+                                {{ $lead->name ?? 'Lead #' . $lead->id }}
+                            </p>
 
-            <div class="divide-y">
-                @forelse($escalatedLeads ?? [] as $lead)
-                    <div class="p-4">
-                        <p class="font-medium text-gray-900">
-                            {{ $lead->name ?? 'Lead #' . $lead->id }}
-                        </p>
+                            <p class="small text-muted mb-2">
+                                {{ $lead->phone_norm ?? $lead->phone ?? 'No phone' }}
+                            </p>
 
-                        <p class="text-sm text-gray-500">
-                            {{ $lead->phone_norm ?? $lead->phone ?? 'No phone' }}
-                        </p>
-
-                        <div class="mt-2">
-                            <a href="{{ route('manager.conversation', $lead->id) }}"
-                               class="text-sm text-blue-600 hover:underline">
-                                Open conversation
-                            </a>
+                            @if(Route::has('manager.conversation'))
+                                <a href="{{ route('manager.conversation', $lead->id) }}"
+                                   class="small fw-bold text-primary">
+                                    Open conversation
+                                </a>
+                            @elseif(Route::has('manager.leads.show'))
+                                <a href="{{ route('manager.leads.show', $lead->id) }}"
+                                   class="small fw-bold text-primary">
+                                    Open lead
+                                </a>
+                            @endif
                         </div>
-                    </div>
-                @empty
-                    <div class="p-5 text-sm text-gray-500">
-                        No escalations right now.
-                    </div>
-                @endforelse
+                    @empty
+                        <div class="sf-panel-body">
+                            <p class="text-muted mb-0">
+                                No escalations right now.
+                            </p>
+                        </div>
+                    @endforelse
+                </div>
             </div>
         </div>
 
+
         {{-- Active Jobs --}}
-        <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div class="p-5 border-b flex items-center justify-between">
-                <div>
-                    <h2 class="font-semibold text-gray-900">Active Jobs</h2>
-                    <p class="text-xs text-gray-500 mt-1">Pending and in-progress jobs</p>
+        <div class="col-12 col-xl-4">
+            <div class="sf-panel h-100 overflow-hidden">
+                <div class="sf-panel-header">
+                    <div>
+                        <h2 class="sf-panel-title">Active Jobs</h2>
+                        <p class="sf-panel-subtitle">Pending and in-progress jobs</p>
+                    </div>
+
+                    @if(Route::has('manager.jobs.index'))
+                        <a href="{{ route('manager.jobs.index') }}"
+                           class="fw-bold text-primary small">
+                            View all
+                        </a>
+                    @endif
                 </div>
 
-                <a href="{{ route('manager.jobs.index') }}"
-                   class="text-sm text-blue-600 hover:underline">
-                    View all
-                </a>
-            </div>
+                <div class="divide-y">
+                    @forelse($activeJobs ?? [] as $job)
+                        <div class="p-3 border-bottom">
+                            <div class="d-flex justify-content-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="fw-bold text-dark mb-1">
+                                        {{ $job->job_code ?? 'Job #' . $job->id }}
+                                    </p>
 
-            <div class="divide-y">
-                @forelse($activeJobs ?? [] as $job)
-                    <div class="p-4">
-                        <div class="flex justify-between gap-3">
-                            <div>
-                                <p class="font-medium text-gray-900">
-                                    {{ $job->job_code ?? 'Job #' . $job->id }}
-                                </p>
+                                    <p class="small text-muted mb-0">
+                                        {{ $job->description ?? $job->service_type ?? 'Service job' }}
+                                    </p>
+                                </div>
 
-                                <p class="text-sm text-gray-500">
-                                    {{ $job->description ?? 'Service job' }}
-                                </p>
+                                <span class="badge bg-light text-dark border h-fit">
+                                    {{ ucfirst(str_replace('_', ' ', $job->status ?? 'pending')) }}
+                                </span>
                             </div>
 
-                            <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 h-fit">
-                                {{ ucfirst(str_replace('_', ' ', $job->status ?? 'pending')) }}
-                            </span>
+                            @if(Route::has('manager.jobs.show'))
+                                <div class="mt-2">
+                                    <a href="{{ route('manager.jobs.show', $job->id) }}"
+                                       class="small fw-bold text-primary">
+                                        Open job
+                                    </a>
+                                </div>
+                            @endif
                         </div>
-                    </div>
-                @empty
-                    <div class="p-5 text-sm text-gray-500">
-                        No active jobs.
-                    </div>
-                @endforelse
+                    @empty
+                        <div class="sf-panel-body">
+                            <p class="text-muted mb-0">
+                                No active jobs.
+                            </p>
+                        </div>
+                    @endforelse
+                </div>
             </div>
         </div>
 
     </div>
 
+
     {{-- Quick Links --}}
-    <div class="bg-white rounded-xl border shadow-sm p-5">
-        <h2 class="font-semibold text-gray-900 mb-4">
-            Manager Work Areas
-        </h2>
+    <div class="sf-panel">
+        <div class="sf-panel-header">
+            <div>
+                <h2 class="sf-panel-title">
+                    Manager Work Areas
+                </h2>
+                <p class="sf-panel-subtitle">
+                    Quick access to day-to-day manager actions
+                </p>
+            </div>
+        </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div class="sf-panel-body">
+            <div class="row g-3">
 
-            <a href="{{ route('manager.escalations') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">🔥</div>
-                <div class="text-sm font-medium mt-1">Escalations</div>
-            </a>
+                @if(Route::has('manager.escalations'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.escalations') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">🔥</span>
+                            <span class="manager-work-label">Escalations</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.bookings.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">📅</div>
-                <div class="text-sm font-medium mt-1">Bookings</div>
-            </a>
+                @if(Route::has('manager.bookings.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.bookings.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">📅</span>
+                            <span class="manager-work-label">Bookings</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.jobs.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">🛠️</div>
-                <div class="text-sm font-medium mt-1">Jobs</div>
-            </a>
+                @if(Route::has('manager.jobs.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.jobs.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">🛠️</span>
+                            <span class="manager-work-label">Jobs</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.leads.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">📈</div>
-                <div class="text-sm font-medium mt-1">Leads</div>
-            </a>
+                @if(Route::has('manager.leads.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.leads.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">📈</span>
+                            <span class="manager-work-label">Leads</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.opportunities.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">🎯</div>
-                <div class="text-sm font-medium mt-1">Opportunities</div>
-            </a>
+                @if(Route::has('manager.opportunities.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.opportunities.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">🎯</span>
+                            <span class="manager-work-label">Opportunities</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.clients.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">👤</div>
-                <div class="text-sm font-medium mt-1">Clients</div>
-            </a>
+                @if(Route::has('manager.clients.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.clients.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">👤</span>
+                            <span class="manager-work-label">Clients</span>
+                        </a>
+                    </div>
+                @endif
 
-            <a href="{{ route('manager.team.index') }}"
-               class="border rounded-lg p-3 text-center hover:bg-gray-50">
-                <div class="text-xl">👥</div>
-                <div class="text-sm font-medium mt-1">Team</div>
-            </a>
+                @if(Route::has('manager.team.index'))
+                    <div class="col-6 col-md-4 col-xl">
+                        <a href="{{ route('manager.team.index') }}"
+                           class="manager-work-card">
+                            <span class="manager-work-icon">👥</span>
+                            <span class="manager-work-label">Team</span>
+                        </a>
+                    </div>
+                @endif
 
+            </div>
         </div>
     </div>
 
 </div>
 @endsection
+
+@push('styles')
+<style>
+    .space-y-6 > * + * {
+        margin-top: 1.5rem;
+    }
+
+    .h-fit {
+        height: fit-content;
+    }
+
+    .min-w-0 {
+        min-width: 0;
+    }
+
+    .manager-work-card {
+        min-height: 86px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        color: #0f172a;
+        background: #ffffff;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+
+    .manager-work-card:hover {
+        color: #0f172a;
+        background: #f8fafc;
+        border-color: rgba(37, 99, 235, 0.35);
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .manager-work-icon {
+        font-size: 22px;
+        line-height: 1;
+    }
+
+    .manager-work-label {
+        font-size: 13px;
+        font-weight: 900;
+    }
+</style>
+@endpush

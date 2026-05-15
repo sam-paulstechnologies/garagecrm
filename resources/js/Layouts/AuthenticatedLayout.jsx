@@ -1,4 +1,3 @@
-import ApplicationLogo from '@/Components/ApplicationLogo';
 import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -16,7 +15,14 @@ export default function AuthenticatedLayout({ header, children }) {
     const currentPath = window.location.pathname;
     const userInitial = (user?.name || 'S').trim().charAt(0).toUpperCase();
 
-    const navItems = [
+    const isManagerArea = currentPath.startsWith('/manager');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Navigation
+    |--------------------------------------------------------------------------
+    */
+    const adminNavItems = [
         { label: 'Dashboard', href: '/admin/dashboard', match: '/admin/dashboard' },
         { label: 'Clients', href: '/admin/clients', match: '/admin/clients' },
         { label: 'Leads', href: '/admin/leads', match: '/admin/leads' },
@@ -28,7 +34,7 @@ export default function AuthenticatedLayout({ header, children }) {
         { label: 'Inbox', href: '/admin/inbox', match: '/admin/inbox' },
     ];
 
-    const growthItems = [
+    const adminGrowthItems = [
         {
             label: 'Lead Sources',
             description: 'WhatsApp, website forms, and Meta lead ads',
@@ -55,7 +61,7 @@ export default function AuthenticatedLayout({ header, children }) {
         },
     ];
 
-    const settingsItems = [
+    const adminSettingsItems = [
         {
             label: 'Launch Setup',
             description: 'Garage setup, manager handoff, working hours',
@@ -82,19 +88,62 @@ export default function AuthenticatedLayout({ header, children }) {
         },
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Manager Navigation
+    |--------------------------------------------------------------------------
+    | Manager should not see Admin Growth/Settings dropdowns.
+    |--------------------------------------------------------------------------
+    */
+    const managerNavItems = [
+        { label: 'Dashboard', href: '/manager/dashboard', match: '/manager/dashboard' },
+        { label: 'Clients', href: '/manager/clients', match: '/manager/clients' },
+        { label: 'Leads', href: '/manager/leads', match: '/manager/leads' },
+        { label: 'Opportunities', href: '/manager/opportunities', match: '/manager/opportunities' },
+        { label: 'Bookings', href: '/manager/bookings', match: '/manager/bookings' },
+        { label: 'Jobs', href: '/manager/jobs', match: '/manager/jobs' },
+        { label: 'Invoices', href: '/manager/invoices', match: '/manager/invoices' },
+        { label: 'Inbox', href: '/manager/inbox', match: '/manager/inbox' },
+        { label: 'Growth', href: '/manager/growth', match: '/manager/growth', safe: true },
+        { label: 'Settings', href: '/manager/settings', match: '/manager/settings', safe: true },
+        { label: 'Team', href: '/manager/team', match: '/manager/team' },
+    ];
+
+    const navItems = isManagerArea ? managerNavItems : adminNavItems;
+    const growthItems = adminGrowthItems;
+    const settingsItems = adminSettingsItems;
+
+    const brandHref = isManagerArea ? '/manager/dashboard' : '/admin/dashboard';
+    const profileHref = isManagerArea ? '/manager/dashboard' : '/admin/profile';
+    const roleLabel = isManagerArea ? 'Manager' : 'Admin';
+
     const isActive = (match) => currentPath.startsWith(match);
 
-    const isGrowthActive = () =>
-        currentPath.startsWith('/admin/lead-sources') ||
-        currentPath.startsWith('/admin/settings/audience-segmentation') ||
-        currentPath.startsWith('/admin/whatsapp/templates') ||
-        currentPath.startsWith('/admin/whatsapp/mappings');
+    const isGrowthActive = () => {
+        if (isManagerArea) {
+            return currentPath.startsWith('/manager/growth');
+        }
 
-    const isSettingsActive = () =>
-        currentPath.startsWith('/admin/settings/launch-setup') ||
-        currentPath === '/admin/settings' ||
-        currentPath.startsWith('/admin/whatsapp/settings') ||
-        currentPath.startsWith('/admin/ai');
+        return (
+            currentPath.startsWith('/admin/lead-sources') ||
+            currentPath.startsWith('/admin/settings/audience-segmentation') ||
+            currentPath.startsWith('/admin/whatsapp/templates') ||
+            currentPath.startsWith('/admin/whatsapp/mappings')
+        );
+    };
+
+    const isSettingsActive = () => {
+        if (isManagerArea) {
+            return currentPath.startsWith('/manager/settings');
+        }
+
+        return (
+            currentPath.startsWith('/admin/settings/launch-setup') ||
+            currentPath === '/admin/settings' ||
+            currentPath.startsWith('/admin/whatsapp/settings') ||
+            currentPath.startsWith('/admin/ai')
+        );
+    };
 
     const closeMenus = () => {
         setGrowthOpen(false);
@@ -105,8 +154,12 @@ export default function AuthenticatedLayout({ header, children }) {
     const navClass = (item) =>
         `rounded-xl px-3 py-2 text-sm font-bold transition ${
             isActive(item.match)
-                ? 'bg-white/10 text-white ring-1 ring-white/10'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                ? item.safe
+                    ? 'bg-orange-500/10 text-orange-300 ring-1 ring-orange-400/20'
+                    : 'bg-white/10 text-white ring-1 ring-white/10'
+                : item.safe
+                    ? 'text-slate-300 hover:bg-orange-500/10 hover:text-orange-300'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
         }`;
 
     const dropdownButtonClass = (active) =>
@@ -116,11 +169,15 @@ export default function AuthenticatedLayout({ header, children }) {
                 : 'text-slate-400 hover:bg-white/5 hover:text-orange-300'
         }`;
 
-    const mobileNavClass = (active) =>
+    const mobileNavClass = (active, safe = false) =>
         `block rounded-2xl px-4 py-3 text-sm font-bold transition ${
             active
-                ? 'bg-orange-500/10 text-orange-300'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                ? safe
+                    ? 'bg-orange-500/10 text-orange-300'
+                    : 'bg-white/10 text-white'
+                : safe
+                    ? 'text-slate-300 hover:bg-orange-500/10 hover:text-orange-300'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
         }`;
 
     return (
@@ -131,7 +188,7 @@ export default function AuthenticatedLayout({ header, children }) {
                         {/* LEFT */}
                         <div className="flex min-w-0 items-center gap-6">
                             <a
-                                href="/admin/dashboard"
+                                href={brandHref}
                                 className="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
                             >
                                 <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40">
@@ -157,153 +214,157 @@ export default function AuthenticatedLayout({ header, children }) {
                                     </a>
                                 ))}
 
-                                {/* GROWTH */}
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setGrowthOpen((prev) => !prev);
-                                            setSettingsOpen(false);
-                                            setProfileOpen(false);
-                                        }}
-                                        className={dropdownButtonClass(isGrowthActive())}
-                                    >
-                                        <span>Growth</span>
-
-                                        <svg
-                                            className={`h-4 w-4 transition-transform ${
-                                                growthOpen ? 'rotate-180' : ''
-                                            }`}
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
+                                {/* Admin-only Growth Dropdown */}
+                                {!isManagerArea && (
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setGrowthOpen((prev) => !prev);
+                                                setSettingsOpen(false);
+                                                setProfileOpen(false);
+                                            }}
+                                            className={dropdownButtonClass(isGrowthActive())}
                                         >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth="2"
-                                                d="M19 9l-7 7-7-7"
-                                            />
-                                        </svg>
-                                    </button>
+                                            <span>Growth</span>
 
-                                    {growthOpen && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                aria-label="Close growth menu"
-                                                className="fixed inset-0 z-40 cursor-default"
-                                                onClick={closeMenus}
-                                            />
+                                            <svg
+                                                className={`h-4 w-4 transition-transform ${
+                                                    growthOpen ? 'rotate-180' : ''
+                                                }`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth="2"
+                                                    d="M19 9l-7 7-7-7"
+                                                />
+                                            </svg>
+                                        </button>
 
-                                            <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
-                                                <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
-                                                    <p className="text-sm font-extrabold text-white">
-                                                        Growth Engine
-                                                    </p>
-                                                    <p className="text-xs font-medium text-slate-400">
-                                                        Lead capture, segments, templates, and journeys
-                                                    </p>
+                                        {growthOpen && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Close growth menu"
+                                                    className="fixed inset-0 z-40 cursor-default"
+                                                    onClick={closeMenus}
+                                                />
+
+                                                <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
+                                                    <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                                        <p className="text-sm font-extrabold text-white">
+                                                            Growth Engine
+                                                        </p>
+                                                        <p className="text-xs font-medium text-slate-400">
+                                                            Lead capture, segments, templates, and journeys
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="p-2">
+                                                        {growthItems.map((item) => (
+                                                            <a
+                                                                key={item.label}
+                                                                href={item.href}
+                                                                className={`block rounded-xl px-4 py-3 transition ${
+                                                                    isActive(item.match)
+                                                                        ? 'bg-orange-500/10 text-orange-300'
+                                                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                                                }`}
+                                                            >
+                                                                <span className="block text-sm font-extrabold">
+                                                                    {item.label}
+                                                                </span>
+                                                                <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                                                                    {item.description}
+                                                                </span>
+                                                            </a>
+                                                        ))}
+                                                    </div>
                                                 </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
 
-                                                <div className="p-2">
-                                                    {growthItems.map((item) => (
-                                                        <a
-                                                            key={item.label}
-                                                            href={item.href}
-                                                            className={`block rounded-xl px-4 py-3 transition ${
-                                                                isActive(item.match)
-                                                                    ? 'bg-orange-500/10 text-orange-300'
-                                                                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                                                            }`}
-                                                        >
-                                                            <span className="block text-sm font-extrabold">
-                                                                {item.label}
-                                                            </span>
-                                                            <span className="mt-0.5 block text-xs font-medium text-slate-500">
-                                                                {item.description}
-                                                            </span>
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-
-                                {/* SETTINGS */}
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setSettingsOpen((prev) => !prev);
-                                            setGrowthOpen(false);
-                                            setProfileOpen(false);
-                                        }}
-                                        className={dropdownButtonClass(isSettingsActive())}
-                                    >
-                                        <span>Settings</span>
-
-                                        <svg
-                                            className={`h-4 w-4 transition-transform ${
-                                                settingsOpen ? 'rotate-180' : ''
-                                            }`}
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
+                                {/* Admin-only Settings Dropdown */}
+                                {!isManagerArea && (
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSettingsOpen((prev) => !prev);
+                                                setGrowthOpen(false);
+                                                setProfileOpen(false);
+                                            }}
+                                            className={dropdownButtonClass(isSettingsActive())}
                                         >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth="2"
-                                                d="M19 9l-7 7-7-7"
-                                            />
-                                        </svg>
-                                    </button>
+                                            <span>Settings</span>
 
-                                    {settingsOpen && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                aria-label="Close settings menu"
-                                                className="fixed inset-0 z-40 cursor-default"
-                                                onClick={closeMenus}
-                                            />
+                                            <svg
+                                                className={`h-4 w-4 transition-transform ${
+                                                    settingsOpen ? 'rotate-180' : ''
+                                                }`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth="2"
+                                                    d="M19 9l-7 7-7-7"
+                                                />
+                                            </svg>
+                                        </button>
 
-                                            <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
-                                                <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
-                                                    <p className="text-sm font-extrabold text-white">
-                                                        Admin Settings
-                                                    </p>
-                                                    <p className="text-xs font-medium text-slate-400">
-                                                        Setup, integrations, WhatsApp controls, and AI
-                                                    </p>
+                                        {settingsOpen && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Close settings menu"
+                                                    className="fixed inset-0 z-40 cursor-default"
+                                                    onClick={closeMenus}
+                                                />
+
+                                                <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
+                                                    <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                                        <p className="text-sm font-extrabold text-white">
+                                                            Admin Settings
+                                                        </p>
+                                                        <p className="text-xs font-medium text-slate-400">
+                                                            Setup, integrations, WhatsApp controls, and AI
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="p-2">
+                                                        {settingsItems.map((item) => (
+                                                            <a
+                                                                key={item.label}
+                                                                href={item.href}
+                                                                className={`block rounded-xl px-4 py-3 transition ${
+                                                                    isActive(item.match)
+                                                                        ? 'bg-orange-500/10 text-orange-300'
+                                                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                                                }`}
+                                                            >
+                                                                <span className="block text-sm font-extrabold">
+                                                                    {item.label}
+                                                                </span>
+                                                                <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                                                                    {item.description}
+                                                                </span>
+                                                            </a>
+                                                        ))}
+                                                    </div>
                                                 </div>
-
-                                                <div className="p-2">
-                                                    {settingsItems.map((item) => (
-                                                        <a
-                                                            key={item.label}
-                                                            href={item.href}
-                                                            className={`block rounded-xl px-4 py-3 transition ${
-                                                                isActive(item.match)
-                                                                    ? 'bg-orange-500/10 text-orange-300'
-                                                                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                                                            }`}
-                                                        >
-                                                            <span className="block text-sm font-extrabold">
-                                                                {item.label}
-                                                            </span>
-                                                            <span className="mt-0.5 block text-xs font-medium text-slate-500">
-                                                                {item.description}
-                                                            </span>
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -368,18 +429,20 @@ export default function AuthenticatedLayout({ header, children }) {
 
                                                 <p className="mt-3">
                                                     <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
-                                                        Growth Plan
+                                                        {roleLabel}
                                                     </span>
                                                 </p>
                                             </div>
 
                                             <div className="p-2">
-                                                <a
-                                                    href="/admin/profile"
-                                                    className="block rounded-xl px-4 py-2 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
-                                                >
-                                                    Profile
-                                                </a>
+                                                {!isManagerArea && (
+                                                    <a
+                                                        href={profileHref}
+                                                        className="block rounded-xl px-4 py-2 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
+                                                    >
+                                                        Profile
+                                                    </a>
+                                                )}
 
                                                 <form method="POST" action="/logout">
                                                     <input type="hidden" name="_token" value={csrfToken} />
@@ -437,43 +500,47 @@ export default function AuthenticatedLayout({ header, children }) {
                                 <a
                                     key={item.label}
                                     href={item.href}
-                                    className={mobileNavClass(isActive(item.match))}
+                                    className={mobileNavClass(isActive(item.match), item.safe)}
                                 >
                                     {item.label}
                                 </a>
                             ))}
 
-                            <div className="my-3 border-t border-white/10"></div>
+                            {!isManagerArea && (
+                                <>
+                                    <div className="my-3 border-t border-white/10"></div>
 
-                            <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
-                                Growth
-                            </div>
+                                    <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                                        Growth
+                                    </div>
 
-                            {growthItems.map((item) => (
-                                <a
-                                    key={item.label}
-                                    href={item.href}
-                                    className={mobileNavClass(isActive(item.match))}
-                                >
-                                    {item.label}
-                                </a>
-                            ))}
+                                    {growthItems.map((item) => (
+                                        <a
+                                            key={item.label}
+                                            href={item.href}
+                                            className={mobileNavClass(isActive(item.match))}
+                                        >
+                                            {item.label}
+                                        </a>
+                                    ))}
 
-                            <div className="my-3 border-t border-white/10"></div>
+                                    <div className="my-3 border-t border-white/10"></div>
 
-                            <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
-                                Settings
-                            </div>
+                                    <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                                        Settings
+                                    </div>
 
-                            {settingsItems.map((item) => (
-                                <a
-                                    key={item.label}
-                                    href={item.href}
-                                    className={mobileNavClass(isActive(item.match))}
-                                >
-                                    {item.label}
-                                </a>
-                            ))}
+                                    {settingsItems.map((item) => (
+                                        <a
+                                            key={item.label}
+                                            href={item.href}
+                                            className={mobileNavClass(isActive(item.match))}
+                                        >
+                                            {item.label}
+                                        </a>
+                                    ))}
+                                </>
+                            )}
                         </div>
 
                         <div className="border-t border-white/10 px-4 py-4">
@@ -496,12 +563,14 @@ export default function AuthenticatedLayout({ header, children }) {
                             </div>
 
                             <div className="mt-3 space-y-1">
-                                <a
-                                    href="/admin/profile"
-                                    className="block rounded-2xl px-4 py-3 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
-                                >
-                                    Profile
-                                </a>
+                                {!isManagerArea && (
+                                    <a
+                                        href={profileHref}
+                                        className="block rounded-2xl px-4 py-3 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
+                                    >
+                                        Profile
+                                    </a>
+                                )}
 
                                 <form method="POST" action="/logout">
                                     <input type="hidden" name="_token" value={csrfToken} />
