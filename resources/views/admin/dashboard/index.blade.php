@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@section('title', 'Admin Dashboard')
+
 @section('content')
 @php
     use Illuminate\Support\Facades\Route;
@@ -10,48 +12,48 @@
             'value' => $stats['total_leads'],
             'note' => '+' . $stats['new_leads_this_month'] . ' this month',
             'url' => route('admin.leads.index'),
-            'bg' => 'bg-white',
-            'text' => 'text-gray-900',
+            'accent' => 'blue',
+            'icon' => '📈',
         ],
         [
             'title' => 'Opportunities',
             'value' => $stats['total_opportunities'],
             'note' => '+' . $stats['new_opportunities_this_month'] . ' this month',
             'url' => route('admin.opportunities.index'),
-            'bg' => 'bg-white',
-            'text' => 'text-gray-900',
+            'accent' => 'orange',
+            'icon' => '🎯',
         ],
         [
             'title' => 'Bookings',
             'value' => $stats['total_bookings'],
             'note' => $stats['bookings_this_month'] . ' this month',
             'url' => route('admin.bookings.index'),
-            'bg' => 'bg-white',
-            'text' => 'text-gray-900',
+            'accent' => 'blue',
+            'icon' => '📅',
         ],
         [
             'title' => 'Jobs',
             'value' => $stats['total_jobs'],
             'note' => $stats['jobs_this_month'] . ' this month',
             'url' => route('admin.jobs.index'),
-            'bg' => 'bg-white',
-            'text' => 'text-gray-900',
+            'accent' => 'green',
+            'icon' => '🛠️',
         ],
         [
             'title' => 'Unpaid Invoices',
             'value' => $smartKPIs['unpaid_invoices'],
             'note' => 'Payments to follow up',
             'url' => route('admin.invoices.index'),
-            'bg' => 'bg-orange-50',
-            'text' => 'text-orange-900',
+            'accent' => 'red',
+            'icon' => '💳',
         ],
         [
             'title' => 'Monthly Revenue',
             'value' => 'AED ' . number_format($stats['revenue_this_month'], 2),
             'note' => $stats['bookings_this_month'] . ' bookings',
             'url' => route('admin.invoices.index'),
-            'bg' => 'bg-white',
-            'text' => 'text-gray-900',
+            'accent' => 'orange',
+            'icon' => '💰',
         ],
     ];
 
@@ -101,426 +103,498 @@
     ];
 @endphp
 
-<div class="container mx-auto px-4 py-6 space-y-8">
+<div class="sf-page space-y-8">
 
     {{-- Header --}}
-    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+    <div class="sf-page-header">
         <div>
-            <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p class="text-gray-600 mt-1">
-                Welcome back, {{ auth()->user()->name }}!
+            <div class="inline-flex items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-600 ring-1 ring-orange-100">
+                Admin Control Center
+            </div>
+
+            <h1 class="sf-page-title mt-3">
+                Admin Dashboard
+            </h1>
+
+            <p class="sf-page-subtitle">
+                Welcome back, {{ auth()->user()->name }}. Track leads, bookings, jobs, revenue, and WhatsApp activity from one place.
             </p>
 
-            @include('admin.dashboard.partials._ai_status')
+            <div class="mt-4">
+                @include('admin.dashboard.partials._ai_status')
+            </div>
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('admin.sla_dashboard') }}"
-               class="px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100">
+            <a href="{{ route('admin.sla_dashboard') }}" class="sf-btn-secondary">
                 SLA Dashboard
             </a>
 
-            <a href="{{ route('admin.calendar.index') }}"
-               class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800">
+            <a href="{{ route('admin.calendar.index') }}" class="sf-btn-primary">
                 Open Calendar
             </a>
         </div>
     </div>
 
     {{-- Key KPI Cards --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ($keyCards as $card)
-            <a href="{{ $card['url'] }}"
-               class="{{ $card['bg'] }} rounded-xl shadow-sm border border-gray-100 p-5 block hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group">
+            @php
+                $accentClass = match ($card['accent']) {
+                    'orange' => 'bg-orange-50 text-orange-600 ring-orange-100',
+                    'green' => 'bg-green-50 text-green-600 ring-green-100',
+                    'red' => 'bg-red-50 text-red-600 ring-red-100',
+                    default => 'bg-blue-50 text-blue-600 ring-blue-100',
+                };
+
+                $valueClass = match ($card['accent']) {
+                    'orange' => 'text-orange-600',
+                    'green' => 'text-green-600',
+                    'red' => 'text-red-500',
+                    default => 'text-blue-600',
+                };
+
+                $cardSpanClass = $loop->index >= 4 ? 'xl:col-span-2' : '';
+            @endphp
+
+            <a href="{{ $card['url'] }}" class="sf-stat-card group overflow-hidden {{ $cardSpanClass }}">
                 <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <div class="text-sm text-gray-500 font-medium">
+                    <div class="min-w-0 flex-1">
+                        <div class="sf-stat-label">
                             {{ $card['title'] }}
                         </div>
 
-                        <div class="text-2xl font-bold {{ $card['text'] }} mt-2">
+                        <div class="mt-2 whitespace-nowrap text-2xl font-extrabold tracking-tight {{ $valueClass }}">
                             {{ $card['value'] }}
                         </div>
 
-                        <div class="text-xs text-gray-500 mt-1">
+                        <div class="sf-stat-note">
                             {{ $card['note'] }}
                         </div>
                     </div>
 
-                    <div class="text-gray-300 group-hover:text-gray-700 transition">
-                        →
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base ring-1 {{ $accentClass }}">
+                        {{ $card['icon'] }}
                     </div>
+                </div>
+
+                <div class="mt-4 flex items-center justify-between text-xs font-bold text-slate-400">
+                    <span>View details</span>
+                    <span class="transition group-hover:translate-x-1 group-hover:text-orange-400">→</span>
                 </div>
             </a>
         @endforeach
     </div>
 
     {{-- Funnel + Needs Attention --}}
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
         {{-- Lead Flow Funnel --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 xl:col-span-1">
-            <div class="flex items-center justify-between mb-5">
-                <div>
-                    <h3 class="font-semibold text-gray-900">Lead Flow Funnel</h3>
-                    <p class="text-xs text-gray-500 mt-1">
-                        Leads → Opportunities → Bookings → Jobs → Invoices
-                    </p>
-                </div>
+        <div class="sf-card xl:col-span-1">
+            <div class="sf-card-header">
+                <h3 class="sf-section-title">
+                    Lead Flow Funnel
+                </h3>
+                <p class="sf-section-subtitle">
+                    Leads → Opportunities → Bookings → Jobs → Invoices
+                </p>
             </div>
 
-            <div class="space-y-3">
-                @foreach ($funnelItems as $index => $item)
-                    <a href="{{ $item['url'] }}"
-                       class="block rounded-lg border border-gray-100 bg-gray-50 hover:bg-gray-100 transition">
-                        <div class="flex items-center justify-between px-4 py-3">
-                            <div class="flex items-center gap-3">
-                                <div class="w-7 h-7 rounded-full bg-white border flex items-center justify-center text-xs font-semibold text-gray-600">
-                                    {{ $index + 1 }}
+            <div class="sf-card-body">
+                <div class="space-y-3">
+                    @foreach ($funnelItems as $index => $item)
+                        <a href="{{ $item['url'] }}"
+                           class="group block rounded-2xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-orange-400/30 hover:bg-slate-900">
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-8 w-8 items-center justify-center rounded-2xl bg-white/5 text-xs font-extrabold text-orange-300 ring-1 ring-white/10">
+                                        {{ $index + 1 }}
+                                    </div>
+
+                                    <div class="font-bold text-slate-200 group-hover:text-white">
+                                        {{ $item['label'] }}
+                                    </div>
                                 </div>
 
-                                <div class="font-medium text-gray-700">
-                                    {{ $item['label'] }}
+                                <div class="text-xl font-extrabold text-white">
+                                    {{ $item['value'] }}
                                 </div>
                             </div>
+                        </a>
 
-                            <div class="text-xl font-bold text-gray-900">
-                                {{ $item['value'] }}
+                        @if (!$loop->last)
+                            <div class="flex justify-center text-lg leading-none text-orange-400">
+                                ↓
                             </div>
-                        </div>
-                    </a>
-
-                    @if (!$loop->last)
-                        <div class="flex justify-center text-gray-300 text-lg leading-none">
-                            ↓
-                        </div>
-                    @endif
-                @endforeach
+                        @endif
+                    @endforeach
+                </div>
             </div>
         </div>
 
         {{-- Needs Attention --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 xl:col-span-2">
-            <div class="flex items-center justify-between mb-5">
+        <div class="sf-card xl:col-span-2">
+            <div class="sf-card-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h3 class="font-semibold text-gray-900">Needs Attention</h3>
-                    <p class="text-xs text-gray-500 mt-1">
+                    <h3 class="sf-section-title">
+                        Needs Attention
+                    </h3>
+                    <p class="sf-section-subtitle">
                         Action items that need review from the garage team.
                     </p>
                 </div>
 
-                <span class="text-xs text-gray-500">{{ $alerts->count() }} alert(s)</span>
+                <span class="sf-badge-orange">
+                    {{ $alerts->count() }} alert(s)
+                </span>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-5">
-                <a href="{{ route('admin.bookings.index') }}"
-                   class="bg-blue-50 border border-blue-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-blue-700 font-medium">Pending Bookings</div>
-                    <div class="text-3xl font-bold text-blue-900 mt-2">
-                        {{ $smartKPIs['pending_bookings'] }}
-                    </div>
-                    <div class="text-xs text-blue-700 mt-1">
-                        Confirm, reschedule, or reject
-                    </div>
-                </a>
+            <div class="sf-card-body">
+                <div class="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <a href="{{ route('admin.bookings.index') }}"
+                       class="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-5 transition hover:-translate-y-0.5 hover:border-blue-400/40">
+                        <div class="text-sm font-bold text-blue-200">Pending Bookings</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $smartKPIs['pending_bookings'] }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-blue-200">
+                            Confirm, reschedule, or reject
+                        </div>
+                    </a>
 
-                <a href="{{ route('admin.jobs.index') }}"
-                   class="bg-purple-50 border border-purple-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-purple-700 font-medium">Open Jobs</div>
-                    <div class="text-3xl font-bold text-purple-900 mt-2">
-                        {{ $smartKPIs['open_jobs'] }}
-                    </div>
-                    <div class="text-xs text-purple-700 mt-1">
-                        Jobs not yet completed
-                    </div>
-                </a>
+                    <a href="{{ route('admin.jobs.index') }}"
+                       class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:-translate-y-0.5 hover:border-orange-400/30">
+                        <div class="text-sm font-bold text-slate-300">Open Jobs</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $smartKPIs['open_jobs'] }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-slate-400">
+                            Jobs not yet completed
+                        </div>
+                    </a>
 
-                <a href="{{ route('admin.invoices.index') }}"
-                   class="bg-orange-50 border border-orange-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-orange-700 font-medium">Unpaid Invoices</div>
-                    <div class="text-3xl font-bold text-orange-900 mt-2">
-                        {{ $smartKPIs['unpaid_invoices'] }}
-                    </div>
-                    <div class="text-xs text-orange-700 mt-1">
-                        AED {{ number_format($revenueSummary['pending_amount'], 2) }} pending
-                    </div>
-                </a>
+                    <a href="{{ route('admin.invoices.index') }}"
+                       class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-5 transition hover:-translate-y-0.5 hover:border-orange-400/40">
+                        <div class="text-sm font-bold text-orange-300">Unpaid Invoices</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $smartKPIs['unpaid_invoices'] }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-orange-300">
+                            AED {{ number_format($revenueSummary['pending_amount'], 2) }} pending
+                        </div>
+                    </a>
 
-                <a href="{{ route('admin.inbox.index') }}"
-                   class="bg-red-50 border border-red-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-red-700 font-medium">WhatsApp Failed</div>
-                    <div class="text-3xl font-bold text-red-900 mt-2">
-                        {{ $waDashboard['kpis']['failed_7d'] ?? 0 }}
-                    </div>
-                    <div class="text-xs text-red-700 mt-1">
-                        Failed messages in last 7 days
-                    </div>
-                </a>
+                    <a href="{{ route('admin.inbox.index') }}"
+                       class="rounded-2xl border border-red-400/20 bg-red-500/10 p-5 transition hover:-translate-y-0.5 hover:border-red-400/40">
+                        <div class="text-sm font-bold text-red-300">WhatsApp Failed</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $waDashboard['kpis']['failed_7d'] ?? 0 }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-red-300">
+                            Failed messages in last 7 days
+                        </div>
+                    </a>
 
-                <a href="{{ route('admin.communication-logs.index') }}"
-                   class="bg-green-50 border border-green-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-green-700 font-medium">Follow-ups Due</div>
-                    <div class="text-3xl font-bold text-green-900 mt-2">
-                        {{ $smartKPIs['followups_due'] }}
-                    </div>
-                    <div class="text-xs text-green-700 mt-1">
-                        Due this week
-                    </div>
-                </a>
+                    <a href="{{ route('admin.communication-logs.index') }}"
+                       class="rounded-2xl border border-green-400/20 bg-green-500/10 p-5 transition hover:-translate-y-0.5 hover:border-green-400/40">
+                        <div class="text-sm font-bold text-green-300">Follow-ups Due</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $smartKPIs['followups_due'] }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-green-300">
+                            Due this week
+                        </div>
+                    </a>
 
-                <a href="{{ route('admin.inbox.index') }}"
-                   class="bg-gray-50 border border-gray-100 rounded-xl p-5 hover:shadow-md transition">
-                    <div class="text-sm text-gray-700 font-medium">Replies 7d</div>
-                    <div class="text-3xl font-bold text-gray-900 mt-2">
-                        {{ $waDashboard['kpis']['replies_7d'] ?? 0 }}
+                    <a href="{{ route('admin.inbox.index') }}"
+                       class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:-translate-y-0.5 hover:border-orange-400/30">
+                        <div class="text-sm font-bold text-slate-300">Replies 7d</div>
+                        <div class="mt-2 text-3xl font-extrabold text-white">
+                            {{ $waDashboard['kpis']['replies_7d'] ?? 0 }}
+                        </div>
+                        <div class="mt-1 text-xs font-semibold text-slate-400">
+                            Customer WhatsApp replies
+                        </div>
+                    </a>
+                </div>
+
+                @if ($alerts->count())
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        @foreach ($alerts as $alert)
+                            <a href="{{ $alert['url'] }}"
+                               class="block rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-4 py-3 text-sm font-bold text-yellow-200 transition hover:bg-yellow-500/20">
+                                {{ $alert['label'] }}
+                            </a>
+                        @endforeach
                     </div>
-                    <div class="text-xs text-gray-600 mt-1">
-                        Customer WhatsApp replies
+                @else
+                    <div class="sf-alert-success">
+                        No urgent alerts. Everything looks clean.
                     </div>
-                </a>
+                @endif
             </div>
-
-            @if ($alerts->count())
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    @foreach ($alerts as $alert)
-                        <a href="{{ $alert['url'] }}"
-                           class="block bg-yellow-50 border border-yellow-100 rounded-lg px-4 py-3 text-sm text-yellow-900 hover:bg-yellow-100 transition">
-                            {{ $alert['label'] }}
-                        </a>
-                    @endforeach
-                </div>
-            @else
-                <div class="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3">
-                    No urgent alerts. Everything looks clean.
-                </div>
-            @endif
         </div>
     </div>
 
     {{-- Pipeline Summary --}}
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
         {{-- Lead Pipeline --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="font-semibold text-gray-900">Lead Pipeline</h3>
-                <a href="{{ route('admin.leads.index') }}" class="text-sm text-blue-600 hover:underline">View</a>
+        <div class="sf-card">
+            <div class="sf-card-header flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="sf-section-title">Lead Pipeline</h3>
+                    <p class="sf-section-subtitle">Lead status breakdown</p>
+                </div>
+
+                <a href="{{ route('admin.leads.index') }}" class="sf-link">View</a>
             </div>
 
-            <div class="space-y-3">
+            <div class="sf-card-body space-y-3">
                 @foreach ($leadStatuses as $status)
                     @php
                         $count = $leadPipeline[$status] ?? $leadPipeline[strtolower($status)] ?? 0;
                     @endphp
 
-                    <div class="flex items-center justify-between text-sm">
-                        <span class="text-gray-600">{{ $status }}</span>
-                        <span class="font-semibold text-gray-900">{{ $count }}</span>
+                    <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm">
+                        <span class="font-semibold text-slate-300">{{ $status }}</span>
+                        <span class="sf-badge-blue">{{ $count }}</span>
                     </div>
                 @endforeach
             </div>
         </div>
 
         {{-- Opportunity Pipeline --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="font-semibold text-gray-900">Opportunity Pipeline</h3>
-                <a href="{{ route('admin.opportunities.index') }}" class="text-sm text-blue-600 hover:underline">View</a>
+        <div class="sf-card">
+            <div class="sf-card-header flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="sf-section-title">Opportunity Pipeline</h3>
+                    <p class="sf-section-subtitle">Opportunity stage breakdown</p>
+                </div>
+
+                <a href="{{ route('admin.opportunities.index') }}" class="sf-link">View</a>
             </div>
 
-            <div class="space-y-3">
+            <div class="sf-card-body space-y-3">
                 @foreach ($opportunityStages as $stage)
                     @php
                         $count = $opportunityPipeline[$stage] ?? $opportunityPipeline[strtolower($stage)] ?? 0;
                     @endphp
 
-                    <div class="flex items-center justify-between text-sm">
-                        <span class="text-gray-600">{{ $stage }}</span>
-                        <span class="font-semibold text-gray-900">{{ $count }}</span>
+                    <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm">
+                        <span class="font-semibold text-slate-300">{{ $stage }}</span>
+                        <span class="sf-badge-orange">{{ $count }}</span>
                     </div>
                 @endforeach
             </div>
         </div>
 
         {{-- Revenue Snapshot --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="font-semibold text-gray-900">Revenue Snapshot</h3>
-                <a href="{{ route('admin.invoices.index') }}" class="text-sm text-blue-600 hover:underline">View</a>
+        <div class="sf-gradient-panel">
+            <div class="mb-5 flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-base font-extrabold text-white">Revenue Snapshot</h3>
+                    <p class="mt-1 text-xs font-medium text-blue-50">Invoice and payment summary</p>
+                </div>
+
+                <a href="{{ route('admin.invoices.index') }}"
+                   class="rounded-xl bg-white/15 px-3 py-2 text-sm font-bold text-white ring-1 ring-white/20 transition hover:bg-white/25">
+                    View
+                </a>
             </div>
 
             <div class="space-y-3 text-sm">
-                <div class="flex items-center justify-between">
-                    <span class="text-gray-600">Paid this month</span>
-                    <span class="font-semibold text-gray-900">AED {{ number_format($revenueSummary['paid_this_month'], 2) }}</span>
+                <div class="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+                    <span class="font-semibold text-blue-50">Paid this month</span>
+                    <span class="font-extrabold text-white">AED {{ number_format($revenueSummary['paid_this_month'], 2) }}</span>
                 </div>
 
-                <div class="flex items-center justify-between">
-                    <span class="text-gray-600">Pending amount</span>
-                    <span class="font-semibold text-gray-900">AED {{ number_format($revenueSummary['pending_amount'], 2) }}</span>
+                <div class="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+                    <span class="font-semibold text-blue-50">Pending amount</span>
+                    <span class="font-extrabold text-white">AED {{ number_format($revenueSummary['pending_amount'], 2) }}</span>
                 </div>
 
-                <div class="flex items-center justify-between">
-                    <span class="text-gray-600">Unpaid invoices</span>
-                    <span class="font-semibold text-gray-900">{{ $revenueSummary['unpaid_invoice_count'] }}</span>
+                <div class="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+                    <span class="font-semibold text-blue-50">Unpaid invoices</span>
+                    <span class="font-extrabold text-white">{{ $revenueSummary['unpaid_invoice_count'] }}</span>
                 </div>
 
-                <div class="flex items-center justify-between">
-                    <span class="text-gray-600">Average invoice</span>
-                    <span class="font-semibold text-gray-900">AED {{ number_format($revenueSummary['average_invoice'], 2) }}</span>
+                <div class="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+                    <span class="font-semibold text-blue-50">Average invoice</span>
+                    <span class="font-extrabold text-white">AED {{ number_format($revenueSummary['average_invoice'], 2) }}</span>
                 </div>
             </div>
         </div>
     </div>
 
     {{-- Recent Activity Full Row --}}
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
         {{-- Recent Leads --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between mb-4">
-                <h3 class="font-semibold text-gray-900">Recent Leads</h3>
-                <a href="{{ route('admin.leads.index') }}" class="text-sm text-blue-600 hover:underline">View All</a>
+        <div class="sf-card">
+            <div class="sf-card-header flex items-center justify-between gap-3">
+                <h3 class="sf-section-title">Recent Leads</h3>
+                <a href="{{ route('admin.leads.index') }}" class="sf-link">View All</a>
             </div>
 
-            @forelse($recentLeads as $lead)
-                <a href="{{ route('admin.leads.show', $lead->id) }}"
-                   class="block p-3 bg-gray-50 rounded-lg mb-2 hover:bg-gray-100 transition">
-                    <div class="font-medium text-gray-900">{{ $lead->name ?? 'Unnamed Lead' }}</div>
-                    <div class="text-xs text-gray-500">{{ $lead->email ?? $lead->phone ?? 'No contact info' }}</div>
-                </a>
-            @empty
-                <div class="text-sm text-gray-400">No leads</div>
-            @endforelse
+            <div class="sf-card-body">
+                @forelse($recentLeads as $lead)
+                    <a href="{{ route('admin.leads.show', $lead->id) }}"
+                       class="mb-2 block rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition hover:border-orange-400/30 hover:bg-slate-900">
+                        <div class="font-bold text-white">{{ $lead->name ?? 'Unnamed Lead' }}</div>
+                        <div class="text-xs font-medium text-slate-400">{{ $lead->email ?? $lead->phone ?? 'No contact info' }}</div>
+                    </a>
+                @empty
+                    <div class="sf-empty">No leads</div>
+                @endforelse
+            </div>
         </div>
 
         {{-- Recent Bookings --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between mb-4">
-                <h3 class="font-semibold text-gray-900">Recent Bookings</h3>
-                <a href="{{ route('admin.bookings.index') }}" class="text-sm text-blue-600 hover:underline">View All</a>
+        <div class="sf-card">
+            <div class="sf-card-header flex items-center justify-between gap-3">
+                <h3 class="sf-section-title">Recent Bookings</h3>
+                <a href="{{ route('admin.bookings.index') }}" class="sf-link">View All</a>
             </div>
 
-            @forelse($recentBookings as $booking)
-                <a href="{{ route('admin.bookings.show', $booking->id) }}"
-                   class="block p-3 bg-gray-50 rounded-lg mb-2 hover:bg-gray-100 transition">
-                    <div class="font-medium text-gray-900">{{ $booking->client->name ?? 'Client' }}</div>
-                    <div class="text-xs text-gray-500">{{ $booking->booking_date }}</div>
-                </a>
-            @empty
-                <div class="text-sm text-gray-400">No bookings</div>
-            @endforelse
+            <div class="sf-card-body">
+                @forelse($recentBookings as $booking)
+                    <a href="{{ route('admin.bookings.show', $booking->id) }}"
+                       class="mb-2 block rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition hover:border-orange-400/30 hover:bg-slate-900">
+                        <div class="font-bold text-white">{{ $booking->client->name ?? 'Client' }}</div>
+                        <div class="text-xs font-medium text-slate-400">{{ $booking->booking_date }}</div>
+                    </a>
+                @empty
+                    <div class="sf-empty">No bookings</div>
+                @endforelse
+            </div>
         </div>
 
         {{-- Recent Opportunities --}}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div class="flex justify-between mb-4">
-                <h3 class="font-semibold text-gray-900">Recent Opportunities</h3>
-                <a href="{{ route('admin.opportunities.index') }}" class="text-sm text-blue-600 hover:underline">View All</a>
+        <div class="sf-card">
+            <div class="sf-card-header flex items-center justify-between gap-3">
+                <h3 class="sf-section-title">Recent Opportunities</h3>
+                <a href="{{ route('admin.opportunities.index') }}" class="sf-link">View All</a>
             </div>
 
-            @forelse($recentOpportunities as $opp)
-                <a href="{{ route('admin.opportunities.show', $opp->id) }}"
-                   class="block p-3 bg-gray-50 rounded-lg mb-2 hover:bg-gray-100 transition">
-                    <div class="font-medium text-gray-900">{{ $opp->title ?? 'Opportunity' }}</div>
-                    <div class="text-xs text-gray-500">{{ $opp->client->name ?? 'Client' }}</div>
-                </a>
-            @empty
-                <div class="text-sm text-gray-400">No opportunities</div>
-            @endforelse
+            <div class="sf-card-body">
+                @forelse($recentOpportunities as $opp)
+                    <a href="{{ route('admin.opportunities.show', $opp->id) }}"
+                       class="mb-2 block rounded-2xl border border-white/10 bg-slate-950/60 p-3 transition hover:border-orange-400/30 hover:bg-slate-900">
+                        <div class="font-bold text-white">{{ $opp->title ?? 'Opportunity' }}</div>
+                        <div class="text-xs font-medium text-slate-400">{{ $opp->client->name ?? 'Client' }}</div>
+                    </a>
+                @empty
+                    <div class="sf-empty">No opportunities</div>
+                @endforelse
+            </div>
         </div>
     </div>
 
     {{-- Full Width Calendar --}}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+    <div class="sf-card">
+        <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-                <h3 class="font-semibold flex items-center gap-2 text-gray-900">
+                <h3 class="sf-section-title flex items-center gap-2">
                     📅 Calendar
                 </h3>
-                <p class="text-sm text-gray-500 mt-1">
+                <p class="sf-section-subtitle">
                     Upcoming bookings and garage schedule.
                 </p>
             </div>
 
-            <a href="{{ route('admin.calendar.index') }}" class="text-sm text-blue-600 hover:underline">
+            <a href="{{ route('admin.calendar.index') }}" class="sf-link">
                 Full Calendar View
             </a>
         </div>
 
-        <div id="dashboard-calendar" class="dashboard-calendar"></div>
+        <div class="sf-card-body">
+            <div id="dashboard-calendar" class="dashboard-calendar"></div>
+        </div>
     </div>
 
     {{-- WhatsApp Health --}}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+    <div class="sf-card">
+        <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-                <h3 class="font-semibold text-gray-900">WhatsApp Health</h3>
-                <p class="text-sm text-gray-500">
+                <h3 class="sf-section-title">WhatsApp Health</h3>
+                <p class="sf-section-subtitle">
                     WhatsApp activity from message logs. Today can be zero if no messages were sent today.
                 </p>
             </div>
 
-            <a href="{{ route('admin.inbox.index') }}"
-               class="text-sm text-blue-600 hover:underline">
+            <a href="{{ route('admin.inbox.index') }}" class="sf-link">
                 Open Inbox
             </a>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-xs text-gray-500">Sent Today</div>
-                <div class="text-2xl font-bold text-gray-900 mt-1">
-                    {{ $waDashboard['kpis']['sent_today'] }}
+        <div class="sf-card-body">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-5">
+                <div class="sf-mini-card">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Sent Today</div>
+                    <div class="mt-1 text-2xl font-extrabold text-white">
+                        {{ $waDashboard['kpis']['sent_today'] }}
+                    </div>
                 </div>
-            </div>
 
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-xs text-gray-500">Outbound 7d</div>
-                <div class="text-2xl font-bold text-gray-900 mt-1">
-                    {{ $waDashboard['kpis']['outbound_7d'] }}
+                <div class="sf-mini-card">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Outbound 7d</div>
+                    <div class="mt-1 text-2xl font-extrabold text-white">
+                        {{ $waDashboard['kpis']['outbound_7d'] }}
+                    </div>
                 </div>
-            </div>
 
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-xs text-gray-500">Replies 7d</div>
-                <div class="text-2xl font-bold text-gray-900 mt-1">
-                    {{ $waDashboard['kpis']['replies_7d'] }}
+                <div class="sf-mini-card">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Replies 7d</div>
+                    <div class="mt-1 text-2xl font-extrabold text-white">
+                        {{ $waDashboard['kpis']['replies_7d'] }}
+                    </div>
                 </div>
-            </div>
 
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-xs text-gray-500">Failed 7d</div>
-                <div class="text-2xl font-bold text-gray-900 mt-1">
-                    {{ $waDashboard['kpis']['failed_7d'] }}
+                <div class="sf-mini-card">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Failed 7d</div>
+                    <div class="mt-1 text-2xl font-extrabold text-red-400">
+                        {{ $waDashboard['kpis']['failed_7d'] }}
+                    </div>
                 </div>
-            </div>
 
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-xs text-gray-500">AI Replies 7d</div>
-                <div class="text-2xl font-bold text-gray-900 mt-1">
-                    {{ $waDashboard['kpis']['ai_replies_7d'] }}
+                <div class="sf-mini-card">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">AI Replies 7d</div>
+                    <div class="mt-1 text-2xl font-extrabold text-blue-300">
+                        {{ $waDashboard['kpis']['ai_replies_7d'] }}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     {{-- Quick Actions --}}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 class="font-semibold text-gray-900 mb-4">Quick Actions</h3>
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h3 class="sf-section-title">Quick Actions</h3>
+            <p class="sf-section-subtitle">
+                Create records quickly without leaving the dashboard flow.
+            </p>
+        </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <a href="{{ route('admin.leads.create') }}"
-               class="action-btn bg-blue-50 text-blue-700">+ Add Lead</a>
+        <div class="sf-card-body">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <a href="{{ route('admin.leads.create') }}" class="sf-btn-soft-blue">
+                    + Add Lead
+                </a>
 
-            <a href="{{ route('admin.clients.create') }}"
-               class="action-btn bg-green-50 text-green-700">+ Add Client</a>
+                <a href="{{ route('admin.clients.create') }}" class="sf-btn-secondary">
+                    + Add Client
+                </a>
 
-            <a href="{{ route('admin.bookings.create') }}"
-               class="action-btn bg-purple-50 text-purple-700">+ New Booking</a>
+                <a href="{{ route('admin.bookings.create') }}" class="sf-btn-primary">
+                    + New Booking
+                </a>
 
-            <a href="{{ route('admin.opportunities.create') }}"
-               class="action-btn bg-yellow-50 text-yellow-700">+ New Opportunity</a>
+                <a href="{{ route('admin.opportunities.create') }}" class="sf-btn-orange">
+                    + New Opportunity
+                </a>
+            </div>
         </div>
     </div>
 
@@ -533,7 +607,12 @@
 <style>
 .dashboard-calendar {
     min-height: 620px;
-    border-radius: 8px;
+    border-radius: 16px;
+}
+
+.fc {
+    font-family: Figtree, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #e2e8f0;
 }
 
 .fc .fc-toolbar {
@@ -542,19 +621,55 @@
 }
 
 .fc .fc-toolbar-title {
+    color: #ffffff;
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 800;
 }
 
 .fc .fc-button {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.8rem;
+    border: 0 !important;
+    border-radius: 12px !important;
+    background: #f97316 !important;
+    padding: 0.4rem 0.7rem !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+}
+
+.fc .fc-button:hover {
+    background: #ea580c !important;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+    background: #2563eb !important;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th,
+.fc-theme-standard .fc-scrollgrid {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.fc-theme-standard .fc-scrollgrid {
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number {
+    color: #cbd5e1;
+    font-weight: 700;
+}
+
+.fc .fc-day-today {
+    background: rgba(249, 115, 22, 0.12) !important;
 }
 
 .fc-daygrid-event {
-    border-radius: 6px;
+    border-radius: 10px;
     padding: 3px 7px;
     font-size: 0.78rem;
+    font-weight: 700;
 }
 
 .fc-scroller {
@@ -563,18 +678,6 @@
 
 .fc-scroller::-webkit-scrollbar {
     display: none;
-}
-
-.action-btn {
-    padding: 0.85rem;
-    border-radius: 0.75rem;
-    text-align: center;
-    font-weight: 600;
-    transition: all 0.2s ease;
-}
-
-.action-btn:hover {
-    transform: translateY(-1px);
 }
 
 @media (max-width: 640px) {
@@ -587,8 +690,8 @@
     }
 
     .fc .fc-button {
-        padding: 0.25rem 0.45rem;
-        font-size: 0.72rem;
+        padding: 0.25rem 0.45rem !important;
+        font-size: 0.72rem !important;
     }
 }
 </style>

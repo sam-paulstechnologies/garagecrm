@@ -1,188 +1,443 @@
 @php
     use Illuminate\Support\Facades\Route;
+
+    $isManagerArea = request()->routeIs('manager.*');
+    $isAdminArea = request()->routeIs('admin.*') || ! $isManagerArea;
+
+    $brandUrl = url('/');
+
+    if ($isManagerArea && Route::has('manager.dashboard')) {
+        $brandUrl = route('manager.dashboard');
+    } elseif (Route::has('admin.dashboard')) {
+        $brandUrl = route('admin.dashboard');
+    }
+
+    $activePackageName = 'Growth Plan';
+
+    if (auth()->check()) {
+        $user = auth()->user();
+
+        $company = null;
+
+        try {
+            $company = $user->company ?? null;
+        } catch (\Throwable $e) {
+            $company = null;
+        }
+
+        $possiblePackageName =
+            data_get($company, 'package_name') ??
+            data_get($company, 'subscription_plan') ??
+            data_get($company, 'plan_name') ??
+            data_get($company, 'active_package') ??
+            null;
+
+        if (! empty($possiblePackageName)) {
+            $activePackageName = str($possiblePackageName)->headline()->toString();
+
+            if (! str($activePackageName)->contains('Plan')) {
+                $activePackageName .= ' Plan';
+            }
+        }
+    }
+
+    $primaryNavItems = $isManagerArea
+        ? [
+            ['label' => 'Dashboard', 'route' => 'manager.dashboard', 'active' => 'manager.dashboard'],
+            ['label' => 'Clients', 'route' => 'manager.clients.index', 'active' => 'manager.clients.*'],
+            ['label' => 'Leads', 'route' => 'manager.leads.index', 'active' => 'manager.leads.*'],
+            ['label' => 'Opportunities', 'route' => 'manager.opportunities.index', 'active' => 'manager.opportunities.*'],
+            ['label' => 'Bookings', 'route' => 'manager.bookings.index', 'active' => 'manager.bookings.*'],
+            ['label' => 'Jobs', 'route' => 'manager.jobs.index', 'active' => 'manager.jobs.*'],
+            ['label' => 'Invoices', 'route' => 'manager.invoices.index', 'active' => 'manager.invoices.*'],
+            ['label' => 'Inbox', 'route' => 'manager.inbox.index', 'active' => 'manager.inbox.*'],
+            ['label' => 'Team', 'route' => 'manager.team.index', 'active' => 'manager.team.*'],
+        ]
+        : [
+            ['label' => 'Dashboard', 'route' => 'admin.dashboard', 'active' => 'admin.dashboard'],
+            ['label' => 'Clients', 'route' => 'admin.clients.index', 'active' => 'admin.clients.*'],
+            ['label' => 'Leads', 'route' => 'admin.leads.index', 'active' => 'admin.leads.*'],
+            ['label' => 'Opportunities', 'route' => 'admin.opportunities.index', 'active' => 'admin.opportunities.*'],
+            ['label' => 'Bookings', 'route' => 'admin.bookings.index', 'active' => 'admin.bookings.*'],
+            ['label' => 'Jobs', 'route' => 'admin.jobs.index', 'active' => 'admin.jobs.*'],
+            ['label' => 'Invoices', 'route' => 'admin.invoices.index', 'active' => 'admin.invoices.*'],
+            ['label' => 'Calendar', 'route' => 'admin.calendar.index', 'active' => 'admin.calendar.*'],
+            ['label' => 'Inbox', 'route' => 'admin.inbox.index', 'active' => 'admin.inbox.*'],
+        ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Growth menu
+    |--------------------------------------------------------------------------
+    | Lead capture, audience building, templates, and event/template mapping.
+    |--------------------------------------------------------------------------
+    */
+    $growthActive =
+        request()->routeIs('admin.lead-sources.*') ||
+        request()->routeIs('admin.audience-segmentations.*') ||
+        request()->routeIs('admin.whatsapp.templates.*') ||
+        request()->routeIs('admin.whatsapp.mappings.*');
+
+    $growthItems = [
+        [
+            'label' => 'Lead Sources',
+            'description' => 'WhatsApp, website forms, and Meta lead ads',
+            'route' => 'admin.lead-sources.index',
+            'active' => 'admin.lead-sources.*',
+        ],
+        [
+            'label' => 'Audience Segmentation',
+            'description' => 'Customer buckets and campaign groups',
+            'route' => 'admin.audience-segmentations.index',
+            'active' => 'admin.audience-segmentations.*',
+        ],
+        [
+            'label' => 'WhatsApp Templates',
+            'description' => 'Approved and internal WhatsApp templates',
+            'route' => 'admin.whatsapp.templates.index',
+            'active' => 'admin.whatsapp.templates.*',
+        ],
+        [
+            'label' => 'Template Mappings',
+            'description' => 'Map events to message templates',
+            'route' => 'admin.whatsapp.mappings.index',
+            'active' => 'admin.whatsapp.mappings.*',
+        ],
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Settings menu
+    |--------------------------------------------------------------------------
+    | Actual setup/configuration pages only.
+    |--------------------------------------------------------------------------
+    */
+    $settingsActive =
+        request()->routeIs('admin.settings.launch-setup.*') ||
+        request()->routeIs('admin.settings.index') ||
+        request()->routeIs('admin.ai.*') ||
+        request()->routeIs('admin.whatsapp.settings.*');
+
+    $settingsItems = [
+        [
+            'label' => 'Launch Setup',
+            'description' => 'Garage setup, manager handoff, working hours',
+            'route' => 'admin.settings.launch-setup.edit',
+            'active' => 'admin.settings.launch-setup.*',
+        ],
+        [
+            'label' => 'Integration Settings',
+            'description' => 'Tenant profile, Meta, Twilio, and system defaults',
+            'route' => 'admin.settings.index',
+            'active' => 'admin.settings.index',
+        ],
+        [
+            'label' => 'WhatsApp Controls',
+            'description' => 'Automation, review link, UAT reset',
+            'route' => 'admin.whatsapp.settings.edit',
+            'active' => 'admin.whatsapp.settings.*',
+        ],
+        [
+            'label' => 'AI Control Center',
+            'description' => 'AI replies, confidence, safety, and handoff rules',
+            'route' => 'admin.ai.edit',
+            'active' => 'admin.ai.*',
+        ],
+    ];
+
+    $profileRoute = null;
+
+    if ($isManagerArea && Route::has('manager.profile.edit')) {
+        $profileRoute = route('manager.profile.edit');
+    } elseif (Route::has('admin.profile.edit')) {
+        $profileRoute = route('admin.profile.edit');
+    }
+
+    $userInitial = 'S';
+
+    if (auth()->check() && ! empty(auth()->user()->name)) {
+        $userInitial = strtoupper(substr(auth()->user()->name, 0, 1));
+    }
 @endphp
 
-<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
+<nav
+    x-data="{
+        open: false,
+        growthOpen: false,
+        settingsOpen: false,
+        userOpen: false,
+        toggleGrowth() {
+            this.growthOpen = !this.growthOpen;
+            this.settingsOpen = false;
+            this.userOpen = false;
+        },
+        toggleSettings() {
+            this.settingsOpen = !this.settingsOpen;
+            this.growthOpen = false;
+            this.userOpen = false;
+        },
+        toggleUser() {
+            this.userOpen = !this.userOpen;
+            this.growthOpen = false;
+            this.settingsOpen = false;
+        },
+        closeAll() {
+            this.growthOpen = false;
+            this.settingsOpen = false;
+            this.userOpen = false;
+        }
+    }"
+    class="sticky top-0 z-40 border-b border-white/10 bg-[#050914]/95 shadow-lg shadow-black/20 backdrop-blur"
+>
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-            {{-- LEFT --}}
-            <div class="flex">
+        <div class="flex min-h-16 items-center justify-between gap-4">
 
-                {{-- Logo --}}
-                <div class="shrink-0 flex items-center">
-                    @if(Route::has('admin.dashboard'))
-                        <a href="{{ route('admin.dashboard') }}">
-                            <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
-                        </a>
-                    @endif
-                </div>
+            {{-- Left: Brand + Desktop Nav --}}
+            <div class="flex min-w-0 items-center gap-6">
+
+                {{-- Brand --}}
+                <a href="{{ $brandUrl }}"
+                   class="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]">
+
+                    <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40">
+                        SF
+                    </span>
+
+                    <span class="hidden leading-tight sm:block">
+                        <span class="block text-sm font-extrabold tracking-tight text-white">
+                            SayaraForce
+                        </span>
+
+                        <span class="mt-0.5 inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
+                            {{ $activePackageName }}
+                        </span>
+                    </span>
+                </a>
 
                 {{-- Desktop Primary Nav --}}
-                <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex items-center">
+                <div class="hidden items-center gap-1 lg:flex">
+                    @foreach($primaryNavItems as $item)
+                        @if(Route::has($item['route']))
+                            <a href="{{ route($item['route']) }}"
+                               class="rounded-xl px-3 py-2 text-sm font-bold transition
+                                      {{ request()->routeIs($item['active'])
+                                            ? 'bg-white/10 text-white ring-1 ring-white/10'
+                                            : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                                {{ $item['label'] }}
+                            </a>
+                        @endif
+                    @endforeach
 
-                    @if(Route::has('admin.dashboard'))
-                        <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                            Dashboard
-                        </x-nav-link>
+                    @if($isAdminArea)
+
+                        {{-- Growth Dropdown --}}
+                        <div class="relative">
+                            <button
+                                type="button"
+                                @click="toggleGrowth()"
+                                class="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold transition
+                                       {{ $growthActive
+                                            ? 'bg-orange-500/10 text-orange-300 ring-1 ring-orange-400/20'
+                                            : 'text-slate-400 hover:bg-white/5 hover:text-orange-300' }}"
+                            >
+                                <span>Growth</span>
+
+                                <svg class="h-4 w-4 transition-transform"
+                                     :class="{ 'rotate-180': growthOpen }"
+                                     fill="none"
+                                     viewBox="0 0 24 24"
+                                     stroke="currentColor">
+                                    <path stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                          stroke-width="2"
+                                          d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            <div
+                                x-cloak
+                                x-show="growthOpen"
+                                x-transition.origin.top.right
+                                @click.outside="growthOpen = false"
+                                class="absolute right-0 z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40"
+                            >
+                                <div class="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                    <p class="text-sm font-extrabold text-white">Growth Engine</p>
+                                    <p class="text-xs font-medium text-slate-400">
+                                        Lead capture, segments, templates, and journeys
+                                    </p>
+                                </div>
+
+                                <div class="p-2">
+                                    @foreach($growthItems as $item)
+                                        @if(Route::has($item['route']))
+                                            <a href="{{ route($item['route']) }}"
+                                               class="block rounded-xl px-4 py-3 transition
+                                                      {{ request()->routeIs($item['active'])
+                                                            ? 'bg-orange-500/10 text-orange-300'
+                                                            : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                                                <span class="block text-sm font-extrabold">
+                                                    {{ $item['label'] }}
+                                                </span>
+
+                                                <span class="mt-0.5 block text-xs font-medium text-slate-500">
+                                                    {{ $item['description'] }}
+                                                </span>
+                                            </a>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Settings Dropdown --}}
+                        <div class="relative">
+                            <button
+                                type="button"
+                                @click="toggleSettings()"
+                                class="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold transition
+                                       {{ $settingsActive
+                                            ? 'bg-orange-500/10 text-orange-300 ring-1 ring-orange-400/20'
+                                            : 'text-slate-400 hover:bg-white/5 hover:text-orange-300' }}"
+                            >
+                                <span>Settings</span>
+
+                                <svg class="h-4 w-4 transition-transform"
+                                     :class="{ 'rotate-180': settingsOpen }"
+                                     fill="none"
+                                     viewBox="0 0 24 24"
+                                     stroke="currentColor">
+                                    <path stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                          stroke-width="2"
+                                          d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            <div
+                                x-cloak
+                                x-show="settingsOpen"
+                                x-transition.origin.top.right
+                                @click.outside="settingsOpen = false"
+                                class="absolute right-0 z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40"
+                            >
+                                <div class="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                    <p class="text-sm font-extrabold text-white">Admin Settings</p>
+                                    <p class="text-xs font-medium text-slate-400">
+                                        Setup, integrations, WhatsApp controls, and AI
+                                    </p>
+                                </div>
+
+                                <div class="p-2">
+                                    @foreach($settingsItems as $item)
+                                        @if(Route::has($item['route']))
+                                            <a href="{{ route($item['route']) }}"
+                                               class="block rounded-xl px-4 py-3 transition
+                                                      {{ request()->routeIs($item['active'])
+                                                            ? 'bg-orange-500/10 text-orange-300'
+                                                            : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                                                <span class="block text-sm font-extrabold">
+                                                    {{ $item['label'] }}
+                                                </span>
+
+                                                <span class="mt-0.5 block text-xs font-medium text-slate-500">
+                                                    {{ $item['description'] }}
+                                                </span>
+                                            </a>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
                     @endif
+                </div>
+            </div>
 
-                    @if(Route::has('admin.clients.index'))
-                        <x-nav-link :href="route('admin.clients.index')" :active="request()->routeIs('admin.clients.*')">
-                            Clients
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.leads.index'))
-                        <x-nav-link :href="route('admin.leads.index')" :active="request()->routeIs('admin.leads.*')">
-                            Leads
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.opportunities.index'))
-                        <x-nav-link :href="route('admin.opportunities.index')" :active="request()->routeIs('admin.opportunities.*')">
-                            Opportunities
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.bookings.index'))
-                        <x-nav-link :href="route('admin.bookings.index')" :active="request()->routeIs('admin.bookings.*')">
-                            Bookings
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.jobs.index'))
-                        <x-nav-link :href="route('admin.jobs.index')" :active="request()->routeIs('admin.jobs.*')">
-                            Jobs
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.invoices.index'))
-                        <x-nav-link :href="route('admin.invoices.index')" :active="request()->routeIs('admin.invoices.*')">
-                            Invoices
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.calendar.index'))
-                        <x-nav-link :href="route('admin.calendar.index')" :active="request()->routeIs('admin.calendar.*')">
-                            Calendar
-                        </x-nav-link>
-                    @endif
-
-                    @if(Route::has('admin.inbox.index'))
-                        <x-nav-link :href="route('admin.inbox.index')" :active="request()->routeIs('admin.inbox.*')">
-                            Inbox
-                        </x-nav-link>
-                    @endif
-
-                    {{-- SETTINGS DROPDOWN --}}
-                    <div x-data="{ settingsOpen: false }" class="relative">
+            {{-- Right: User Initial Only --}}
+            <div class="hidden items-center gap-3 sm:flex">
+                @auth
+                    <div class="relative">
                         <button
-                            @click="settingsOpen = !settingsOpen"
                             type="button"
-                            class="inline-flex items-center text-sm font-medium {{ request()->routeIs('admin.business-profile.*') || request()->routeIs('admin.settings.*') || request()->routeIs('admin.ai.*') || request()->routeIs('admin.whatsapp.*') || request()->routeIs('admin.lead-sources.*') || request()->routeIs('admin.audience-segmentations.*') ? 'text-indigo-600' : 'text-gray-700 hover:text-indigo-600' }}"
+                            @click="toggleUser()"
+                            class="inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border border-white/10 bg-gradient-to-br from-orange-500 to-orange-700 px-3 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40 transition hover:border-orange-300/40 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
+                            title="{{ auth()->user()->name }}"
                         >
-                            <span>Settings</span>
-                            <svg class="ml-1 w-4 h-4 transform transition-transform"
-                                 :class="{ 'rotate-180': settingsOpen }"
-                                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                      d="M19 9l-7 7-7-7"/>
+                            <span>{{ $userInitial }}</span>
+
+                            <svg class="h-3.5 w-3.5 text-orange-100 transition-transform"
+                                 :class="{ 'rotate-180': userOpen }"
+                                 fill="none"
+                                 viewBox="0 0 24 24"
+                                 stroke="currentColor">
+                                <path stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                      stroke-width="2.5"
+                                      d="M19 9l-7 7-7-7" />
                             </svg>
                         </button>
 
                         <div
                             x-cloak
-                            x-show="settingsOpen"
-                            @click.outside="settingsOpen = false"
-                            class="absolute left-0 mt-2 w-64 bg-white border rounded shadow-lg z-50 py-2"
+                            x-show="userOpen"
+                            x-transition.origin.top.right
+                            @click.outside="userOpen = false"
+                            class="absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40"
                         >
-                            @if(Route::has('admin.business-profile.edit'))
-                                <a href="{{ route('admin.business-profile.edit') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.business-profile.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
-                                    Business Profile
-                                </a>
-                            @endif
+                            <div class="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white">
+                                        {{ $userInitial }}
+                                    </div>
 
-                            @if(Route::has('admin.settings.launch-setup.edit'))
-                                <a href="{{ route('admin.settings.launch-setup.edit') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.settings.launch-setup.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
-                                    Launch Setup
-                                </a>
-                            @endif
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-extrabold text-white">
+                                            {{ auth()->user()->name }}
+                                        </p>
 
-                            @if(Route::has('admin.ai.edit'))
-                                <a href="{{ route('admin.ai.edit') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.ai.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
-                                    AI Settings
-                                </a>
-                            @endif
+                                        <p class="truncate text-xs font-medium text-slate-400">
+                                            {{ auth()->user()->email }}
+                                        </p>
+                                    </div>
+                                </div>
 
-                            @if(Route::has('admin.whatsapp.settings.edit'))
-                                <a href="{{ route('admin.whatsapp.settings.edit') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.whatsapp.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
-                                    WhatsApp Settings
-                                </a>
-                            @endif
+                                <p class="mt-3">
+                                    <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
+                                        {{ $activePackageName }}
+                                    </span>
+                                </p>
+                            </div>
 
-                            @if(Route::has('admin.audience-segmentations.index'))
-                                <a href="{{ route('admin.audience-segmentations.index') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.audience-segmentations.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }}">
-                                    Audience Segmentation
-                                </a>
-                            @endif
+                            <div class="p-2">
+                                @if($profileRoute)
+                                    <a href="{{ $profileRoute }}"
+                                       class="block rounded-xl px-4 py-2 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white">
+                                        Profile
+                                    </a>
+                                @endif
 
-                            <div class="border-t my-2"></div>
-
-                            @if(Route::has('admin.lead-sources.index'))
-                                <a href="{{ route('admin.lead-sources.index') }}"
-                                   class="block px-4 py-2 text-sm {{ request()->routeIs('admin.lead-sources.*') ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-100 text-gray-700' }} font-medium">
-                                    Lead Sources
-                                </a>
-                            @endif
+                                @if(Route::has('logout'))
+                                    <form method="POST" action="{{ route('logout') }}">
+                                        @csrf
+                                        <button type="submit"
+                                                class="block w-full rounded-xl px-4 py-2 text-left text-sm font-bold text-red-300 transition hover:bg-red-500/10 hover:text-red-200">
+                                            Log Out
+                                        </button>
+                                    </form>
+                                @endif
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {{-- Desktop Right --}}
-            <div class="hidden sm:flex sm:items-center sm:ms-6">
-                <x-dropdown align="right" width="48">
-                    <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
-                            {{ auth()->user()->name }}
-                            <svg class="ms-1 h-4 w-4 fill-current" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd"
-                                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                      clip-rule="evenodd"/>
-                            </svg>
-                        </button>
-                    </x-slot>
-
-                    <x-slot name="content">
-                        @if(Route::has('admin.profile.edit'))
-                            <x-dropdown-link :href="route('admin.profile.edit')">
-                                Profile
-                            </x-dropdown-link>
-                        @endif
-
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
-                            <x-dropdown-link :href="route('logout')"
-                                onclick="event.preventDefault(); this.closest('form').submit();">
-                                Log Out
-                            </x-dropdown-link>
-                        </form>
-                    </x-slot>
-                </x-dropdown>
+                @endauth
             </div>
 
             {{-- Mobile Hamburger --}}
-            <div class="-me-2 flex items-center sm:hidden">
+            <div class="flex items-center lg:hidden">
                 <button
-                    @click="open = !open"
                     type="button"
-                    class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none"
+                    @click="open = !open; growthOpen = false; settingsOpen = false; userOpen = false;"
+                    class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 shadow-sm transition hover:border-orange-400/30 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
                 >
                     <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
                         <path
@@ -208,131 +463,108 @@
     </div>
 
     {{-- Mobile Menu --}}
-    <div x-show="open" x-cloak class="sm:hidden border-t border-gray-100 bg-white">
+    <div x-cloak
+         x-show="open"
+         x-transition
+         class="border-t border-white/10 bg-[#050914] lg:hidden">
 
-        <div class="pt-2 pb-3 space-y-1">
-            @if(Route::has('admin.dashboard'))
-                <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                    Dashboard
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.clients.index'))
-                <x-responsive-nav-link :href="route('admin.clients.index')" :active="request()->routeIs('admin.clients.*')">
-                    Clients
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.leads.index'))
-                <x-responsive-nav-link :href="route('admin.leads.index')" :active="request()->routeIs('admin.leads.*')">
-                    Leads
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.opportunities.index'))
-                <x-responsive-nav-link :href="route('admin.opportunities.index')" :active="request()->routeIs('admin.opportunities.*')">
-                    Opportunities
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.bookings.index'))
-                <x-responsive-nav-link :href="route('admin.bookings.index')" :active="request()->routeIs('admin.bookings.*')">
-                    Bookings
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.jobs.index'))
-                <x-responsive-nav-link :href="route('admin.jobs.index')" :active="request()->routeIs('admin.jobs.*')">
-                    Jobs
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.invoices.index'))
-                <x-responsive-nav-link :href="route('admin.invoices.index')" :active="request()->routeIs('admin.invoices.*')">
-                    Invoices
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.calendar.index'))
-                <x-responsive-nav-link :href="route('admin.calendar.index')" :active="request()->routeIs('admin.calendar.*')">
-                    Calendar
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.inbox.index'))
-                <x-responsive-nav-link :href="route('admin.inbox.index')" :active="request()->routeIs('admin.inbox.*')">
-                    Inbox
-                </x-responsive-nav-link>
-            @endif
-
-            <div class="border-t my-2"></div>
-
-            <div class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Settings
-            </div>
-
-            @if(Route::has('admin.business-profile.edit'))
-                <x-responsive-nav-link :href="route('admin.business-profile.edit')" :active="request()->routeIs('admin.business-profile.*')">
-                    Business Profile
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.settings.launch-setup.edit'))
-                <x-responsive-nav-link :href="route('admin.settings.launch-setup.edit')" :active="request()->routeIs('admin.settings.launch-setup.*')">
-                    Launch Setup
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.ai.edit'))
-                <x-responsive-nav-link :href="route('admin.ai.edit')" :active="request()->routeIs('admin.ai.*')">
-                    AI Settings
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.whatsapp.settings.edit'))
-                <x-responsive-nav-link :href="route('admin.whatsapp.settings.edit')" :active="request()->routeIs('admin.whatsapp.*')">
-                    WhatsApp Settings
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.audience-segmentations.index'))
-                <x-responsive-nav-link :href="route('admin.audience-segmentations.index')" :active="request()->routeIs('admin.audience-segmentations.*')">
-                    Audience Segmentation
-                </x-responsive-nav-link>
-            @endif
-
-            @if(Route::has('admin.lead-sources.index'))
-                <x-responsive-nav-link :href="route('admin.lead-sources.index')" :active="request()->routeIs('admin.lead-sources.*')">
-                    Lead Sources
-                </x-responsive-nav-link>
-            @endif
-        </div>
-
-        <div class="pt-4 pb-1 border-t border-gray-200">
-            <div class="px-4">
-                <div class="font-medium text-base text-gray-800">
-                    {{ auth()->user()->name }}
-                </div>
-                <div class="font-medium text-sm text-gray-500">
-                    {{ auth()->user()->email }}
-                </div>
-            </div>
-
-            <div class="mt-3 space-y-1">
-                @if(Route::has('admin.profile.edit'))
-                    <x-responsive-nav-link :href="route('admin.profile.edit')">
-                        Profile
-                    </x-responsive-nav-link>
+        <div class="space-y-1 px-4 py-4">
+            @foreach($primaryNavItems as $item)
+                @if(Route::has($item['route']))
+                    <a href="{{ route($item['route']) }}"
+                       class="block rounded-2xl px-4 py-3 text-sm font-bold transition
+                              {{ request()->routeIs($item['active'])
+                                    ? 'bg-white/10 text-white'
+                                    : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                        {{ $item['label'] }}
+                    </a>
                 @endif
+            @endforeach
 
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <x-responsive-nav-link :href="route('logout')"
-                        onclick="event.preventDefault(); this.closest('form').submit();">
-                        Log Out
-                    </x-responsive-nav-link>
-                </form>
-            </div>
+            @if($isAdminArea)
+                <div class="my-3 border-t border-white/10"></div>
+
+                <div class="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                    Growth
+                </div>
+
+                @foreach($growthItems as $item)
+                    @if(Route::has($item['route']))
+                        <a href="{{ route($item['route']) }}"
+                           class="block rounded-2xl px-4 py-3 text-sm font-bold transition
+                                  {{ request()->routeIs($item['active'])
+                                        ? 'bg-orange-500/10 text-orange-300'
+                                        : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                            {{ $item['label'] }}
+                        </a>
+                    @endif
+                @endforeach
+
+                <div class="my-3 border-t border-white/10"></div>
+
+                <div class="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                    Settings
+                </div>
+
+                @foreach($settingsItems as $item)
+                    @if(Route::has($item['route']))
+                        <a href="{{ route($item['route']) }}"
+                           class="block rounded-2xl px-4 py-3 text-sm font-bold transition
+                                  {{ request()->routeIs($item['active'])
+                                        ? 'bg-orange-500/10 text-orange-300'
+                                        : 'text-slate-400 hover:bg-white/5 hover:text-white' }}">
+                            {{ $item['label'] }}
+                        </a>
+                    @endif
+                @endforeach
+            @endif
         </div>
+
+        @auth
+            <div class="border-t border-white/10 px-4 py-4">
+                <div class="rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 p-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white">
+                            {{ $userInitial }}
+                        </div>
+
+                        <div class="min-w-0">
+                            <div class="truncate font-extrabold text-white">
+                                {{ auth()->user()->name }}
+                            </div>
+
+                            <div class="mt-1 truncate text-sm font-medium text-slate-400">
+                                {{ auth()->user()->email }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
+                            {{ $activePackageName }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="mt-3 space-y-1">
+                    @if($profileRoute)
+                        <a href="{{ $profileRoute }}"
+                           class="block rounded-2xl px-4 py-3 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white">
+                            Profile
+                        </a>
+                    @endif
+
+                    @if(Route::has('logout'))
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit"
+                                    class="block w-full rounded-2xl px-4 py-3 text-left text-sm font-bold text-red-300 transition hover:bg-red-500/10 hover:text-red-200">
+                                Log Out
+                            </button>
+                        </form>
+                    @endif
+                </div>
+            </div>
+        @endauth
     </div>
 </nav>

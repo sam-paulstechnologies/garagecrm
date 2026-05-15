@@ -1,76 +1,199 @@
 @extends('layouts.app')
 
+@section('title', 'Disqualified Leads')
+
 @section('content')
-<div class="px-6 py-4">
+<div class="sf-page space-y-6">
 
     {{-- Header --}}
-    <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-semibold text-gray-800">
-            Disqualified / Closed Lost Leads
-        </h2>
+    <div class="sf-page-header">
+        <div>
+            <div class="sf-kicker">
+                Lead Archive
+            </div>
 
-        <a href="{{ route('admin.leads.index') }}"
-           class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded shadow">
-            ← Back to Inbox
-        </a>
+            <h1 class="sf-page-title mt-3">
+                Disqualified / Closed Lost Leads
+            </h1>
+
+            <p class="sf-page-subtitle">
+                Review leads that were marked as disqualified, closed lost, invalid, or no longer active.
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.leads.index') }}" class="sf-btn-secondary">
+                ← Back to Leads
+            </a>
+        </div>
+    </div>
+
+    {{-- Alerts --}}
+    @if(session('success'))
+        <div class="sf-alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    @if(session('warning'))
+        <div class="sf-alert-warning">
+            {{ session('warning') }}
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="sf-alert-danger">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    {{-- Summary --}}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Disqualified Leads
+            </div>
+
+            <div class="sf-stat-value text-red-300">
+                {{ method_exists($leads, 'total') ? $leads->total() : $leads->count() }}
+            </div>
+
+            <div class="sf-stat-note">
+                Leads removed from active follow-up
+            </div>
+        </div>
+
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Review Purpose
+            </div>
+
+            <div class="mt-3 text-lg font-extrabold text-white">
+                Learning Loop
+            </div>
+
+            <div class="sf-stat-note">
+                Understand why leads were lost
+            </div>
+        </div>
+
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Possible Action
+            </div>
+
+            <div class="mt-3 text-lg font-extrabold text-white">
+                Reopen if needed
+            </div>
+
+            <div class="sf-stat-note">
+                Open lead profile to review history
+            </div>
+        </div>
     </div>
 
     {{-- Leads Table --}}
-    <div class="overflow-x-auto bg-white shadow rounded-lg">
-        <table class="min-w-full divide-y divide-gray-200 text-sm">
-            <thead class="bg-gray-100 text-gray-700 uppercase text-xs">
-                <tr>
-                    <th class="px-4 py-2">#</th>
-                    <th class="px-4 py-2">Name</th>
-                    <th class="px-4 py-2">Phone</th>
-                    <th class="px-4 py-2">Email</th>
-                    <th class="px-4 py-2">Source</th>
-                    <th class="px-4 py-2">Reason / Notes</th>
-                    <th class="px-4 py-2">Disqualified On</th>
-                    <th class="px-4 py-2">Action</th>
-                </tr>
-            </thead>
-
-            <tbody class="divide-y divide-gray-200">
-                @forelse($leads as $index => $lead)
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-2">{{ $index + 1 }}</td>
-
-                        <td class="px-4 py-2 font-medium text-gray-800">
-                            {{ $lead->name }}
-                        </td>
-
-                        <td class="px-4 py-2">{{ $lead->phone ?? '—' }}</td>
-                        <td class="px-4 py-2">{{ $lead->email ?? '—' }}</td>
-                        <td class="px-4 py-2">{{ ucfirst($lead->source ?? '—') }}</td>
-
-                        <td class="px-4 py-2 text-gray-600">
-                            {{ Str::limit($lead->notes, 40) ?? '—' }}
-                        </td>
-
-                        <td class="px-4 py-2">
-                            {{ $lead->updated_at?->format('d M Y') }}
-                        </td>
-
-                        <td class="px-4 py-2">
-                            <a href="{{ route('admin.leads.show', $lead) }}"
-                               class="text-blue-600 hover:underline">
-                                View
-                            </a>
-                        </td>
-                    </tr>
-                @empty
+    <div class="sf-table-wrap">
+        <div class="sf-table-scroll">
+            <table class="sf-table">
+                <thead>
                     <tr>
-                        <td colspan="8" class="px-4 py-6 text-center text-gray-400">
-                            No disqualified leads found.
-                        </td>
+                        <th class="w-[6%]">#</th>
+                        <th class="w-[24%]">Lead</th>
+                        <th class="w-[18%]">Contact</th>
+                        <th class="w-[14%]">Source</th>
+                        <th class="w-[24%]">Reason / Notes</th>
+                        <th class="w-[10%]">Closed On</th>
+                        <th class="w-[4%] text-right">Action</th>
                     </tr>
-                @endforelse
-            </tbody>
-        </table>
+                </thead>
+
+                <tbody>
+                    @forelse($leads as $index => $lead)
+                        <tr>
+                            {{-- Number --}}
+                            <td class="text-slate-500">
+                                {{ ($leads->firstItem() ?? 1) + $index }}
+                            </td>
+
+                            {{-- Lead --}}
+                            <td>
+                                <div class="font-extrabold text-white">
+                                    {{ $lead->name ?? 'Unnamed Lead' }}
+                                </div>
+
+                                <div class="mt-1">
+                                    <span class="sf-badge-red">
+                                        {{ ucfirst(str_replace('_', ' ', $lead->status ?? 'Disqualified')) }}
+                                    </span>
+                                </div>
+                            </td>
+
+                            {{-- Contact --}}
+                            <td>
+                                <div class="font-bold text-slate-200">
+                                    {{ $lead->phone ?? $lead->phone_norm ?? 'No phone' }}
+                                </div>
+
+                                <div class="mt-1 truncate text-xs font-medium text-slate-500">
+                                    {{ $lead->email ?? 'No email' }}
+                                </div>
+                            </td>
+
+                            {{-- Source --}}
+                            <td>
+                                <div class="font-bold text-slate-200">
+                                    {{ ucfirst($lead->source ?? '—') }}
+                                </div>
+
+                                @if($lead->leadSource ?? false)
+                                    <div class="mt-1 truncate text-xs text-slate-500">
+                                        {{ $lead->leadSource->name }}
+                                    </div>
+                                @endif
+                            </td>
+
+                            {{-- Reason / Notes --}}
+                            <td>
+                                <div class="text-sm font-medium leading-6 text-slate-300">
+                                    {{ \Illuminate\Support\Str::limit($lead->notes ?? '—', 80) }}
+                                </div>
+                            </td>
+
+                            {{-- Disqualified On --}}
+                            <td class="whitespace-nowrap">
+                                <div class="font-bold text-slate-300">
+                                    {{ $lead->updated_at?->format('d M Y') ?? '—' }}
+                                </div>
+
+                                <div class="text-xs text-slate-500">
+                                    {{ $lead->updated_at?->format('h:i A') ?? '' }}
+                                </div>
+                            </td>
+
+                            {{-- Action --}}
+                            <td class="text-right">
+                                <a href="{{ route('admin.leads.show', $lead) }}" class="sf-link">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="7">
+                                <div class="sf-empty">
+                                    No disqualified leads found.
+                                </div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="mt-4">
+    {{-- Pagination --}}
+    <div class="text-slate-300">
         {{ $leads->links() }}
     </div>
 

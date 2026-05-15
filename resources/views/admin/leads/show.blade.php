@@ -31,62 +31,79 @@
         ?? data_get($webhook, 'leadgen_id');
 
     $statusBadgeClass = match (strtolower((string) $lead->status)) {
-        'new' => 'bg-blue-100 text-blue-800',
-        'attempting_contact' => 'bg-yellow-100 text-yellow-800',
-        'contact_on_hold' => 'bg-orange-100 text-orange-800',
-        'qualified' => 'bg-green-100 text-green-800',
-        'converted' => 'bg-emerald-100 text-emerald-800',
-        'disqualified', 'lost' => 'bg-red-100 text-red-800',
-        default => 'bg-gray-100 text-gray-800',
+        'new' => 'bg-blue-500/10 text-blue-300 ring-blue-400/20',
+        'attempting_contact' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
+        'contact_on_hold' => 'bg-orange-500/10 text-orange-300 ring-orange-400/20',
+        'qualified' => 'bg-green-500/10 text-green-300 ring-green-400/20',
+        'converted' => 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20',
+        'disqualified', 'lost' => 'bg-red-500/10 text-red-300 ring-red-400/20',
+        default => 'bg-white/5 text-slate-300 ring-white/10',
     };
 
     $score = (int) ($leadScore ?? $lead->score ?? 0);
 
     $scoreBadgeClass = $score >= 75
-        ? 'bg-green-100 text-green-800'
-        : ($score >= 45 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700');
+        ? 'bg-green-500/10 text-green-300 ring-green-400/20'
+        : ($score >= 45 ? 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20' : 'bg-white/5 text-slate-300 ring-white/10');
+
+    $badgeBase = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1';
+
+    $field = function ($label, $value, $mono = false) {
+        $valueClass = $mono
+            ? 'font-mono text-xs text-slate-200 break-all'
+            : 'font-bold text-white';
+
+        return [
+            'label' => $label,
+            'value' => $value,
+            'valueClass' => $valueClass,
+        ];
+    };
 @endphp
 
-<div class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+<div class="sf-page space-y-6">
 
     {{-- Header --}}
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div class="sf-page-header">
         <div>
             <div class="flex flex-wrap items-center gap-2">
-                <h1 class="text-2xl font-bold text-gray-800">Lead Details</h1>
+                <div class="sf-kicker">
+                    Lead Profile
+                </div>
 
                 @if((bool) ($lead->is_hot ?? false))
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                    <span class="{{ $badgeBase }} bg-red-500/10 text-red-300 ring-red-400/20">
                         🔥 Hot Lead
                     </span>
                 @endif
 
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {{ $scoreBadgeClass }}">
+                <span class="{{ $badgeBase }} {{ $scoreBadgeClass }}">
                     Score: {{ $score }}/100
                 </span>
             </div>
 
-            <p class="text-sm text-gray-500 mt-1">
+            <h1 class="sf-page-title mt-3">
+                Lead Details
+            </h1>
+
+            <p class="sf-page-subtitle">
                 View lead profile, source attribution, communications, and message history.
             </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('admin.leads.index') }}"
-               class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded shadow text-sm">
+            <a href="{{ route('admin.leads.index') }}" class="sf-btn-secondary">
                 ← Back
             </a>
 
-            <a href="{{ route('admin.leads.edit', $lead) }}"
-               class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded shadow text-sm">
+            <a href="{{ route('admin.leads.edit', $lead) }}" class="sf-btn-primary">
                 ✏️ Edit Lead
             </a>
 
             <form method="POST" action="{{ route('admin.leads.toggleHot', $lead) }}">
                 @csrf
                 @method('PATCH')
-                <button type="submit"
-                        class="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded shadow text-sm">
+                <button type="submit" class="sf-btn-danger">
                     {{ $lead->is_hot ? '🔥 Unmark Hot' : '⭐ Mark Hot' }}
                 </button>
             </form>
@@ -94,59 +111,59 @@
     </div>
 
     {{-- Quick Summary --}}
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div class="text-sm text-gray-500">Status</div>
-            <div class="mt-2">
-                <span class="inline-flex px-2 py-1 text-xs rounded-full font-medium {{ $statusBadgeClass }}">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">Status</div>
+            <div class="mt-3">
+                <span class="{{ $badgeBase }} {{ $statusBadgeClass }}">
                     {{ $lead->status_label ?? ucfirst(str_replace('_', ' ', (string) $lead->status)) }}
                 </span>
             </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div class="text-sm text-gray-500">Lead Score</div>
-            <div class="text-2xl font-bold text-gray-900 mt-1">{{ $score }}/100</div>
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">Lead Score</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">{{ $score }}/100</div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div class="text-sm text-gray-500">Source</div>
-            <div class="text-lg font-semibold text-gray-900 mt-1">{{ $sourceLabel }}</div>
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">Source</div>
+            <div class="mt-2 text-lg font-extrabold text-white">{{ $sourceLabel }}</div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div class="text-sm text-gray-500">Hot Lead</div>
-            <div class="text-lg font-semibold mt-1 {{ $lead->is_hot ? 'text-red-700' : 'text-gray-900' }}">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">Hot Lead</div>
+            <div class="mt-2 text-lg font-extrabold {{ $lead->is_hot ? 'text-red-300' : 'text-white' }}">
                 {{ $lead->is_hot ? '🔥 Yes' : 'No' }}
             </div>
         </div>
     </div>
 
     {{-- Basic Details --}}
-    <div class="bg-white shadow-sm border border-gray-100 rounded-xl divide-y divide-gray-200">
-        <div class="px-5 py-4 border-b">
-            <h2 class="text-lg font-semibold text-gray-800">Basic Details</h2>
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">Basic Details</h2>
         </div>
 
-        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5 text-sm text-gray-700">
+        <div class="sf-card-body grid grid-cols-1 gap-5 text-sm md:grid-cols-2">
             <div>
-                <div class="text-gray-500">Name</div>
-                <div class="font-medium text-gray-900">{{ $lead->name ?? '—' }}</div>
+                <div class="text-slate-500">Name</div>
+                <div class="font-bold text-white">{{ $lead->name ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Status</div>
-                <div>
-                    <span class="inline-flex px-2 py-1 text-xs rounded-full {{ $statusBadgeClass }}">
+                <div class="text-slate-500">Status</div>
+                <div class="flex flex-wrap gap-2">
+                    <span class="{{ $badgeBase }} {{ $statusBadgeClass }}">
                         {{ $lead->status_label ?? ucfirst(str_replace('_', ' ', (string) $lead->status)) }}
                     </span>
 
                     @if($lead->status === 'converted')
-                        <span class="ml-2 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                        <span class="{{ $badgeBase }} bg-green-500/10 text-green-300 ring-green-400/20">
                             Converted
                         </span>
                     @elseif($lead->status === 'attempting_contact')
-                        <span class="ml-2 px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800">
+                        <span class="{{ $badgeBase }} bg-yellow-500/10 text-yellow-300 ring-yellow-400/20">
                             In Progress
                         </span>
                     @endif
@@ -154,75 +171,73 @@
             </div>
 
             <div>
-                <div class="text-gray-500">Email</div>
-                <div class="font-medium text-gray-900">{{ $lead->email ?? '—' }}</div>
+                <div class="text-slate-500">Email</div>
+                <div class="font-bold text-white">{{ $lead->email ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Phone</div>
-                <div class="font-medium text-gray-900">{{ $lead->phone ?? $lead->phone_norm ?? '—' }}</div>
+                <div class="text-slate-500">Phone</div>
+                <div class="font-bold text-white">{{ $lead->phone ?? $lead->phone_norm ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Assigned To</div>
-                <div class="font-medium text-gray-900">{{ $lead->assignee?->name ?? 'Unassigned' }}</div>
+                <div class="text-slate-500">Assigned To</div>
+                <div class="font-bold text-white">{{ $lead->assignee?->name ?? 'Unassigned' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Preferred Channel</div>
-                <div class="font-medium text-gray-900">{{ $lead->preferred_channel ?? '—' }}</div>
+                <div class="text-slate-500">Preferred Channel</div>
+                <div class="font-bold text-white">{{ $lead->preferred_channel ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Vehicle</div>
-                <div class="font-medium text-gray-900">{{ $lead->vehicle_label ?? '—' }}</div>
+                <div class="text-slate-500">Vehicle</div>
+                <div class="font-bold text-white">{{ $lead->vehicle_label ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Lead Score</div>
-                <div>
-                    <span class="inline-flex px-2 py-1 rounded-full text-xs font-medium {{ $scoreBadgeClass }}">
-                        {{ $score }}/100
-                    </span>
-                </div>
+                <div class="text-slate-500">Lead Score</div>
+                <span class="{{ $badgeBase }} {{ $scoreBadgeClass }}">
+                    {{ $score }}/100
+                </span>
             </div>
 
             <div>
-                <div class="text-gray-500">Hot Lead</div>
-                <div class="font-medium {{ $lead->is_hot ? 'text-red-700' : 'text-gray-900' }}">
+                <div class="text-slate-500">Hot Lead</div>
+                <div class="font-bold {{ $lead->is_hot ? 'text-red-300' : 'text-white' }}">
                     {{ $lead->is_hot ? '🔥 Yes' : 'No' }}
                 </div>
             </div>
 
             <div>
-                <div class="text-gray-500">Last Contacted</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Last Contacted</div>
+                <div class="font-bold text-white">
                     {{ $lead->last_contacted_at?->format('d M Y, h:i A') ?? '—' }}
                 </div>
             </div>
 
             <div class="md:col-span-2">
-                <div class="text-gray-500">Lead Score Reason</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Lead Score Reason</div>
+                <div class="font-bold text-white">
                     {{ $lead->lead_score_reason ?? 'Calculated from phone, source, vehicle, hot flag, status, and WhatsApp activity.' }}
                 </div>
             </div>
 
             <div class="md:col-span-2">
-                <div class="text-gray-500">Notes</div>
-                <div class="font-medium text-gray-900 whitespace-pre-wrap">{{ $lead->notes ?? '—' }}</div>
+                <div class="text-slate-500">Notes</div>
+                <div class="whitespace-pre-wrap font-bold text-white">{{ $lead->notes ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Created</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Created</div>
+                <div class="font-bold text-white">
                     {{ $lead->created_at?->format('d M Y, h:i A') ?? '—' }}
                 </div>
             </div>
 
             <div>
-                <div class="text-gray-500">Updated</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Updated</div>
+                <div class="font-bold text-white">
                     {{ $lead->updated_at?->format('d M Y, h:i A') ?? '—' }}
                 </div>
             </div>
@@ -230,23 +245,23 @@
     </div>
 
     {{-- Source & Attribution --}}
-    <div class="bg-white shadow-sm border border-gray-100 rounded-xl">
-        <div class="px-5 py-4 border-b">
-            <h2 class="text-lg font-semibold text-gray-800">Source & Attribution</h2>
-            <p class="text-sm text-gray-500 mt-1">
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">Source & Attribution</h2>
+            <p class="sf-section-subtitle">
                 Useful for verifying Meta Lead Ads, website forms, WhatsApp, and campaign attribution.
             </p>
         </div>
 
-        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5 text-sm text-gray-700">
+        <div class="sf-card-body grid grid-cols-1 gap-5 text-sm md:grid-cols-2">
             <div>
-                <div class="text-gray-500">Displayed Source</div>
-                <div class="font-medium text-gray-900">{{ $sourceLabel }}</div>
+                <div class="text-slate-500">Displayed Source</div>
+                <div class="font-bold text-white">{{ $sourceLabel }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Lead Source Record</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Lead Source Record</div>
+                <div class="font-bold text-white">
                     @if($lead->leadSource)
                         #{{ $lead->leadSource->id }} — {{ $lead->leadSource->name }}
                     @else
@@ -256,60 +271,60 @@
             </div>
 
             <div>
-                <div class="text-gray-500">Lead Source Type</div>
-                <div class="font-medium text-gray-900">{{ $leadSourceType ? ucfirst($leadSourceType) : '—' }}</div>
+                <div class="text-slate-500">Lead Source Type</div>
+                <div class="font-bold text-white">{{ $leadSourceType ? ucfirst($leadSourceType) : '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Lead Source Status</div>
-                <div class="font-medium text-gray-900">{{ $leadSourceStatus ? ucfirst($leadSourceStatus) : '—' }}</div>
+                <div class="text-slate-500">Lead Source Status</div>
+                <div class="font-bold text-white">{{ $leadSourceStatus ? ucfirst($leadSourceStatus) : '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">External Source</div>
-                <div class="font-medium text-gray-900">{{ $lead->external_source ?? '—' }}</div>
+                <div class="text-slate-500">External Source</div>
+                <div class="font-bold text-white">{{ $lead->external_source ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">External Lead ID</div>
-                <div class="font-mono text-xs text-gray-900 break-all">{{ $leadgenId ?? '—' }}</div>
+                <div class="text-slate-500">External Lead ID</div>
+                <div class="break-all font-mono text-xs text-slate-200">{{ $leadgenId ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">External Form ID</div>
-                <div class="font-mono text-xs text-gray-900 break-all">{{ $formId ?? '—' }}</div>
+                <div class="text-slate-500">External Form ID</div>
+                <div class="break-all font-mono text-xs text-slate-200">{{ $formId ?? '—' }}</div>
             </div>
 
             <div>
-                <div class="text-gray-500">Received At</div>
-                <div class="font-medium text-gray-900">
+                <div class="text-slate-500">Received At</div>
+                <div class="font-bold text-white">
                     {{ $lead->external_received_at?->format('d M Y, h:i A') ?? '—' }}
                 </div>
             </div>
 
             <div>
-                <div class="text-gray-500">Meta Page</div>
-                <div class="font-medium text-gray-900">{{ $pageName ?? '—' }}</div>
+                <div class="text-slate-500">Meta Page</div>
+                <div class="font-bold text-white">{{ $pageName ?? '—' }}</div>
                 @if($pageId)
-                    <div class="font-mono text-xs text-gray-400 mt-1">{{ $pageId }}</div>
+                    <div class="mt-1 font-mono text-xs text-slate-500">{{ $pageId }}</div>
                 @endif
             </div>
 
             <div>
-                <div class="text-gray-500">Meta Form</div>
-                <div class="font-medium text-gray-900">{{ $formName ?? '—' }}</div>
+                <div class="text-slate-500">Meta Form</div>
+                <div class="font-bold text-white">{{ $formName ?? '—' }}</div>
                 @if($formId)
-                    <div class="font-mono text-xs text-gray-400 mt-1">{{ $formId }}</div>
+                    <div class="mt-1 font-mono text-xs text-slate-500">{{ $formId }}</div>
                 @endif
             </div>
 
             @if(!empty($webhook))
                 <div class="md:col-span-2">
-                    <details class="border rounded bg-gray-50">
-                        <summary class="cursor-pointer px-4 py-2 font-medium text-gray-700">
+                    <details class="rounded-2xl border border-white/10 bg-slate-950/60">
+                        <summary class="cursor-pointer px-4 py-3 font-bold text-slate-200">
                             View Webhook Metadata
                         </summary>
-                        <pre class="text-xs p-4 overflow-x-auto whitespace-pre-wrap">{{ json_encode($webhook, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                        <pre class="overflow-x-auto whitespace-pre-wrap p-4 text-xs text-slate-300">{{ json_encode($webhook, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
                     </details>
                 </div>
             @endif
@@ -317,89 +332,99 @@
     </div>
 
     {{-- Communications --}}
-    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 class="text-lg font-semibold mb-3">Communications</h2>
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">Communications</h2>
+        </div>
 
-        @if($communications->count())
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-3 py-2 text-left">Date</th>
-                            <th class="px-3 py-2 text-left">Type</th>
-                            <th class="px-3 py-2 text-left">Content</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        @foreach($communications as $c)
+        <div class="sf-card-body">
+            @if($communications->count())
+                <div class="sf-table-scroll">
+                    <table class="sf-table">
+                        <thead>
                             <tr>
-                                <td class="px-3 py-2">
-                                    {{ $c->communication_date ? \Carbon\Carbon::parse($c->communication_date)->format('d M Y, h:i A') : '—' }}
-                                </td>
-                                <td class="px-3 py-2">{{ $c->communication_type ?? '—' }}</td>
-                                <td class="px-3 py-2">{{ \Illuminate\Support\Str::limit($c->content ?? '', 120) }}</td>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Content</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
 
-            <div class="mt-3">
-                {{ $communications->links() }}
-            </div>
-        @else
-            <p class="text-sm text-gray-500">No communications yet.</p>
-        @endif
+                        <tbody>
+                            @foreach($communications as $c)
+                                <tr>
+                                    <td>
+                                        {{ $c->communication_date ? \Carbon\Carbon::parse($c->communication_date)->format('d M Y, h:i A') : '—' }}
+                                    </td>
+                                    <td>{{ $c->communication_type ?? '—' }}</td>
+                                    <td>{{ \Illuminate\Support\Str::limit($c->content ?? '', 120) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3 text-slate-300">
+                    {{ $communications->links() }}
+                </div>
+            @else
+                <div class="sf-empty">No communications yet.</div>
+            @endif
+        </div>
     </div>
 
     {{-- Message Logs --}}
-    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 class="text-lg font-semibold mb-3">Message Logs</h2>
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">Message Logs</h2>
+        </div>
 
-        @if($messageLogs->count())
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-3 py-2 text-left">Date</th>
-                            <th class="px-3 py-2 text-left">Channel</th>
-                            <th class="px-3 py-2 text-left">Direction</th>
-                            <th class="px-3 py-2 text-left">Status</th>
-                            <th class="px-3 py-2 text-left">AI</th>
-                            <th class="px-3 py-2 text-left">Message</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        @foreach($messageLogs as $log)
+        <div class="sf-card-body">
+            @if($messageLogs->count())
+                <div class="sf-table-scroll">
+                    <table class="sf-table">
+                        <thead>
                             <tr>
-                                <td class="px-3 py-2">
-                                    {{ $log->created_at?->format('d M Y, h:i A') ?? '—' }}
-                                </td>
-                                <td class="px-3 py-2">{{ $log->channel ?? '—' }}</td>
-                                <td class="px-3 py-2">{{ $log->direction ?? '—' }}</td>
-                                <td class="px-3 py-2">{{ $log->provider_status ?? '—' }}</td>
-                                <td class="px-3 py-2">
-                                    @if((bool) ($log->is_ai ?? false))
-                                        <span class="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700">
-                                            AI
-                                        </span>
-                                    @else
-                                        <span class="text-gray-400">—</span>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-2">{{ \Illuminate\Support\Str::limit($log->message ?? $log->body ?? '', 120) }}</td>
+                                <th>Date</th>
+                                <th>Channel</th>
+                                <th>Direction</th>
+                                <th>Status</th>
+                                <th>AI</th>
+                                <th>Message</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
 
-            <div class="mt-3">
-                {{ $messageLogs->links() }}
-            </div>
-        @else
-            <p class="text-sm text-gray-500">No message logs yet.</p>
-        @endif
+                        <tbody>
+                            @foreach($messageLogs as $log)
+                                <tr>
+                                    <td>
+                                        {{ $log->created_at?->format('d M Y, h:i A') ?? '—' }}
+                                    </td>
+                                    <td>{{ $log->channel ?? '—' }}</td>
+                                    <td>{{ $log->direction ?? '—' }}</td>
+                                    <td>{{ $log->provider_status ?? '—' }}</td>
+                                    <td>
+                                        @if((bool) ($log->is_ai ?? false))
+                                            <span class="{{ $badgeBase }} bg-blue-500/10 text-blue-300 ring-blue-400/20">
+                                                AI
+                                            </span>
+                                        @else
+                                            <span class="text-slate-600">—</span>
+                                        @endif
+                                    </td>
+                                    <td>{{ \Illuminate\Support\Str::limit($log->message ?? $log->body ?? '', 120) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3 text-slate-300">
+                    {{ $messageLogs->links() }}
+                </div>
+            @else
+                <div class="sf-empty">No message logs yet.</div>
+            @endif
+        </div>
     </div>
 
 </div>

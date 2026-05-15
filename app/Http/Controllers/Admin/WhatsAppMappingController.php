@@ -24,10 +24,31 @@ class WhatsAppMappingController extends Controller
         return [
             /*
             |--------------------------------------------------------------------------
-            | Lead Journey
+            | Lead Journey / First Response
+            |--------------------------------------------------------------------------
+            |
+            | lead.created is kept as the main proactive first ACK event.
+            | lead.intent_menu is the journey-level event key used by inbound/session
+            | responses and can also be mapped later if we want one canonical menu event.
+            |
+            */
+
+            'lead.created',
+            'lead.intent_menu',
+            'lead.created.meta',
+            'lead.created.website',
+            'lead.created.whatsapp',
+            'lead.created.import',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Lead Conversation Collection
             |--------------------------------------------------------------------------
             */
-            'lead.created',
+
+            'lead.ask_vehicle',
+            'lead.ask_preferred_time',
+            'lead.general_enquiry.ask',
             'lead.whatsapp_failed.manager_alert',
 
             /*
@@ -35,15 +56,31 @@ class WhatsAppMappingController extends Controller
             | Booking Journey
             |--------------------------------------------------------------------------
             */
+
             'booking.confirmed',
+            'booking.manager_confirmation',
+            'booking.request_received',
+            'booking.active_status',
             'booking.rescheduled',
+            'booking.reschedule.ask_time',
+            'booking.reschedule.confirm',
             'booking.cancelled',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Booking Reminders
+            |--------------------------------------------------------------------------
+            */
+
+            'booking.reminder_24h',
+            'booking.reminder_day_of',
 
             /*
             |--------------------------------------------------------------------------
             | Job Journey
             |--------------------------------------------------------------------------
             */
+
             'job.started',
             'job.progress',
             'job.done.feedback',
@@ -53,14 +90,37 @@ class WhatsAppMappingController extends Controller
             | Feedback Journey
             |--------------------------------------------------------------------------
             */
+
+            'feedback.neutral.thanks',
             'feedback.positive.review',
             'feedback.negative.manager_alert',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Manager / Human Handoff
+            |--------------------------------------------------------------------------
+            */
+
+            'manager.attention_required',
+            'manager.booking_confirmation_required',
+            'manager.customer_reschedule_requested',
+
+            /*
+            |--------------------------------------------------------------------------
+            | System / Compliance
+            |--------------------------------------------------------------------------
+            */
+
+            'system.fallback_first',
+            'system.stop_confirmed',
+            'system.opt_out_confirmed',
 
             /*
             |--------------------------------------------------------------------------
             | Retention Journey
             |--------------------------------------------------------------------------
             */
+
             'retention.general_service',
             'retention.oil_service',
             'retention.battery',
@@ -75,7 +135,7 @@ class WhatsAppMappingController extends Controller
             | Kept temporarily so old mappings do not disappear from the page.
             |--------------------------------------------------------------------------
             */
-            'lead.created.meta',
+
             'lead.followup.20m',
             'lead.reply.suggest_time',
             'schedule.confirmed',
@@ -95,6 +155,7 @@ class WhatsAppMappingController extends Controller
         | Admin should see approved/active/pending/inactive status on the mapping page.
         |--------------------------------------------------------------------------
         */
+
         $templates = WhatsAppTemplate::where('company_id', $companyId)
             ->orderBy('name')
             ->get();
@@ -112,7 +173,9 @@ class WhatsAppMappingController extends Controller
 
         $eventKeys = collect($this->canonicalEventKeys())
             ->merge($existingEventKeys)
+            ->filter()
             ->unique()
+            ->sort()
             ->values()
             ->all();
 
@@ -142,14 +205,17 @@ class WhatsAppMappingController extends Controller
             ],
         ]);
 
+        $eventKey = trim((string) $data['event_key']);
+        $templateId = $data['template_id'] ?? null;
+
         WhatsAppTemplateMapping::updateOrCreate(
             [
                 'company_id' => $companyId,
-                'event_key'  => $data['event_key'],
+                'event_key'  => $eventKey,
             ],
             [
-                'template_id' => $data['template_id'] ?? null,
-                'is_active'   => ! empty($data['template_id']),
+                'template_id' => $templateId,
+                'is_active'   => ! empty($templateId),
             ]
         );
 
@@ -176,9 +242,11 @@ class WhatsAppMappingController extends Controller
             ],
         ]);
 
+        $templateId = $data['template_id'] ?? null;
+
         $mapping->update([
-            'template_id' => $data['template_id'] ?? null,
-            'is_active'   => (bool) ($data['is_active'] ?? false),
+            'template_id' => $templateId,
+            'is_active'   => ! empty($templateId) && (bool) ($data['is_active'] ?? false),
         ]);
 
         return back()->with('success', 'WhatsApp template mapping updated.');

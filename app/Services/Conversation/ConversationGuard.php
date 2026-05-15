@@ -7,6 +7,7 @@ use App\Models\Client\Opportunity;
 use App\Services\Leads\LeadConversionService;
 use App\Services\WhatsApp\ManagerNotificationService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ConversationGuard
@@ -34,6 +35,13 @@ class ConversationGuard
                 $diff = now()->diffInSeconds(Carbon::parse($lastTime));
 
                 if ($diff < 10) {
+                    Log::info('[ConversationGuard] Duplicate inbound skipped', [
+                        'company_id' => $lead->company_id,
+                        'lead_id' => $lead->id,
+                        'message' => $currentMessage,
+                        'diff_seconds' => $diff,
+                    ]);
+
                     return true;
                 }
             } catch (\Throwable $e) {
@@ -63,6 +71,9 @@ class ConversationGuard
             'idiot',
             'bastard',
             'asshole',
+            'stupid',
+            'nonsense',
+            'bloody',
         ];
 
         $clean = strtolower($text);
@@ -76,14 +87,85 @@ class ConversationGuard
         return false;
     }
 
+    public function shouldEscalateAsUrgent(string $text): bool
+    {
+        $text = strtolower(trim($text));
+
+        if ($text === '') {
+            return false;
+        }
+
+        $keywords = [
+            'urgent',
+            'emergency',
+            'asap',
+            'immediately',
+            'right now',
+            'breakdown',
+            'stuck',
+            'stranded',
+            'accident',
+            'not starting',
+            'car stopped',
+            'engine stopped',
+            'tow',
+            'towing',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (str_contains($text, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function escalateToManager(Lead $lead, string $reason): array
     {
+        $lead->refresh();
+
         Log::info('[BOT ESCALATION]', [
+            'company_id' => $lead->company_id,
             'lead_id' => $lead->id,
             'reason'  => $reason,
         ]);
 
         $data = $this->conversationData($lead);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Prevent repeated escalation messages
+        |--------------------------------------------------------------------------
+        |
+        | This is not replacing the DB-level last action lock.
+        | It is a local safety lock to avoid repeated customer/manager spam
+        | if the same inbound message is processed twice.
+        |
+        */
+
+        $lockKey = 'manager_escalation:company:' . (int) $lead->company_id . ':lead:' . (int) $lead->id;
+
+        if (! Cache::add($lockKey, true, now()->addMinutes(10))) {
+            Log::info('[ConversationGuard] Escalation skipped by cache lock', [
+                'company_id' => $lead->company_id,
+                'lead_id' => $lead->id,
+                'reason' => $reason,
+            ]);
+
+            return $this->sessionResponse(
+                template: 'manager_handoff_v1',
+                action: 'handoff_manager',
+                body: $this->managerHandoffBody($lead),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'manager.attention_required',
+                    'reason' => $reason,
+                    'already_escalated' => true,
+                    'lock_key' => $lockKey,
+                ]
+            );
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -98,6 +180,7 @@ class ConversationGuard
                 body: $this->managerHandoffBody($lead),
                 placeholders: [$lead->name ?: 'there'],
                 context: [
+                    'event_key' => 'manager.attention_required',
                     'reason' => $reason,
                     'already_escalated' => true,
                 ]
@@ -114,6 +197,7 @@ class ConversationGuard
             'is_escalated' => true,
             'escalated_at' => now()->toIso8601String(),
             'escalation_reason' => $reason,
+            'last_escalation_source' => 'conversation_guard',
         ]);
 
         /*
@@ -123,10 +207,11 @@ class ConversationGuard
         */
 
         try {
-            $this->leadConversionService->ensureClientAndOpportunity($lead->id);
+            $this->leadConversionService->ensureClientAndOpportunity($lead->id, (int) $lead->company_id);
             $lead->refresh();
         } catch (\Throwable $e) {
             Log::error('[ConversationGuard] Escalation conversion failed', [
+                'company_id' => $lead->company_id,
                 'lead_id' => $lead->id,
                 'reason'  => $reason,
                 'error'   => $e->getMessage(),
@@ -156,6 +241,7 @@ class ConversationGuard
             }
         } catch (\Throwable $e) {
             Log::error('[ConversationGuard] Escalation CRM update failed', [
+                'company_id' => $lead->company_id,
                 'lead_id' => $lead->id,
                 'reason'  => $reason,
                 'error'   => $e->getMessage(),
@@ -181,10 +267,13 @@ class ConversationGuard
                 extra: [
                     'source'          => 'conversation_guard',
                     'escalation_type' => 'bot_escalation',
+                    'event_key'       => 'manager.attention_required',
+                    'last_message'    => $data['last_user_message'] ?? null,
                 ]
             );
         } catch (\Throwable $e) {
             Log::warning('[ConversationGuard] Manager notification failed', [
+                'company_id' => $lead->company_id,
                 'lead_id' => $lead->id,
                 'reason'  => $reason,
                 'error'   => $e->getMessage(),
@@ -208,6 +297,7 @@ class ConversationGuard
             body: $this->managerHandoffBody($lead),
             placeholders: [$lead->name ?: 'there'],
             context: [
+                'event_key' => 'manager.attention_required',
                 'reason' => $reason,
             ]
         );

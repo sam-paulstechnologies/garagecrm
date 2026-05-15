@@ -14,6 +14,7 @@ use App\Services\Conversation\MessageLogger;
 use App\Services\Feedback\FeedbackResponseService;
 use App\Services\Leads\LeadConversionService;
 use App\Services\Leads\LeadResolver;
+use App\Services\WhatsApp\SendWhatsAppMessage;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -21,7 +22,10 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use ReflectionMethod;
 
 class ProcessInboundWhatsApp implements ShouldQueue
@@ -243,6 +247,16 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         /*
         |--------------------------------------------------------------------------
+        | STOP / unsubscribe guard - BEFORE feedback, human takeover and engine
+        |--------------------------------------------------------------------------
+        */
+
+        if ($text !== '' && $this->handleStopRequest($companyId, $lead, $fromE164, $conversationId, $text)) {
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | Feedback Reply Handling - BEFORE human takeover check
         |--------------------------------------------------------------------------
         |
@@ -294,6 +308,21 @@ class ProcessInboundWhatsApp implements ShouldQueue
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Active booking inbound guard
+        |--------------------------------------------------------------------------
+        |
+        | If a customer with an active confirmed/scheduled booking messages us,
+        | do not restart the lead journey. First tell them about the active booking
+        | and offer reschedule. If they ask to reschedule, move them into the
+        | reschedule collection state and ask for date/time.
+        */
+
+        if ($text !== '' && $this->handleActiveBookingInbound($companyId, $lead, $fromE164, $conversationId, $text)) {
+            return;
         }
 
         /*
@@ -379,6 +408,27 @@ class ProcessInboundWhatsApp implements ShouldQueue
             return;
         }
 
+        $actionLock = 'session:' . ($response['action'] ?? 'reply') . ':' . ($response['template'] ?? 'none') . ':' . sha1($sessionBody);
+
+        if (! $this->acquireLastActionLock(
+            companyId: $companyId,
+            entityType: 'lead',
+            entityId: (string) $lead->id,
+            action: $actionLock,
+            actionKey: (string) ($this->sid ?: sha1($fromE164 . '|' . $text . '|' . $actionLock)),
+            ttlSeconds: 30
+        )) {
+            Log::info('[WA] Session response skipped by last-action lock', [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id,
+                'conversation_id' => $conversationId,
+                'action' => $response['action'] ?? 'reply',
+                'template_hint' => $response['template'] ?? null,
+            ]);
+
+            return;
+        }
+
         Log::info('[WA] Sending session response from app', [
             'company_id' => $companyId,
             'lead_id' => $lead->id,
@@ -404,6 +454,496 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'send_mode' => 'session_message',
             ])
         );
+    }
+
+    protected function handleStopRequest(int $companyId, $lead, string $fromE164, ?int $conversationId, string $text): bool
+    {
+        if (! $this->isStopRequest($text)) {
+            return false;
+        }
+
+        $this->markWhatsAppOptOut($companyId, $lead, $fromE164, $text);
+
+        $name = $lead->name ?: 'there';
+        $fallback = "Hi {$name}, we have updated your WhatsApp preferences. You will no longer receive promotional or follow-up messages from us. If you need help with an active booking, you can still message us here.";
+
+        $this->fireMappedOrFallback(
+            companyId: $companyId,
+            eventKey: 'system.stop_confirmed',
+            toE164: $fromE164,
+            fallbackBody: $fallback,
+            leadId: (int) $lead->id,
+            conversationId: $conversationId,
+            vars: [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id,
+                'client_id' => $lead->client_id,
+                'name' => $name,
+                'phone' => $fromE164,
+                'source' => 'whatsapp_inbound',
+            ],
+            lockAction: 'system.stop_confirmed',
+            lockTtlSeconds: 24 * 60 * 60
+        );
+
+        Log::info('[WA] STOP/unsubscribe handled', [
+            'company_id' => $companyId,
+            'lead_id' => $lead->id,
+            'conversation_id' => $conversationId,
+            'from' => $fromE164,
+        ]);
+
+        return true;
+    }
+
+    protected function handleActiveBookingInbound(int $companyId, $lead, string $fromE164, ?int $conversationId, string $text): bool
+    {
+        $state = (string) ($lead->conversation_state ?? '');
+
+        if (in_array($state, ['awaiting_reschedule_datetime', 'awaiting_timeslot', 'awaiting_booking_datetime'], true)) {
+            return false;
+        }
+
+        $booking = $this->findActiveBookingForLead($companyId, $lead);
+
+        if (! $booking) {
+            return false;
+        }
+
+        $name = $lead->name ?: 'there';
+        [$dateLabel, $timeLabel] = $this->bookingDateTimeLabels($booking);
+
+        if ($this->isRescheduleIntent($text) || $state === 'awaiting_reschedule_confirmation') {
+            $this->updateLeadConversationState($companyId, (int) $lead->id, 'awaiting_reschedule_datetime');
+
+            $fallback = "Sure {$name}. Please share your preferred new booking date and time.\n\nExample: Tomorrow morning or Friday 4 PM";
+
+            $this->fireMappedOrFallback(
+                companyId: $companyId,
+                eventKey: 'booking.reschedule.ask_time',
+                toE164: $fromE164,
+                fallbackBody: $fallback,
+                leadId: (int) $lead->id,
+                conversationId: $conversationId,
+                vars: [
+                    'company_id' => $companyId,
+                    'lead_id' => $lead->id,
+                    'client_id' => $lead->client_id,
+                    'booking_id' => $booking->id ?? null,
+                    'name' => $name,
+                    'customer_name' => $name,
+                    'phone' => $fromE164,
+                    'booking_date' => $dateLabel,
+                    'booking_time' => $timeLabel,
+                    'source' => 'active_booking_reschedule',
+                ],
+                lockAction: 'booking.reschedule.ask_time',
+                lockTtlSeconds: 2 * 60
+            );
+
+            return true;
+        }
+
+        $this->updateLeadConversationState($companyId, (int) $lead->id, 'awaiting_reschedule_confirmation');
+
+        $fallback = "Hi {$name},\n\nWe have your booking scheduled for {$dateLabel} at {$timeLabel}. Please let us know if you would like to reschedule the booking.";
+
+        $this->fireMappedOrFallback(
+            companyId: $companyId,
+            eventKey: 'booking.active_status',
+            toE164: $fromE164,
+            fallbackBody: $fallback,
+            leadId: (int) $lead->id,
+            conversationId: $conversationId,
+            vars: [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id,
+                'client_id' => $lead->client_id,
+                'booking_id' => $booking->id ?? null,
+                'name' => $name,
+                'customer_name' => $name,
+                'phone' => $fromE164,
+                'booking_date' => $dateLabel,
+                'booking_time' => $timeLabel,
+                'source' => 'active_booking_guard',
+            ],
+            lockAction: 'booking.active_status',
+            lockTtlSeconds: 5 * 60
+        );
+
+        return true;
+    }
+
+    protected function fireMappedOrFallback(
+        int $companyId,
+        string $eventKey,
+        string $toE164,
+        string $fallbackBody,
+        int $leadId,
+        ?int $conversationId,
+        array $vars = [],
+        ?string $lockAction = null,
+        int $lockTtlSeconds = 300
+    ): void {
+        $lockAction = $lockAction ?: $eventKey;
+        $lockKey = sha1($toE164 . '|' . $eventKey . '|' . ($vars['booking_id'] ?? '') . '|' . ($vars['job_id'] ?? ''));
+
+        if (! $this->acquireLastActionLock($companyId, 'lead', (string) $leadId, $lockAction, $lockKey, $lockTtlSeconds)) {
+            Log::info('[WA] Mapped/fallback response skipped by last-action lock', [
+                'company_id' => $companyId,
+                'lead_id' => $leadId,
+                'conversation_id' => $conversationId,
+                'event_key' => $eventKey,
+            ]);
+
+            return;
+        }
+
+        $sentByTemplate = false;
+
+        try {
+            $message = app(SendWhatsAppMessage::class)->fireEvent($companyId, $eventKey, $toE164, $vars + [
+                'company_id' => $companyId,
+                'lead_id' => $leadId,
+            ]);
+
+            $sentByTemplate = $message && ($message->status ?? null) !== 'failed';
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Template fire failed; using session fallback', [
+                'company_id' => $companyId,
+                'lead_id' => $leadId,
+                'conversation_id' => $conversationId,
+                'event_key' => $eventKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($sentByTemplate) {
+            return;
+        }
+
+        $this->sendSessionMessage(
+            companyId: $companyId,
+            leadId: $leadId,
+            conversationId: $conversationId,
+            toNumberE164: $toE164,
+            body: $fallbackBody,
+            context: $vars + [
+                'company_id' => $companyId,
+                'lead_id' => $leadId,
+                'conversation_id' => $conversationId,
+                'source' => 'process_inbound_whatsapp_fallback',
+                'event_key' => $eventKey,
+                'template_fallback' => true,
+            ]
+        );
+    }
+
+    protected function isStopRequest(string $text): bool
+    {
+        $text = strtolower(trim($text));
+        $text = preg_replace('/\s+/', ' ', $text) ?: '';
+        $text = trim($text, " .,!?:;\t\n\r\0\x0B");
+
+        return in_array($text, [
+            'stop',
+            'unsubscribe',
+            'unsub',
+            'remove me',
+            'do not message',
+            'dont message',
+            "don't message",
+            'cancel messages',
+            'stop messages',
+            'opt out',
+            'opt-out',
+        ], true);
+    }
+
+    protected function isRescheduleIntent(string $text): bool
+    {
+        $text = strtolower($text);
+
+        return (bool) preg_match('/\b(reschedule|re-schedule|change\s+(the\s+)?(time|date|booking|appointment)|another\s+(time|date)|new\s+(time|date)|postpone|move\s+(it|booking|appointment)|yes\b|yeah\b|ok\b|okay\b)\b/i', $text);
+    }
+
+    protected function markWhatsAppOptOut(int $companyId, $lead, string $fromE164, string $text): void
+    {
+        $phoneDigits = preg_replace('/\D+/', '', $fromE164) ?: null;
+
+        try {
+            if (Schema::hasTable('leads')) {
+                $columns = Schema::getColumnListing('leads');
+                $data = [];
+
+                foreach (['whatsapp_opt_out', 'is_whatsapp_opted_out', 'opted_out_whatsapp', 'wa_opt_out', 'marketing_opt_out'] as $column) {
+                    if (in_array($column, $columns, true)) {
+                        $data[$column] = 1;
+                    }
+                }
+
+                if (in_array('conversation_state', $columns, true)) {
+                    $data['conversation_state'] = 'opted_out';
+                }
+
+                if (! empty($data)) {
+                    DB::table('leads')
+                        ->where('company_id', $companyId)
+                        ->where('id', $lead->id)
+                        ->update($data + ['updated_at' => now()]);
+                }
+            }
+
+            if ($lead->client_id && Schema::hasTable('clients')) {
+                $columns = Schema::getColumnListing('clients');
+                $data = [];
+
+                foreach (['whatsapp_opt_out', 'is_whatsapp_opted_out', 'opted_out_whatsapp', 'wa_opt_out', 'marketing_opt_out'] as $column) {
+                    if (in_array($column, $columns, true)) {
+                        $data[$column] = 1;
+                    }
+                }
+
+                if (! empty($data)) {
+                    DB::table('clients')
+                        ->where('company_id', $companyId)
+                        ->where('id', $lead->client_id)
+                        ->update($data + ['updated_at' => now()]);
+                }
+            }
+
+            if (Schema::hasTable('whatsapp_opt_outs')) {
+                $columns = Schema::getColumnListing('whatsapp_opt_outs');
+                $data = array_intersect_key([
+                    'company_id' => $companyId,
+                    'lead_id' => $lead->id,
+                    'client_id' => $lead->client_id,
+                    'phone' => $fromE164,
+                    'phone_e164' => $fromE164,
+                    'phone_norm' => $phoneDigits,
+                    'source' => 'whatsapp_inbound',
+                    'reason' => $text,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ], array_flip($columns));
+
+                $match = array_intersect_key([
+                    'company_id' => $companyId,
+                    'phone_norm' => $phoneDigits,
+                ], array_flip($columns));
+
+                if (! empty($match)) {
+                    DB::table('whatsapp_opt_outs')->updateOrInsert($match, $data);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('[WA] Failed to persist STOP/unsubscribe', [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id ?? null,
+                'from' => $fromE164,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function findActiveBookingForLead(int $companyId, $lead): ?object
+    {
+        if (! Schema::hasTable('bookings')) {
+            return null;
+        }
+
+        try {
+            $columns = Schema::getColumnListing('bookings');
+
+            $query = DB::table('bookings')->where('company_id', $companyId);
+
+            $query->where(function ($q) use ($columns, $lead) {
+                $hasAny = false;
+
+                if (in_array('lead_id', $columns, true)) {
+                    $q->orWhere('lead_id', $lead->id);
+                    $hasAny = true;
+                }
+
+                if ($lead->client_id && in_array('client_id', $columns, true)) {
+                    $q->orWhere('client_id', $lead->client_id);
+                    $hasAny = true;
+                }
+
+                if (! $hasAny) {
+                    $q->whereRaw('1 = 0');
+                }
+            });
+
+            if (in_array('status', $columns, true)) {
+                $query->whereIn('status', [
+                    'confirmed',
+                    'scheduled',
+                    'approved',
+                    'booked',
+                    'active',
+                ]);
+            }
+
+            foreach (['is_archived', 'archived'] as $column) {
+                if (in_array($column, $columns, true)) {
+                    $query->where(function ($q) use ($column) {
+                        $q->whereNull($column)->orWhere($column, 0);
+                    });
+                }
+            }
+
+            if (in_array('deleted_at', $columns, true)) {
+                $query->whereNull('deleted_at');
+            }
+
+            foreach (['scheduled_at', 'booking_date', 'scheduled_date', 'preferred_date', 'date', 'created_at'] as $orderColumn) {
+                if (in_array($orderColumn, $columns, true)) {
+                    $query->orderBy($orderColumn);
+                    break;
+                }
+            }
+
+            return $query->first();
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Active booking lookup failed', [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id ?? null,
+                'client_id' => $lead->client_id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    protected function bookingDateTimeLabels(object $booking): array
+    {
+        $date = null;
+        $time = null;
+
+        foreach (['scheduled_at', 'scheduled_for', 'booking_at', 'appointment_at'] as $column) {
+            if (! empty($booking->{$column})) {
+                try {
+                    $dt = \Carbon\Carbon::parse($booking->{$column});
+                    $date = $dt->format('d M Y');
+                    $time = $dt->format('h:i A');
+                    break;
+                } catch (\Throwable) {
+                    // Continue with split columns.
+                }
+            }
+        }
+
+        if (! $date) {
+            foreach (['scheduled_date', 'booking_date', 'preferred_date', 'date'] as $column) {
+                if (! empty($booking->{$column})) {
+                    try {
+                        $date = \Carbon\Carbon::parse($booking->{$column})->format('d M Y');
+                    } catch (\Throwable) {
+                        $date = (string) $booking->{$column};
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (! $time) {
+            foreach (['scheduled_time', 'booking_time', 'preferred_time', 'time', 'slot', 'time_slot'] as $column) {
+                if (! empty($booking->{$column})) {
+                    $time = (string) $booking->{$column};
+                    break;
+                }
+            }
+        }
+
+        return [$date ?: 'the scheduled date', $time ?: 'the scheduled time'];
+    }
+
+    protected function updateLeadConversationState(int $companyId, int $leadId, string $state): void
+    {
+        try {
+            if (! Schema::hasTable('leads') || ! Schema::hasColumn('leads', 'conversation_state')) {
+                return;
+            }
+
+            DB::table('leads')
+                ->where('company_id', $companyId)
+                ->where('id', $leadId)
+                ->update([
+                    'conversation_state' => $state,
+                    'updated_at' => now(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Failed to update conversation_state', [
+                'company_id' => $companyId,
+                'lead_id' => $leadId,
+                'state' => $state,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function acquireLastActionLock(
+        int $companyId,
+        string $entityType,
+        string $entityId,
+        string $action,
+        string $actionKey,
+        int $ttlSeconds = 300
+    ): bool {
+        if (! $companyId || $action === '' || $ttlSeconds <= 0) {
+            return true;
+        }
+
+        $actionKey = sha1($companyId . '|' . $entityType . '|' . $entityId . '|' . $action . '|' . $actionKey);
+
+        try {
+            if (Schema::hasTable('automation_action_locks')) {
+                $exists = DB::table('automation_action_locks')
+                    ->where('company_id', $companyId)
+                    ->where('entity_type', $entityType)
+                    ->where('entity_id', $entityId)
+                    ->where('action', $action)
+                    ->where('action_key', $actionKey)
+                    ->where(function ($query) {
+                        $query->whereNull('locked_until')
+                            ->orWhere('locked_until', '>', now());
+                    })
+                    ->exists();
+
+                if ($exists) {
+                    return false;
+                }
+
+                DB::table('automation_action_locks')->updateOrInsert(
+                    [
+                        'company_id' => $companyId,
+                        'entity_type' => $entityType,
+                        'entity_id' => $entityId,
+                        'action' => $action,
+                        'action_key' => $actionKey,
+                    ],
+                    [
+                        'locked_until' => now()->addSeconds($ttlSeconds),
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[WA] Durable last-action lock failed; using cache fallback', [
+                'company_id' => $companyId,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return Cache::add('wa:last_action:' . $actionKey, true, $ttlSeconds);
     }
 
     protected function notifyManagers(int $companyId, $lead, string $fromE164, array $response): void

@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\Settings\UpdateSettingsRequest;
 use App\Services\Settings\SettingsStore;
 use App\Services\Settings\SettingsValidator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 class SettingsController extends Controller
 {
@@ -32,7 +33,12 @@ class SettingsController extends Controller
             'managerWhatsapp'      => $store->get('whatsapp.manager_number'),
             'googleReviewLink'     => $store->get('garage.google_review_link'),
             'garageLocationLink'   => $store->get('garage.location_link'),
-            'webhookUrl'           => route('webhooks.twilio.whatsapp'),
+
+            // Current registered route name is api.webhooks.twilio.whatsapp.
+            // Fallback prevents /admin/settings from crashing if route name changes later.
+            'webhookUrl'           => Route::has('api.webhooks.twilio.whatsapp')
+                ? route('api.webhooks.twilio.whatsapp')
+                : url('/api/v1/webhooks/twilio/whatsapp'),
         ]);
     }
 

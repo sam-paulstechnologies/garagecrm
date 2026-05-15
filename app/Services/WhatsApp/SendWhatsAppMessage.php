@@ -5,6 +5,7 @@ namespace App\Services\WhatsApp;
 use App\Models\WhatsApp\WhatsAppMessage;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Models\WhatsApp\WhatsAppTemplateMapping;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -191,6 +192,30 @@ class SendWhatsAppMessage
         }
 
         $toE164 = $this->normalizePhone($toE164);
+
+        if ($this->shouldBlockForOptOut($companyId, $eventKey, $toE164, $vars)) {
+            $reason = 'Customer has opted out from WhatsApp automation';
+
+            Log::info('[WA][fireEvent] Customer opted out; event blocked', [
+                'company_id' => $companyId,
+                'event_key' => $eventKey,
+                'to' => $toE164,
+                'vars' => $vars,
+            ]);
+
+            return $this->persistFailedEvent($companyId, $toE164, 'opted_out', $eventKey, $reason, $vars);
+        }
+
+        if (! $this->acquireActionLock($companyId, $eventKey, $toE164, $vars)) {
+            Log::info('[WA][fireEvent] Duplicate event blocked by last-action lock', [
+                'company_id' => $companyId,
+                'event_key' => $eventKey,
+                'to' => $toE164,
+                'vars' => $vars,
+            ]);
+
+            return null;
+        }
 
         if (! $this->isLikelyValidPhone($toE164)) {
             $reason = 'Customer WhatsApp number missing or invalid';
@@ -669,6 +694,266 @@ class SendWhatsAppMessage
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Opt-out + Last Action Lock
+    |--------------------------------------------------------------------------
+    |
+    | These helpers are intentionally schema-safe. If the durable table/columns
+    | are not present yet, the code falls back to cache and does not break the
+    | existing WhatsApp flow.
+    */
+
+    protected function shouldBlockForOptOut(int $companyId, string $eventKey, string $toE164, array $vars = []): bool
+    {
+        if (! $companyId) {
+            return false;
+        }
+
+        if ($this->isTransactionalOrSystemEvent($eventKey)) {
+            return false;
+        }
+
+        try {
+            return $this->customerOptedOut($companyId, $toE164, $vars);
+        } catch (\Throwable $e) {
+            Log::warning('[WA][opt_out] Opt-out check failed open', [
+                'company_id' => $companyId,
+                'event_key' => $eventKey,
+                'to' => $toE164,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function customerOptedOut(int $companyId, string $toE164, array $vars = []): bool
+    {
+        $phoneDigits = preg_replace('/\D+/', '', $toE164) ?: '';
+        $leadId = $vars['lead_id'] ?? null;
+        $clientId = $vars['client_id'] ?? null;
+
+        if (Schema::hasTable('whatsapp_opt_outs')) {
+            $query = DB::table('whatsapp_opt_outs')->where('company_id', $companyId);
+
+            if ($phoneDigits !== '') {
+                $query->where(function ($q) use ($toE164, $phoneDigits) {
+                    $q->where('phone', $toE164)
+                        ->orWhere('phone_e164', $toE164)
+                        ->orWhere('phone_norm', $phoneDigits)
+                        ->orWhere('mobile', $toE164)
+                        ->orWhere('mobile_norm', $phoneDigits);
+                });
+            }
+
+            if ($query->exists()) {
+                return true;
+            }
+        }
+
+        foreach ([
+            ['table' => 'leads', 'id' => $leadId],
+            ['table' => 'clients', 'id' => $clientId],
+        ] as $target) {
+            if (! $target['id'] || ! Schema::hasTable($target['table'])) {
+                continue;
+            }
+
+            $columns = Schema::getColumnListing($target['table']);
+            $optColumns = array_values(array_intersect($columns, [
+                'whatsapp_opt_out',
+                'is_whatsapp_opted_out',
+                'opted_out_whatsapp',
+                'wa_opt_out',
+                'marketing_opt_out',
+            ]));
+
+            if (empty($optColumns)) {
+                continue;
+            }
+
+            $row = DB::table($target['table'])
+                ->where('company_id', $companyId)
+                ->where('id', $target['id'])
+                ->first($optColumns);
+
+            if (! $row) {
+                continue;
+            }
+
+            foreach ($optColumns as $column) {
+                if ($this->truthy($row->{$column} ?? null)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    protected function isTransactionalOrSystemEvent(string $eventKey): bool
+    {
+        $eventKey = strtolower(trim($eventKey));
+
+        if ($eventKey === '') {
+            return false;
+        }
+
+        if (str_starts_with($eventKey, 'system.')) {
+            return true;
+        }
+
+        if (str_contains($eventKey, 'manager')) {
+            return true;
+        }
+
+        return str_starts_with($eventKey, 'booking.')
+            || str_starts_with($eventKey, 'payment.')
+            || str_starts_with($eventKey, 'invoice.')
+            || in_array($eventKey, [
+                'job.done.feedback',
+                'feedback.negative.manager_alert',
+            ], true);
+    }
+
+    protected function acquireActionLock(int $companyId, string $eventKey, string $toE164, array $vars = []): bool
+    {
+        if (! $companyId || trim($eventKey) === '') {
+            return true;
+        }
+
+        $ttlSeconds = $this->lockTtlSeconds($eventKey);
+
+        if ($ttlSeconds <= 0) {
+            return true;
+        }
+
+        $entityType = $this->lockEntityType($vars);
+        $entityId = $this->lockEntityId($vars);
+        $actionKey = $this->lockActionKey($companyId, $eventKey, $toE164, $vars);
+        $lockedUntil = now()->addSeconds($ttlSeconds);
+
+        try {
+            if (Schema::hasTable('automation_action_locks')) {
+                $existing = DB::table('automation_action_locks')
+                    ->where('company_id', $companyId)
+                    ->where('entity_type', $entityType)
+                    ->where('entity_id', $entityId)
+                    ->where('action', $eventKey)
+                    ->where('action_key', $actionKey)
+                    ->where(function ($query) {
+                        $query->whereNull('locked_until')
+                            ->orWhere('locked_until', '>', now());
+                    })
+                    ->exists();
+
+                if ($existing) {
+                    return false;
+                }
+
+                DB::table('automation_action_locks')->updateOrInsert(
+                    [
+                        'company_id' => $companyId,
+                        'entity_type' => $entityType,
+                        'entity_id' => $entityId,
+                        'action' => $eventKey,
+                        'action_key' => $actionKey,
+                    ],
+                    [
+                        'locked_until' => $lockedUntil,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[WA][lock] Durable action lock failed; using cache fallback', [
+                'company_id' => $companyId,
+                'event_key' => $eventKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return Cache::add('wa:last_action:' . $actionKey, true, $ttlSeconds);
+    }
+
+    protected function lockTtlSeconds(string $eventKey): int
+    {
+        $eventKey = strtolower(trim($eventKey));
+
+        if (str_contains($eventKey, 'reminder_24h') || str_contains($eventKey, 'reminder_day_of')) {
+            return 7 * 24 * 60 * 60;
+        }
+
+        if (str_contains($eventKey, 'feedback')) {
+            return 30 * 24 * 60 * 60;
+        }
+
+        if (str_starts_with($eventKey, 'lead.') || str_contains($eventKey, 'lead.created')) {
+            return 24 * 60 * 60;
+        }
+
+        if (str_contains($eventKey, 'manager')) {
+            return 10 * 60;
+        }
+
+        if (str_starts_with($eventKey, 'booking.')) {
+            return 6 * 60 * 60;
+        }
+
+        return 5 * 60;
+    }
+
+    protected function lockEntityType(array $vars): string
+    {
+        foreach (['booking_id' => 'booking', 'job_id' => 'job', 'lead_id' => 'lead', 'client_id' => 'client', 'opportunity_id' => 'opportunity'] as $key => $type) {
+            if (! empty($vars[$key])) {
+                return $type;
+            }
+        }
+
+        return 'phone';
+    }
+
+    protected function lockEntityId(array $vars): string
+    {
+        foreach (['booking_id', 'job_id', 'lead_id', 'client_id', 'opportunity_id'] as $key) {
+            if (! empty($vars[$key])) {
+                return (string) $vars[$key];
+            }
+        }
+
+        return '0';
+    }
+
+    protected function lockActionKey(int $companyId, string $eventKey, string $toE164, array $vars): string
+    {
+        $parts = [
+            $companyId,
+            $eventKey,
+            $this->normalizePhone($toE164),
+            $vars['booking_id'] ?? null,
+            $vars['job_id'] ?? null,
+            $vars['lead_id'] ?? null,
+            $vars['client_id'] ?? null,
+            $vars['opportunity_id'] ?? null,
+        ];
+
+        return sha1(json_encode($parts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    protected function truthy(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'y', 'on', 'opted_out'], true);
     }
 
     /*

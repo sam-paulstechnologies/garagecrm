@@ -1,7 +1,12 @@
+{{-- resources/views/admin/opportunities/partials/errors.blade.php --}}
+
 @if ($errors->any())
-    <div class="mb-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded">
-        <strong>Validation Errors:</strong>
-        <ul class="mt-2 list-disc list-inside text-sm">
+    <div class="sf-alert-danger">
+        <div class="mb-2 font-extrabold">
+            Validation Errors
+        </div>
+
+        <ul class="list-inside list-disc space-y-1 text-sm">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>
             @endforeach

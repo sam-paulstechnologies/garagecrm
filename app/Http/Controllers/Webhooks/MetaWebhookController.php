@@ -8,19 +8,16 @@ use App\Models\Client\Lead;
 use App\Models\LeadSource;
 use App\Models\MetaPage;
 use App\Services\Meta\MetaLeadService;
-use App\Services\WhatsApp\SendWhatsAppMessage;
-use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class MetaWebhookController extends Controller
 {
     public function __construct(
-        private MetaLeadService $meta,
-        private WhatsAppService $whatsapp,
-        private SendWhatsAppMessage $whatsappSender
+        private MetaLeadService $meta
     ) {}
 
     /**
@@ -96,6 +93,8 @@ class MetaWebhookController extends Controller
                 continue;
             }
 
+            $companyId = (int) $metaPage->company_id;
+
             foreach ((array) ($entry['changes'] ?? []) as $change) {
                 $value = (array) ($change['value'] ?? []);
 
@@ -104,7 +103,7 @@ class MetaWebhookController extends Controller
 
                 if (! $leadgenId) {
                     Log::warning('[META_LEADS][MISSING_LEADGEN_ID]', [
-                        'company_id' => $metaPage->company_id,
+                        'company_id' => $companyId,
                         'page_id'    => $pageId,
                         'change'     => $change,
                     ]);
@@ -114,7 +113,7 @@ class MetaWebhookController extends Controller
 
                 if (! $formId) {
                     Log::warning('[META_LEADS][MISSING_FORM_ID]', [
-                        'company_id' => $metaPage->company_id,
+                        'company_id' => $companyId,
                         'page_id'    => $pageId,
                         'leadgen_id' => $leadgenId,
                         'change'     => $change,
@@ -122,14 +121,14 @@ class MetaWebhookController extends Controller
                 }
 
                 $leadSource = $this->resolveLeadSource(
-                    companyId: (int) $metaPage->company_id,
+                    companyId: $companyId,
                     pageId: (string) $pageId,
                     formId: $formId ? (string) $formId : null
                 );
 
                 if ($formId && ! $leadSource) {
                     Log::warning('[META_LEADS][UNKNOWN_OR_INACTIVE_FORM]', [
-                        'company_id' => $metaPage->company_id,
+                        'company_id' => $companyId,
                         'page_id'    => $pageId,
                         'form_id'    => $formId,
                         'leadgen_id' => $leadgenId,
@@ -145,7 +144,7 @@ class MetaWebhookController extends Controller
                     );
                 } catch (\Throwable $e) {
                     Log::error('[META_LEADS][FETCH_FAILED]', [
-                        'company_id' => $metaPage->company_id,
+                        'company_id' => $companyId,
                         'page_id'    => $pageId,
                         'form_id'    => $formId,
                         'leadgen_id' => $leadgenId,
@@ -157,7 +156,7 @@ class MetaWebhookController extends Controller
 
                 if (! is_array($row)) {
                     Log::warning('[META_LEADS][EMPTY_FETCH_RESPONSE]', [
-                        'company_id' => $metaPage->company_id,
+                        'company_id' => $companyId,
                         'page_id'    => $pageId,
                         'form_id'    => $formId,
                         'leadgen_id' => $leadgenId,
@@ -166,9 +165,10 @@ class MetaWebhookController extends Controller
                     continue;
                 }
 
-                $email = $row['email'] ?? null;
-                $phone = $row['phone'] ?? null;
-                $name  = $row['name'] ?? 'Meta Lead';
+                $email = $this->normalizeEmail($row['email'] ?? null);
+                $phone = $this->normalizePhone($row['phone'] ?? null);
+                $phoneNorm = $this->digitsOnly($phone);
+                $name = trim((string) ($row['name'] ?? '')) ?: 'Meta Lead';
 
                 /*
                 |--------------------------------------------------------------------------
@@ -176,31 +176,41 @@ class MetaWebhookController extends Controller
                 |--------------------------------------------------------------------------
                 */
 
-                $client = null;
-
-                if (! empty($email) || ! empty($phone)) {
-                    $client = Client::query()
-                        ->where('company_id', $metaPage->company_id)
-                        ->where(function ($q) use ($email, $phone) {
-                            if (! empty($email)) {
-                                $q->orWhere('email', $email);
-                            }
-
-                            if (! empty($phone)) {
-                                $q->orWhere('phone', $phone);
-                            }
-                        })
-                        ->first();
-                }
+                $client = $this->resolveClient(
+                    companyId: $companyId,
+                    email: $email,
+                    phone: $phone,
+                    phoneNorm: $phoneNorm
+                );
 
                 if (! $client) {
-                    $client = Client::create([
-                        'company_id' => $metaPage->company_id,
+                    $clientData = [
+                        'company_id' => $companyId,
                         'name'       => $name,
                         'email'      => $email,
                         'phone'      => $phone,
                         'source'     => 'meta',
                         'status'     => 'active',
+                    ];
+
+                    if ($this->modelAllows(new Client(), 'phone_norm')) {
+                        $clientData['phone_norm'] = $phoneNorm ?: null;
+                    }
+
+                    if ($this->modelAllows(new Client(), 'email_norm')) {
+                        $clientData['email_norm'] = $email ?: null;
+                    }
+
+                    $client = Client::create($clientData);
+                } else {
+                    $this->updateClientSafely($client, [
+                        'name'       => $client->name ?: $name,
+                        'email'      => $client->email ?: $email,
+                        'phone'      => $client->phone ?: $phone,
+                        'source'     => $client->source ?: 'meta',
+                        'status'     => $client->status ?: 'active',
+                        'phone_norm' => $phoneNorm ?: null,
+                        'email_norm' => $email ?: null,
                     ]);
                 }
 
@@ -237,22 +247,55 @@ class MetaWebhookController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | Optional column support
+                | Optional column/fillable support
                 |--------------------------------------------------------------------------
                 */
 
-                if ($leadSource && $this->leadHasFillable('lead_source_id')) {
+                if ($leadSource && $this->modelAllows(new Lead(), 'lead_source_id')) {
                     $updateData['lead_source_id'] = $leadSource->id;
                 }
 
-                $lead = Lead::updateOrCreate(
-                    [
-                        'company_id'      => $metaPage->company_id,
-                        'external_source' => 'meta',
-                        'external_id'     => (string) $leadgenId,
-                    ],
-                    $updateData
-                );
+                if ($this->modelAllows(new Lead(), 'phone_norm')) {
+                    $updateData['phone_norm'] = $phoneNorm ?: null;
+                }
+
+                if ($this->modelAllows(new Lead(), 'email_norm')) {
+                    $updateData['email_norm'] = $email ?: null;
+                }
+
+                if ($this->modelAllows(new Lead(), 'external_source')) {
+                    $identity['external_source'] = 'meta';
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Important: One ACK Owner
+                |--------------------------------------------------------------------------
+                |
+                | We no longer fire lead.created directly from this webhook.
+                |
+                | Why:
+                | - Lead::updateOrCreate() triggers the Lead model created event
+                |   only when a new lead is actually created.
+                | - LeadCreated -> HandleLeadCreatedOutbound should own the first ACK.
+                | - Direct fireEvent() here caused duplicate Meta lead ACK risk.
+                |
+                | Result:
+                | - Brand new Meta lead: ACK is handled by LeadCreated listener.
+                | - Existing Meta lead update: no duplicate first ACK is sent.
+                |
+                */
+
+                $identity = [
+                    'company_id'  => $companyId,
+                    'external_id' => (string) $leadgenId,
+                ];
+
+                if ($this->modelAllows(new Lead(), 'external_source')) {
+                    $identity['external_source'] = 'meta';
+                }
+
+                $lead = Lead::updateOrCreate($identity, $updateData);
 
                 if ($leadSource) {
                     $leadSource->update([
@@ -260,90 +303,17 @@ class MetaWebhookController extends Controller
                     ]);
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | WhatsApp ACK
-                |--------------------------------------------------------------------------
-                |
-                | This is a first/proactive outbound message from us.
-                | So it must use an approved Meta template via DB mapping.
-                |
-                | Do NOT call WhatsAppService::sendTemplate() directly here.
-                |
-                | SendWhatsAppMessage::fireEvent() signature:
-                |
-                |   fireEvent(int $companyId, string $eventKey, string $toE164, array $vars = [])
-                |
-                */
-
-                if (
-                    ! empty($lead->phone) &&
-                    empty($lead->wa_ack_sent) &&
-                    $this->whatsapp->isActiveForCompany((int) $lead->company_id)
-                ) {
-                    try {
-                        $this->whatsappSender->fireEvent(
-                            (int) $lead->company_id,
-                            'lead.created',
-                            (string) $lead->phone,
-                            [
-                                /*
-                                |--------------------------------------------------------------------------
-                                | Template variables
-                                |--------------------------------------------------------------------------
-                                */
-
-                                'name'          => $lead->name ?? 'Customer',
-                                'customer_name' => $lead->name ?? 'Customer',
-                                'lead_name'     => $lead->name ?? 'Customer',
-                                'phone'         => $lead->phone,
-                                'source'        => 'meta_leads',
-                                'form_name'     => $leadSource?->configValue('form_name') ?? $sourceName,
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | Context variables
-                                |--------------------------------------------------------------------------
-                                */
-
-                                'company_id'      => (int) $lead->company_id,
-                                'lead_id'         => (int) $lead->id,
-                                'lead_source_id'  => $leadSource?->id,
-                                'external_source' => 'meta',
-                                'external_id'     => (string) $leadgenId,
-                                'page_id'         => (string) $pageId,
-                                'form_id'         => $formId ? (string) $formId : null,
-                                'event_key'       => 'lead.created',
-                                'action'          => 'initial',
-                                'send_mode'       => 'meta_template',
-                            ]
-                        );
-
-                        $lead->update(['wa_ack_sent' => true]);
-
-                        Log::info('[WA][META_LEADS][ACK_SENT]', [
-                            'company_id' => $lead->company_id,
-                            'lead_id'    => $lead->id,
-                            'event_key'  => 'lead.created',
-                        ]);
-                    } catch (\Throwable $e) {
-                        Log::error('[WA][META_LEADS][ACK_FAIL]', [
-                            'company_id' => $lead->company_id,
-                            'lead_id'    => $lead->id,
-                            'event_key'  => 'lead.created',
-                            'error'      => $e->getMessage(),
-                        ]);
-                    }
-                }
-
                 Log::info('[META_LEADS][LEAD_CAPTURED]', [
-                    'company_id'     => $lead->company_id,
-                    'lead_id'        => $lead->id,
-                    'client_id'      => $client->id,
-                    'lead_source_id' => $leadSource?->id,
-                    'page_id'        => $pageId,
-                    'form_id'        => $formId,
-                    'leadgen_id'     => $leadgenId,
+                    'company_id'      => $lead->company_id,
+                    'lead_id'         => $lead->id,
+                    'client_id'       => $client->id,
+                    'lead_source_id'  => $leadSource?->id,
+                    'page_id'         => $pageId,
+                    'form_id'         => $formId,
+                    'leadgen_id'      => $leadgenId,
+                    'was_new_lead'    => (bool) $lead->wasRecentlyCreated,
+                    'ack_owner'       => 'LeadCreated listener / HandleLeadCreatedOutbound',
+                    'direct_ack_sent' => false,
                 ]);
             }
         }
@@ -369,9 +339,113 @@ class MetaWebhookController extends Controller
             ->first();
     }
 
-    private function leadHasFillable(string $field): bool
+    private function resolveClient(int $companyId, ?string $email, ?string $phone, ?string $phoneNorm): ?Client
     {
-        return in_array($field, (new Lead())->getFillable(), true);
+        if (! $email && ! $phone && ! $phoneNorm) {
+            return null;
+        }
+
+        return Client::query()
+            ->where('company_id', $companyId)
+            ->where(function ($query) use ($email, $phone, $phoneNorm) {
+                if ($email) {
+                    $query->orWhere('email', $email);
+
+                    if (Schema::hasColumn('clients', 'email_norm')) {
+                        $query->orWhere('email_norm', $email);
+                    }
+                }
+
+                if ($phone) {
+                    $query->orWhere('phone', $phone);
+                }
+
+                if ($phoneNorm) {
+                    if (Schema::hasColumn('clients', 'phone_norm')) {
+                        $query->orWhere('phone_norm', $phoneNorm);
+                    }
+
+                    $query->orWhereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') = ?", [
+                        $phoneNorm,
+                    ]);
+                }
+            })
+            ->first();
+    }
+
+    private function updateClientSafely(Client $client, array $values): void
+    {
+        $updates = [];
+
+        foreach ($values as $field => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (! $this->modelAllows($client, $field)) {
+                continue;
+            }
+
+            if ((string) ($client->{$field} ?? '') === '') {
+                $updates[$field] = $value;
+            }
+        }
+
+        if (! empty($updates)) {
+            $client->update($updates);
+        }
+    }
+
+    private function modelAllows(object $model, string $field): bool
+    {
+        if (! method_exists($model, 'getTable') || ! method_exists($model, 'getFillable')) {
+            return false;
+        }
+
+        try {
+            $table = $model->getTable();
+
+            if (! Schema::hasColumn($table, $field)) {
+                return false;
+            }
+
+            $fillable = $model->getFillable();
+
+            return empty($fillable) || in_array($field, $fillable, true);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function normalizeEmail(mixed $email): ?string
+    {
+        $email = strtolower(trim((string) $email));
+
+        return $email !== '' ? $email : null;
+    }
+
+    private function normalizePhone(mixed $phone): ?string
+    {
+        $phone = trim((string) $phone);
+
+        if ($phone === '') {
+            return null;
+        }
+
+        $phone = preg_replace('/[^\d+]/', '', $phone);
+
+        if (! $phone) {
+            return null;
+        }
+
+        return $phone;
+    }
+
+    private function digitsOnly(?string $phone): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        return $digits !== '' ? $digits : null;
     }
 
     private function validSignature(string $sigHeader, string $raw, string $secret): bool

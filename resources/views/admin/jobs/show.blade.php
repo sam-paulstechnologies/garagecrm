@@ -1,15 +1,17 @@
 @extends('layouts.app')
 
+@section('title', $job->job_code ?? 'Job Details')
+
 @section('content')
-<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+<div class="sf-page space-y-6">
 
     @php
         $status = $job->status ?? 'pending';
 
         $statusBadge = match($status) {
-            'completed' => 'bg-green-100 text-green-800 border-green-200',
-            'in_progress' => 'bg-blue-100 text-blue-800 border-blue-200',
-            default => 'bg-yellow-100 text-yellow-800 border-yellow-200',
+            'completed' => 'sf-badge-green',
+            'in_progress' => 'sf-badge-blue',
+            default => 'sf-badge-yellow',
         };
 
         $jobText = strtolower(trim(
@@ -36,13 +38,13 @@
         }
 
         $serviceBadge = match($serviceBucket) {
-            'Oil Service' => 'bg-amber-50 text-amber-800 border-amber-100',
-            'Battery Service' => 'bg-purple-50 text-purple-800 border-purple-100',
-            'Tyre Service' => 'bg-slate-50 text-slate-800 border-slate-200',
-            'AC Service' => 'bg-cyan-50 text-cyan-800 border-cyan-100',
-            'Brake Service' => 'bg-red-50 text-red-800 border-red-100',
-            'Car Wash / Detailing' => 'bg-green-50 text-green-800 border-green-100',
-            default => 'bg-gray-50 text-gray-800 border-gray-200',
+            'Oil Service' => 'sf-badge-orange',
+            'Battery Service' => 'sf-badge-blue',
+            'Tyre Service' => 'sf-badge-slate',
+            'AC Service' => 'sf-badge-blue',
+            'Brake Service' => 'sf-badge-red',
+            'Car Wash / Detailing' => 'sf-badge-green',
+            default => 'sf-badge-slate',
         };
 
         $customerUpdateNow = match($status) {
@@ -67,108 +69,124 @@
     @endphp
 
     {{-- Header --}}
-    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div class="sf-hero-panel">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
-        <div>
-            <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-2xl font-bold text-gray-900">
+            <div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="sf-kicker">
+                        Job Profile
+                    </div>
+
+                    <span class="{{ $statusBadge }}">
+                        {{ ucwords(str_replace('_', ' ', $status)) }}
+                    </span>
+
+                    <span class="{{ $serviceBadge }}">
+                        {{ $serviceBucket }}
+                    </span>
+                </div>
+
+                <h1 class="mt-3 text-3xl font-extrabold tracking-tight text-white">
                     {{ $job->job_code ?? 'Job' }}
-                </h2>
+                </h1>
 
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ $statusBadge }}">
-                    {{ ucwords(str_replace('_', ' ', $status)) }}
-                </span>
-
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ $serviceBadge }}">
-                    {{ $serviceBucket }}
-                </span>
+                <p class="mt-2 text-sm font-medium text-slate-400">
+                    Job created for
+                    <span class="font-extrabold text-white">
+                        {{ $job->client?->name ?? 'N/A' }}
+                    </span>
+                </p>
             </div>
 
-            <p class="text-sm text-gray-500 mt-1">
-                Job created for
-                <span class="font-medium text-gray-700">
-                    {{ $job->client?->name ?? 'N/A' }}
-                </span>
-            </p>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('admin.jobs.edit', $job->id) }}" class="sf-btn-primary">
+                    Edit Job
+                </a>
+
+                <a href="{{ route('admin.jobs.index') }}" class="sf-btn-secondary">
+                    Back to Jobs
+                </a>
+            </div>
+
         </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('admin.jobs.edit', $job->id) }}"
-               class="inline-flex items-center justify-center px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium">
-                Edit Job
-            </a>
-
-            <a href="{{ route('admin.jobs.index') }}"
-               class="inline-flex items-center justify-center px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50">
-                Back to Jobs
-            </a>
-        </div>
-
     </div>
 
     {{-- Top Cards --}}
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 
-        <div class="bg-white border rounded-xl p-5 shadow-sm">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Current Stage</p>
-            <p class="text-xl font-bold text-gray-900 mt-1">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Current Stage
+            </div>
+
+            <div class="mt-2 text-xl font-extrabold text-white">
                 {{ ucwords(str_replace('_', ' ', $status)) }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
+            </div>
+
+            <div class="sf-stat-note">
                 Operational job status
-            </p>
+            </div>
         </div>
 
-        <div class="bg-white border rounded-xl p-5 shadow-sm">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Service Bucket</p>
-            <p class="text-xl font-bold text-gray-900 mt-1">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Service Bucket
+            </div>
+
+            <div class="mt-2 text-xl font-extrabold text-white">
                 {{ $serviceBucket }}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
+            </div>
+
+            <div class="sf-stat-note">
                 Used later for WhatsApp follow-up
-            </p>
+            </div>
         </div>
 
-        <div class="bg-white border rounded-xl p-5 shadow-sm">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Closure / ROI</p>
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Closure / ROI
+            </div>
 
             @if($status === 'completed')
-                <p class="text-xl font-bold text-green-700 mt-1">
+                <div class="mt-2 text-xl font-extrabold text-green-300">
                     Closed
-                </p>
-                <p class="text-xs text-gray-400 mt-1">
+                </div>
+
+                <div class="sf-stat-note">
                     Revenue available for ROI reporting
-                </p>
+                </div>
             @else
-                <p class="text-xl font-bold text-purple-700 mt-1">
+                <div class="mt-2 text-xl font-extrabold text-orange-300">
                     Invoice Required
-                </p>
-                <p class="text-xs text-gray-400 mt-1">
+                </div>
+
+                <div class="sf-stat-note">
                     Invoice no. + amount required to close
-                </p>
+                </div>
             @endif
         </div>
 
     </div>
 
     {{-- Customer Update Suggestion --}}
-    <div class="bg-blue-50 border border-blue-100 rounded-xl p-5">
-        <div class="flex items-start gap-3">
-            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+    <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20">
+        <div class="flex items-start gap-4">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-500/20 text-xs font-extrabold text-blue-200 ring-1 ring-blue-400/20">
                 WA
             </div>
 
             <div>
-                <p class="text-sm font-semibold text-blue-900">
+                <div class="font-extrabold text-blue-300">
                     Customer update suggestion
-                </p>
+                </div>
 
-                <p class="text-sm text-blue-800 mt-1">
+                <p class="mt-2 text-sm font-medium leading-6 text-blue-100/80">
                     {{ $customerUpdateNow }}
                 </p>
 
                 @if($status !== 'completed')
-                    <p class="text-xs text-blue-700 mt-2">
+                    <p class="mt-2 text-xs font-medium leading-5 text-blue-100/70">
                         Once the job is completed with invoice number and amount, feedback can be triggered and invoice value can be used for campaign ROI.
                     </p>
                 @endif
@@ -176,79 +194,94 @@
         </div>
     </div>
 
-    <div class="grid lg:grid-cols-3 gap-6">
+    <div class="grid gap-6 lg:grid-cols-3">
 
         {{-- LEFT --}}
-        <div class="lg:col-span-2 space-y-6">
+        <div class="space-y-6 lg:col-span-2">
 
             {{-- Job Details --}}
-            <div class="bg-white rounded-xl border p-5 shadow-sm">
+            <div class="sf-card">
 
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h3 class="font-semibold text-gray-900">
-                            Job Details
-                        </h3>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Only service information required for customer visibility and future follow-up.
-                        </p>
-                    </div>
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Job Details
+                    </h2>
+
+                    <p class="sf-section-subtitle">
+                        Only service information required for customer visibility and future follow-up.
+                    </p>
                 </div>
 
-                <dl class="grid sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                <div class="sf-card-body">
+                    <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
 
-                    <div class="sm:col-span-2">
-                        <dt class="text-gray-500">Service / Job Description</dt>
-                        <dd class="font-medium text-gray-900 mt-1">
-                            {{ $job->description ?: '—' }}
-                        </dd>
-                    </div>
+                        <div class="sm:col-span-2">
+                            <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                                Service / Job Description
+                            </dt>
 
-                    <div class="sm:col-span-2">
-                        <dt class="text-gray-500">Work Summary</dt>
-                        <dd class="font-medium text-gray-900 mt-1">
-                            {{ $job->work_summary ?: '—' }}
-                        </dd>
-                    </div>
+                            <dd class="mt-1 font-bold leading-6 text-slate-200">
+                                {{ $job->description ?: '—' }}
+                            </dd>
+                        </div>
 
-                    <div>
-                        <dt class="text-gray-500">Issues Found</dt>
-                        <dd class="font-medium text-gray-900 mt-1">
-                            {{ $job->issues_found ?: '—' }}
-                        </dd>
-                    </div>
+                        <div class="sm:col-span-2">
+                            <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                                Work Summary
+                            </dt>
 
-                    <div>
-                        <dt class="text-gray-500">Parts Used</dt>
-                        <dd class="font-medium text-gray-900 mt-1">
-                            {{ $job->parts_used ?: '—' }}
-                        </dd>
-                    </div>
+                            <dd class="mt-1 font-bold leading-6 text-slate-200">
+                                {{ $job->work_summary ?: '—' }}
+                            </dd>
+                        </div>
 
-                </dl>
+                        <div>
+                            <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                                Issues Found
+                            </dt>
+
+                            <dd class="mt-1 font-bold leading-6 text-slate-200">
+                                {{ $job->issues_found ?: '—' }}
+                            </dd>
+                        </div>
+
+                        <div>
+                            <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                                Parts Used
+                            </dt>
+
+                            <dd class="mt-1 font-bold leading-6 text-slate-200">
+                                {{ $job->parts_used ?: '—' }}
+                            </dd>
+                        </div>
+
+                    </dl>
+                </div>
 
             </div>
 
             {{-- Service Signal --}}
-            <div class="bg-white rounded-xl border p-5 shadow-sm">
+            <div class="sf-card">
 
-                <h3 class="font-semibold text-gray-900">
-                    Service Signal
-                </h3>
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Service Signal
+                    </h2>
 
-                <p class="text-sm text-gray-500 mt-1">
-                    This job is currently detected under the following service bucket.
-                </p>
-
-                <div class="mt-4">
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border {{ $serviceBadge }}">
-                        {{ $serviceBucket }}
-                    </span>
+                    <p class="sf-section-subtitle">
+                        This job is currently detected under the following service bucket.
+                    </p>
                 </div>
 
-                <p class="text-xs text-gray-500 mt-3">
-                    This helps SayaraForce prepare the correct WhatsApp follow-up once the job is closed.
-                </p>
+                <div class="sf-card-body">
+                    <span class="{{ $serviceBadge }}">
+                        {{ $serviceBucket }}
+                    </span>
+
+                    <p class="mt-4 text-xs font-medium leading-5 text-slate-500">
+                        This helps SayaraForce prepare the correct WhatsApp follow-up once the job is closed.
+                    </p>
+                </div>
 
             </div>
 
@@ -258,33 +291,44 @@
         <aside class="space-y-6">
 
             {{-- Client --}}
-            <div class="bg-white rounded-xl border p-5 shadow-sm">
+            <div class="sf-card">
 
-                <h3 class="font-semibold text-gray-900 mb-4">
-                    Client
-                </h3>
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Client
+                    </h2>
+                </div>
 
-                <div class="text-sm space-y-3">
+                <div class="sf-card-body space-y-4 text-sm">
 
                     <div>
-                        <p class="text-xs text-gray-500">Name</p>
-                        <p class="font-medium text-gray-900">
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            Name
+                        </div>
+
+                        <div class="mt-1 font-extrabold text-white">
                             {{ $job->client?->name ?? '—' }}
-                        </p>
+                        </div>
                     </div>
 
                     <div>
-                        <p class="text-xs text-gray-500">Phone</p>
-                        <p class="font-medium text-gray-900">
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            Phone
+                        </div>
+
+                        <div class="mt-1 font-bold text-slate-200">
                             {{ $job->client?->phone ?: $job->client?->phone_norm ?: '—' }}
-                        </p>
+                        </div>
                     </div>
 
                     <div>
-                        <p class="text-xs text-gray-500">Email</p>
-                        <p class="font-medium text-gray-900">
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            Email
+                        </div>
+
+                        <div class="mt-1 break-words font-bold text-slate-200">
                             {{ $job->client?->email ?: '—' }}
-                        </p>
+                        </div>
                     </div>
 
                 </div>
@@ -292,68 +336,79 @@
             </div>
 
             {{-- Closure & ROI --}}
-            <div class="bg-white rounded-xl border p-5 shadow-sm">
+            <div class="sf-card">
 
-                <h3 class="font-semibold text-gray-900 mb-4">
-                    Closure & ROI
-                </h3>
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Closure & ROI
+                    </h2>
+                </div>
 
-                <div class="space-y-3 text-sm">
+                <div class="sf-card-body space-y-4 text-sm">
 
                     <div>
-                        <p class="text-xs text-gray-500">Invoice Number</p>
-                        <p class="font-medium text-gray-900">
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            Invoice Number
+                        </div>
+
+                        <div class="mt-1 font-extrabold text-white">
                             {{ $invoiceNumber ?: 'Not captured yet' }}
-                        </p>
+                        </div>
                     </div>
 
                     <div>
-                        <p class="text-xs text-gray-500">Invoice Amount</p>
-                        <p class="font-medium text-gray-900">
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            Invoice Amount
+                        </div>
+
+                        <div class="mt-1 font-extrabold text-white">
                             {{ $invoiceAmount ? 'AED ' . number_format((float) $invoiceAmount, 2) : 'Not captured yet' }}
-                        </p>
+                        </div>
                     </div>
 
                     <div>
-                        <p class="text-xs text-gray-500">ROI Status</p>
+                        <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                            ROI Status
+                        </div>
 
                         @if($status === 'completed')
-                            <span class="inline-flex items-center mt-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-800 border border-green-100">
+                            <span class="sf-badge-green mt-2">
                                 {{ $roiStatus }}
                             </span>
                         @else
-                            <span class="inline-flex items-center mt-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-800 border border-purple-100">
+                            <span class="sf-badge-orange mt-2">
                                 {{ $roiStatus }}
                             </span>
                         @endif
                     </div>
 
-                    <div class="pt-3 border-t">
-                        @if($status === 'completed')
-                            <div class="bg-green-50 border border-green-100 rounded-lg p-3">
-                                <p class="text-sm font-medium text-green-800">
-                                    Job closed
-                                </p>
-                                <p class="text-xs text-green-700 mt-1">
-                                    This invoice value can now be used for Meta / WhatsApp campaign ROI reporting.
-                                </p>
-                            </div>
-                        @else
-                            <div class="bg-purple-50 border border-purple-100 rounded-lg p-3">
-                                <p class="text-sm font-medium text-purple-800">
-                                    Invoice required before closing
-                                </p>
-                                <p class="text-xs text-purple-700 mt-1">
-                                    Only invoice number and amount are needed. No itemized bill or job card upload required.
-                                </p>
+                    <div class="sf-divider"></div>
+
+                    @if($status === 'completed')
+                        <div class="rounded-2xl border border-green-400/20 bg-green-500/10 p-4">
+                            <div class="font-extrabold text-green-300">
+                                Job closed
                             </div>
 
-                            <a href="{{ route('admin.jobs.edit', $job->id) }}"
-                               class="mt-3 inline-flex w-full justify-center px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-medium">
-                                Add Invoice / Close Job
-                            </a>
-                        @endif
-                    </div>
+                            <p class="mt-2 text-xs font-medium leading-5 text-green-100/80">
+                                This invoice value can now be used for Meta / WhatsApp campaign ROI reporting.
+                            </p>
+                        </div>
+                    @else
+                        <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4">
+                            <div class="font-extrabold text-orange-300">
+                                Invoice required before closing
+                            </div>
+
+                            <p class="mt-2 text-xs font-medium leading-5 text-orange-100/80">
+                                Only invoice number and amount are needed. No itemized bill or job card upload required.
+                            </p>
+                        </div>
+
+                        <a href="{{ route('admin.jobs.edit', $job->id) }}" class="sf-btn-primary w-full">
+                            Add Invoice / Close Job
+                        </a>
+                    @endif
 
                 </div>
 

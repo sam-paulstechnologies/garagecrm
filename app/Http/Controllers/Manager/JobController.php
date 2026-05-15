@@ -1,0 +1,210 @@
+<?php
+
+namespace App\Http\Controllers\Manager;
+
+use App\Http\Controllers\Controller;
+use App\Models\Job\Job;
+use App\Services\Jobs\JobActionService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+class JobController extends Controller
+{
+    public function __construct(
+        protected JobActionService $jobActionService
+    ) {}
+
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(! $companyId, 403);
+
+        return $companyId;
+    }
+
+    public function index(Request $request)
+    {
+        $companyId = $this->companyId();
+
+        $q = trim((string) $request->get('q', ''));
+        $status = trim((string) $request->get('status', ''));
+
+        $jobs = Job::with([
+                'client',
+                'booking',
+                'assignedUser',
+            ])
+            ->where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->when($status !== '', function ($query) use ($status) {
+                $query->where('status', $status);
+            })
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('job_code', 'like', "%{$q}%")
+                        ->orWhere('description', 'like', "%{$q}%")
+                        ->orWhere('work_summary', 'like', "%{$q}%")
+                        ->orWhere('status', 'like', "%{$q}%")
+                        ->orWhereHas('client', function ($clientQuery) use ($q) {
+                            $clientQuery->where('name', 'like', "%{$q}%")
+                                ->orWhere('phone', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%")
+                                ->orWhere('whatsapp', 'like', "%{$q}%");
+                        });
+                });
+            })
+            ->orderByRaw("FIELD(status, 'pending', 'in_progress', 'completed', 'cancelled')")
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        $counts = [
+            'pending' => $this->countByStatus($companyId, 'pending'),
+            'in_progress' => $this->countByStatus($companyId, 'in_progress'),
+            'completed' => $this->countByStatus($companyId, 'completed'),
+            'cancelled' => $this->countByStatus($companyId, 'cancelled'),
+        ];
+
+        return view('manager.jobs.index', [
+            'jobs' => $jobs,
+            'q' => $q,
+            'status' => $status,
+            'counts' => $counts,
+        ]);
+    }
+
+    public function completed(Request $request)
+    {
+        $request->merge(['status' => 'completed']);
+
+        return $this->index($request);
+    }
+
+    public function show(Job $job)
+    {
+        $this->authorizeJob($job);
+
+        $job->load([
+            'client',
+            'booking.client',
+            'booking.vehicleData.make',
+            'booking.vehicleData.model',
+            'assignedUser',
+        ]);
+
+        $teamMembers = $this->teamMembers($job->company_id);
+
+        return view('manager.jobs.show', [
+            'job' => $job,
+            'teamMembers' => $teamMembers,
+        ]);
+    }
+
+    public function updateStatus(Request $request, Job $job)
+    {
+        $this->authorizeJob($job);
+
+        $data = $request->validate([
+            'status' => ['required', 'string', 'in:pending,in_progress,completed,cancelled'],
+        ]);
+
+        try {
+            $this->jobActionService->updateStatus(
+                $job,
+                $data['status'],
+                (int) auth()->id()
+            );
+
+            return back()->with('success', 'Job status updated successfully.');
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'job' => $e->getMessage() ?: 'Unable to update job status.',
+            ]);
+        }
+    }
+
+    public function assign(Request $request, Job $job)
+    {
+        $this->authorizeJob($job);
+
+        $data = $request->validate([
+            'assigned_to' => ['nullable', 'integer'],
+        ]);
+
+        try {
+            $this->jobActionService->assign(
+                $job,
+                $data['assigned_to'] ?? null,
+                (int) auth()->id()
+            );
+
+            return back()->with('success', 'Job assignment updated successfully.');
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'job' => $e->getMessage() ?: 'Unable to assign job.',
+            ]);
+        }
+    }
+
+    public function updateWorkDetails(Request $request, Job $job)
+    {
+        $this->authorizeJob($job);
+
+        $data = $request->validate([
+            'description' => ['nullable', 'string', 'max:2000'],
+            'work_summary' => ['nullable', 'string', 'max:4000'],
+            'issues_found' => ['nullable', 'string', 'max:4000'],
+            'parts_used' => ['nullable', 'string', 'max:4000'],
+            'vehicle_mileage' => ['nullable', 'integer', 'min:0'],
+            'total_time_minutes' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $this->jobActionService->updateWorkDetails(
+                $job,
+                $data,
+                (int) auth()->id()
+            );
+
+            return back()->with('success', 'Job details updated successfully.');
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'job' => $e->getMessage() ?: 'Unable to update job details.',
+            ]);
+        }
+    }
+
+    protected function authorizeJob(Job $job): void
+    {
+        abort_if((int) $job->company_id !== $this->companyId(), 403);
+    }
+
+    protected function countByStatus(int $companyId, string $status): int
+    {
+        return (int) Job::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->where('status', $status)
+            ->count();
+    }
+
+    protected function teamMembers(int $companyId)
+    {
+        if (! Schema::hasTable('users')) {
+            return collect();
+        }
+
+        return DB::table('users')
+            ->where('company_id', $companyId)
+            ->whereIn('role', [
+                'manager',
+                'mechanic',
+                'technician',
+                'supervisor',
+                'admin',
+            ])
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
+    }
+}

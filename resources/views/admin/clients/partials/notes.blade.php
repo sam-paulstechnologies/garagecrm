@@ -1,52 +1,99 @@
-<h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center justify-between">
-    <span>Notes</span>
-
-    @if (\Illuminate\Support\Facades\Route::has('admin.clients.notes.index'))
-        <a href="{{ route('admin.clients.notes.index', $client->id) }}"
-           class="text-sm text-indigo-600 hover:underline">
-            View all
-        </a>
-    @endif
-</h3>
+{{-- resources/views/admin/clients/partials/notes.blade.php --}}
 
 @php
-    // only fetch the latest 3; eager-load author
+    // Only fetch the latest 3; eager-load author
     $notes = method_exists($client, 'notes')
         ? $client->notes()->with('creator:id,name')->latest()->take(3)->get()
         : collect();
 @endphp
 
-{{-- Inline add note --}}
-<form action="{{ route('admin.clients.notes.store', $client->id) }}" method="POST" class="mb-4">
-    @csrf
-    <label for="note_content" class="sr-only">Add note</label>
-    <textarea
-        id="note_content"
-        name="content"
-        rows="3"
-        placeholder="Type a quick note and press Add…"
-        class="w-full border rounded p-3 text-sm focus:outline-none focus:ring focus:border-indigo-300"
-    >{{ old('content') }}</textarea>
-    <div class="mt-2 flex items-center gap-3">
-        <button type="submit"
-                class="inline-flex items-center px-3 py-2 text-sm font-medium rounded bg-indigo-600 text-white hover:bg-indigo-700">
-            Add Note
-        </button>
-        @error('content')
-            <span class="text-sm text-red-600">{{ $message }}</span>
-        @enderror
-    </div>
-</form>
+<div class="space-y-5">
 
-Recent notes (latest 3):
-@forelse ($notes as $note)
-    <div class="bg-gray-50 border rounded p-3 mb-3">
-        <div class="text-gray-900 whitespace-pre-line">{{ $note->content ?? $note->note ?? '' }}</div>
-        <div class="text-xs text-gray-500 mt-2">
-            {{ optional($note->created_at)->format('M j, Y H:i') }}
-            • by {{ $note->creator?->name ?? 'Unknown' }}
+    {{-- Header --}}
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <h3 class="sf-section-title">
+                Notes
+            </h3>
+
+            <p class="sf-section-subtitle">
+                Internal notes and context from the garage team.
+            </p>
         </div>
+
+        @if (\Illuminate\Support\Facades\Route::has('admin.clients.notes.index'))
+            <a href="{{ route('admin.clients.notes.index', $client->id) }}" class="sf-btn-secondary">
+                View All
+            </a>
+        @endif
     </div>
-@empty
-    <p class="text-sm text-gray-500">No notes available.</p>
-@endforelse
+
+    {{-- Inline Add Note --}}
+    @if(\Illuminate\Support\Facades\Route::has('admin.clients.notes.store'))
+        <form action="{{ route('admin.clients.notes.store', $client->id) }}"
+              method="POST"
+              class="rounded-3xl border border-white/10 bg-slate-950/60 p-4">
+            @csrf
+
+            <label for="note_content" class="sf-label">
+                Add Quick Note
+            </label>
+
+            <textarea
+                id="note_content"
+                name="content"
+                rows="3"
+                placeholder="Type a quick note and press Add..."
+                class="sf-textarea"
+            >{{ old('content') }}</textarea>
+
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+                <button type="submit" class="sf-btn-primary">
+                    Add Note
+                </button>
+
+                @error('content')
+                    <span class="sf-error">{{ $message }}</span>
+                @enderror
+            </div>
+        </form>
+    @endif
+
+    {{-- Recent Notes --}}
+    <div>
+        <div class="mb-3 flex items-center justify-between gap-3">
+            <div class="text-sm font-extrabold text-white">
+                Recent Notes
+            </div>
+
+            <span class="sf-badge-slate">
+                Latest {{ $notes->count() }}
+            </span>
+        </div>
+
+        @forelse ($notes as $note)
+            <div class="mb-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-orange-400/30 hover:bg-slate-900">
+                <div class="whitespace-pre-line text-sm font-medium leading-6 text-slate-300">
+                    {{ $note->content ?? $note->note ?? '' }}
+                </div>
+
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                    <span>
+                        {{ optional($note->created_at)->format('M j, Y H:i') ?? 'No date' }}
+                    </span>
+
+                    <span>·</span>
+
+                    <span>
+                        by {{ $note->creator?->name ?? 'Unknown' }}
+                    </span>
+                </div>
+            </div>
+        @empty
+            <div class="sf-empty">
+                No notes available.
+            </div>
+        @endforelse
+    </div>
+
+</div>

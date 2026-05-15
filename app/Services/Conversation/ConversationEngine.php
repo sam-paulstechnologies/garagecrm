@@ -57,7 +57,7 @@ class ConversationEngine
 
         /*
         |--------------------------------------------------------------------------
-        | 3. Profanity / urgent handoff
+        | 3. Profanity / urgent / manager handoff
         |--------------------------------------------------------------------------
         */
 
@@ -67,11 +67,7 @@ class ConversationEngine
 
         $lower = strtolower($text);
 
-        if (
-            str_contains($lower, 'manager') ||
-            str_contains($lower, 'complaint') ||
-            str_contains($lower, 'emergency')
-        ) {
+        if ($this->looksLikeImmediateManagerEscalation($lower)) {
             return $this->guard->escalateToManager($lead, $text);
         }
 
@@ -87,9 +83,17 @@ class ConversationEngine
 
         $intent = $nlp['intent'] ?? null;
         $confidence = (float) ($nlp['confidence'] ?? 0);
+        $lowConfidence = ! $intent || $confidence < 0.6;
 
-        if (! $intent || $confidence < 0.6) {
+        if ($lowConfidence) {
             $intent = $this->intentResolver->resolve($text);
+        }
+
+        $menuIntent = $this->detectMenuSelection($text);
+
+        if ($menuIntent) {
+            $intent = $menuIntent;
+            $lowConfidence = false;
         }
 
         /*
@@ -106,9 +110,11 @@ class ConversationEngine
         | 6. State-based flows always win
         |--------------------------------------------------------------------------
         |
-        | These flows are still reviewed separately.
-        | They may return template hints, but ProcessInboundWhatsApp now converts
-        | them into app/session messages inside the 24-hour window.
+        | ProcessInboundWhatsApp sends the returned body as an inbound/session
+        | message inside the 24-hour WhatsApp customer service window.
+        |
+        | The template/event key is still returned as a hint so the sender can try
+        | mapped rendering first and keep the hardcoded body as fallback.
         |
         */
 
@@ -124,6 +130,18 @@ class ConversationEngine
             return $this->bookingFlow->confirmBooking($lead, $text);
         }
 
+        if ($state === 'awaiting_reschedule_confirmation') {
+            return $this->bookingFlow->handleRescheduleConfirmation($lead, $text);
+        }
+
+        if ($state === 'awaiting_reschedule_datetime') {
+            return $this->bookingFlow->handleRescheduleTimeslot($lead, $text);
+        }
+
+        if ($state === 'confirm_reschedule') {
+            return $this->bookingFlow->confirmReschedule($lead, $text);
+        }
+
         if ($state === 'awaiting_general_enquiry') {
             return $this->guard->escalateToManager(
                 $lead,
@@ -137,33 +155,47 @@ class ConversationEngine
         |--------------------------------------------------------------------------
         */
 
-        if ($intent === 'manager' || $intent === 'complaint' || $intent === 'emergency') {
+        if (in_array($intent, ['manager', 'complaint', 'emergency'], true)) {
             return $this->guard->escalateToManager($lead, $text);
         }
 
         if ($intent === 'gratitude') {
+            $this->resetFallbackCount($lead);
+
             return $this->sessionResponse(
                 template: 'gratitude_v1',
                 action: 'gratitude',
                 body: "You're welcome " . ($lead->name ?: 'there') . ". Happy to help.",
-                placeholders: [$lead->name ?: 'there']
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'lead.gratitude',
+                ]
             );
         }
 
         if ($intent === 'greeting') {
+            $this->resetFallbackCount($lead);
+
             return $this->sessionResponse(
-                template: 'ask_intent_v1',
+                template: 'lead.intent_menu',
                 action: 'start',
                 body: $this->intentQuestionBody($lead),
-                placeholders: [$lead->name ?: 'there']
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'lead.intent_menu',
+                ]
             );
         }
 
         if ($intent === 'booking') {
+            $this->resetFallbackCount($lead);
+
             return $this->vehicleFlow->start($lead, $text);
         }
 
         if (in_array($intent, ['general', 'price', 'general_enquiry'], true)) {
+            $this->resetFallbackCount($lead);
+
             $data = $this->conversationData($lead);
 
             $data['general_enquiry_attempts'] =
@@ -175,10 +207,13 @@ class ConversationEngine
             $lead->save();
 
             return $this->sessionResponse(
-                template: 'follow_up_general_enquiry_v1',
+                template: 'lead.general_enquiry.ask',
                 action: 'collect_general_enquiry',
-                body: 'Sure ' . ($lead->name ?: 'there') . '. Please share your question or requirement, and our team will help you.',
-                placeholders: [$lead->name ?: 'there']
+                body: 'Sure ' . ($lead->name ?: 'there') . '. How can I help?',
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'lead.general_enquiry.ask',
+                ]
             );
         }
 
@@ -191,6 +226,14 @@ class ConversationEngine
         $data = $this->conversationData($lead);
 
         $data['fallback_count'] = (int) ($data['fallback_count'] ?? 0) + 1;
+        $data['last_fallback_text'] = $text;
+        $data['last_fallback_at'] = now()->toIso8601String();
+
+        if ($lowConfidence) {
+            $data['last_low_confidence_at'] = now()->toIso8601String();
+            $data['last_low_confidence_score'] = $confidence;
+            $data['last_low_confidence_intent'] = $nlp['intent'] ?? null;
+        }
 
         $lead->conversation_data = $data;
         $lead->conversation_updated_at = now();
@@ -199,19 +242,64 @@ class ConversationEngine
         if ($data['fallback_count'] >= 2) {
             return $this->guard->escalateToManager(
                 $lead,
-                'Fallback triggered multiple times'
+                'Fallback triggered multiple times. Last message: ' . $text
             );
         }
 
         return $this->sessionResponse(
-            template: 'ask_intent_v1',
+            template: 'system.fallback_first',
             action: 'retry',
             body: $this->intentQuestionBody($lead),
             placeholders: [$lead->name ?: 'there'],
             context: [
+                'event_key' => 'system.fallback_first',
                 'fallback_count' => $data['fallback_count'],
+                'low_confidence' => $lowConfidence,
+                'confidence' => $confidence,
+                'resolved_intent' => $intent,
             ]
         );
+    }
+
+    protected function looksLikeImmediateManagerEscalation(string $lower): bool
+    {
+        $needles = [
+            'manager',
+            'speak to manager',
+            'talk to manager',
+            'complaint',
+            'complain',
+            'emergency',
+            'urgent',
+            'asap',
+            'immediately',
+            'right now',
+            'breakdown',
+            'stuck',
+            'stranded',
+            'accident',
+        ];
+
+        foreach ($needles as $needle) {
+            if (str_contains($lower, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function detectMenuSelection(string $text): ?string
+    {
+        $input = strtolower(trim($text));
+        $input = preg_replace('/\s+/', ' ', $input) ?: $input;
+
+        return match (true) {
+            in_array($input, ['1', 'one', 'service', 'book service', 'book a service', 'booking'], true) => 'booking',
+            in_array($input, ['2', 'two', 'general', 'general enquiry', 'general inquiry', 'enquiry', 'inquiry', 'ask question', 'ask a question'], true) => 'general_enquiry',
+            in_array($input, ['3', 'three', 'manager', 'speak to manager', 'speak to the manager', 'talk to manager', 'talk to the manager'], true) => 'manager',
+            default => null,
+        };
     }
 
     protected function sessionResponse(
@@ -248,6 +336,7 @@ class ConversationEngine
             'context' => array_merge([
                 'send_mode' => 'session_message',
                 'template_hint' => $template,
+                'event_key' => $template,
             ], $context),
         ];
     }
@@ -256,11 +345,25 @@ class ConversationEngine
     {
         $name = $lead->name ?: 'there';
 
-        return "Hi {$name}, thanks for reaching out. How can we help you today?\n\n"
-            . "You can reply with:\n"
-            . "1. Book a service\n"
-            . "2. Ask a question\n"
-            . "3. Talk to manager";
+        return "Hi {$name}, how can we help you today?\n\n"
+            . "1. Service\n"
+            . "2. General Enquiry\n"
+            . "3. Speak to the manager";
+    }
+
+    protected function resetFallbackCount(Lead $lead): void
+    {
+        $data = $this->conversationData($lead);
+
+        if (! array_key_exists('fallback_count', $data)) {
+            return;
+        }
+
+        $data['fallback_count'] = 0;
+
+        $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
+        $lead->save();
     }
 
     protected function conversationData(Lead $lead): array

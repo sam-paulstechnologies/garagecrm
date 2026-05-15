@@ -1,68 +1,275 @@
 @extends('layouts.app')
 
+@section('title', 'Potential Duplicates')
+
 @section('content')
-<div class="px-6 py-4 space-y-6">
-  <div class="flex items-center justify-between">
-    <h2 class="text-2xl font-semibold text-gray-800">Potential Duplicates</h2>
-    <a href="{{ route('admin.leads.index') }}" class="text-blue-600 hover:underline">← Back to Leads</a>
-  </div>
+<div class="sf-page space-y-6">
 
-  <form action="{{ route('admin.leads.duplicates.update-window') }}" method="POST"
-        class="flex items-center gap-2 bg-white p-3 rounded shadow">
-    @csrf
-    <label class="text-sm text-gray-600">Duplicate window (days):</label>
-    <input type="number" name="window_days" min="1" max="365" value="{{ $windowDays }}"
-           class="w-24 border rounded px-2 py-1 text-sm" />
-    <button class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-sm">Save</button>
-  </form>
+    {{-- Header --}}
+    <div class="sf-page-header">
+        <div>
+            <div class="sf-kicker">
+                Lead Quality
+            </div>
 
-  @if(session('success'))
-    <div class="rounded bg-green-100 border border-green-300 text-green-800 p-3 text-sm">
-      {{ session('success') }}
+            <h1 class="sf-page-title mt-3">
+                Potential Duplicates
+            </h1>
+
+            <p class="sf-page-subtitle">
+                Review leads that may have been captured more than once within the configured duplicate detection window.
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.leads.index') }}" class="sf-btn-secondary">
+                ← Back to Leads
+            </a>
+        </div>
     </div>
-  @endif
 
-  <div class="overflow-x-auto bg-white shadow rounded-lg">
-    <table class="min-w-full divide-y divide-gray-200 text-sm text-left">
-      <thead class="bg-gray-100 text-gray-700 uppercase text-xs">
-        <tr>
-          <th class="px-4 py-2">Detected</th>
-          <th class="px-4 py-2">Matched On</th>
-          <th class="px-4 py-2">Name</th>
-          <th class="px-4 py-2">Email</th>
-          <th class="px-4 py-2">Phone</th>
-          <th class="px-4 py-2">Window</th>
-          <th class="px-4 py-2">Reason</th>
-          <th class="px-4 py-2">Primary Lead</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-200">
-        @forelse($dupes as $d)
-          <tr class="hover:bg-gray-50">
-            <td class="px-4 py-2">{{ optional($d->detected_at)->format('d/m/Y H:i') }}</td>
-            <td class="px-4 py-2">{{ ucfirst($d->matched_on ?? '—') }}</td>
-            <td class="px-4 py-2">{{ $d->name ?? '—' }}</td>
-            <td class="px-4 py-2">{{ $d->email ?? '—' }}</td>
-            <td class="px-4 py-2">{{ $d->phone ?? '—' }}</td>
-            <td class="px-4 py-2">{{ $d->window_days }} days</td>
-            <td class="px-4 py-2">{{ $d->reason ?? '—' }}</td>
-            <td class="px-4 py-2">
-              @if($d->primary)
-                <a class="text-blue-600 hover:underline" href="{{ route('admin.leads.show', $d->primary->id) }}">
-                  #{{ $d->primary->id }} — {{ $d->primary->name }}
-                </a>
-              @else
-                —
-              @endif
-            </td>
-          </tr>
-        @empty
-          <tr><td colspan="8" class="px-4 py-6 text-center text-gray-400">No duplicates found.</td></tr>
-        @endforelse
-      </tbody>
-    </table>
-  </div>
+    {{-- Alerts --}}
+    @if(session('success'))
+        <div class="sf-alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
 
-  <div>{{ $dupes->links() }}</div>
+    @if(session('warning'))
+        <div class="sf-alert-warning">
+            {{ session('warning') }}
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="sf-alert-danger">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    @if($errors->any())
+        <div class="sf-alert-danger">
+            <div class="mb-2 font-extrabold">
+                Please fix the following:
+            </div>
+
+            <ul class="list-inside list-disc space-y-1">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    {{-- Window Settings --}}
+    <form action="{{ route('admin.leads.duplicates.update-window') }}" method="POST" class="sf-card">
+        @csrf
+
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">
+                Duplicate Detection Window
+            </h2>
+
+            <p class="sf-section-subtitle">
+                Set how many days the system should look back when detecting possible duplicate leads.
+            </p>
+        </div>
+
+        <div class="sf-card-body">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end">
+                <div class="w-full md:w-64">
+                    <label class="sf-label">
+                        Duplicate window days
+                    </label>
+
+                    <input type="number"
+                           name="window_days"
+                           min="1"
+                           max="365"
+                           value="{{ $windowDays }}"
+                           class="sf-input" />
+
+                    <p class="sf-help">
+                        Allowed range: 1 to 365 days.
+                    </p>
+                </div>
+
+                <button type="submit" class="sf-btn-primary">
+                    Save Window
+                </button>
+            </div>
+        </div>
+    </form>
+
+    {{-- Summary Cards --}}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Potential Duplicates
+            </div>
+
+            <div class="sf-stat-value text-orange-300">
+                {{ method_exists($dupes, 'total') ? $dupes->total() : $dupes->count() }}
+            </div>
+
+            <div class="sf-stat-note">
+                Records needing review
+            </div>
+        </div>
+
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Detection Window
+            </div>
+
+            <div class="sf-stat-value text-blue-300">
+                {{ $windowDays }}
+            </div>
+
+            <div class="sf-stat-note">
+                Days configured
+            </div>
+        </div>
+
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Match Criteria
+            </div>
+
+            <div class="mt-3 flex flex-wrap gap-2">
+                <span class="sf-badge-blue">Email</span>
+                <span class="sf-badge-orange">Phone</span>
+            </div>
+
+            <div class="sf-stat-note">
+                Based on available duplicate rules
+            </div>
+        </div>
+
+        <div class="sf-stat-card">
+            <div class="sf-stat-label">
+                Review Action
+            </div>
+
+            <div class="mt-3 text-lg font-extrabold text-white">
+                Open Primary Lead
+            </div>
+
+            <div class="sf-stat-note">
+                Compare before updating
+            </div>
+        </div>
+    </div>
+
+    {{-- Duplicates Table --}}
+    <div class="sf-table-wrap">
+        <div class="sf-table-scroll">
+            <table class="sf-table">
+                <thead>
+                    <tr>
+                        <th class="w-[18%]">Detected</th>
+                        <th class="w-[16%]">Matched On</th>
+                        <th class="w-[24%]">Duplicate Lead</th>
+                        <th class="w-[14%]">Window</th>
+                        <th class="w-[18%]">Reason</th>
+                        <th class="w-[10%] text-right">Primary</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @forelse($dupes as $d)
+                        <tr>
+                            {{-- Detected --}}
+                            <td>
+                                <div class="font-bold text-white">
+                                    {{ optional($d->detected_at)->format('d M Y') ?? '—' }}
+                                </div>
+
+                                <div class="text-xs font-medium text-slate-500">
+                                    {{ optional($d->detected_at)->format('h:i A') ?? '' }}
+                                </div>
+                            </td>
+
+                            {{-- Matched On --}}
+                            <td>
+                                @php
+                                    $matchedOn = strtolower((string) ($d->matched_on ?? ''));
+
+                                    $matchedClass = match ($matchedOn) {
+                                        'phone' => 'sf-badge-orange',
+                                        'email' => 'sf-badge-blue',
+                                        default => 'sf-badge-slate',
+                                    };
+                                @endphp
+
+                                <span class="{{ $matchedClass }}">
+                                    {{ ucfirst($d->matched_on ?? '—') }}
+                                </span>
+                            </td>
+
+                            {{-- Duplicate Lead --}}
+                            <td>
+                                <div class="font-extrabold text-white">
+                                    {{ $d->name ?? 'Unnamed Lead' }}
+                                </div>
+
+                                <div class="mt-1 text-xs font-medium text-slate-400">
+                                    {{ $d->email ?? 'No email' }}
+                                </div>
+
+                                <div class="mt-1 text-sm font-bold text-slate-300">
+                                    {{ $d->phone ?? 'No phone' }}
+                                </div>
+                            </td>
+
+                            {{-- Window --}}
+                            <td>
+                                <span class="sf-badge-slate">
+                                    {{ $d->window_days }} days
+                                </span>
+                            </td>
+
+                            {{-- Reason --}}
+                            <td>
+                                <div class="text-sm font-medium leading-6 text-slate-300">
+                                    {{ $d->reason ?? '—' }}
+                                </div>
+                            </td>
+
+                            {{-- Primary Lead --}}
+                            <td class="text-right">
+                                @if($d->primary)
+                                    <a class="sf-link"
+                                       href="{{ route('admin.leads.show', $d->primary->id) }}">
+                                        #{{ $d->primary->id }}
+                                    </a>
+
+                                    <div class="mt-1 max-w-[160px] truncate text-xs font-medium text-slate-500">
+                                        {{ $d->primary->name }}
+                                    </div>
+                                @else
+                                    <span class="text-slate-600">—</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6">
+                                <div class="sf-empty">
+                                    No duplicates found.
+                                </div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Pagination --}}
+    <div class="text-slate-300">
+        {{ $dupes->links() }}
+    </div>
+
 </div>
 @endsection

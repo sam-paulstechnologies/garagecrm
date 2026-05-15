@@ -5,37 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'Garage CRM') }}</title>
+    <title>@yield('title', config('app.name', 'SayaraForce'))</title>
 
-    <!-- Fonts -->
+    {{-- Fonts --}}
     <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800,900&display=swap" rel="stylesheet" />
 
-    <!-- Vite -->
+    {{-- Vite --}}
     @viteReactRefresh
-    @vite(['resources/js/app.jsx'])
+    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
 
     @stack('styles')
 </head>
 
-<body class="font-sans antialiased bg-gray-100">
+<body class="font-sans antialiased bg-[#050914] text-slate-100">
 
-    <div class="min-h-screen">
+    <div class="min-h-screen bg-[#050914] relative overflow-x-hidden">
+
+        {{-- Background Glow --}}
+        <div class="pointer-events-none fixed inset-0 -z-10">
+            <div class="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl"></div>
+            <div class="absolute right-[-160px] top-24 h-[360px] w-[360px] rounded-full bg-blue-600/10 blur-3xl"></div>
+            <div class="absolute bottom-[-220px] left-[-120px] h-[420px] w-[420px] rounded-full bg-orange-600/10 blur-3xl"></div>
+        </div>
 
         {{-- Navigation --}}
-        @include('layouts.navigation')
+        @if(View::exists('layouts.navigation'))
+            @include('layouts.navigation')
+        @endif
 
         {{-- Optional Header --}}
         @hasSection('header')
-            <header class="bg-white shadow">
-                <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <header class="border-b border-white/10 bg-slate-950/80 backdrop-blur">
+                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                     @yield('header')
                 </div>
             </header>
         @endif
 
         {{-- Main Content --}}
-        <main>
+        <main class="relative py-6">
             @yield('content')
         </main>
 
@@ -43,7 +52,11 @@
 
     {{-- WhatsApp Floating Popup --}}
     @auth
-        @include('partials.whatsapp-popup')
+        @if(View::exists('partials.whatsapp-popup'))
+            @include('partials.whatsapp-popup')
+        @elseif(View::exists('admin.partials.whatsapp-popup'))
+            @include('admin.partials.whatsapp-popup')
+        @endif
     @endauth
 
     @stack('scripts')

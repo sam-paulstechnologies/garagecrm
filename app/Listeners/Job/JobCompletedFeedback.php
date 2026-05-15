@@ -4,9 +4,11 @@ namespace App\Listeners\Job;
 
 use App\Events\JobCompleted;
 use App\Models\CompanySetting;
+use App\Models\MessageLog;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class JobCompletedFeedback
 {
@@ -22,21 +24,48 @@ class JobCompletedFeedback
             return;
         }
 
+        $companyId = (int) ($job->company_id ?? 0);
+
+        if (! $companyId) {
+            Log::warning('Job completed feedback skipped: company missing', [
+                'job_id' => $job->id,
+            ]);
+
+            return;
+        }
+
         /*
         |--------------------------------------------------------------------------
-        | Duplicate protection
+        | Durable + Cache Duplicate Protection
         |--------------------------------------------------------------------------
-        | Prevent duplicate feedback messages if JobCompleted fires twice.
-        | If sending fails, we clear the lock so it can be retried after fixing.
+        | Old issue:
+        | The previous code used a 24-hour cache only.
+        | If JobCompleted fires again after 24 hours, feedback may resend.
+        |
+        | New behavior:
+        | 1. Check safe persistent markers if columns exist.
+        | 2. Check message_logs if available.
+        | 3. Use cache as runtime lock.
         |--------------------------------------------------------------------------
         */
 
-        $lockKey = 'job_completed_feedback_sent_' . $job->id;
+        if ($this->feedbackAlreadyRequested($job, $companyId)) {
+            Log::info('Job completed feedback skipped: already requested earlier', [
+                'job_id' => $job->id,
+                'company_id' => $companyId,
+                'event_key' => 'job.done.feedback',
+            ]);
 
-        if (! Cache::add($lockKey, true, now()->addHours(24))) {
+            return;
+        }
+
+        $lockKey = 'job_completed_feedback_sent_' . $companyId . '_' . $job->id;
+
+        if (! Cache::add($lockKey, true, now()->addDays(14))) {
             Log::info('Job completed feedback skipped: duplicate lock active', [
                 'job_id' => $job->id,
-                'company_id' => $job->company_id ?? null,
+                'company_id' => $companyId,
+                'event_key' => 'job.done.feedback',
             ]);
 
             return;
@@ -50,6 +79,7 @@ class JobCompletedFeedback
             Log::warning('Job completed feedback skipped: client missing', [
                 'job_id' => $job->id,
                 'client_id' => $job->client_id,
+                'company_id' => $companyId,
             ]);
 
             return;
@@ -67,18 +97,7 @@ class JobCompletedFeedback
             Log::warning('Job completed feedback skipped: client phone missing', [
                 'job_id' => $job->id,
                 'client_id' => $client->id,
-            ]);
-
-            return;
-        }
-
-        $companyId = (int) ($job->company_id ?? 0);
-
-        if (! $companyId) {
-            Cache::forget($lockKey);
-
-            Log::warning('Job completed feedback skipped: company missing', [
-                'job_id' => $job->id,
+                'company_id' => $companyId,
             ]);
 
             return;
@@ -161,8 +180,11 @@ class JobCompletedFeedback
                     'source' => 'job_completed_feedback_listener',
                     'action' => 'job_completed_feedback',
                     'send_mode' => 'meta_template',
+                    'lock_key' => $lockKey,
                 ]
             );
+
+            $this->markFeedbackRequested($job);
 
             Log::info('Job completed feedback WhatsApp triggered', [
                 'job_id' => $job->id,
@@ -193,6 +215,108 @@ class JobCompletedFeedback
                 'company_id' => $companyId,
                 'phone' => $phone,
                 'event_key' => 'job.done.feedback',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function feedbackAlreadyRequested($job, int $companyId): bool
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | Schema-safe persistent checks
+        |--------------------------------------------------------------------------
+        | This allows the code to work even if the project DB does not yet have
+        | the feedback marker columns.
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+            $table = $job->getTable();
+
+            if (Schema::hasColumn($table, 'feedback_requested_at') && ! empty($job->feedback_requested_at)) {
+                return true;
+            }
+
+            if (Schema::hasColumn($table, 'feedback_sent_at') && ! empty($job->feedback_sent_at)) {
+                return true;
+            }
+
+            if (Schema::hasColumn($table, 'feedback_request_sent_at') && ! empty($job->feedback_request_sent_at)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Job feedback persistent marker check skipped', [
+                'job_id' => $job->id ?? null,
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Message log fallback
+        |--------------------------------------------------------------------------
+        | If outbound template/session messages are logged in message_logs,
+        | this gives us another durable duplicate check.
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+            if (Schema::hasTable('message_logs')) {
+                return MessageLog::query()
+                    ->where('company_id', $companyId)
+                    ->where('direction', 'out')
+                    ->where('channel', 'whatsapp')
+                    ->where('created_at', '>=', now()->subDays(90))
+                    ->where(function ($query) use ($job) {
+                        $query->where('meta->job_id', $job->id)
+                            ->orWhere('body', 'like', '%' . $job->id . '%');
+                    })
+                    ->where(function ($query) {
+                        $query->where('template', 'job.done.feedback')
+                            ->orWhere('template', 'job_done_feedback_v1')
+                            ->orWhere('meta->event_key', 'job.done.feedback')
+                            ->orWhere('meta->action', 'job_completed_feedback');
+                    })
+                    ->exists();
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Job feedback message_log duplicate check skipped', [
+                'job_id' => $job->id ?? null,
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
+    }
+
+    protected function markFeedbackRequested($job): void
+    {
+        try {
+            $table = $job->getTable();
+            $updates = [];
+
+            if (Schema::hasColumn($table, 'feedback_requested_at')) {
+                $updates['feedback_requested_at'] = now();
+            }
+
+            if (Schema::hasColumn($table, 'feedback_sent_at')) {
+                $updates['feedback_sent_at'] = now();
+            }
+
+            if (Schema::hasColumn($table, 'feedback_request_sent_at')) {
+                $updates['feedback_request_sent_at'] = now();
+            }
+
+            if (! empty($updates)) {
+                $job->forceFill($updates)->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Job feedback marker update failed', [
+                'job_id' => $job->id ?? null,
+                'company_id' => $job->company_id ?? null,
                 'error' => $e->getMessage(),
             ]);
         }

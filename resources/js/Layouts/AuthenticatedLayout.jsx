@@ -1,5 +1,4 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
-import Dropdown from '@/Components/Dropdown';
 import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -7,10 +6,15 @@ export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth?.user;
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
+    const [growthOpen, setGrowthOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     const csrfToken =
         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    const currentPath = window.location.pathname;
+    const userInitial = (user?.name || 'S').trim().charAt(0).toUpperCase();
 
     const navItems = [
         { label: 'Dashboard', href: '/admin/dashboard', match: '/admin/dashboard' },
@@ -24,80 +28,224 @@ export default function AuthenticatedLayout({ header, children }) {
         { label: 'Inbox', href: '/admin/inbox', match: '/admin/inbox' },
     ];
 
-    const settingsItems = [
-        { label: 'Business Profile', href: '/admin/business-profile' },
-        { label: 'Launch Setup', href: '/admin/settings/launch-setup' },
-        { label: 'AI Settings', href: '/admin/ai' },
-        { label: 'WhatsApp Settings', href: '/admin/whatsapp/settings' },
-        { label: 'Lead Sources', href: '/admin/lead-sources', divider: true },
+    const growthItems = [
+        {
+            label: 'Lead Sources',
+            description: 'WhatsApp, website forms, and Meta lead ads',
+            href: '/admin/lead-sources',
+            match: '/admin/lead-sources',
+        },
+        {
+            label: 'Audience Segmentation',
+            description: 'Customer buckets and campaign groups',
+            href: '/admin/settings/audience-segmentation',
+            match: '/admin/settings/audience-segmentation',
+        },
+        {
+            label: 'WhatsApp Templates',
+            description: 'Approved and internal WhatsApp templates',
+            href: '/admin/whatsapp/templates',
+            match: '/admin/whatsapp/templates',
+        },
+        {
+            label: 'Template Mappings',
+            description: 'Map events to WhatsApp templates',
+            href: '/admin/whatsapp/mappings',
+            match: '/admin/whatsapp/mappings',
+        },
     ];
 
-    const isActive = (match) => window.location.pathname.startsWith(match);
+    const settingsItems = [
+        {
+            label: 'Launch Setup',
+            description: 'Garage setup, manager handoff, working hours',
+            href: '/admin/settings/launch-setup',
+            match: '/admin/settings/launch-setup',
+        },
+        {
+            label: 'Integration Settings',
+            description: 'Tenant profile, Meta, Twilio, and defaults',
+            href: '/admin/settings',
+            match: '/admin/settings',
+        },
+        {
+            label: 'WhatsApp Controls',
+            description: 'Automation, review link, UAT reset',
+            href: '/admin/whatsapp/settings',
+            match: '/admin/whatsapp/settings',
+        },
+        {
+            label: 'AI Control Center',
+            description: 'AI replies, confidence, safety, and handoff',
+            href: '/admin/ai',
+            match: '/admin/ai',
+        },
+    ];
+
+    const isActive = (match) => currentPath.startsWith(match);
+
+    const isGrowthActive = () =>
+        currentPath.startsWith('/admin/lead-sources') ||
+        currentPath.startsWith('/admin/settings/audience-segmentation') ||
+        currentPath.startsWith('/admin/whatsapp/templates') ||
+        currentPath.startsWith('/admin/whatsapp/mappings');
 
     const isSettingsActive = () =>
-        window.location.pathname.startsWith('/admin/settings') ||
-        window.location.pathname.startsWith('/admin/ai') ||
-        window.location.pathname.startsWith('/admin/whatsapp') ||
-        window.location.pathname.startsWith('/admin/lead-sources') ||
-        window.location.pathname.startsWith('/admin/business-profile');
+        currentPath.startsWith('/admin/settings/launch-setup') ||
+        currentPath === '/admin/settings' ||
+        currentPath.startsWith('/admin/whatsapp/settings') ||
+        currentPath.startsWith('/admin/ai');
+
+    const closeMenus = () => {
+        setGrowthOpen(false);
+        setSettingsOpen(false);
+        setProfileOpen(false);
+    };
 
     const navClass = (item) =>
-        `inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out focus:outline-none ${
+        `rounded-xl px-3 py-2 text-sm font-bold transition ${
             isActive(item.match)
-                ? 'border-indigo-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                ? 'bg-white/10 text-white ring-1 ring-white/10'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white'
         }`;
 
-    const mobileNavClass = (item) =>
-        `block w-full border-l-4 py-2 pe-4 ps-3 text-start text-base font-medium transition duration-150 ease-in-out ${
-            isActive(item.match)
-                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-                : 'border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800'
+    const dropdownButtonClass = (active) =>
+        `inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold transition ${
+            active
+                ? 'bg-orange-500/10 text-orange-300 ring-1 ring-orange-400/20'
+                : 'text-slate-400 hover:bg-white/5 hover:text-orange-300'
         }`;
 
-    const settingsButtonClass =
-        `inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out focus:outline-none ${
-            isSettingsActive()
-                ? 'border-indigo-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+    const mobileNavClass = (active) =>
+        `block rounded-2xl px-4 py-3 text-sm font-bold transition ${
+            active
+                ? 'bg-orange-500/10 text-orange-300'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white'
         }`;
 
     return (
-        <div className="min-h-screen bg-gray-100">
-            <nav className="border-b border-gray-100 bg-white">
+        <div className="min-h-screen bg-[#050914] text-slate-100">
+            <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#050914]/95 shadow-lg shadow-black/20 backdrop-blur">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 justify-between">
-
+                    <div className="flex min-h-16 items-center justify-between gap-4">
                         {/* LEFT */}
-                        <div className="flex">
-                            <div className="flex shrink-0 items-center">
-                                <a href="/admin/dashboard">
-                                    <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800" />
-                                </a>
-                            </div>
+                        <div className="flex min-w-0 items-center gap-6">
+                            <a
+                                href="/admin/dashboard"
+                                className="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
+                            >
+                                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40">
+                                    SF
+                                </span>
 
-                            <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
+                                <span className="hidden leading-tight sm:block">
+                                    <span className="block text-sm font-extrabold tracking-tight text-white">
+                                        SayaraForce
+                                    </span>
+
+                                    <span className="mt-0.5 inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
+                                        Growth Plan
+                                    </span>
+                                </span>
+                            </a>
+
+                            {/* DESKTOP NAV */}
+                            <div className="hidden items-center gap-1 lg:flex">
                                 {navItems.map((item) => (
-                                    <a
-                                        key={item.label}
-                                        href={item.href}
-                                        className={navClass(item)}
-                                    >
+                                    <a key={item.label} href={item.href} className={navClass(item)}>
                                         {item.label}
                                     </a>
                                 ))}
 
-                                {/* SETTINGS DROPDOWN */}
-                                <div className="relative flex items-center">
+                                {/* GROWTH */}
+                                <div className="relative">
                                     <button
                                         type="button"
-                                        onClick={() => setSettingsOpen((prev) => !prev)}
-                                        className={settingsButtonClass}
+                                        onClick={() => {
+                                            setGrowthOpen((prev) => !prev);
+                                            setSettingsOpen(false);
+                                            setProfileOpen(false);
+                                        }}
+                                        className={dropdownButtonClass(isGrowthActive())}
+                                    >
+                                        <span>Growth</span>
+
+                                        <svg
+                                            className={`h-4 w-4 transition-transform ${
+                                                growthOpen ? 'rotate-180' : ''
+                                            }`}
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth="2"
+                                                d="M19 9l-7 7-7-7"
+                                            />
+                                        </svg>
+                                    </button>
+
+                                    {growthOpen && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                aria-label="Close growth menu"
+                                                className="fixed inset-0 z-40 cursor-default"
+                                                onClick={closeMenus}
+                                            />
+
+                                            <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
+                                                <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                                    <p className="text-sm font-extrabold text-white">
+                                                        Growth Engine
+                                                    </p>
+                                                    <p className="text-xs font-medium text-slate-400">
+                                                        Lead capture, segments, templates, and journeys
+                                                    </p>
+                                                </div>
+
+                                                <div className="p-2">
+                                                    {growthItems.map((item) => (
+                                                        <a
+                                                            key={item.label}
+                                                            href={item.href}
+                                                            className={`block rounded-xl px-4 py-3 transition ${
+                                                                isActive(item.match)
+                                                                    ? 'bg-orange-500/10 text-orange-300'
+                                                                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            <span className="block text-sm font-extrabold">
+                                                                {item.label}
+                                                            </span>
+                                                            <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                                                                {item.description}
+                                                            </span>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* SETTINGS */}
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSettingsOpen((prev) => !prev);
+                                            setGrowthOpen(false);
+                                            setProfileOpen(false);
+                                        }}
+                                        className={dropdownButtonClass(isSettingsActive())}
                                     >
                                         <span>Settings</span>
 
                                         <svg
-                                            className={`ml-1 h-4 w-4 transform transition-transform ${
+                                            className={`h-4 w-4 transition-transform ${
                                                 settingsOpen ? 'rotate-180' : ''
                                             }`}
                                             fill="none"
@@ -119,24 +267,39 @@ export default function AuthenticatedLayout({ header, children }) {
                                                 type="button"
                                                 aria-label="Close settings menu"
                                                 className="fixed inset-0 z-40 cursor-default"
-                                                onClick={() => setSettingsOpen(false)}
+                                                onClick={closeMenus}
                                             />
 
-                                            <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded border bg-white py-2 shadow-lg">
-                                                {settingsItems.map((item) => (
-                                                    <div key={item.label}>
-                                                        {item.divider && (
-                                                            <div className="my-2 border-t" />
-                                                        )}
+                                            <div className="absolute right-0 top-full z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
+                                                <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                                    <p className="text-sm font-extrabold text-white">
+                                                        Admin Settings
+                                                    </p>
+                                                    <p className="text-xs font-medium text-slate-400">
+                                                        Setup, integrations, WhatsApp controls, and AI
+                                                    </p>
+                                                </div>
 
+                                                <div className="p-2">
+                                                    {settingsItems.map((item) => (
                                                         <a
+                                                            key={item.label}
                                                             href={item.href}
-                                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                            className={`block rounded-xl px-4 py-3 transition ${
+                                                                isActive(item.match)
+                                                                    ? 'bg-orange-500/10 text-orange-300'
+                                                                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                                            }`}
                                                         >
-                                                            {item.label}
+                                                            <span className="block text-sm font-extrabold">
+                                                                {item.label}
+                                                            </span>
+                                                            <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                                                                {item.description}
+                                                            </span>
                                                         </a>
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
                                             </div>
                                         </>
                                     )}
@@ -144,98 +307,122 @@ export default function AuthenticatedLayout({ header, children }) {
                             </div>
                         </div>
 
-                        {/* RIGHT */}
-                        <div className="hidden sm:ms-6 sm:flex sm:items-center">
-                            <div className="relative ms-3">
-                                <Dropdown>
-                                    <Dropdown.Trigger>
-                                        <span className="inline-flex rounded-md">
-                                            <button
-                                                type="button"
-                                                className="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none"
-                                            >
-                                                {user?.name || 'User'}
+                        {/* RIGHT PROFILE */}
+                        <div className="hidden items-center gap-3 sm:flex">
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setProfileOpen((prev) => !prev);
+                                        setGrowthOpen(false);
+                                        setSettingsOpen(false);
+                                    }}
+                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border border-white/10 bg-gradient-to-br from-orange-500 to-orange-700 px-3 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40 transition hover:border-orange-300/40 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
+                                    title={user?.name || 'User'}
+                                >
+                                    <span>{userInitial}</span>
 
-                                                <svg
-                                                    className="-me-0.5 ms-2 h-4 w-4"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
+                                    <svg
+                                        className={`h-3.5 w-3.5 text-orange-100 transition-transform ${
+                                            profileOpen ? 'rotate-180' : ''
+                                        }`}
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth="2.5"
+                                            d="M19 9l-7 7-7-7"
+                                        />
+                                    </svg>
+                                </button>
+
+                                {profileOpen && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            aria-label="Close profile menu"
+                                            className="fixed inset-0 z-40 cursor-default"
+                                            onClick={closeMenus}
+                                        />
+
+                                        <div className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40">
+                                            <div className="border-b border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white">
+                                                        {userInitial}
+                                                    </div>
+
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-extrabold text-white">
+                                                            {user?.name || 'User'}
+                                                        </p>
+
+                                                        <p className="truncate text-xs font-medium text-slate-400">
+                                                            {user?.email || ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <p className="mt-3">
+                                                    <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20">
+                                                        Growth Plan
+                                                    </span>
+                                                </p>
+                                            </div>
+
+                                            <div className="p-2">
+                                                <a
+                                                    href="/admin/profile"
+                                                    className="block rounded-xl px-4 py-2 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
                                                 >
-                                                    <path
-                                                        fillRule="evenodd"
-                                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                        clipRule="evenodd"
-                                                    />
-                                                </svg>
-                                            </button>
-                                        </span>
-                                    </Dropdown.Trigger>
+                                                    Profile
+                                                </a>
 
-                                    <Dropdown.Content>
-                                        <a
-                                            href="/admin/profile"
-                                            className="block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
-                                        >
-                                            Profile
-                                        </a>
+                                                <form method="POST" action="/logout">
+                                                    <input type="hidden" name="_token" value={csrfToken} />
 
-                                        <form method="POST" action="/logout">
-                                            <input
-                                                type="hidden"
-                                                name="_token"
-                                                value={csrfToken}
-                                            />
-
-                                            <button
-                                                type="submit"
-                                                className="block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
-                                            >
-                                                Log Out
-                                            </button>
-                                        </form>
-                                    </Dropdown.Content>
-                                </Dropdown>
+                                                    <button
+                                                        type="submit"
+                                                        className="block w-full rounded-xl px-4 py-2 text-left text-sm font-bold text-red-300 transition hover:bg-red-500/10 hover:text-red-200"
+                                                    >
+                                                        Log Out
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
 
                         {/* MOBILE MENU BUTTON */}
-                        <div className="-me-2 flex items-center sm:hidden">
+                        <div className="flex items-center lg:hidden">
                             <button
+                                type="button"
                                 onClick={() =>
-                                    setShowingNavigationDropdown((previousState) => !previousState)
+                                    setShowingNavigationDropdown((previous) => !previous)
                                 }
-                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none"
+                                className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 shadow-sm transition hover:border-orange-400/30 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-[#050914]"
                             >
-                                <svg
-                                    className="h-6 w-6"
-                                    stroke="currentColor"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        className={
-                                            !showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M4 6h16M4 12h16M4 18h16"
-                                    />
-
-                                    <path
-                                        className={
-                                            showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M6 18L18 6M6 6l12 12"
-                                    />
+                                <svg className="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                                    {!showingNavigationDropdown ? (
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth="2"
+                                            d="M4 6h16M4 12h16M4 18h16"
+                                        />
+                                    ) : (
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth="2"
+                                            d="M6 18L18 6M6 6l12 12"
+                                        />
+                                    )}
                                 </svg>
                             </button>
                         </div>
@@ -243,79 +430,97 @@ export default function AuthenticatedLayout({ header, children }) {
                 </div>
 
                 {/* MOBILE NAV */}
-                <div
-                    className={
-                        (showingNavigationDropdown ? 'block' : 'hidden') +
-                        ' sm:hidden'
-                    }
-                >
-                    <div className="space-y-1 pb-3 pt-2">
-                        {navItems.map((item) => (
-                            <a
-                                key={item.label}
-                                href={item.href}
-                                className={mobileNavClass(item)}
-                            >
-                                {item.label}
-                            </a>
-                        ))}
-
-                        <div className="border-t my-2" />
-
-                        <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                            Settings
-                        </div>
-
-                        {settingsItems.map((item) => (
-                            <a
-                                key={item.label}
-                                href={item.href}
-                                className="block w-full border-l-4 border-transparent py-2 pe-4 ps-3 text-start text-base font-medium text-gray-600 transition duration-150 ease-in-out hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
-                            >
-                                {item.label}
-                            </a>
-                        ))}
-                    </div>
-
-                    <div className="border-t border-gray-200 pb-1 pt-4">
-                        <div className="px-4">
-                            <div className="text-base font-medium text-gray-800">
-                                {user?.name || 'User'}
-                            </div>
-                            <div className="text-sm font-medium text-gray-500">
-                                {user?.email || ''}
-                            </div>
-                        </div>
-
-                        <div className="mt-3 space-y-1">
-                            <a
-                                href="/admin/profile"
-                                className="block w-full border-l-4 border-transparent py-2 pe-4 ps-3 text-start text-base font-medium text-gray-600 transition duration-150 ease-in-out hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
-                            >
-                                Profile
-                            </a>
-
-                            <form method="POST" action="/logout">
-                                <input
-                                    type="hidden"
-                                    name="_token"
-                                    value={csrfToken}
-                                />
-
-                                <button
-                                    type="submit"
-                                    className="block w-full border-l-4 border-transparent py-2 pe-4 ps-3 text-start text-base font-medium text-gray-600 transition duration-150 ease-in-out hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
+                {showingNavigationDropdown && (
+                    <div className="border-t border-white/10 bg-[#050914] lg:hidden">
+                        <div className="space-y-1 px-4 py-4">
+                            {navItems.map((item) => (
+                                <a
+                                    key={item.label}
+                                    href={item.href}
+                                    className={mobileNavClass(isActive(item.match))}
                                 >
-                                    Log Out
-                                </button>
-                            </form>
+                                    {item.label}
+                                </a>
+                            ))}
+
+                            <div className="my-3 border-t border-white/10"></div>
+
+                            <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                                Growth
+                            </div>
+
+                            {growthItems.map((item) => (
+                                <a
+                                    key={item.label}
+                                    href={item.href}
+                                    className={mobileNavClass(isActive(item.match))}
+                                >
+                                    {item.label}
+                                </a>
+                            ))}
+
+                            <div className="my-3 border-t border-white/10"></div>
+
+                            <div className="px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-orange-300">
+                                Settings
+                            </div>
+
+                            {settingsItems.map((item) => (
+                                <a
+                                    key={item.label}
+                                    href={item.href}
+                                    className={mobileNavClass(isActive(item.match))}
+                                >
+                                    {item.label}
+                                </a>
+                            ))}
+                        </div>
+
+                        <div className="border-t border-white/10 px-4 py-4">
+                            <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900 to-orange-950/40 p-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white">
+                                        {userInitial}
+                                    </div>
+
+                                    <div className="min-w-0">
+                                        <div className="truncate font-extrabold text-white">
+                                            {user?.name || 'User'}
+                                        </div>
+
+                                        <div className="mt-1 truncate text-sm font-medium text-slate-400">
+                                            {user?.email || ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-3 space-y-1">
+                                <a
+                                    href="/admin/profile"
+                                    className="block rounded-2xl px-4 py-3 text-sm font-bold text-slate-400 transition hover:bg-white/5 hover:text-white"
+                                >
+                                    Profile
+                                </a>
+
+                                <form method="POST" action="/logout">
+                                    <input type="hidden" name="_token" value={csrfToken} />
+
+                                    <button
+                                        type="submit"
+                                        className="block w-full rounded-2xl px-4 py-3 text-left text-sm font-bold text-red-300 transition hover:bg-red-500/10 hover:text-red-200"
+                                    >
+                                        Log Out
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
             </nav>
 
             {header && (
-                <header className="bg-white shadow">
+                <header className="border-b border-white/10 bg-[#050914]">
                     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                         {header}
                     </div>

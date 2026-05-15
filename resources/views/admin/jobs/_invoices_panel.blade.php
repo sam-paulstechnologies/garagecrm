@@ -7,128 +7,269 @@
     $invoices  = $job->invoices()->latest('id')->get();
 @endphp
 
-<div class="rounded border p-4 bg-white">
-  <div class="flex items-center justify-between mb-3">
-    <h3 class="font-semibold">Invoices</h3>
-    <div class="flex items-center gap-3">
-      <a href="{{ route('admin.invoices.index') }}?job_id={{ $job->id }}" class="text-sm text-blue-600 underline">View all</a>
-      <button id="{{ $openBtnId }}" type="button" class="text-sm px-3 py-1.5 bg-gray-900 text-white rounded">+ Upload Invoice</button>
-    </div>
-  </div>
+<div class="sf-card">
+    <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+            <h2 class="sf-section-title">
+                Invoices
+            </h2>
 
-  @if($invoices->isEmpty())
-    <div class="rounded border border-dashed p-6 text-center text-gray-500">
-      <p class="mb-3">No invoices uploaded yet.</p>
-      <button id="{{ $openBtnId }}-empty" type="button" class="px-3 py-2 bg-gray-900 text-white rounded">Upload Invoice</button>
+            <p class="sf-section-subtitle">
+                Upload and manage invoices linked to this job.
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.invoices.index') }}?job_id={{ $job->id }}" class="sf-btn-secondary">
+                View All
+            </a>
+
+            <button id="{{ $openBtnId }}" type="button" class="sf-btn-primary">
+                + Upload Invoice
+            </button>
+        </div>
     </div>
-  @else
-    <div class="overflow-x-auto">
-      <table class="min-w-full text-sm">
-        <thead class="bg-gray-50">
-          <tr>
-            <th class="px-3 py-2 text-left">Invoice</th>
-            <th class="px-3 py-2 text-left">Date</th>
-            <th class="px-3 py-2 text-left">Amount</th>
-            <th class="px-3 py-2 text-left">Status</th>
-            <th class="px-3 py-2 text-left">Source</th>
-            <th class="px-3 py-2 text-left">Ver.</th>
-            <th class="px-3 py-2 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          @foreach($invoices as $inv)
-            <tr class="border-t">
-              <td class="px-3 py-2">
-                @if($inv->is_primary)
-                  <span class="px-1.5 py-0.5 text-[11px] bg-green-100 text-green-700 rounded mr-2 align-middle">Primary</span>
-                @endif
-                @if($inv->file_path)
-                  <a href="{{ route('admin.invoices.view', $inv) }}" target="_blank" class="text-blue-700 underline">
-                    {{ $inv->number ?? basename($inv->file_path) ?? ('Invoice #'.$inv->id) }}
-                  </a>
-                @else
-                  <span class="text-gray-800">{{ $inv->number ?? ('Invoice #'.$inv->id) }}</span>
-                @endif
-              </td>
-              <td class="px-3 py-2">{{ $inv->invoice_date?->toDateString() ?? '—' }}</td>
-              <td class="px-3 py-2">{{ $inv->amount ? number_format((float)$inv->amount, 2).' '.$inv->currency : '—' }}</td>
-              <td class="px-3 py-2">{{ ucfirst($inv->status) }}</td>
-              <td class="px-3 py-2">{{ ucfirst($inv->source ?? 'upload') }}</td>
-              <td class="px-3 py-2">v{{ $inv->version ?? 1 }}</td>
-              <td class="px-3 py-2">
-                <div class="flex justify-end gap-3">
-                  @if($inv->file_path)
-                    <a class="text-blue-600" href="{{ route('admin.invoices.download', $inv) }}">Download</a>
-                    <a class="text-blue-600" href="{{ route('admin.invoices.view', $inv) }}" target="_blank">View</a>
-                  @endif
-                  @if(!$inv->is_primary)
-                    <form method="POST" action="{{ route('admin.invoices.primary', $inv) }}">
-                      @csrf
-                      <button class="text-blue-700">Make Primary</button>
-                    </form>
-                  @endif
+
+    <div class="sf-card-body">
+        @if($invoices->isEmpty())
+            <div class="sf-empty">
+                <p>No invoices uploaded yet.</p>
+
+                <button id="{{ $openBtnId }}-empty" type="button" class="sf-btn-primary mt-4">
+                    Upload Invoice
+                </button>
+            </div>
+        @else
+            <div class="sf-table-wrap shadow-none">
+                <div class="sf-table-scroll">
+                    <table class="sf-table">
+                        <thead>
+                            <tr>
+                                <th>Invoice</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Source</th>
+                                <th>Ver.</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach($invoices as $inv)
+                                <tr>
+                                    <td>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            @if($inv->is_primary)
+                                                <span class="sf-badge-green">
+                                                    Primary
+                                                </span>
+                                            @endif
+
+                                            @if($inv->file_path)
+                                                <a href="{{ route('admin.invoices.view', $inv) }}"
+                                                   target="_blank"
+                                                   class="font-extrabold text-white hover:text-orange-300 hover:underline">
+                                                    {{ $inv->number ?? basename($inv->file_path) ?? ('Invoice #'.$inv->id) }}
+                                                </a>
+                                            @else
+                                                <span class="font-extrabold text-white">
+                                                    {{ $inv->number ?? ('Invoice #'.$inv->id) }}
+                                                </span>
+                                            @endif
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <span class="font-bold text-slate-200">
+                                            {{ $inv->invoice_date?->toDateString() ?? '—' }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span class="font-extrabold text-orange-300">
+                                            {{ $inv->amount ? number_format((float)$inv->amount, 2).' '.$inv->currency : '—' }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span class="sf-badge-slate">
+                                            {{ ucfirst($inv->status) }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span class="sf-badge-blue">
+                                            {{ ucfirst($inv->source ?? 'upload') }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span class="font-bold text-slate-200">
+                                            v{{ $inv->version ?? 1 }}
+                                        </span>
+                                    </td>
+
+                                    <td class="text-right">
+                                        <div class="flex justify-end gap-3 whitespace-nowrap">
+                                            @if($inv->file_path)
+                                                <a class="sf-link" href="{{ route('admin.invoices.download', $inv) }}">
+                                                    Download
+                                                </a>
+
+                                                <a class="sf-link" href="{{ route('admin.invoices.view', $inv) }}" target="_blank">
+                                                    View
+                                                </a>
+                                            @endif
+
+                                            @if(!$inv->is_primary)
+                                                <form method="POST" action="{{ route('admin.invoices.primary', $inv) }}">
+                                                    @csrf
+
+                                                    <button class="sf-link">
+                                                        Make Primary
+                                                    </button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
-              </td>
-            </tr>
-          @endforeach
-        </tbody>
-      </table>
-    </div>
+            </div>
 
-    <div class="mt-4">
-      <button id="{{ $openBtnId }}-below" type="button" class="text-sm px-3 py-1.5 bg-gray-900 text-white rounded">+ Upload Another</button>
+            <div class="mt-4">
+                <button id="{{ $openBtnId }}-below" type="button" class="sf-btn-primary">
+                    + Upload Another
+                </button>
+            </div>
+        @endif
     </div>
-  @endif
 </div>
 
 {{-- Modal --}}
-<div id="{{ $modalId }}" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-40">
-  <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl mx-4">
-    <div class="flex items-center justify-between px-5 py-3 border-b">
-      <h4 class="font-semibold">Upload Invoice</h4>
-      <button type="button" id="{{ $closeBtnId }}" class="text-gray-500 hover:text-gray-700">✕</button>
-    </div>
+<div id="{{ $modalId }}"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
 
-    <form method="POST" action="{{ route('admin.jobs.invoices.upload', $job) }}" enctype="multipart/form-data" class="p-5 space-y-4">
-      @csrf
-      <div>
-        <label class="block text-sm font-medium mb-1">Invoice file <span class="text-red-600">*</span></label>
-        <input type="file" name="invoice_file" required class="block w-full">
-        <p class="text-xs text-gray-500 mt-1">pdf, jpg, jpeg, png, webp • max 5MB</p>
-      </div>
+    <div class="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/50">
 
-      <details id="{{ $advId }}" class="rounded border bg-gray-50">
-        <summary class="cursor-pointer px-3 py-2 text-sm text-gray-700">Advanced (optional metadata)</summary>
-        <div class="p-3 grid grid-cols-2 md:grid-cols-3 gap-2">
-          <input type="text"  name="number"       placeholder="Invoice #" class="border p-2 rounded">
-          <input type="date"  name="invoice_date" class="border p-2 rounded">
-          <input type="date"  name="due_date"     class="border p-2 rounded">
-          <input type="text"  name="currency"     placeholder="Currency (AED)" class="border p-2 rounded">
-          <input type="number" step="0.01" name="amount" placeholder="Amount" class="border p-2 rounded">
+        <div class="flex items-center justify-between border-b border-white/10 px-6 py-4">
+            <div>
+                <h4 class="text-lg font-extrabold text-white">
+                    Upload Invoice
+                </h4>
+
+                <p class="mt-1 text-xs font-medium text-slate-500">
+                    Upload invoice file and optional invoice metadata.
+                </p>
+            </div>
+
+            <button type="button"
+                    id="{{ $closeBtnId }}"
+                    class="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-red-500/10 hover:text-red-300">
+                ✕
+            </button>
         </div>
-      </details>
 
-      <div class="flex items-center justify-end gap-3 pt-2">
-        <button type="button" id="{{ $closeBtnId }}-2" class="px-3 py-1.5 rounded border">Cancel</button>
-        <button class="px-3 py-1.5 bg-gray-900 text-white rounded">Upload</button>
-      </div>
-    </form>
-  </div>
+        <form method="POST"
+              action="{{ route('admin.jobs.invoices.upload', $job) }}"
+              enctype="multipart/form-data"
+              class="space-y-5 p-6">
+            @csrf
+
+            <div>
+                <label class="sf-label">
+                    Invoice file <span class="text-red-300">*</span>
+                </label>
+
+                <input type="file"
+                       name="invoice_file"
+                       required
+                       class="block w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-300 shadow-sm file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-orange-600">
+
+                <p class="sf-help">
+                    pdf, jpg, jpeg, png, webp • max 5MB
+                </p>
+            </div>
+
+            <details id="{{ $advId }}" class="rounded-2xl border border-white/10 bg-slate-950/60">
+                <summary class="cursor-pointer px-4 py-3 text-sm font-bold text-slate-300">
+                    Advanced optional metadata
+                </summary>
+
+                <div class="grid grid-cols-1 gap-3 border-t border-white/10 p-4 md:grid-cols-3">
+                    <input type="text"
+                           name="number"
+                           placeholder="Invoice #"
+                           class="sf-input">
+
+                    <input type="date"
+                           name="invoice_date"
+                           class="sf-input">
+
+                    <input type="date"
+                           name="due_date"
+                           class="sf-input">
+
+                    <input type="text"
+                           name="currency"
+                           placeholder="Currency (AED)"
+                           class="sf-input">
+
+                    <input type="number"
+                           step="0.01"
+                           name="amount"
+                           placeholder="Amount"
+                           class="sf-input">
+                </div>
+            </details>
+
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <button type="button" id="{{ $closeBtnId }}-2" class="sf-btn-secondary">
+                    Cancel
+                </button>
+
+                <button class="sf-btn-primary">
+                    Upload
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 {{-- tiny JS for modal (no external deps) --}}
 <script>
-  (function(){
+(function(){
     const openers = [
-      document.getElementById('{{ $openBtnId }}'),
-      document.getElementById('{{ $openBtnId }}-empty'),
-      document.getElementById('{{ $openBtnId }}-below')
+        document.getElementById('{{ $openBtnId }}'),
+        document.getElementById('{{ $openBtnId }}-empty'),
+        document.getElementById('{{ $openBtnId }}-below')
     ].filter(Boolean);
-    const modal  = document.getElementById('{{ $modalId }}');
-    const closers= [document.getElementById('{{ $closeBtnId }}'), document.getElementById('{{ $closeBtnId }}-2')].filter(Boolean);
 
-    openers.forEach(btn => btn.addEventListener('click', () => modal.classList.remove('hidden')));
-    closers.forEach(btn => btn.addEventListener('click', () => modal.classList.add('hidden')));
-    modal?.addEventListener('click', (e) => { if(e.target === modal) modal.classList.add('hidden'); });
-  })();
+    const modal = document.getElementById('{{ $modalId }}');
+
+    const closers = [
+        document.getElementById('{{ $closeBtnId }}'),
+        document.getElementById('{{ $closeBtnId }}-2')
+    ].filter(Boolean);
+
+    openers.forEach(btn => btn.addEventListener('click', () => {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }));
+
+    closers.forEach(btn => btn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }));
+
+    modal?.addEventListener('click', (e) => {
+        if(e.target === modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    });
+})();
 </script>

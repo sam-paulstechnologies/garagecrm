@@ -1,26 +1,28 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
-use App\Http\Middleware\VerifyCsrfToken;
 use App\Http\Controllers\PasswordForceController;
-use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
+use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Middleware\VerifyCsrfToken;
 
 /*
 |--------------------------------------------------------------------------
-| Root Redirect
+| Public Landing Page
+|--------------------------------------------------------------------------
+| Public SayaraForce landing page.
+| Login remains available at /login.
+| Logged-in users should use /dashboard.
 |--------------------------------------------------------------------------
 */
 Route::get('/', function () {
-    return auth()->check()
-        ? redirect()->route('dashboard')
-        : redirect('/login');
-});
+    return view('public.home');
+})->name('public.home');
 
 /*
 |--------------------------------------------------------------------------
@@ -70,7 +72,10 @@ Route::get('/db-counts', function () {
           (SELECT COUNT(*) FROM bookings WHERE company_id = ?)  AS bookings
     ", [$companyId, $companyId, $companyId, $companyId]);
 
-    return response()->json(['ok' => true, 'counts' => $counts]);
+    return response()->json([
+        'ok' => true,
+        'counts' => $counts,
+    ]);
 })->middleware('auth');
 
 /*
@@ -94,7 +99,6 @@ Route::middleware(['web', 'auth', 'active'])->group(function () {
 Route::middleware(['auth', 'active', 'force_password'])->group(function () {
 
     Route::get('/dashboard', function () {
-
         $user = Auth::user();
 
         abort_if(! $user || blank($user->role), 403);
@@ -106,10 +110,10 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
             'tenant'   => redirect()->route('tenant.dashboard'),
             default    => abort(403),
         };
-
     })->name('dashboard');
 
-    Route::get('/home', fn () => redirect()->route('dashboard'));
+    Route::get('/home', fn () => redirect()->route('dashboard'))
+        ->name('home');
 });
 
 /*

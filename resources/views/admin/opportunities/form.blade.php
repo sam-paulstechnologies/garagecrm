@@ -1,5 +1,117 @@
 {{-- resources/views/admin/opportunities/form.blade.php --}}
 
+@php
+    $opp = $opportunity ?? null;
+    $isEdit = (bool) ($isEdit ?? false);
+
+    $oldOr = function ($key, $fallback = null) use ($opp) {
+        return old($key, data_get($opp, $key, $fallback));
+    };
+
+    $fmtDate = function ($value) {
+        if (! $value) {
+            return '';
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return '';
+        }
+    };
+
+    $stageOptions = [
+        'new' => 'New',
+        'attempting_contact' => 'Attempting Contact',
+        'manager_confirmation_pending' => 'Manager Confirmation Pending',
+        'appointment' => 'Appointment Planned',
+        'closed_won' => 'Booking Confirmed',
+        'closed_lost' => 'Closed Lost',
+    ];
+
+    $priorityOptions = [
+        'low' => 'Low',
+        'medium' => 'Medium',
+        'high' => 'High',
+        'urgent' => 'Urgent',
+    ];
+
+    $serviceList = [
+        'General Service',
+        'Oil Change',
+        'AC Repair',
+        'Battery Check',
+        'Brake Service',
+        'Transmission Service',
+        'Car Wash',
+        'Detailing',
+        'Vehicle Inspection',
+        'Registration Renewal',
+        'Suspension Work',
+        'Tinting',
+        'Other',
+    ];
+
+    $closeReasonOptions = [
+        'Price too high',
+        'Customer not responding',
+        'Went to another garage',
+        'Not serviceable',
+        'Wrong lead',
+        'Duplicate',
+        'Customer postponed',
+        'Other',
+    ];
+
+    $selectedStage = $oldOr('stage', 'new');
+    $selectedPriority = $oldOr('priority', 'medium');
+    $selectedClientId = (string) old('client_id', $opp?->client_id ?? request('client_id', ''));
+    $selectedLeadId = (string) old('lead_id', $opp?->lead_id ?? request('lead_id', ''));
+    $selectedVehicleId = (string) old('vehicle_id', $opp?->vehicle_id ?? request('vehicle_id', ''));
+    $selectedAssignedTo = (string) old('assigned_to', $opp?->assigned_to ?? '');
+
+    /*
+    |--------------------------------------------------------------------------
+    | IMPORTANT
+    |--------------------------------------------------------------------------
+    | Backend expects service_type as a STRING.
+    | So we DO NOT submit service_type[].
+    | Checkboxes are UI-only and JS writes comma-separated values into hidden service_type.
+    |--------------------------------------------------------------------------
+    */
+    $serviceRaw = old('service_type', $opp?->service_type ?? '');
+    $selectedServices = is_array($serviceRaw)
+        ? collect($serviceRaw)
+        : collect(explode(',', (string) $serviceRaw));
+
+    $selectedServices = $selectedServices
+        ->map(fn ($service) => trim((string) $service))
+        ->filter()
+        ->values()
+        ->all();
+
+    $customService = old('custom_service_type');
+
+    if (! $customService) {
+        $customService = collect($selectedServices)
+            ->first(fn ($service) => ! in_array($service, $serviceList, true));
+    }
+
+    $bookingDateVal = old('booking_date', $fmtDate($opp?->booking_date ?? $opp?->expected_close_date ?? null));
+    $bookingSlotVal = old('booking_slot', $opp?->booking_slot ?? '');
+    $bookingNotesVal = old('booking_notes', $opp?->booking_notes ?? '');
+
+    $clientsCollection = collect($clients ?? []);
+    $leadsCollection = collect($leads ?? []);
+    $vehiclesCollection = collect($vehicles ?? []);
+    $usersCollection = collect($users ?? []);
+    $makesCollection = collect($makes ?? []);
+    $modelsCollection = collect($models ?? []);
+
+    $selectedManualMakeId = (string) old('manual_make_id', $opp?->manual_make_id ?? '');
+    $selectedManualModelId = (string) old('manual_model_id', $opp?->manual_model_id ?? '');
+@endphp
+
 <form method="POST" action="{{ $action }}" class="space-y-6">
     @csrf
 
@@ -7,138 +119,14 @@
         @method('PUT')
     @endif
 
-    @php
-        $opp = $opportunity ?? null;
-
-        $oldOr = function ($key, $fallback = null) use ($opp) {
-            return old($key, $opp?->{$key} ?? $fallback);
-        };
-
-        $stageVal = $oldOr('stage', 'new');
-        $priorityVal = $oldOr('priority', 'medium');
-
-        $selectedClientId = (string) old('client_id', $opp?->client_id ?? '');
-        $selectedVehicleId = (string) old('vehicle_id', $opp?->vehicle_id ?? '');
-        $selectedAssignedTo = (string) old('assigned_to', $opp?->assigned_to ?? '');
-
-        $servicesInitial = collect(explode(',', (string) $oldOr('service_type', '')))
-            ->map(fn ($s) => trim($s))
-            ->filter()
-            ->values()
-            ->all();
-
-        $stageOptions = [
-            'new' => 'New',
-            'attempting_contact' => 'Attempting Contact',
-            'manager_confirmation_pending' => 'Manager Confirmation Pending',
-            'appointment' => 'Appointment Planned',
-            'closed_won' => 'Booking Confirmed',
-            'closed_lost' => 'Closed Lost',
-        ];
-
-        $serviceList = [
-            'General Service',
-            'Oil Change',
-            'AC Repair',
-            'Battery Check',
-            'Brake Service',
-            'Transmission Service',
-            'Car Wash',
-            'Detailing',
-            'Vehicle Inspection',
-            'Registration Renewal',
-            'Suspension Work',
-            'Tinting',
-            'Other',
-        ];
-
-        $customService = collect($servicesInitial)
-            ->first(fn ($s) => ! in_array($s, $serviceList, true));
-
-        $closeReasonOptions = [
-            'Price too high',
-            'Customer not responding',
-            'Went to another garage',
-            'Not serviceable',
-            'Wrong lead',
-            'Duplicate',
-            'Customer postponed',
-            'Other',
-        ];
-
-        $closeReasonVal = old('close_reason', $opp?->close_reason ?? '');
-
-        $fmtDate = function ($value) {
-            if (! $value) {
-                return '';
-            }
-
-            try {
-                return \Illuminate\Support\Carbon::parse($value)->format('Y-m-d');
-            } catch (\Throwable $e) {
-                return '';
-            }
-        };
-
-        /*
-        |--------------------------------------------------------------------------
-        | Booking Confirmation Defaults
-        |--------------------------------------------------------------------------
-        | If booking date is not posted yet, default from expected_close_date so
-        | Appointment Planned date can be reused but still actively confirmed.
-        |--------------------------------------------------------------------------
-        */
-        $bookingDateVal = old('booking_date', $fmtDate($opp?->expected_close_date ?? null));
-        $bookingSlotVal = old('booking_slot', '');
-        $bookingNotesVal = old('booking_notes', '');
-
-        $vehiclesForJs = collect($vehicles ?? [])
-            ->map(function ($vehicle) {
-                $make = $vehicle->make?->name ?? '';
-                $model = $vehicle->model?->name ?? '';
-
-                $label = trim(
-                    $make . ' ' .
-                    $model . ' ' .
-                    ($vehicle->plate_number ? '(' . $vehicle->plate_number . ')' : '')
-                );
-
-                return [
-                    'id' => (string) $vehicle->id,
-                    'client_id' => (string) $vehicle->client_id,
-                    'make' => $make,
-                    'model' => $model,
-                    'plate_number' => $vehicle->plate_number,
-                    'label' => $label !== '' ? $label : 'Vehicle #' . $vehicle->id,
-                ];
-            })
-            ->values();
-
-        $clientsForJs = collect($clients ?? [])
-            ->map(fn ($client) => [
-                'id' => (string) $client->id,
-                'name' => $client->name,
-            ])
-            ->values();
-
-        $modelsByMakeForJs = collect($models ?? [])
-            ->groupBy('make_id')
-            ->map(fn ($group) => $group->map(fn ($model) => [
-                'id' => (string) $model->id,
-                'name' => $model->name,
-                'make_id' => (string) $model->make_id,
-            ])->values())
-            ->toArray();
-
-        $selectedManualMakeId = (string) old('manual_make_id', '');
-        $selectedManualModelId = (string) old('manual_model_id', '');
-    @endphp
-
     {{-- Validation Errors --}}
     @if ($errors->any())
-        <div class="rounded-lg bg-red-50 border border-red-100 text-red-800 px-4 py-3 text-sm">
-            <div class="font-semibold mb-1">Please fix the following:</div>
-            <ul class="list-disc list-inside">
+        <div class="sf-alert-danger">
+            <div class="mb-2 font-extrabold">
+                Please fix the following:
+            </div>
+
+            <ul class="list-inside list-disc space-y-1">
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach
@@ -146,868 +134,878 @@
         </div>
     @endif
 
-    {{-- Header Card --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h2 class="text-xl font-semibold text-gray-900">
-                    {{ $isEdit ? 'Edit Opportunity' : 'Create Opportunity' }}
-                </h2>
-                <p class="text-sm text-gray-500 mt-1">
-                    Move the customer from opportunity to appointment, booking confirmation, job, and invoice.
-                </p>
-            </div>
-
-            <a href="{{ route('admin.opportunities.index') }}"
-               class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm hover:bg-gray-200">
-                ← Back to Opportunities
-            </a>
-        </div>
-    </div>
-
     {{-- Pipeline Guide --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-3">
-            Pipeline Guide
-        </h3>
+    <div class="sf-card">
+        <div class="sf-card-header">
+            <h2 class="sf-section-title">
+                Pipeline Guide
+            </h2>
 
-        <div class="text-sm text-gray-600">
-            New → Attempting Contact → Manager Confirmation Pending → Appointment Planned → Booking Confirmed → Booking → Job → Invoice
+            <p class="sf-section-subtitle">
+                New → Attempting Contact → Manager Confirmation Pending → Appointment Planned → Booking Confirmed → Booking → Job → Invoice
+            </p>
         </div>
 
-        <div class="mt-3 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-800 px-4 py-3 text-sm">
-            <strong>Note:</strong> Appointment Planned is not a booking. Select <strong>Booking Confirmed</strong> only when the customer has agreed to proceed, then confirm the actual booking date and slot.
-        </div>
-    </div>
+        <div class="sf-card-body">
+            <div class="rounded-3xl border border-orange-400/20 bg-orange-500/10 p-5">
+                <div class="font-extrabold text-orange-300">
+                    Important
+                </div>
 
-    {{-- Basic Details --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">
-            Basic Details
-        </h3>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-            {{-- Client --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Client <span class="text-red-500">*</span>
-                </label>
-
-                @if($isEdit)
-                    <input type="hidden" name="client_id" id="client_id" value="{{ $opp?->client_id }}">
-
-                    <input type="text"
-                           value="{{ $opp?->client?->name ?? 'Client' }}"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-sm"
-                           readonly>
-                @else
-                    <select name="client_id"
-                            id="client_id"
-                            required
-                            class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                        <option value="">-- Select Client --</option>
-
-                        @foreach($clients as $client)
-                            <option value="{{ $client->id }}" @selected($selectedClientId === (string) $client->id)>
-                                {{ $client->name }}{{ $client->phone ? ' - '.$client->phone : '' }}
-                            </option>
-                        @endforeach
-                    </select>
-                @endif
-
-                @error('client_id')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Lead --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Lead
-                </label>
-
-                @if($isEdit)
-                    <input type="text"
-                           value="{{ $opp?->lead?->name ?? '—' }}"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-sm"
-                           readonly>
-                @else
-                    <select name="lead_id"
-                            class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                        <option value="">-- None --</option>
-
-                        @foreach($leads as $lead)
-                            <option value="{{ $lead->id }}" @selected(old('lead_id', $opp?->lead_id ?? '') == $lead->id)>
-                                {{ $lead->name }}{{ $lead->phone ? ' - '.$lead->phone : '' }}
-                            </option>
-                        @endforeach
-                    </select>
-                @endif
-
-                @error('lead_id')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Title --}}
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Opportunity Title <span class="text-red-500">*</span>
-                </label>
-
-                <input type="text"
-                       name="title"
-                       id="opportunity_title"
-                       value="{{ $oldOr('title') }}"
-                       required
-                       placeholder="Example: Manjula - Cadillac Escalade - General Service"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                <p class="text-xs text-gray-500 mt-1">
-                    Title auto-updates when client, vehicle, or service changes. You can still edit it manually.
+                <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">
+                    Appointment Planned is not a booking. Select Booking Confirmed only when the customer has agreed to proceed, then confirm the actual booking date and slot.
                 </p>
-
-                @error('title')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
             </div>
         </div>
     </div>
 
-    {{-- Pipeline Details --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">
-            Pipeline Details
-        </h3>
+    {{-- Main Grid --}}
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {{-- Main Form --}}
+        <div class="space-y-6 lg:col-span-2">
 
-            {{-- Stage --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Stage <span class="text-red-500">*</span>
-                </label>
+            {{-- Basic Details --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Basic Details
+                    </h2>
 
-                <select name="stage"
-                        id="stage_select"
-                        required
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    @foreach($stageOptions as $value => $label)
-                        <option value="{{ $value }}" @selected($stageVal === $value)>
-                            {{ $label }}
-                        </option>
-                    @endforeach
-                </select>
-
-                <p id="stage_help" class="text-xs text-gray-500 mt-1">
-                    Select the current stage of this customer opportunity.
-                </p>
-
-                @error('stage')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Priority --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Priority
-                </label>
-
-                <select name="priority"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    <option value="low" @selected($priorityVal === 'low')>Low</option>
-                    <option value="medium" @selected($priorityVal === 'medium')>Medium</option>
-                    <option value="high" @selected($priorityVal === 'high')>High</option>
-                    <option value="urgent" @selected($priorityVal === 'urgent')>Urgent</option>
-                </select>
-
-                @error('priority')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Tentative Appointment / Planning Date --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Tentative Appointment / Planning Date
-                </label>
-
-                <input type="date"
-                       name="expected_close_date"
-                       id="expected_close_date"
-                       value="{{ old('expected_close_date', $fmtDate($opp?->expected_close_date ?? null)) }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                <p class="text-xs text-gray-500 mt-1">
-                    This is only a tentative/planning date. Confirmed booking date is captured below when stage is Booking Confirmed.
-                </p>
-
-                @error('expected_close_date')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Value --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Estimated Value (AED)
-                </label>
-
-                <input type="number"
-                       step="0.01"
-                       min="0"
-                       name="value"
-                       value="{{ $oldOr('value') }}"
-                       placeholder="0.00"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                @error('value')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Assigned To --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Owner / Manager
-                </label>
-
-                <select name="assigned_to"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    <option value="">Unassigned</option>
-
-                    @if(isset($users))
-                        @foreach($users as $user)
-                            <option value="{{ $user->id }}" @selected($selectedAssignedTo === (string) $user->id)>
-                                {{ $user->name }}{{ $user->role ? ' - '.ucfirst($user->role) : '' }}
-                            </option>
-                        @endforeach
-                    @endif
-                </select>
-
-                <p class="text-xs text-gray-500 mt-1">
-                    Only admin and manager users are shown here.
-                </p>
-
-                @error('assigned_to')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Close Reason --}}
-            <div id="close_reason_wrap" class="hidden">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Close Reason <span class="text-red-500">*</span>
-                </label>
-
-                <select name="close_reason"
-                        id="close_reason"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    <option value="">-- Select reason --</option>
-
-                    @foreach($closeReasonOptions as $reason)
-                        <option value="{{ $reason }}" @selected($closeReasonVal === $reason)>
-                            {{ $reason }}
-                        </option>
-                    @endforeach
-                </select>
-
-                <p class="text-xs text-gray-500 mt-1">
-                    Used later for retention and marketing campaigns.
-                </p>
-
-                @error('close_reason')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-        </div>
-    </div>
-
-    {{-- Booking Confirmation --}}
-    <div id="booking_confirmation_wrap"
-         class="hidden bg-white rounded-xl border border-green-100 shadow-sm p-5">
-        <div class="flex items-start justify-between gap-4 mb-4">
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">
-                    Booking Confirmation
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    Required only when stage is <strong>Booking Confirmed</strong>. This creates or updates the booking record.
-                </p>
-            </div>
-
-            <span class="inline-flex px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
-                Customer Agreed
-            </span>
-        </div>
-
-        <div class="rounded-lg bg-green-50 border border-green-100 text-green-800 px-4 py-3 text-sm mb-5">
-            Confirm the real booking date and slot here. Do not rely only on the tentative appointment date above.
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {{-- Booking Date --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Confirmed Booking Date <span class="text-red-500">*</span>
-                </label>
-
-                <input type="date"
-                       name="booking_date"
-                       id="booking_date"
-                       value="{{ $bookingDateVal }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                @error('booking_date')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Booking Slot --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Confirmed Slot <span class="text-red-500">*</span>
-                </label>
-
-                <select name="booking_slot"
-                        id="booking_slot"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    <option value="">-- Select Slot --</option>
-                    <option value="morning" @selected($bookingSlotVal === 'morning')>Morning</option>
-                    <option value="afternoon" @selected($bookingSlotVal === 'afternoon')>Afternoon</option>
-                    <option value="evening" @selected($bookingSlotVal === 'evening')>Evening</option>
-                </select>
-
-                @error('booking_slot')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            {{-- Booking Notes --}}
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Booking Notes
-                </label>
-
-                <textarea name="booking_notes"
-                          id="booking_notes"
-                          rows="3"
-                          placeholder="Example: Customer requested pickup from office basement parking."
-                          class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">{{ $bookingNotesVal }}</textarea>
-
-                @error('booking_notes')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-        </div>
-    </div>
-
-    {{-- Vehicle --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">
-            Vehicle
-        </h3>
-
-        <div class="rounded-lg bg-blue-50 border border-blue-100 text-blue-800 px-4 py-3 text-sm mb-5">
-            Select an existing vehicle if already available. For new customers, enter vehicle details below and the system will create the vehicle under this client.
-        </div>
-
-        {{-- Existing Vehicle --}}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Existing Vehicle
-                </label>
-
-                <select name="vehicle_id"
-                        id="vehicle_id"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                    <option value="">-- No existing vehicle selected --</option>
-                </select>
-
-                <p class="text-xs text-gray-500 mt-1">
-                    Existing vehicles are filtered based on selected client.
-                </p>
-
-                @error('vehicle_id')
-                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
-            <div class="rounded-lg bg-gray-50 border border-gray-100 p-4 text-sm text-gray-600">
-                <div class="font-medium text-gray-800 mb-1">Selected / Current Vehicle</div>
-                <div id="current_vehicle_label">—</div>
-            </div>
-        </div>
-
-        {{-- Manual Vehicle Capture --}}
-        <div class="mt-6 border-t border-gray-100 pt-5">
-            <div class="flex items-center justify-between mb-4">
-                <div>
-                    <h4 class="text-base font-semibold text-gray-900">
-                        Create / Update Vehicle From Opportunity
-                    </h4>
-                    <p class="text-sm text-gray-500 mt-1">
-                        Use this when the lead came in without vehicle details or the customer is new.
+                    <p class="sf-section-subtitle">
+                        Link the opportunity to a client, lead, and title.
                     </p>
                 </div>
+
+                <div class="sf-card-body">
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+                        {{-- Client --}}
+                        <div>
+                            <label class="sf-label">
+                                Client <span class="text-red-300">*</span>
+                            </label>
+
+                            @if($isEdit)
+                                <input type="hidden" name="client_id" id="client_id" value="{{ $opp?->client_id }}">
+
+                                <input type="text"
+                                       value="{{ $opp?->client?->name ?? 'Client' }}"
+                                       class="sf-input bg-slate-950/70"
+                                       readonly>
+                            @else
+                                <select name="client_id" id="client_id" required class="sf-select">
+                                    <option value="">-- Select Client --</option>
+
+                                    @foreach($clientsCollection as $client)
+                                        <option value="{{ $client->id }}" @selected($selectedClientId === (string) $client->id)>
+                                            {{ $client->name }}{{ $client->phone ? ' - '.$client->phone : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            @endif
+
+                            @error('client_id')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Lead --}}
+                        <div>
+                            <label class="sf-label">
+                                Lead
+                            </label>
+
+                            @if($isEdit)
+                                <input type="hidden" name="lead_id" value="{{ $opp?->lead_id }}">
+
+                                <input type="text"
+                                       value="{{ $opp?->lead?->name ?? '—' }}"
+                                       class="sf-input bg-slate-950/70"
+                                       readonly>
+                            @else
+                                <select name="lead_id" class="sf-select">
+                                    <option value="">-- None --</option>
+
+                                    @foreach($leadsCollection as $lead)
+                                        <option value="{{ $lead->id }}" @selected($selectedLeadId === (string) $lead->id)>
+                                            {{ $lead->name }}{{ $lead->phone ? ' - '.$lead->phone : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            @endif
+
+                            @error('lead_id')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Title --}}
+                        <div class="md:col-span-2">
+                            <label class="sf-label">
+                                Opportunity Title <span class="text-red-300">*</span>
+                            </label>
+
+                            <input type="text"
+                                   name="title"
+                                   id="opportunity_title"
+                                   value="{{ $oldOr('title') }}"
+                                   required
+                                   placeholder="Example: Manjula - Cadillac Escalade - General Service"
+                                   class="sf-input">
+
+                            <p class="sf-help">
+                                Title can be auto-updated using client, vehicle, and service details. You can still edit it manually.
+                            </p>
+
+                            @error('title')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                    </div>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {{-- Make --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Vehicle Make
-                    </label>
+            {{-- Pipeline Details --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Pipeline Details
+                    </h2>
 
-                    <select name="manual_make_id"
-                            id="manual_make_id"
-                            class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                        <option value="">-- Select Make --</option>
+                    <p class="sf-section-subtitle">
+                        Control the sales stage, priority, value, owner, and expected appointment date.
+                    </p>
+                </div>
 
-                        @foreach(($makes ?? collect()) as $make)
-                            <option value="{{ $make->id }}" @selected($selectedManualMakeId === (string) $make->id)>
-                                {{ $make->name }}
-                            </option>
+                <div class="sf-card-body">
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+                        {{-- Stage --}}
+                        <div>
+                            <label class="sf-label">
+                                Stage <span class="text-red-300">*</span>
+                            </label>
+
+                            <select name="stage" id="stage_select" required class="sf-select">
+                                @foreach($stageOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected($selectedStage === $value)>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            <p class="sf-help">
+                                Select the current stage of this opportunity.
+                            </p>
+
+                            @error('stage')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Priority --}}
+                        <div>
+                            <label class="sf-label">
+                                Priority
+                            </label>
+
+                            <select name="priority" class="sf-select">
+                                @foreach($priorityOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected($selectedPriority === $value)>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            @error('priority')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Tentative Date --}}
+                        <div>
+                            <label class="sf-label">
+                                Tentative Appointment / Planning Date
+                            </label>
+
+                            <input type="date"
+                                   name="expected_close_date"
+                                   id="expected_close_date"
+                                   value="{{ old('expected_close_date', $fmtDate($opp?->expected_close_date ?? null)) }}"
+                                   class="sf-input">
+
+                            <p class="sf-help">
+                                This is only a tentative or planning date. Confirmed booking date is captured when stage is Booking Confirmed.
+                            </p>
+
+                            @error('expected_close_date')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Value --}}
+                        <div>
+                            <label class="sf-label">
+                                Estimated Value (AED)
+                            </label>
+
+                            <input type="number"
+                                   step="0.01"
+                                   min="0"
+                                   name="value"
+                                   value="{{ $oldOr('value') }}"
+                                   placeholder="0.00"
+                                   class="sf-input">
+
+                            @error('value')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Assigned To --}}
+                        <div>
+                            <label class="sf-label">
+                                Owner / Manager
+                            </label>
+
+                            <select name="assigned_to" class="sf-select">
+                                <option value="">Unassigned</option>
+
+                                @foreach($usersCollection as $user)
+                                    <option value="{{ $user->id }}" @selected($selectedAssignedTo === (string) $user->id)>
+                                        {{ $user->name }}{{ !empty($user->role) ? ' - '.ucfirst($user->role) : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            <p class="sf-help">
+                                Only admin and manager users should be shown here.
+                            </p>
+
+                            @error('assigned_to')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        {{-- Close Reason --}}
+                        <div id="close_reason_wrap" class="hidden">
+                            <label class="sf-label">
+                                Close Reason <span class="text-red-300">*</span>
+                            </label>
+
+                            <select name="close_reason" id="close_reason" class="sf-select">
+                                <option value="">-- Select reason --</option>
+
+                                @foreach($closeReasonOptions as $reason)
+                                    <option value="{{ $reason }}" @selected(old('close_reason', $opp?->close_reason ?? '') === $reason)>
+                                        {{ $reason }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            <p class="sf-help">
+                                Used later for retention and marketing analysis.
+                            </p>
+
+                            @error('close_reason')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            {{-- Booking Confirmation --}}
+            <div id="booking_confirmation_wrap" class="hidden sf-card border-green-400/20">
+                <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <h2 class="sf-section-title">
+                            Booking Confirmation
+                        </h2>
+
+                        <p class="sf-section-subtitle">
+                            Required only when stage is Booking Confirmed. This creates or updates the booking record.
+                        </p>
+                    </div>
+
+                    <span class="sf-badge-green">
+                        Customer Agreed
+                    </span>
+                </div>
+
+                <div class="sf-card-body space-y-5">
+                    <div class="rounded-3xl border border-green-400/20 bg-green-500/10 p-5">
+                        <div class="font-extrabold text-green-300">
+                            Confirm actual booking details
+                        </div>
+
+                        <p class="mt-2 text-sm font-medium leading-6 text-green-100/80">
+                            Do not rely only on tentative appointment date. Confirm the real booking date and slot here.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                            <label class="sf-label">
+                                Confirmed Booking Date <span class="text-red-300">*</span>
+                            </label>
+
+                            <input type="date"
+                                   name="booking_date"
+                                   id="booking_date"
+                                   value="{{ $bookingDateVal }}"
+                                   class="sf-input">
+
+                            @error('booking_date')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Confirmed Slot <span class="text-red-300">*</span>
+                            </label>
+
+                            <select name="booking_slot" id="booking_slot" class="sf-select">
+                                <option value="">-- Select Slot --</option>
+                                <option value="morning" @selected($bookingSlotVal === 'morning')>Morning</option>
+                                <option value="afternoon" @selected($bookingSlotVal === 'afternoon')>Afternoon</option>
+                                <option value="evening" @selected($bookingSlotVal === 'evening')>Evening</option>
+                            </select>
+
+                            @error('booking_slot')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="sf-label">
+                                Booking Notes
+                            </label>
+
+                            <textarea name="booking_notes"
+                                      id="booking_notes"
+                                      rows="3"
+                                      placeholder="Example: Customer requested pickup from office basement parking."
+                                      class="sf-textarea">{{ $bookingNotesVal }}</textarea>
+
+                            @error('booking_notes')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Vehicle --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Vehicle Details
+                    </h2>
+
+                    <p class="sf-section-subtitle">
+                        Link an existing vehicle or capture vehicle details manually.
+                    </p>
+                </div>
+
+                <div class="sf-card-body space-y-6">
+
+                    {{-- Existing Vehicle --}}
+                    <div>
+                        <label class="sf-label">
+                            Existing Vehicle
+                        </label>
+
+                        <select name="vehicle_id" id="vehicle_id" class="sf-select">
+                            <option value="">-- Select Existing Vehicle --</option>
+
+                            @foreach($vehiclesCollection as $vehicle)
+                                @php
+                                    $vehicleLabel = trim(
+                                        ($vehicle->year ? $vehicle->year . ' ' : '') .
+                                        ($vehicle->make?->name ?? $vehicle->vehicleMake?->name ?? '') . ' ' .
+                                        ($vehicle->model?->name ?? $vehicle->vehicleModel?->name ?? '') . ' ' .
+                                        ($vehicle->plate_number ? '(' . $vehicle->plate_number . ')' : '')
+                                    );
+                                @endphp
+
+                                <option value="{{ $vehicle->id }}"
+                                        data-client-id="{{ $vehicle->client_id }}"
+                                        @selected($selectedVehicleId === (string) $vehicle->id)>
+                                    {{ $vehicleLabel ?: 'Vehicle #' . $vehicle->id }}
+                                </option>
+                            @endforeach
+                        </select>
+
+                        <p class="sf-help">
+                            Existing vehicle list can be filtered by selected client.
+                        </p>
+
+                        @error('vehicle_id')
+                            <div class="sf-error">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <div class="sf-divider"></div>
+
+                    {{-- Manual Vehicle --}}
+                    <div>
+                        <h3 class="sf-section-title">
+                            Manual Vehicle Capture
+                        </h3>
+
+                        <p class="sf-section-subtitle">
+                            Use this when the vehicle does not exist yet.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                            <label class="sf-label">
+                                Make
+                            </label>
+
+                            <select name="manual_make_id" id="manual_make_id" class="sf-select">
+                                <option value="">-- Select Make --</option>
+
+                                @foreach($makesCollection as $make)
+                                    <option value="{{ $make->id }}" @selected($selectedManualMakeId === (string) $make->id)>
+                                        {{ $make->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            @error('manual_make_id')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Model
+                            </label>
+
+                            <select name="manual_model_id" id="manual_model_id" class="sf-select">
+                                <option value="">-- Select Model --</option>
+
+                                @foreach($modelsCollection as $model)
+                                    <option value="{{ $model->id }}"
+                                            data-make-id="{{ $model->make_id }}"
+                                            @selected($selectedManualModelId === (string) $model->id)>
+                                        {{ $model->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+
+                            @error('manual_model_id')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Other Make
+                            </label>
+
+                            <input type="text"
+                                   name="other_make"
+                                   value="{{ $oldOr('other_make') }}"
+                                   class="sf-input"
+                                   placeholder="If make is not listed">
+
+                            @error('other_make')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Other Model
+                            </label>
+
+                            <input type="text"
+                                   name="other_model"
+                                   value="{{ $oldOr('other_model') }}"
+                                   class="sf-input"
+                                   placeholder="If model is not listed">
+
+                            @error('other_model')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Vehicle Year
+                            </label>
+
+                            <input type="text"
+                                   name="vehicle_year"
+                                   value="{{ $oldOr('vehicle_year') }}"
+                                   class="sf-input"
+                                   placeholder="2021">
+
+                            @error('vehicle_year')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="sf-label">
+                                Plate Number
+                            </label>
+
+                            <input type="text"
+                                   name="plate_number"
+                                   value="{{ $oldOr('plate_number') }}"
+                                   class="sf-input"
+                                   placeholder="Dubai A 12345">
+
+                            @error('plate_number')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Services --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Services Needed
+                    </h2>
+
+                    <p class="sf-section-subtitle">
+                        Select one or more services discussed with the customer.
+                    </p>
+                </div>
+
+                <div class="sf-card-body space-y-5">
+
+                    {{-- IMPORTANT: backend expects service_type as STRING --}}
+                    <input type="hidden"
+                           name="service_type"
+                           id="service_type"
+                           value="{{ old('service_type', implode(', ', $selectedServices)) }}">
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        @foreach($serviceList as $service)
+                            <label class="rounded-2xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-orange-400/30">
+                                <div class="flex items-start gap-3">
+                                    <input type="checkbox"
+                                           value="{{ $service }}"
+                                           data-service-checkbox
+                                           @checked(in_array($service, $selectedServices, true))
+                                           class="mt-1 rounded border-white/10 bg-slate-950 text-orange-500 shadow-sm focus:ring-orange-400">
+
+                                    <span class="text-sm font-bold text-slate-200">
+                                        {{ $service }}
+                                    </span>
+                                </div>
+                            </label>
                         @endforeach
-                    </select>
+                    </div>
 
-                    @error('manual_make_id')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
+                    <div>
+                        <label class="sf-label">
+                            Custom Service
+                        </label>
 
-                {{-- Model --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Vehicle Model
-                    </label>
+                        <input type="text"
+                               name="custom_service_type"
+                               id="custom_service_type"
+                               value="{{ $customService }}"
+                               class="sf-input"
+                               placeholder="Enter custom service if not listed">
 
-                    <select name="manual_model_id"
-                            id="manual_model_id"
-                            class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
-                        <option value="">-- Select make first --</option>
-                    </select>
+                        @error('custom_service_type')
+                            <div class="sf-error">{{ $message }}</div>
+                        @enderror
+                    </div>
 
-                    @error('manual_model_id')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Year --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Year
-                    </label>
-
-                    <input type="text"
-                           name="manual_year"
-                           id="manual_year"
-                           value="{{ old('manual_year') }}"
-                           placeholder="Example: 2022"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_year')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Color --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Color
-                    </label>
-
-                    <input type="text"
-                           name="manual_color"
-                           value="{{ old('manual_color') }}"
-                           placeholder="Example: Black"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_color')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Plate --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Plate Number
-                    </label>
-
-                    <input type="text"
-                           name="manual_plate_number"
-                           value="{{ old('manual_plate_number') }}"
-                           placeholder="Example: Dubai A 12345"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_plate_number')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- VIN --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        VIN
-                    </label>
-
-                    <input type="text"
-                           name="manual_vin"
-                           value="{{ old('manual_vin') }}"
-                           maxlength="17"
-                           placeholder="17-character VIN"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_vin')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Mileage --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Current Mileage
-                    </label>
-
-                    <input type="number"
-                           name="manual_current_mileage"
-                           value="{{ old('manual_current_mileage') }}"
-                           min="0"
-                           placeholder="Example: 45000"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_current_mileage')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Registration Expiry --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Mulkia / Registration Expiry
-                    </label>
-
-                    <input type="date"
-                           name="manual_registration_expiry_date"
-                           value="{{ old('manual_registration_expiry_date') }}"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_registration_expiry_date')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Insurance Expiry --}}
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Insurance Expiry
-                    </label>
-
-                    <input type="date"
-                           name="manual_insurance_expiry_date"
-                           value="{{ old('manual_insurance_expiry_date') }}"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-
-                    @error('manual_insurance_expiry_date')
-                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
+                    @error('service_type')
+                        <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
             </div>
+
+            {{-- Notes --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Notes
+                    </h2>
+                </div>
+
+                <div class="sf-card-body">
+                    <textarea name="notes"
+                              rows="5"
+                              class="sf-textarea"
+                              placeholder="Add internal notes, quotation context, customer preference, or follow-up details...">{{ $oldOr('notes') }}</textarea>
+
+                    @error('notes')
+                        <div class="sf-error">{{ $message }}</div>
+                    @enderror
+                </div>
+            </div>
+
+            {{-- Submit --}}
+            <div class="sf-card">
+                <div class="sf-card-body">
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                        <a href="{{ route('admin.opportunities.index') }}" class="sf-btn-secondary">
+                            Cancel
+                        </a>
+
+                        <button type="submit" class="sf-btn-primary">
+                            {{ $isEdit ? 'Update Opportunity' : 'Create Opportunity' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </div>
-    </div>
 
-    {{-- Services --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">
-            Services
-        </h3>
+        {{-- Side Panel --}}
+        <div class="space-y-6">
 
-        <input type="hidden"
-               name="service_type"
-               id="service_type"
-               value="{{ e($oldOr('service_type', '')) }}">
+            {{-- Pipeline Notes --}}
+            <div class="sf-card">
+                <div class="sf-card-header">
+                    <h2 class="sf-section-title">
+                        Stage Rules
+                    </h2>
+                </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            @foreach($serviceList as $service)
-                @php
-                    $isChecked = $service === 'Other'
-                        ? (bool) $customService || in_array('Other', $servicesInitial, true)
-                        : in_array($service, $servicesInitial, true);
-                @endphp
+                <div class="sf-card-body">
+                    <ul class="space-y-3 text-sm text-slate-300">
+                        <li class="flex gap-3">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">1</span>
+                            <span><strong class="text-white">Appointment Planned</strong> is only tentative planning.</span>
+                        </li>
 
-                <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50">
-                    <input type="checkbox"
-                           class="svc-checkbox rounded border-gray-300"
-                           value="{{ $service }}"
-                           @checked($isChecked)>
+                        <li class="flex gap-3">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">2</span>
+                            <span><strong class="text-white">Booking Confirmed</strong> means customer agreed and booking details must be captured.</span>
+                        </li>
 
-                    <span>{{ $service }}</span>
-                </label>
-            @endforeach
+                        <li class="flex gap-3">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">3</span>
+                            <span><strong class="text-white">Closed Lost</strong> should include a close reason.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            {{-- Current Snapshot --}}
+            @if($isEdit && $opp)
+                <div class="sf-card">
+                    <div class="sf-card-header">
+                        <h2 class="sf-section-title">
+                            Current Snapshot
+                        </h2>
+                    </div>
+
+                    <div class="sf-card-body space-y-4 text-sm">
+                        <div>
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Opportunity
+                            </div>
+
+                            <div class="mt-1 font-extrabold text-white">
+                                {{ $opp->title ?? 'Untitled Opportunity' }}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Client
+                            </div>
+
+                            <div class="mt-1 font-bold text-slate-200">
+                                {{ $opp->client?->name ?? '—' }}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Stage
+                            </div>
+
+                            <div class="mt-1">
+                                <span class="sf-badge-orange">
+                                    {{ $stageOptions[$opp->stage] ?? ucwords(str_replace('_', ' ', $opp->stage ?? 'new')) }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Created
+                            </div>
+
+                            <div class="mt-1 font-bold text-slate-200">
+                                {{ $opp->created_at?->format('d M Y, h:i A') ?? '—' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20">
+                <h3 class="font-extrabold text-blue-300">
+                    Vehicle Tip
+                </h3>
+
+                <p class="mt-2 text-sm font-medium leading-6 text-blue-100/80">
+                    Use an existing vehicle when possible. Manual vehicle capture should be used only if the vehicle does not exist yet.
+                </p>
+            </div>
+
+            <div class="rounded-3xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-xl shadow-black/20">
+                <h3 class="font-extrabold text-orange-300">
+                    WhatsApp Flow
+                </h3>
+
+                <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">
+                    Stage changes may trigger follow-up logic depending on your WhatsApp event mapping and automation setup.
+                </p>
+            </div>
+
         </div>
-
-        <input type="text"
-               id="other_service_input"
-               value="{{ $customService }}"
-               class="mt-3 hidden w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-               placeholder="Specify other service">
-    </div>
-
-    {{-- Notes --}}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">
-            Notes
-        </h3>
-
-        <textarea name="notes"
-                  rows="4"
-                  placeholder="Add opportunity notes..."
-                  class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">{{ $oldOr('notes') }}</textarea>
-
-        @error('notes')
-            <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-        @enderror
-    </div>
-
-    {{-- Actions --}}
-    <div class="flex items-center justify-between gap-3">
-        <a href="{{ route('admin.opportunities.index') }}"
-           class="text-sm text-gray-600 hover:underline">
-            ← Back to Opportunities
-        </a>
-
-        <button type="submit"
-                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
-            {{ $isEdit ? 'Update Opportunity' : 'Create Opportunity' }}
-        </button>
     </div>
 </form>
 
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const vehicles = @json($vehiclesForJs);
-    const clients = @json($clientsForJs);
-    const modelsByMake = @json($modelsByMakeForJs);
-
-    const selectedVehicleId = @json($selectedVehicleId);
-    const selectedClientId = @json($selectedClientId);
-    const selectedManualMakeId = @json($selectedManualMakeId);
-    const selectedManualModelId = @json($selectedManualModelId);
-
-    const clientSelect = document.getElementById('client_id');
-    const vehicleSelect = document.getElementById('vehicle_id');
-    const currentVehicleLabel = document.getElementById('current_vehicle_label');
-
-    const manualMakeSelect = document.getElementById('manual_make_id');
-    const manualModelSelect = document.getElementById('manual_model_id');
-
-    const titleInput = document.getElementById('opportunity_title');
-
-    const serviceCheckboxes = Array.from(document.querySelectorAll('.svc-checkbox'));
-    const serviceHidden = document.getElementById('service_type');
-    const otherServiceInput = document.getElementById('other_service_input');
-
     const stageSelect = document.getElementById('stage_select');
-    const stageHelp = document.getElementById('stage_help');
-
+    const bookingWrap = document.getElementById('booking_confirmation_wrap');
     const closeReasonWrap = document.getElementById('close_reason_wrap');
     const closeReason = document.getElementById('close_reason');
-
-    const bookingConfirmationWrap = document.getElementById('booking_confirmation_wrap');
     const bookingDate = document.getElementById('booking_date');
     const bookingSlot = document.getElementById('booking_slot');
-    const bookingNotes = document.getElementById('booking_notes');
-    const expectedCloseDate = document.getElementById('expected_close_date');
 
-    let titleTouched = false;
+    const expectedDate = document.getElementById('expected_close_date');
+    const clientSelect = document.getElementById('client_id');
+    const vehicleSelect = document.getElementById('vehicle_id');
+    const makeSelect = document.getElementById('manual_make_id');
+    const modelSelect = document.getElementById('manual_model_id');
+    const titleInput = document.getElementById('opportunity_title');
 
-    const stageHelpText = {
-        new: 'New opportunity. Customer has not been contacted yet.',
-        attempting_contact: 'Team is trying to contact or follow up with the customer.',
-        manager_confirmation_pending: 'Manager needs to confirm before the opportunity moves forward.',
-        appointment: 'Appointment is planned or being discussed. This is not yet a confirmed booking.',
-        closed_won: 'Booking Confirmed. Customer agreed to proceed. Confirm actual booking date and slot below.',
-        closed_lost: 'Customer did not proceed, cancelled, or the opportunity is no longer valid.'
-    };
+    const serviceTypeInput = document.getElementById('service_type');
+    const customServiceInput = document.getElementById('custom_service_type');
 
-    titleInput?.addEventListener('input', function () {
-        titleTouched = true;
-    });
+    function refreshStageFields() {
+        const stage = stageSelect?.value || '';
 
-    function getClientId() {
-        return clientSelect?.value || selectedClientId || '';
-    }
-
-    function getClientName() {
-        const clientId = getClientId();
-
-        const found = clients.find(function (client) {
-            return String(client.id) === String(clientId);
-        });
-
-        if (found?.name) {
-            return found.name;
+        if (bookingWrap) {
+            bookingWrap.classList.toggle('hidden', stage !== 'closed_won');
         }
 
-        if (clientSelect && clientSelect.options && clientSelect.selectedIndex >= 0) {
-            const text = clientSelect.options[clientSelect.selectedIndex].textContent || '';
-            return text.split(' - ')[0].trim();
+        if (closeReasonWrap) {
+            closeReasonWrap.classList.toggle('hidden', stage !== 'closed_lost');
         }
 
-        return '';
-    }
-
-    function getSelectedVehicle() {
-        const vehicleId = vehicleSelect?.value || '';
-
-        return vehicles.find(function (vehicle) {
-            return String(vehicle.id) === String(vehicleId);
-        }) || null;
-    }
-
-    function populateVehicles() {
-        if (!vehicleSelect) {
-            return;
-        }
-
-        const clientId = getClientId();
-
-        vehicleSelect.innerHTML = '';
-
-        const emptyOption = document.createElement('option');
-        emptyOption.value = '';
-        emptyOption.textContent = '-- No existing vehicle selected --';
-        vehicleSelect.appendChild(emptyOption);
-
-        const filtered = vehicles.filter(function (vehicle) {
-            if (!clientId) {
-                return false;
-            }
-
-            return String(vehicle.client_id) === String(clientId);
-        });
-
-        filtered.forEach(function (vehicle) {
-            const option = document.createElement('option');
-            option.value = vehicle.id;
-            option.textContent = vehicle.label;
-
-            if (String(selectedVehicleId) === String(vehicle.id)) {
-                option.selected = true;
-            }
-
-            vehicleSelect.appendChild(option);
-        });
-
-        syncCurrentVehicle();
-    }
-
-    function syncCurrentVehicle() {
-        const vehicle = getSelectedVehicle();
-
-        if (currentVehicleLabel) {
-            currentVehicleLabel.textContent = vehicle ? vehicle.label : '—';
-        }
-    }
-
-    function populateManualModels(makeId, preselectId = '') {
-        if (!manualModelSelect) {
-            return;
-        }
-
-        manualModelSelect.innerHTML = '';
-
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = makeId ? '-- Select Model --' : '-- Select make first --';
-        manualModelSelect.appendChild(defaultOption);
-
-        if (!makeId || !modelsByMake[makeId]) {
-            return;
-        }
-
-        modelsByMake[makeId].forEach(function (model) {
-            const option = document.createElement('option');
-            option.value = model.id;
-            option.textContent = model.name;
-
-            if (String(preselectId) === String(model.id)) {
-                option.selected = true;
-            }
-
-            manualModelSelect.appendChild(option);
-        });
-    }
-
-    function getManualVehicleName() {
-        const makeName = manualMakeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
-        const modelName = manualModelSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
-
-        const cleanMake = makeName.startsWith('--') ? '' : makeName;
-        const cleanModel = modelName.startsWith('--') ? '' : modelName;
-
-        return [cleanMake, cleanModel].filter(Boolean).join(' ').trim();
-    }
-
-    function getSelectedServices() {
-        const selected = [];
-
-        serviceCheckboxes.forEach(function (checkbox) {
-            if (checkbox.checked) {
-                selected.push(checkbox.value);
-            }
-        });
-
-        const hasOther = selected.includes('Other');
-
-        if (otherServiceInput) {
-            otherServiceInput.classList.toggle('hidden', !hasOther);
-
-            if (hasOther && otherServiceInput.value.trim() !== '') {
-                selected[selected.indexOf('Other')] = otherServiceInput.value.trim();
+        if (closeReason) {
+            if (stage === 'closed_lost') {
+                closeReason.setAttribute('required', 'required');
+            } else {
+                closeReason.removeAttribute('required');
             }
         }
 
-        return selected;
+        if (bookingDate && bookingSlot) {
+            if (stage === 'closed_won') {
+                bookingDate.setAttribute('required', 'required');
+                bookingSlot.setAttribute('required', 'required');
+
+                if (!bookingDate.value && expectedDate?.value) {
+                    bookingDate.value = expectedDate.value;
+                }
+            } else {
+                bookingDate.removeAttribute('required');
+                bookingSlot.removeAttribute('required');
+            }
+        }
     }
 
-    function syncServices() {
-        const selected = getSelectedServices();
+    function filterVehiclesByClient() {
+        if (!clientSelect || !vehicleSelect) return;
 
-        if (serviceHidden) {
-            serviceHidden.value = selected.join(', ');
+        const selectedClientId = clientSelect.value;
+
+        [...vehicleSelect.options].forEach(function (option) {
+            if (!option.value) {
+                option.hidden = false;
+                return;
+            }
+
+            const optionClientId = option.getAttribute('data-client-id');
+
+            option.hidden = selectedClientId && optionClientId && optionClientId !== selectedClientId;
+        });
+
+        const selectedOption = vehicleSelect.options[vehicleSelect.selectedIndex];
+
+        if (selectedOption && selectedOption.hidden) {
+            vehicleSelect.value = '';
         }
-
-        syncTitle();
     }
 
-    function syncTitle() {
-        if (!titleInput || titleTouched) {
-            return;
+    function filterModelsByMake() {
+        if (!makeSelect || !modelSelect) return;
+
+        const selectedMakeId = makeSelect.value;
+
+        [...modelSelect.options].forEach(function (option) {
+            if (!option.value) {
+                option.hidden = false;
+                return;
+            }
+
+            const optionMakeId = option.getAttribute('data-make-id');
+            option.hidden = selectedMakeId && optionMakeId && optionMakeId !== selectedMakeId;
+        });
+
+        const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+
+        if (selectedOption && selectedOption.hidden) {
+            modelSelect.value = '';
+        }
+    }
+
+    function syncServiceTypeString() {
+        if (!serviceTypeInput) return;
+
+        const checkedServices = [...document.querySelectorAll('[data-service-checkbox]:checked')]
+            .map(input => input.value)
+            .filter(Boolean);
+
+        const customService = customServiceInput?.value?.trim();
+
+        if (customService) {
+            checkedServices.push(customService);
         }
 
-        const clientName = getClientName();
+        serviceTypeInput.value = checkedServices.join(', ');
+    }
 
-        const selectedVehicle = getSelectedVehicle();
+    function autoTitle() {
+        if (!titleInput || titleInput.dataset.manual === '1') return;
 
-        const existingVehicleName = selectedVehicle
-            ? [selectedVehicle.make, selectedVehicle.model].filter(Boolean).join(' ').trim()
-            : '';
+        const clientText = clientSelect?.selectedOptions?.[0]?.textContent?.trim()?.split(' - ')[0] || '';
+        const vehicleText = vehicleSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
 
-        const manualVehicleName = getManualVehicleName();
+        const checkedService = document.querySelector('[data-service-checkbox]:checked')?.value || customServiceInput?.value?.trim() || '';
 
-        const vehicleName = existingVehicleName || manualVehicleName;
-
-        const services = getSelectedServices();
-        const firstService = services.length ? services[0] : '';
-
-        const parts = [clientName, vehicleName, firstService]
-            .map(function (part) {
-                return (part || '').trim();
-            })
+        const parts = [clientText, vehicleText.replace('-- Select Existing Vehicle --', ''), checkedService]
+            .map(part => part.trim())
             .filter(Boolean);
 
         if (parts.length) {
@@ -1015,91 +1013,40 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function syncStageHelp() {
-        if (!stageSelect || !stageHelp) {
-            return;
-        }
+    titleInput?.addEventListener('input', function () {
+        titleInput.dataset.manual = '1';
+    });
 
-        const selectedStage = stageSelect.value;
-
-        stageHelp.textContent = stageHelpText[selectedStage] || 'Select the current stage of this customer opportunity.';
-
-        const isClosedLost = selectedStage === 'closed_lost';
-        const isBookingConfirmed = selectedStage === 'closed_won';
-
-        if (closeReasonWrap) {
-            closeReasonWrap.classList.toggle('hidden', !isClosedLost);
-        }
-
-        if (closeReason) {
-            closeReason.required = isClosedLost;
-
-            if (!isClosedLost) {
-                closeReason.value = '';
-            }
-        }
-
-        if (bookingConfirmationWrap) {
-            bookingConfirmationWrap.classList.toggle('hidden', !isBookingConfirmed);
-        }
-
-        if (bookingDate) {
-            bookingDate.required = isBookingConfirmed;
-
-            if (isBookingConfirmed && !bookingDate.value && expectedCloseDate?.value) {
-                bookingDate.value = expectedCloseDate.value;
-            }
-        }
-
-        if (bookingSlot) {
-            bookingSlot.required = isBookingConfirmed;
-        }
-
-        if (!isBookingConfirmed) {
-            if (bookingDate) {
-                bookingDate.required = false;
-            }
-
-            if (bookingSlot) {
-                bookingSlot.required = false;
-            }
-        }
-    }
+    stageSelect?.addEventListener('change', refreshStageFields);
 
     clientSelect?.addEventListener('change', function () {
-        populateVehicles();
-        syncTitle();
+        filterVehiclesByClient();
+        autoTitle();
     });
 
-    vehicleSelect?.addEventListener('change', function () {
-        syncCurrentVehicle();
-        syncTitle();
+    vehicleSelect?.addEventListener('change', autoTitle);
+    makeSelect?.addEventListener('change', filterModelsByMake);
+
+    document.querySelectorAll('[data-service-checkbox]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            syncServiceTypeString();
+            autoTitle();
+        });
     });
 
-    manualMakeSelect?.addEventListener('change', function () {
-        populateManualModels(manualMakeSelect.value);
-        syncTitle();
+    customServiceInput?.addEventListener('input', function () {
+        syncServiceTypeString();
+        autoTitle();
     });
 
-    manualModelSelect?.addEventListener('change', syncTitle);
-
-    serviceCheckboxes.forEach(function (checkbox) {
-        checkbox.addEventListener('change', syncServices);
+    document.querySelector('form')?.addEventListener('submit', function () {
+        syncServiceTypeString();
     });
 
-    otherServiceInput?.addEventListener('input', syncServices);
-    stageSelect?.addEventListener('change', syncStageHelp);
-
-    expectedCloseDate?.addEventListener('change', function () {
-        if (stageSelect?.value === 'closed_won' && bookingDate && !bookingDate.value) {
-            bookingDate.value = expectedCloseDate.value;
-        }
-    });
-
-    populateVehicles();
-    populateManualModels(selectedManualMakeId || manualMakeSelect?.value || '', selectedManualModelId);
-    syncServices();
-    syncStageHelp();
-    syncTitle();
+    refreshStageFields();
+    filterVehiclesByClient();
+    filterModelsByMake();
+    syncServiceTypeString();
 });
 </script>
+@endpush

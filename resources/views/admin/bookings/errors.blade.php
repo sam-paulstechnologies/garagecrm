@@ -1,9 +1,12 @@
-@if ($errors->any())
-    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-        <strong class="font-bold">Whoops!</strong>
-        <span class="block sm:inline">There were some problems with your input.</span>
+{{-- resources/views/admin/bookings/partials/errors.blade.php --}}
 
-        <ul class="mt-2 list-disc list-inside text-sm text-red-600">
+@if ($errors->any())
+    <div class="sf-alert-danger" role="alert">
+        <div class="mb-2 font-extrabold">
+            Whoops! There were some problems with your input.
+        </div>
+
+        <ul class="list-inside list-disc space-y-1 text-sm">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>
             @endforeach

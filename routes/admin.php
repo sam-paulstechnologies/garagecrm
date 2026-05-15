@@ -195,6 +195,35 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
         /*
         |--------------------------------------------------------------------------
+        | WhatsApp Settings
+        |--------------------------------------------------------------------------
+        | Primary current URL:
+        | /admin/whatsapp/settings
+        |
+        | Backward-compatible alternate URL:
+        | /admin/settings/whatsapp
+        |--------------------------------------------------------------------------
+        */
+        Route::get('whatsapp/settings', [WhatsAppSettingController::class, 'edit'])
+            ->name('whatsapp.settings.edit');
+
+        Route::put('whatsapp/settings', [WhatsAppSettingController::class, 'update'])
+            ->name('whatsapp.settings.update');
+
+        Route::post('whatsapp/settings/uat-reset', [WhatsAppSettingController::class, 'resetUatByPhone'])
+            ->name('whatsapp.settings.uat-reset');
+
+        Route::get('settings/whatsapp', [WhatsAppSettingController::class, 'edit'])
+            ->name('whatsapp.settings.edit.alt');
+
+        Route::put('settings/whatsapp', [WhatsAppSettingController::class, 'update'])
+            ->name('whatsapp.settings.update.alt');
+
+        Route::post('settings/whatsapp/uat-reset', [WhatsAppSettingController::class, 'resetUatByPhone'])
+            ->name('whatsapp.settings.uat-reset.alt');
+
+        /*
+        |--------------------------------------------------------------------------
         | Audience Segmentation
         |--------------------------------------------------------------------------
         */

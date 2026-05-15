@@ -14,6 +14,7 @@ use App\Services\Meta\MetaLeadService;
 use App\Services\Settings\SettingsStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class LeadImportController extends Controller
@@ -90,7 +91,11 @@ class LeadImportController extends Controller
 
         $inserted = 0;
         $dupes = 0;
+        $updated = 0;
         $skipped = 0;
+        $clientsCreated = 0;
+        $vehiclesCreated = 0;
+        $segmentsApplied = 0;
         $errors = [];
 
         $rowNumber = 1;
@@ -123,17 +128,62 @@ class LeadImportController extends Controller
                     continue;
                 }
 
+                /*
+                |--------------------------------------------------------------------------
+                | Create/update Client first
+                |--------------------------------------------------------------------------
+                |
+                | Import should always create/reuse client, then attach the lead.
+                | Imported leads are still skipped from instant WhatsApp ACK by
+                | HandleLeadCreatedOutbound, because their source is import/csv.
+                */
+
+                [$client, $clientWasCreated] = $this->resolveOrCreateClient(
+                    companyId: $companyId,
+                    name: $name,
+                    phone: $phone,
+                    email: $email,
+                    source: $data['source'] ?? 'csv',
+                    extra: $data
+                );
+
+                if ($clientWasCreated) {
+                    $clientsCreated++;
+                }
+
                 $leadPayload = [
                     'company_id'        => $companyId,
+                    'client_id'         => $client?->id,
                     'name'              => $name,
                     'phone'             => $phone,
                     'email'             => $email,
-                    'source'            => $data['source'] ?? 'csv',
+                    'source'            => $this->normalizeImportSource($data['source'] ?? 'csv'),
+                    'external_source'   => 'import',
                     'status'            => Lead::STATUS_NEW,
                     'notes'             => $data['notes'] ?? null,
                     'preferred_channel' => $data['preferred_channel'] ?? 'whatsapp',
                     'window_days'       => 30,
                 ];
+
+                if (Schema::hasColumn('leads', 'phone_norm')) {
+                    $leadPayload['phone_norm'] = $phone;
+                }
+
+                if (Schema::hasColumn('leads', 'email_norm')) {
+                    $leadPayload['email_norm'] = $email;
+                }
+
+                if (Schema::hasColumn('leads', 'external_payload')) {
+                    $leadPayload['external_payload'] = [
+                        'source' => 'csv_import',
+                        'row_number' => $rowNumber,
+                        'raw' => $data,
+                    ];
+                }
+
+                if (Schema::hasColumn('leads', 'external_received_at')) {
+                    $leadPayload['external_received_at'] = now();
+                }
 
                 $extraLeadFields = [
                     'service_category',
@@ -174,20 +224,43 @@ class LeadImportController extends Controller
                     $lead = $result;
                     $inserted++;
 
-                    $this->createOrUpdateClientAndVehicle($companyId, $lead, $data);
+                    $vehicleWasCreated = $this->createOrUpdateClientAndVehicle($companyId, $lead, $data, $client);
+
+                    if ($vehicleWasCreated) {
+                        $vehiclesCreated++;
+                    }
+
+                    if ($this->applyAudienceSegmentation($lead, $data)) {
+                        $segmentsApplied++;
+                    }
                 } else {
                     $dupes++;
-                }
 
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Duplicate lead fallback
+                    |--------------------------------------------------------------------------
+                    |
+                    | Even if lead factory marks this as duplicate, we still created/reused
+                    | the client above. This keeps imported customer data usable.
+                    */
+                }
             } catch (\Throwable $e) {
                 $skipped++;
                 $errors[] = "Row {$rowNumber}: " . $e->getMessage();
+
+                Log::warning('[LeadImport] CSV row skipped', [
+                    'company_id' => $companyId,
+                    'row' => $rowNumber,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
         fclose($handle);
 
-        $message = "CSV import done: +{$inserted} new, ⚠{$dupes} duplicates, {$skipped} skipped.";
+        $message = "CSV import done: +{$inserted} new, ~{$updated} updated, ⚠{$dupes} duplicates, {$skipped} skipped. "
+            . "Clients created: {$clientsCreated}. Vehicles created: {$vehiclesCreated}. Segments applied: {$segmentsApplied}.";
 
         return back()
             ->with('success', $message)
@@ -244,6 +317,7 @@ class LeadImportController extends Controller
         $inserted = 0;
         $updated = 0;
         $dupes = 0;
+        $clientsCreated = 0;
         $console = [];
 
         $windowDays = (int) $store->get('leads.dedupe_days', 30);
@@ -278,36 +352,74 @@ class LeadImportController extends Controller
 
                     $payload = $row['raw'] ?? $row;
 
+                    $name = $row['name'] ?? 'Meta Lead';
+                    $phone = $this->normalizePhone($row['phone'] ?? null);
+                    $email = $this->normalizeEmail($row['email'] ?? null);
+
+                    [$client, $clientWasCreated] = $this->resolveOrCreateClient(
+                        companyId: $companyId,
+                        name: $name,
+                        phone: $phone,
+                        email: $email,
+                        source: 'meta',
+                        extra: $row
+                    );
+
+                    if ($clientWasCreated) {
+                        $clientsCreated++;
+                    }
+
                     if (! empty($row['external_id'])) {
-                        $lead = Lead::updateOrCreate(
-                            [
-                                'company_id'      => $companyId,
-                                'external_source' => 'meta',
-                                'external_id'     => (string) $row['external_id'],
-                            ],
-                            [
-                                'name'                 => $row['name'] ?? 'Meta Lead',
-                                'email'                => $row['email'] ?? null,
-                                'phone'                => $row['phone'] ?? null,
-                                'status'               => Lead::STATUS_NEW,
-                                'source'               => 'meta',
-                                'preferred_channel'    => 'whatsapp',
-                                'external_form_id'     => (string) $formId,
-                                'external_payload'     => $payload,
-                                'external_received_at' => now(),
-                                'created_at'           => $createdTime ?? now(),
-                            ]
-                        );
+                        $identity = [
+                            'company_id'      => $companyId,
+                            'external_source' => 'meta',
+                            'external_id'     => (string) $row['external_id'],
+                        ];
+
+                        $values = [
+                            'client_id'            => $client?->id,
+                            'name'                 => $name,
+                            'email'                => $email,
+                            'phone'                => $phone,
+                            'status'               => Lead::STATUS_NEW,
+                            'source'               => 'meta',
+                            'preferred_channel'    => 'whatsapp',
+                            'external_form_id'     => (string) $formId,
+                            'external_payload'     => $payload,
+                            'external_received_at' => now(),
+                        ];
+
+                        if (Schema::hasColumn('leads', 'phone_norm')) {
+                            $values['phone_norm'] = $phone;
+                        }
+
+                        if (Schema::hasColumn('leads', 'email_norm')) {
+                            $values['email_norm'] = $email;
+                        }
+
+                        if ($createdTime && Schema::hasColumn('leads', 'created_at')) {
+                            $values['created_at'] = $createdTime;
+                        }
+
+                        $lead = Lead::updateOrCreate($identity, $values);
 
                         $lead->wasRecentlyCreated ? $inserted++ : $updated++;
+
+                        $this->applyAudienceSegmentation($lead, [
+                            'source' => 'meta',
+                            'service_category' => $row['service_category'] ?? null,
+                            'campaign_name' => $row['campaign_name'] ?? null,
+                        ]);
+
                         continue;
                     }
 
                     $result = $this->factory->createOrDetectDuplicate([
                         'company_id'           => $companyId,
-                        'name'                 => $row['name'] ?? 'Meta Lead',
-                        'email'                => $row['email'] ?? null,
-                        'phone'                => $row['phone'] ?? null,
+                        'client_id'            => $client?->id,
+                        'name'                 => $name,
+                        'email'                => $email,
+                        'phone'                => $phone,
                         'status'               => Lead::STATUS_NEW,
                         'source'               => 'meta',
                         'preferred_channel'    => 'whatsapp',
@@ -318,7 +430,12 @@ class LeadImportController extends Controller
                         'window_days'          => $windowDays,
                     ]);
 
-                    $result instanceof Lead ? $inserted++ : $dupes++;
+                    if ($result instanceof Lead) {
+                        $inserted++;
+                        $this->applyAudienceSegmentation($result, ['source' => 'meta']);
+                    } else {
+                        $dupes++;
+                    }
                 }
 
                 if ($maxCreated > 0) {
@@ -326,15 +443,20 @@ class LeadImportController extends Controller
                 }
 
                 $console[] = "✔ Form {$formId} processed";
-
             } catch (\Throwable $e) {
                 $console[] = "❌ {$e->getMessage()}";
+
+                Log::error('[LeadImport] Meta import failed', [
+                    'company_id' => $companyId,
+                    'form_id' => $formId,
+                    'error' => $e->getMessage(),
+                ]);
             } finally {
                 optional($lock)->release();
             }
         }
 
-        $summary = "Meta import done: +{$inserted} new, ~{$updated} updated, ⚠{$dupes} duplicates";
+        $summary = "Meta import done: +{$inserted} new, ~{$updated} updated, ⚠{$dupes} duplicates, clients created: {$clientsCreated}";
 
         return back()
             ->with('success', $summary)
@@ -420,6 +542,21 @@ class LeadImportController extends Controller
         return $phone ?: null;
     }
 
+    private function normalizeImportSource(?string $source): string
+    {
+        $source = strtolower(trim((string) $source));
+
+        if ($source === '') {
+            return 'csv';
+        }
+
+        if (in_array($source, ['excel', 'xlsx', 'xls', 'upload', 'bulk', 'bulk_import'], true)) {
+            return 'import';
+        }
+
+        return $source;
+    }
+
     private function normalizeFieldValue(string $field, mixed $value): mixed
     {
         if ($value === null || $value === '') {
@@ -463,55 +600,140 @@ class LeadImportController extends Controller
             ->value('id');
     }
 
-    private function createOrUpdateClientAndVehicle(int $companyId, Lead $lead, array $data): void
-    {
-        $phone = $this->normalizePhone($data['phone'] ?? null);
-        $email = $this->normalizeEmail($data['email'] ?? null);
-
+    private function resolveOrCreateClient(
+        int $companyId,
+        ?string $name,
+        ?string $phone,
+        ?string $email,
+        string $source,
+        array $extra = []
+    ): array {
         if (! Schema::hasTable('clients')) {
-            return;
+            return [null, false];
         }
 
-        $clientQuery = Client::where('company_id', $companyId);
+        $phone = $this->normalizePhone($phone);
+        $email = $this->normalizeEmail($email);
+        $name = trim((string) $name) ?: 'Customer';
 
-        $clientQuery->where(function ($q) use ($phone, $email) {
+        $query = Client::where('company_id', $companyId);
+
+        $query->where(function ($q) use ($phone, $email) {
             if ($phone) {
-                $q->where('phone', $phone);
+                $q->orWhere('phone', $phone);
+
+                if (Schema::hasColumn('clients', 'phone_norm')) {
+                    $q->orWhere('phone_norm', $phone);
+                }
 
                 if (Schema::hasColumn('clients', 'whatsapp')) {
                     $q->orWhere('whatsapp', $phone);
+                }
+
+                if (Schema::hasColumn('clients', 'whatsapp_number')) {
+                    $q->orWhere('whatsapp_number', $phone);
                 }
             }
 
             if ($email) {
                 $q->orWhere('email', $email);
+
+                if (Schema::hasColumn('clients', 'email_norm')) {
+                    $q->orWhere('email_norm', $email);
+                }
             }
         });
 
-        $client = $clientQuery->first();
+        $client = $query->first();
 
-        if (! $client) {
-            $clientData = [
-                'company_id' => $companyId,
-                'name'       => $data['name'] ?? $lead->name,
-                'phone'      => $phone,
-                'email'      => $email,
-            ];
+        if ($client) {
+            $updates = [];
 
-            if (Schema::hasColumn('clients', 'whatsapp')) {
-                $clientData['whatsapp'] = $phone;
+            foreach ([
+                'name' => $client->name ?: $name,
+                'phone' => $client->phone ?: $phone,
+                'email' => $client->email ?: $email,
+                'source' => $client->source ?: $source,
+                'phone_norm' => $phone,
+                'email_norm' => $email,
+                'whatsapp' => $phone,
+                'whatsapp_number' => $phone,
+            ] as $field => $value) {
+                if (
+                    $value !== null
+                    && $value !== ''
+                    && Schema::hasColumn('clients', $field)
+                    && empty($client->{$field})
+                ) {
+                    $updates[$field] = $value;
+                }
             }
 
-            $client = Client::create($clientData);
+            if (! empty($updates)) {
+                $client->update($updates);
+            }
+
+            return [$client, false];
         }
 
-        if (Schema::hasColumn('leads', 'client_id') && ! $lead->client_id) {
+        $clientData = [
+            'company_id' => $companyId,
+            'name'       => $name,
+            'phone'      => $phone,
+            'email'      => $email,
+        ];
+
+        foreach ([
+            'source' => $source,
+            'status' => 'active',
+            'phone_norm' => $phone,
+            'email_norm' => $email,
+            'whatsapp' => $phone,
+            'whatsapp_number' => $phone,
+        ] as $field => $value) {
+            if (Schema::hasColumn('clients', $field)) {
+                $clientData[$field] = $value;
+            }
+        }
+
+        $client = Client::create($clientData);
+
+        return [$client, true];
+    }
+
+    private function createOrUpdateClientAndVehicle(
+        int $companyId,
+        Lead $lead,
+        array $data,
+        ?Client $existingClient = null
+    ): bool {
+        $phone = $this->normalizePhone($data['phone'] ?? null);
+        $email = $this->normalizeEmail($data['email'] ?? null);
+
+        if (! Schema::hasTable('clients')) {
+            return false;
+        }
+
+        $client = $existingClient;
+
+        if (! $client) {
+            [$client] = $this->resolveOrCreateClient(
+                companyId: $companyId,
+                name: $data['name'] ?? $lead->name,
+                phone: $phone,
+                email: $email,
+                source: $data['source'] ?? 'csv',
+                extra: $data
+            );
+        }
+
+        if ($client && Schema::hasColumn('leads', 'client_id') && ! $lead->client_id) {
             $lead->client_id = $client->id;
             $lead->save();
         }
 
-        if (! Schema::hasTable('vehicles')) {
-            return;
+        if (! Schema::hasTable('vehicles') || ! $client) {
+            return false;
         }
 
         $makeName = $data['vehicle_make'] ?? null;
@@ -520,7 +742,7 @@ class LeadImportController extends Controller
         $plate = $data['plate_number'] ?? null;
 
         if (! $makeName && ! $modelName && ! $plate) {
-            return;
+            return false;
         }
 
         $makeId = null;
@@ -570,14 +792,94 @@ class LeadImportController extends Controller
         $vehicle = $vehicleQuery->first();
 
         if (! $vehicle) {
-            Vehicle::create([
+            $vehicleData = [
                 'company_id'   => $companyId,
                 'client_id'    => $client->id,
                 'make_id'      => $makeId,
                 'model_id'     => $modelId,
                 'plate_number' => $plate,
                 'year'         => $year ? (string) $year : null,
+            ];
+
+            $vehicle = Vehicle::create($vehicleData);
+
+            $this->syncVehicleToLead($lead, $vehicle, $makeId, $modelId, $makeName, $modelName);
+
+            return true;
+        }
+
+        $this->syncVehicleToLead($lead, $vehicle, $makeId, $modelId, $makeName, $modelName);
+
+        return false;
+    }
+
+    private function syncVehicleToLead(
+        Lead $lead,
+        Vehicle $vehicle,
+        ?int $makeId,
+        ?int $modelId,
+        ?string $makeName,
+        ?string $modelName
+    ): void {
+        $updates = [];
+
+        foreach ([
+            'vehicle_id' => $vehicle->id,
+            'vehicle_make_id' => $makeId,
+            'vehicle_model_id' => $modelId,
+            'other_make' => $makeId ? null : $makeName,
+            'other_model' => $modelId ? null : $modelName,
+        ] as $field => $value) {
+            if (Schema::hasColumn('leads', $field)) {
+                $updates[$field] = $value;
+            }
+        }
+
+        if (! empty($updates)) {
+            $lead->forceFill($updates)->save();
+        }
+    }
+
+    private function applyAudienceSegmentation(Lead $lead, array $data): bool
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | Safe dynamic audience segmentation
+        |--------------------------------------------------------------------------
+        |
+        | We do not assume the exact method name because existing AudienceResolver
+        | may differ. This safely calls it only when available.
+        */
+
+        $class = 'App\\Services\\Audiences\\AudienceResolver';
+
+        if (! class_exists($class)) {
+            return false;
+        }
+
+        try {
+            $resolver = app($class);
+
+            foreach ([
+                'resolveForLead',
+                'syncForLead',
+                'assignForLead',
+                'resolve',
+            ] as $method) {
+                if (method_exists($resolver, $method)) {
+                    $resolver->{$method}($lead, $data);
+
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[LeadImport] Audience segmentation skipped', [
+                'company_id' => $lead->company_id,
+                'lead_id' => $lead->id,
+                'error' => $e->getMessage(),
             ]);
         }
+
+        return false;
     }
 }

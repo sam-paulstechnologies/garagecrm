@@ -10,6 +10,7 @@ use App\Models\Vehicle\VehicleModel;
 use App\Services\Conversation\ConversationGuard;
 use App\Services\Leads\LeadConversionService;
 use App\Services\Vehicles\VehicleResolver;
+use Illuminate\Support\Facades\Log;
 
 class VehicleFlow
 {
@@ -28,6 +29,7 @@ class VehicleFlow
 
             $data['vehicle_attempts'] = 0;
             $data['booking_started_at'] = now()->toIso8601String();
+            $data['last_vehicle_prompt_at'] = now()->toIso8601String();
 
             $lead->conversation_state = 'awaiting_vehicle';
             $lead->conversation_data = $data;
@@ -38,7 +40,11 @@ class VehicleFlow
                 template: 'ask_make_model_v1',
                 action: 'collect_vehicle',
                 body: $this->askVehicleBody($lead),
-                placeholders: [$lead->name ?: 'there']
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'lead.ask_vehicle',
+                    'reason' => 'vehicle_not_found_in_initial_text',
+                ]
             );
         }
 
@@ -62,6 +68,8 @@ class VehicleFlow
             $attempts++;
 
             $data['vehicle_attempts'] = $attempts;
+            $data['last_vehicle_failed_text'] = $text;
+            $data['last_vehicle_failed_at'] = now()->toIso8601String();
 
             $lead->conversation_data = $data;
             $lead->conversation_updated_at = now();
@@ -70,7 +78,7 @@ class VehicleFlow
             if ($attempts >= 3) {
                 return $this->guard->escalateToManager(
                     $lead,
-                    'Vehicle capture failed: ' . $text
+                    'Vehicle capture failed after 3 attempts: ' . $text
                 );
             }
 
@@ -80,7 +88,9 @@ class VehicleFlow
                 body: "Sorry, I could not clearly identify the vehicle.\n\n" . $this->askVehicleBody($lead),
                 placeholders: [$lead->name ?: 'there'],
                 context: [
+                    'event_key' => 'lead.ask_vehicle',
                     'vehicle_attempts' => $attempts,
+                    'reason' => 'vehicle_capture_retry',
                 ]
             );
         }
@@ -110,6 +120,7 @@ class VehicleFlow
 
         $data['vehicle_attempts'] = 0;
         $data['vehicle_captured_at'] = now()->toIso8601String();
+        $data['vehicle_captured_raw_text'] = $text;
 
         $lead->conversation_data = $data;
         $lead->conversation_updated_at = now();
@@ -121,8 +132,21 @@ class VehicleFlow
         |--------------------------------------------------------------------------
         */
 
-        $this->leadConversionService->ensureClientAndOpportunity($lead->id);
-        $lead->refresh();
+        try {
+            $this->leadConversionService->ensureClientAndOpportunity($lead->id, (int) $lead->company_id);
+            $lead->refresh();
+        } catch (\Throwable $e) {
+            Log::warning('[VehicleFlow] Failed to ensure client/opportunity', [
+                'company_id' => $lead->company_id,
+                'lead_id' => $lead->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->guard->escalateToManager(
+                $lead,
+                'Vehicle captured but client/opportunity creation failed: ' . $e->getMessage()
+            );
+        }
 
         $opportunity = $lead->opportunity;
 
@@ -218,7 +242,13 @@ class VehicleFlow
             template: 'ask_preferred_time_v1',
             action: 'collect_timeslot',
             body: $this->askPreferredTimeBody($lead),
-            placeholders: [$lead->name ?: 'there']
+            placeholders: [$lead->name ?: 'there'],
+            context: [
+                'event_key' => 'lead.ask_preferred_time',
+                'vehicle_make_id' => $lead->vehicle_make_id,
+                'vehicle_model_id' => $lead->vehicle_model_id,
+                'reason' => 'vehicle_captured',
+            ]
         );
     }
 

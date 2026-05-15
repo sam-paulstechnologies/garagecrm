@@ -13,6 +13,7 @@ use App\Services\Leads\LeadConversionService;
 use App\Services\WhatsApp\ManagerNotificationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class BookingFlow
 {
@@ -437,6 +438,321 @@ class BookingFlow
                 'time'       => $date->format('H:i'),
                 'slot'       => $slot,
                 'reason'     => 'Booking confirmed by user and sent to manager',
+            ]
+        );
+    }
+
+
+
+    /**
+     * Active booking edge case → user is asked if they want to reschedule.
+     */
+    public function handleRescheduleConfirmation(Lead $lead, string $text): array
+    {
+        $input = strtolower(trim($text));
+        $data = $this->conversationData($lead);
+
+        if ($this->looksLikeRejection($input)) {
+            unset($data['pending_reschedule']);
+
+            $lead->conversation_state = 'idle';
+            $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
+            $lead->save();
+
+            return $this->sessionResponse(
+                template: 'booking.active_status',
+                action: 'active_booking_keep',
+                body: 'No problem. Your existing booking remains scheduled. Our team will see you as planned.',
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'booking.active_status',
+                    'reason' => 'Customer does not want to reschedule active booking',
+                ]
+            );
+        }
+
+        if ($this->looksLikeRescheduleIntent($input) || $this->looksLikeConfirmation($input)) {
+            $data['reschedule_requested_at'] = now()->toIso8601String();
+
+            $lead->conversation_state = 'awaiting_reschedule_datetime';
+            $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
+            $lead->save();
+
+            return $this->sessionResponse(
+                template: 'booking.reschedule.ask_time',
+                action: 'reschedule_ask_time',
+                body: $this->askPreferredTimeBody($lead, 'Sure. Please share the new preferred booking date and time.'),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'booking.reschedule.ask_time',
+                    'reason' => 'Customer opted to reschedule active booking',
+                ]
+            );
+        }
+
+        $data['reschedule_confirm_attempts'] = (int) ($data['reschedule_confirm_attempts'] ?? 0) + 1;
+
+        $lead->conversation_state = 'awaiting_reschedule_confirmation';
+        $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
+        $lead->save();
+
+        if ($data['reschedule_confirm_attempts'] >= 2) {
+            return $this->guard->escalateToManager(
+                $lead,
+                'Customer replied during active booking but reschedule intent was unclear: ' . $text
+            );
+        }
+
+        return $this->sessionResponse(
+            template: 'booking.active_status',
+            action: 'active_booking_clarify',
+            body: 'Would you like to reschedule your existing booking? Please reply Yes to reschedule or No to keep it as planned.',
+            placeholders: [$lead->name ?: 'there'],
+            context: [
+                'event_key' => 'booking.active_status',
+                'reason' => 'Clarifying active booking reschedule intent',
+                'attempts' => $data['reschedule_confirm_attempts'],
+            ]
+        );
+    }
+
+    /**
+     * Active booking reschedule → capture new date/time and ask confirmation.
+     */
+    public function handleRescheduleTimeslot(Lead $lead, string $text): array
+    {
+        $booking = $this->findActiveBooking($lead);
+
+        if (! $booking) {
+            return $this->guard->escalateToManager(
+                $lead,
+                'Customer asked to reschedule, but no active booking was found.'
+            );
+        }
+
+        $normalizedText = $this->normalizeTimeslotText($text, $lead);
+        $date = $this->bookingService->parsePreferredDateTime($normalizedText);
+
+        if (! $date instanceof Carbon) {
+            return $this->retryRescheduleTimeslot(
+                lead: $lead,
+                reason: 'Invalid reschedule date/time received: ' . $text,
+                customerMessage: 'I could not understand that date/time. Please share a clear preferred time, for example: Tuesday 10 AM.',
+                selectedText: $text,
+                booking: $booking
+            );
+        }
+
+        if ($date->isPast()) {
+            return $this->retryRescheduleTimeslot(
+                lead: $lead,
+                reason: 'Past reschedule date/time received: ' . $text,
+                customerMessage: 'That time has already passed. Please choose a future date/time within garage working hours.',
+                selectedText: $text,
+                selectedAt: $date,
+                booking: $booking
+            );
+        }
+
+        $workingHoursViolation = $this->bookingService->workingHoursViolation($lead, $date);
+
+        if ($workingHoursViolation) {
+            return $this->retryRescheduleTimeslot(
+                lead: $lead,
+                reason: $workingHoursViolation,
+                customerMessage: $this->outsideWorkingHoursMessage($lead, $date, $workingHoursViolation),
+                selectedText: $text,
+                selectedAt: $date,
+                incrementAttempt: false,
+                booking: $booking
+            );
+        }
+
+        $slot = $this->bookingService->inferSlotFromTime($date, 'Morning');
+
+        if (! $this->isSlotAvailableForReschedule($lead, $date, $slot, (int) $booking->id)) {
+            return $this->retryRescheduleTimeslot(
+                lead: $lead,
+                reason: 'Requested reschedule slot unavailable',
+                customerMessage: 'That slot is already unavailable. Please choose another date/time.',
+                selectedText: $text,
+                selectedAt: $date,
+                booking: $booking
+            );
+        }
+
+        $data = $this->conversationData($lead);
+        $data['reschedule_timeslot_attempts'] = 0;
+        $data['pending_reschedule'] = [
+            'booking_id' => (int) $booking->id,
+            'date' => $date->toIso8601String(),
+            'slot' => $slot,
+            'raw_text' => $text,
+            'captured_at' => now()->toIso8601String(),
+        ];
+
+        $lead->conversation_state = 'confirm_reschedule';
+        $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
+        $lead->save();
+
+        $dateLabel = $date->format('d M Y, h:i A');
+
+        return $this->sessionResponse(
+            template: 'booking.reschedule.confirm',
+            action: 'confirm_reschedule',
+            body: $this->confirmRescheduleBody($dateLabel),
+            placeholders: [$dateLabel],
+            context: [
+                'event_key' => 'booking.reschedule.confirm',
+                'booking_id' => (int) $booking->id,
+                'pending_date' => $date->toIso8601String(),
+                'slot' => $slot,
+            ]
+        );
+    }
+
+    /**
+     * Active booking reschedule → confirm and send to manager for approval.
+     */
+    public function confirmReschedule(Lead $lead, string $text): array
+    {
+        $input = strtolower(trim($text));
+        $data = $this->conversationData($lead);
+
+        if ($this->looksLikeRejection($input)) {
+            unset($data['pending_reschedule']);
+
+            $lead->conversation_state = 'awaiting_reschedule_datetime';
+            $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
+            $lead->save();
+
+            return $this->sessionResponse(
+                template: 'booking.reschedule.ask_time',
+                action: 'reschedule_change_time',
+                body: $this->askPreferredTimeBody($lead, 'No problem. Please share another preferred date and time.'),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'booking.reschedule.ask_time',
+                    'reason' => 'Customer rejected pending reschedule time',
+                ]
+            );
+        }
+
+        $maybeDate = $this->bookingService->parsePreferredDateTime(
+            $this->normalizeTimeslotText($text, $lead)
+        );
+
+        if ($maybeDate instanceof Carbon && ! $this->looksLikeConfirmation($input)) {
+            return $this->handleRescheduleTimeslot($lead, $text);
+        }
+
+        if (! $this->looksLikeConfirmation($input)) {
+            return $this->retryRescheduleConfirmation(
+                lead: $lead,
+                reason: 'User did not confirm reschedule clearly: ' . $text
+            );
+        }
+
+        $pending = $data['pending_reschedule'] ?? null;
+
+        if (! $pending || empty($pending['date']) || empty($pending['booking_id'])) {
+            return $this->guard->escalateToManager(
+                $lead,
+                'Reschedule confirmation failed: missing pending reschedule data'
+            );
+        }
+
+        $booking = Booking::where('company_id', $lead->company_id)
+            ->where('id', (int) $pending['booking_id'])
+            ->first();
+
+        if (! $booking) {
+            return $this->guard->escalateToManager(
+                $lead,
+                'Reschedule confirmation failed: booking not found'
+            );
+        }
+
+        $date = Carbon::parse($pending['date']);
+        $slot = $pending['slot'] ?? $this->bookingService->inferSlotFromTime($date, 'Morning');
+
+        if ($date->isPast()) {
+            unset($data['pending_reschedule']);
+
+            $lead->conversation_state = 'awaiting_reschedule_datetime';
+            $lead->conversation_data = $data;
+            $lead->conversation_updated_at = now();
+            $lead->save();
+
+            return $this->sessionResponse(
+                template: 'booking.reschedule.ask_time',
+                action: 'reschedule_retry_time',
+                body: $this->askPreferredTimeBody($lead, 'The selected reschedule time is already in the past. Please share a new preferred date and time.'),
+                placeholders: [$lead->name ?: 'there'],
+                context: [
+                    'event_key' => 'booking.reschedule.ask_time',
+                    'reason' => 'Pending reschedule time is already in the past',
+                ]
+            );
+        }
+
+        try {
+            $this->managerNotificationService->notifyForLead(
+                lead: $lead,
+                reason: 'Customer requested booking reschedule and is awaiting manager approval',
+                preferredAt: $date,
+                bookingId: (int) $booking->id,
+                extra: [
+                    'slot' => $slot,
+                    'source' => 'booking_reschedule_flow',
+                    'customer_action' => 'requested_reschedule',
+                    'current_booking_date' => (string) ($booking->booking_date ?? ''),
+                    'requested_booking_date' => $date->toDateString(),
+                    'requested_booking_time' => $date->format('H:i'),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[BookingFlow] Reschedule manager notification failed', [
+                'lead_id' => $lead->id,
+                'booking_id' => $booking->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $this->appendBookingRescheduleNote($booking, $date, $slot);
+
+        unset($data['pending_reschedule']);
+
+        $data['last_reschedule_requested_at'] = now()->toIso8601String();
+        $data['last_reschedule_booking_id'] = (int) $booking->id;
+        $data['last_reschedule_date'] = $date->toIso8601String();
+        $data['last_reschedule_slot'] = $slot;
+
+        $lead->conversation_data = $data;
+        $lead->conversation_state = 'human';
+        $lead->conversation_updated_at = now();
+        $lead->save();
+
+        return $this->sessionResponse(
+            template: 'manager_handoff_v1',
+            action: 'booking_handoff',
+            body: $this->rescheduleHandoffBody($lead, $date),
+            placeholders: [
+                $lead->name ?: 'there',
+                $date->format('d M Y, h:i A'),
+            ],
+            context: [
+                'event_key' => 'manager.attention_required',
+                'booking_id' => (int) $booking->id,
+                'date' => $date->toDateString(),
+                'time' => $date->format('H:i'),
+                'slot' => $slot,
+                'reason' => 'Reschedule requested by user and sent to manager',
             ]
         );
     }
@@ -958,6 +1274,7 @@ class BookingFlow
             'context' => array_merge([
                 'send_mode'     => 'session_message',
                 'template_hint' => $template,
+                'event_key'     => $template,
             ], $context),
         ];
     }
@@ -985,6 +1302,244 @@ class BookingFlow
 
         return "Thanks {$name}. Your booking request has been shared with our service manager.\n\n"
             . "They will contact you shortly to confirm the slot.";
+    }
+
+
+
+    protected function retryRescheduleTimeslot(
+        Lead $lead,
+        string $reason,
+        ?string $customerMessage = null,
+        ?string $selectedText = null,
+        ?Carbon $selectedAt = null,
+        bool $incrementAttempt = true,
+        ?Booking $booking = null
+    ): array {
+        $data = $this->conversationData($lead);
+
+        $attempts = (int) ($data['reschedule_timeslot_attempts'] ?? 0);
+
+        if ($incrementAttempt) {
+            $attempts++;
+        }
+
+        $data['reschedule_timeslot_attempts'] = $attempts;
+        $data['last_reschedule_retry_reason'] = $reason;
+        $data['last_reschedule_retry_message'] = $customerMessage;
+        $data['last_reschedule_retry_selected_text'] = $selectedText;
+        $data['last_reschedule_retry_selected_at'] = $selectedAt?->toIso8601String();
+        $data['last_reschedule_retry_at'] = now()->toIso8601String();
+
+        if ($booking) {
+            $data['active_booking_id'] = (int) $booking->id;
+        }
+
+        $lead->conversation_state = 'awaiting_reschedule_datetime';
+        $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
+        $lead->save();
+
+        if ($incrementAttempt && $attempts >= 3) {
+            return $this->guard->escalateToManager(
+                $lead,
+                'Reschedule timeslot capture failed multiple times. ' . $reason
+            );
+        }
+
+        $message = $customerMessage ?: 'Please share your new preferred booking date/time. Example: Tuesday 10 AM.';
+
+        return $this->sessionResponse(
+            template: 'booking.reschedule.ask_time',
+            action: 'reschedule_retry_time',
+            body: $this->askPreferredTimeBody($lead, $message),
+            placeholders: [
+                $lead->name ?: 'there',
+                $message,
+            ],
+            context: [
+                'event_key' => 'booking.reschedule.ask_time',
+                'booking_id' => $booking?->id,
+                'reason' => $reason,
+                'customer_message' => $message,
+                'attempts' => $attempts,
+                'selected_text' => $selectedText,
+                'selected_at' => $selectedAt?->toIso8601String(),
+                'working_hours_message' => $this->bookingService->workingHoursMessage($lead),
+            ]
+        );
+    }
+
+    protected function retryRescheduleConfirmation(Lead $lead, string $reason): array
+    {
+        $data = $this->conversationData($lead);
+
+        $attempts = (int) ($data['confirm_reschedule_attempts'] ?? 0);
+        $attempts++;
+
+        $data['confirm_reschedule_attempts'] = $attempts;
+
+        $lead->conversation_data = $data;
+        $lead->conversation_updated_at = now();
+        $lead->save();
+
+        if ($attempts >= 2) {
+            return $this->guard->escalateToManager($lead, $reason);
+        }
+
+        $pending = $data['pending_reschedule'] ?? null;
+
+        $pendingDate = ! empty($pending['date'])
+            ? Carbon::parse($pending['date'])
+            : null;
+
+        $dateLabel = $pendingDate
+            ? $pendingDate->format('d M Y, h:i A')
+            : 'the selected date/time';
+
+        return $this->sessionResponse(
+            template: 'booking.reschedule.confirm',
+            action: 'confirm_reschedule',
+            body: $this->confirmRescheduleBody($dateLabel),
+            placeholders: [$dateLabel],
+            context: [
+                'event_key' => 'booking.reschedule.confirm',
+                'reason' => $reason,
+                'attempts' => $attempts,
+            ]
+        );
+    }
+
+    protected function looksLikeRescheduleIntent(string $input): bool
+    {
+        $input = strtolower(trim($input));
+
+        foreach ([
+            'reschedule',
+            're-schedule',
+            'change time',
+            'change date',
+            'change booking',
+            'another time',
+            'different time',
+            'new time',
+            'move booking',
+            'postpone',
+        ] as $needle) {
+            if (str_contains($input, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function findActiveBooking(Lead $lead): ?Booking
+    {
+        $data = $this->conversationData($lead);
+        $bookingId = (int) ($data['active_booking_id'] ?? $data['last_booking_id'] ?? 0);
+
+        if ($bookingId > 0) {
+            $booking = Booking::where('company_id', $lead->company_id)
+                ->where('id', $bookingId)
+                ->first();
+
+            if ($booking) {
+                return $booking;
+            }
+        }
+
+        $query = Booking::where('company_id', $lead->company_id);
+
+        $query->where(function ($q) use ($lead) {
+            if (Schema::hasColumn('bookings', 'lead_id')) {
+                $q->where('lead_id', $lead->id);
+            }
+
+            if ($lead->client_id && Schema::hasColumn('bookings', 'client_id')) {
+                if (Schema::hasColumn('bookings', 'lead_id')) {
+                    $q->orWhere('client_id', $lead->client_id);
+                } else {
+                    $q->where('client_id', $lead->client_id);
+                }
+            }
+        });
+
+        if (Schema::hasColumn('bookings', 'booking_date')) {
+            $query->whereDate('booking_date', '>=', now()->toDateString())
+                ->orderBy('booking_date');
+        }
+
+        if (Schema::hasColumn('bookings', 'status')) {
+            $query->whereNotIn('status', [
+                Booking::STATUS_CANCELED,
+                'cancelled',
+                'canceled',
+                'completed',
+                'done',
+                'closed',
+                'lost',
+            ]);
+        }
+
+        return $query->first();
+    }
+
+    protected function isSlotAvailableForReschedule(Lead $lead, Carbon $date, ?string $slot, int $ignoreBookingId): bool
+    {
+        $slot = $slot ?: $this->bookingService->inferSlotFromTime($date, 'Morning');
+
+        return ! Booking::where('company_id', $lead->company_id)
+            ->where('id', '!=', $ignoreBookingId)
+            ->whereDate('booking_date', $date->toDateString())
+            ->where('slot', $slot)
+            ->whereNotIn('status', [
+                Booking::STATUS_CANCELED,
+                'cancelled',
+                'canceled',
+                'completed',
+                'done',
+                'closed',
+                'lost',
+            ])
+            ->exists();
+    }
+
+    protected function appendBookingRescheduleNote(Booking $booking, Carbon $date, string $slot): void
+    {
+        if (! Schema::hasColumn('bookings', 'notes')) {
+            return;
+        }
+
+        try {
+            $line = 'Customer requested reschedule via WhatsApp for ' . $date->format('Y-m-d H:i') . ' (' . $slot . '). Awaiting manager confirmation.';
+
+            $booking->update([
+                'notes' => $this->appendNote($booking->notes ?? null, $line),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[BookingFlow] Failed to append reschedule note', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+
+
+    protected function confirmRescheduleBody(string $dateLabel): string
+    {
+        return "Please confirm your reschedule request.\n\n"
+            . "New preferred date/time: {$dateLabel}\n\n"
+            . "Reply Yes to confirm or No to change.";
+    }
+
+    protected function rescheduleHandoffBody(Lead $lead, Carbon $date): string
+    {
+        $name = $lead->name ?: 'there';
+        $dateLabel = $date->format('d M Y, h:i A');
+
+        return "Thanks {$name}. Your reschedule request for {$dateLabel} has been shared with our service manager.\n\n"
+            . "They will contact you shortly to confirm the updated slot.";
     }
 
     /**

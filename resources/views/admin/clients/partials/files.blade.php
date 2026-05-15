@@ -1,17 +1,4 @@
-<h3 class="text-lg font-semibold text-gray-800 mb-2 flex items-center justify-between">
-    <span>Files</span>
-
-    <span class="flex items-center gap-3">
-        @if (\Illuminate\Support\Facades\Route::has('admin.clients.files.index'))
-            <a href="{{ route('admin.clients.files.index', $client->id) }}"
-               class="text-sm text-indigo-600 hover:underline">View all</a>
-        @endif
-        @if (\Illuminate\Support\Facades\Route::has('admin.clients.files.create'))
-            <a href="{{ route('admin.clients.files.create', $client->id) }}"
-               class="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">+ Add File</a>
-        @endif
-    </span>
-</h3>
+{{-- resources/views/admin/clients/partials/files.blade.php --}}
 
 @php
     // Latest 3 client files
@@ -20,20 +7,103 @@
         : collect();
 @endphp
 
-@forelse ($files as $file)
-    @php
-        $label = $file->name
-            ?? $file->original_name
-            ?? (property_exists($file, 'filename') ? $file->filename : null)
-            ?? ('File #' . $file->id);
-    @endphp
+<div class="space-y-5">
 
-    <div class="py-2 text-sm flex items-center justify-between">
-        <div class="truncate">• {{ $label }}</div>
-        <div class="text-xs text-gray-500 ml-3 shrink-0">
-            {{ optional($file->created_at)->format('M j, Y H:i') }}
+    {{-- Header --}}
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <h3 class="sf-section-title">
+                Files
+            </h3>
+
+            <p class="sf-section-subtitle">
+                Latest uploaded files linked to this client.
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            @if (\Illuminate\Support\Facades\Route::has('admin.clients.files.index'))
+                <a href="{{ route('admin.clients.files.index', $client->id) }}" class="sf-btn-secondary">
+                    View All
+                </a>
+            @endif
+
+            @if (\Illuminate\Support\Facades\Route::has('admin.clients.files.create'))
+                <a href="{{ route('admin.clients.files.create', $client->id) }}" class="sf-btn-primary">
+                    + Add File
+                </a>
+            @endif
         </div>
     </div>
-@empty
-    <p class="text-sm text-gray-500">No files uploaded.</p>
-@endforelse
+
+    {{-- File List --}}
+    @forelse ($files as $file)
+        @php
+            $label = $file->name
+                ?? $file->original_name
+                ?? $file->filename
+                ?? $file->file_name
+                ?? ('File #' . $file->id);
+
+            $fileType = $file->type
+                ?? $file->file_type
+                ?? $file->mime_type
+                ?? null;
+        @endphp
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 transition hover:border-orange-400/30 hover:bg-slate-900">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-300 ring-1 ring-blue-400/20">
+                            📄
+                        </div>
+
+                        <div class="min-w-0">
+                            <div class="truncate font-extrabold text-white">
+                                {{ $label }}
+                            </div>
+
+                            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                                <span>
+                                    {{ optional($file->created_at)->format('M j, Y H:i') ?? 'No date' }}
+                                </span>
+
+                                @if($fileType)
+                                    <span class="sf-badge-slate">
+                                        {{ ucfirst(str_replace('_', ' ', $fileType)) }}
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @php
+                    $fileUrl = null;
+
+                    if (!empty($file->file_path)) {
+                        $fileUrl = asset($file->file_path);
+                    } elseif (!empty($file->path)) {
+                        $fileUrl = asset($file->path);
+                    } elseif (!empty($file->document_path)) {
+                        $fileUrl = asset('storage/' . $file->document_path);
+                    }
+                @endphp
+
+                @if($fileUrl)
+                    <a href="{{ $fileUrl }}" target="_blank" class="sf-link shrink-0">
+                        View
+                    </a>
+                @endif
+
+            </div>
+        </div>
+    @empty
+        <div class="sf-empty">
+            No files uploaded.
+        </div>
+    @endforelse
+
+</div>

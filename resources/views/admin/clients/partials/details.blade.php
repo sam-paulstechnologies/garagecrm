@@ -17,59 +17,172 @@ $fileCount = $files instanceof \Illuminate\Support\Collection
     : 0;
 @endphp
 
-<div class="flex justify-between items-center mb-4">
-    <h2 class="text-2xl font-semibold text-gray-800">Client Details</h2>
-    <a href="{{ route('admin.clients.edit', $client->id) }}"
-       class="text-sm text-blue-600 hover:underline">✏️ Edit</a>
-</div>
+<div x-data="{ showAll: false }" class="space-y-5">
 
-<div x-data="{ showAll: false }" class="text-gray-700 space-y-2">
+    {{-- Header --}}
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="sf-section-title">
+                Client Details
+            </h2>
+
+            <p class="sf-section-subtitle">
+                Basic profile, contact, source, and account information.
+            </p>
+        </div>
+
+        <a href="{{ route('admin.clients.edit', $client->id) }}" class="sf-btn-secondary">
+            ✏️ Edit
+        </a>
+    </div>
 
     {{-- Basic Fields --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <p><strong>Name:</strong> {{ $client->name }}</p>
-        <p><strong>Email:</strong> {{ $client->email ?? '—' }}</p>
-        <p><strong>Phone:</strong> {{ $client->phone ?? '—' }}</p>
-        <p><strong>Location:</strong> {{ $client->location ?? 'N/A' }}</p>
-        <p><strong>Source:</strong> {{ $client->source ?? 'N/A' }}</p>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                Name
+            </div>
+            <div class="mt-1 font-extrabold text-white">
+                {{ $client->name ?? '—' }}
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                Email
+            </div>
+            <div class="mt-1 break-words font-bold text-slate-200">
+                {{ $client->email ?? '—' }}
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                Phone
+            </div>
+            <div class="mt-1 font-bold text-slate-200">
+                {{ $client->phone ?? $client->whatsapp ?? '—' }}
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                Location
+            </div>
+            <div class="mt-1 font-bold text-slate-200">
+                {{ $client->location ?? $client->city ?? $client->country ?? 'N/A' }}
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4 sm:col-span-2">
+            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                Source
+            </div>
+            <div class="mt-1 font-bold text-slate-200">
+                {{ $client->source ?? 'N/A' }}
+            </div>
+        </div>
+
     </div>
 
     {{-- Expanded View --}}
-    <div x-show="showAll" class="mt-4 space-y-4">
+    <div x-cloak x-show="showAll" x-transition class="space-y-5">
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <p><strong>Last Service:</strong> {{ $client->last_service ?? 'N/A' }}</p>
-            <p><strong>Created At:</strong> {{ optional($client->created_at)->format('d M Y H:i') }}</p>
-            <p><strong>Updated At:</strong> {{ optional($client->updated_at)->format('d M Y H:i') }}</p>
-            <p><strong>Created By:</strong> {{ $client->creator?->name ?? 'N/A' }}</p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                    Last Service
+                </div>
+                <div class="mt-1 font-bold text-slate-200">
+                    {{ $client->last_service ?? 'N/A' }}
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                    Created At
+                </div>
+                <div class="mt-1 font-bold text-slate-200">
+                    {{ optional($client->created_at)->format('d M Y H:i') ?? '—' }}
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                    Updated At
+                </div>
+                <div class="mt-1 font-bold text-slate-200">
+                    {{ optional($client->updated_at)->format('d M Y H:i') ?? '—' }}
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                    Created By
+                </div>
+                <div class="mt-1 font-bold text-slate-200">
+                    {{ $client->creator?->name ?? 'N/A' }}
+                </div>
+            </div>
+
         </div>
 
         {{-- Client Files --}}
-        <div>
-            <h3 class="font-bold text-gray-800 mb-2">Client Files</h3>
+        <div class="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="font-extrabold text-white">
+                        Client Files
+                    </h3>
+
+                    <p class="mt-1 text-xs font-medium text-slate-500">
+                        Files attached directly to this client profile.
+                    </p>
+                </div>
+
+                <span class="sf-badge-slate">
+                    {{ $fileCount }} file(s)
+                </span>
+            </div>
 
             @if ($fileCount > 0)
-                <ul class="list-disc pl-6 space-y-1">
+                <ul class="mt-4 space-y-2">
                     @foreach ($files as $file)
-                        <li>
-                            <a href="{{ asset($file->file_path) }}"
-                               class="text-blue-600 hover:underline"
-                               target="_blank">
-                                {{ $file->file_name ?? 'File' }}
-                                @if(!empty($file->file_type))
-                                    ({{ $file->file_type }})
-                                @endif
-                            </a>
+                        <li class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="min-w-0">
+                                    <a href="{{ asset($file->file_path) }}"
+                                       class="truncate font-bold text-orange-300 hover:text-orange-200 hover:underline"
+                                       target="_blank">
+                                        {{ $file->file_name ?? 'File' }}
+                                    </a>
 
-                            <span class="text-sm text-gray-500 ml-1">
-                                — Uploaded:
-                                {{ optional($file->uploaded_at)->format('d M Y') ?? '—' }}
-                            </span>
+                                    <div class="mt-1 text-xs font-medium text-slate-500">
+                                        @if(!empty($file->file_type))
+                                            {{ ucfirst(str_replace('_', ' ', $file->file_type)) }}
+                                            ·
+                                        @endif
+
+                                        Uploaded:
+                                        {{ optional($file->uploaded_at)->format('d M Y') ?? '—' }}
+                                    </div>
+                                </div>
+
+                                <a href="{{ asset($file->file_path) }}"
+                                   target="_blank"
+                                   class="sf-link shrink-0">
+                                    View
+                                </a>
+                            </div>
                         </li>
                     @endforeach
                 </ul>
             @else
-                <p class="text-gray-500">No files uploaded.</p>
+                <div class="mt-4 sf-empty">
+                    No files uploaded.
+                </div>
             @endif
         </div>
     </div>
@@ -78,8 +191,9 @@ $fileCount = $files instanceof \Illuminate\Support\Collection
     <button
         x-on:click="showAll = !showAll"
         type="button"
-        class="mt-2 text-blue-600 underline hover:text-blue-800">
+        class="sf-link">
         <span x-show="!showAll">+ View More</span>
         <span x-show="showAll">– Show Less</span>
     </button>
+
 </div>

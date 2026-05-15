@@ -39,9 +39,6 @@ class FeedbackResponseService
         |--------------------------------------------------------------------------
         | Primary: outbound feedback message in message_logs.
         | Fallback: latest completed job for the same client.
-        |
-        | Reason:
-        | Current template sends are not always saved as outbound message_logs.
         |--------------------------------------------------------------------------
         */
 
@@ -61,6 +58,15 @@ class FeedbackResponseService
 
             return false;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Last Action Lock
+        |--------------------------------------------------------------------------
+        | This prevents the same feedback reply from being processed repeatedly.
+        | We keep cache lock here because we have not added the DB lock migration yet.
+        |--------------------------------------------------------------------------
+        */
 
         $lockKey = 'feedback_response_handled_' .
             $companyId . '_' .
@@ -87,6 +93,14 @@ class FeedbackResponseService
             'text' => $text,
         ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Rating 1 / 2
+        |--------------------------------------------------------------------------
+        | Escalate to manager and acknowledge customer.
+        |--------------------------------------------------------------------------
+        */
+
         if (in_array($rating, [1, 2], true)) {
             $sent = $this->handleNegativeFeedback(
                 companyId: $companyId,
@@ -104,38 +118,16 @@ class FeedbackResponseService
             return true;
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Rating 3
+        |--------------------------------------------------------------------------
+        | Neutral thank-you response.
+        |--------------------------------------------------------------------------
+        */
+
         if ($rating === 3) {
-            $sent = $this->sendCustomerSessionMessage(
-                companyId: $companyId,
-                leadId: (int) $lead->id,
-                conversationId: $conversationId,
-                to: $fromE164,
-                body: "Thank you for sharing your feedback, {$this->customerName($lead)}. We appreciate it and will continue working to improve your experience.",
-                context: [
-                    'action' => 'feedback_neutral_thanks',
-                    'rating' => $rating,
-                    'job_id' => $jobId,
-                    'source' => 'feedback_response_service',
-                ]
-            );
-
-            if (! $sent) {
-                Cache::forget($lockKey);
-            }
-
-            return true;
-        }
-
-        if (in_array($rating, [4, 5], true)) {
-            $reviewLink = $this->googleReviewLink($companyId);
-
-            $body = "Thank you for your feedback, {$this->customerName($lead)}. We are glad you had a good experience.";
-
-            if ($reviewLink) {
-                $body .= "\n\nCould you please leave us a Google review here?\n{$reviewLink}";
-            } else {
-                $body .= "\n\nWe truly appreciate your support.";
-            }
+            $body = $this->neutralThankYouBody($lead);
 
             $sent = $this->sendCustomerSessionMessage(
                 companyId: $companyId,
@@ -144,11 +136,13 @@ class FeedbackResponseService
                 to: $fromE164,
                 body: $body,
                 context: [
-                    'action' => 'feedback_positive_review_request',
+                    'event_key' => 'feedback.neutral.thanks',
+                    'template_hint' => 'feedback_neutral_thanks_v1',
+                    'action' => 'feedback_neutral_thanks',
                     'rating' => $rating,
                     'job_id' => $jobId,
-                    'google_review_link' => $reviewLink,
                     'source' => 'feedback_response_service',
+                    'send_mode' => 'session_message',
                 ]
             );
 
@@ -158,6 +152,45 @@ class FeedbackResponseService
 
             return true;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Rating 4 / 5
+        |--------------------------------------------------------------------------
+        | Ask for Google review when link exists.
+        |--------------------------------------------------------------------------
+        */
+
+        if (in_array($rating, [4, 5], true)) {
+            $reviewLink = $this->googleReviewLink($companyId);
+            $body = $this->positiveReviewBody($lead, $reviewLink);
+
+            $sent = $this->sendCustomerSessionMessage(
+                companyId: $companyId,
+                leadId: (int) $lead->id,
+                conversationId: $conversationId,
+                to: $fromE164,
+                body: $body,
+                context: [
+                    'event_key' => 'feedback.positive.review',
+                    'template_hint' => 'feedback_positive_review_v1',
+                    'action' => 'feedback_positive_review_request',
+                    'rating' => $rating,
+                    'job_id' => $jobId,
+                    'google_review_link' => $reviewLink,
+                    'source' => 'feedback_response_service',
+                    'send_mode' => 'session_message',
+                ]
+            );
+
+            if (! $sent) {
+                Cache::forget($lockKey);
+            }
+
+            return true;
+        }
+
+        Cache::forget($lockKey);
 
         return false;
     }
@@ -169,6 +202,7 @@ class FeedbackResponseService
         /*
         |--------------------------------------------------------------------------
         | Supports:
+        |--------------------------------------------------------------------------
         | 5
         | 5 - Excellent
         | Rating 5
@@ -234,6 +268,43 @@ class FeedbackResponseService
     ): bool {
         $reason = "Customer gave low feedback rating {$rating}/5. Manager should call the customer.";
 
+        /*
+        |--------------------------------------------------------------------------
+        | Move lead to human handoff
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+            $data = $lead->conversation_data ?? [];
+            $data = is_array($data) ? $data : [];
+
+            $lead->conversation_state = 'human';
+            $lead->conversation_data = array_merge($data, [
+                'is_escalated' => true,
+                'escalated_at' => now()->toIso8601String(),
+                'escalation_reason' => $reason,
+                'feedback_rating' => $rating,
+                'feedback_job_id' => $jobId,
+                'last_escalation_source' => 'feedback_response_service',
+            ]);
+            $lead->conversation_updated_at = now();
+            $lead->save();
+        } catch (\Throwable $e) {
+            Log::warning('[FeedbackResponse] Failed to move lead to human state', [
+                'company_id' => $companyId,
+                'lead_id' => $lead->id,
+                'rating' => $rating,
+                'job_id' => $jobId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Notify manager
+        |--------------------------------------------------------------------------
+        */
+
         try {
             $targets = collect();
 
@@ -271,6 +342,7 @@ class FeedbackResponseService
                 'lead_id' => $lead->id,
                 'rating' => $rating,
                 'job_id' => $jobId,
+                'event_key' => 'feedback.negative.manager_alert',
             ]);
         } catch (\Throwable $e) {
             Log::error('[FeedbackResponse] Negative feedback manager alert failed', [
@@ -282,17 +354,26 @@ class FeedbackResponseService
             ]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Customer acknowledgement
+        |--------------------------------------------------------------------------
+        */
+
         return $this->sendCustomerSessionMessage(
             companyId: $companyId,
             leadId: (int) $lead->id,
             conversationId: $conversationId,
             to: $fromE164,
-            body: "Thank you for sharing your feedback, {$this->customerName($lead)}. We are sorry your experience was not ideal. Our manager will review this and contact you shortly.",
+            body: $this->negativeFeedbackBody($lead),
             context: [
+                'event_key' => 'feedback.negative.manager_alert',
+                'template_hint' => 'feedback_negative_manager_alert_v1',
                 'action' => 'feedback_negative_acknowledged',
                 'rating' => $rating,
                 'job_id' => $jobId,
                 'source' => 'feedback_response_service',
+                'send_mode' => 'session_message',
             ]
         );
     }
@@ -308,11 +389,13 @@ class FeedbackResponseService
         try {
             /*
             |--------------------------------------------------------------------------
-            | WhatsAppService::sendText signature:
+            | Session Message
             |--------------------------------------------------------------------------
-            | sendText(string $toE164, string $body, array $context = [])
+            | This is triggered after customer replies to a feedback template.
+            | So it is safe to send as normal WhatsApp session message.
             |
-            | company_id must be inside $context.
+            | Hardcoded body remains as fallback text.
+            | Context carries template/event hints for logging and later migration.
             |--------------------------------------------------------------------------
             */
 
@@ -335,6 +418,7 @@ class FeedbackResponseService
                 'lead_id' => $leadId,
                 'conversation_id' => $conversationId,
                 'action' => $context['action'] ?? null,
+                'event_key' => $context['event_key'] ?? null,
             ]);
 
             return true;
@@ -343,11 +427,39 @@ class FeedbackResponseService
                 'company_id' => $companyId,
                 'lead_id' => $leadId,
                 'conversation_id' => $conversationId,
+                'event_key' => $context['event_key'] ?? null,
                 'error' => $e->getMessage(),
             ]);
 
             return false;
         }
+    }
+
+    protected function neutralThankYouBody(Lead $lead): string
+    {
+        return "Thank you for sharing your feedback, {$this->customerName($lead)}. "
+            . "We appreciate it and will continue working to improve your experience.";
+    }
+
+    protected function positiveReviewBody(Lead $lead, ?string $reviewLink): string
+    {
+        $body = "Thank you for your feedback, {$this->customerName($lead)}. "
+            . "We are glad you had a good experience.";
+
+        if ($reviewLink) {
+            $body .= "\n\nCould you please leave us a Google review here?\n{$reviewLink}";
+        } else {
+            $body .= "\n\nWe truly appreciate your support.";
+        }
+
+        return $body;
+    }
+
+    protected function negativeFeedbackBody(Lead $lead): string
+    {
+        return "Thank you for sharing your feedback, {$this->customerName($lead)}. "
+            . "We are sorry your experience was not ideal. "
+            . "Our manager will review this and contact you shortly.";
     }
 
     protected function customerName(Lead $lead): string

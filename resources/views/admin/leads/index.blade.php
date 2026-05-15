@@ -1,45 +1,48 @@
 @extends('layouts.app')
 
+@section('title', $pageTitle ?? 'Leads')
+
 @section('content')
 @php
     $pageMode = $pageMode ?? 'open';
     $bucket = $bucket ?? '';
+    $q = $q ?? request('q');
 
     $cardClass = function ($active) {
         return $active
-            ? 'border-indigo-200 bg-indigo-50 text-indigo-900'
-            : 'border-gray-100 bg-white text-gray-900 hover:bg-gray-50';
+            ? 'border-orange-400/30 bg-orange-500/10 text-white ring-1 ring-orange-400/20'
+            : 'border-white/10 bg-slate-900/80 text-slate-200 hover:border-orange-400/30 hover:bg-slate-900';
     };
 
     $bucketCardClass = function ($active) {
         return $active
-            ? 'border-blue-300 bg-blue-50 text-blue-900 ring-1 ring-blue-200'
-            : 'border-gray-100 bg-white text-gray-900 hover:bg-gray-50';
+            ? 'border-orange-400/40 bg-orange-500/10 text-white ring-1 ring-orange-400/30'
+            : 'border-white/10 bg-slate-950/60 text-slate-200 hover:border-orange-400/30 hover:bg-slate-900';
     };
 
     $scoreBadge = function ($score) {
         if ($score >= 75) {
-            return 'bg-green-100 text-green-800';
+            return 'bg-green-500/10 text-green-300 ring-green-400/20';
         }
 
         if ($score >= 45) {
-            return 'bg-yellow-100 text-yellow-800';
+            return 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20';
         }
 
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-white/5 text-slate-300 ring-white/10';
     };
 
     $statusBadge = function ($status) {
         $status = strtolower((string) $status);
 
         return match ($status) {
-            'new' => 'bg-blue-100 text-blue-800',
-            'attempting_contact' => 'bg-yellow-100 text-yellow-800',
-            'contact_on_hold' => 'bg-orange-100 text-orange-800',
-            'qualified' => 'bg-green-100 text-green-800',
-            'converted' => 'bg-emerald-100 text-emerald-800',
-            'disqualified', 'lost' => 'bg-red-100 text-red-800',
-            default => 'bg-gray-100 text-gray-700',
+            'new' => 'bg-blue-500/10 text-blue-300 ring-blue-400/20',
+            'attempting_contact' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
+            'contact_on_hold' => 'bg-orange-500/10 text-orange-300 ring-orange-400/20',
+            'qualified' => 'bg-green-500/10 text-green-300 ring-green-400/20',
+            'converted' => 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20',
+            'disqualified', 'lost' => 'bg-red-500/10 text-red-300 ring-red-400/20',
+            default => 'bg-white/5 text-slate-300 ring-white/10',
         };
     };
 
@@ -47,13 +50,13 @@
         $category = strtolower((string) $category);
 
         return match ($category) {
-            'service' => 'bg-blue-100 text-blue-800',
-            'quote' => 'bg-purple-100 text-purple-800',
-            'complaint' => 'bg-red-100 text-red-800',
-            'emergency' => 'bg-orange-100 text-orange-800',
-            'repair' => 'bg-yellow-100 text-yellow-800',
-            'enquiry' => 'bg-gray-100 text-gray-700',
-            default => 'bg-gray-100 text-gray-700',
+            'service' => 'bg-blue-500/10 text-blue-300 ring-blue-400/20',
+            'quote' => 'bg-purple-500/10 text-purple-300 ring-purple-400/20',
+            'complaint' => 'bg-red-500/10 text-red-300 ring-red-400/20',
+            'emergency' => 'bg-orange-500/10 text-orange-300 ring-orange-400/20',
+            'repair' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
+            'enquiry' => 'bg-white/5 text-slate-300 ring-white/10',
+            default => 'bg-white/5 text-slate-300 ring-white/10',
         };
     };
 
@@ -61,11 +64,11 @@
         $priority = strtolower((string) $priority);
 
         return match ($priority) {
-            'urgent' => 'bg-red-100 text-red-800',
-            'high' => 'bg-orange-100 text-orange-800',
-            'medium' => 'bg-yellow-100 text-yellow-800',
-            'low' => 'bg-gray-100 text-gray-700',
-            default => 'bg-gray-100 text-gray-700',
+            'urgent' => 'bg-red-500/10 text-red-300 ring-red-400/20',
+            'high' => 'bg-orange-500/10 text-orange-300 ring-orange-400/20',
+            'medium' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
+            'low' => 'bg-white/5 text-slate-300 ring-white/10',
+            default => 'bg-white/5 text-slate-300 ring-white/10',
         };
     };
 
@@ -73,10 +76,10 @@
         $temperature = strtolower((string) $temperature);
 
         return match ($temperature) {
-            'hot' => 'bg-red-100 text-red-800',
-            'warm' => 'bg-yellow-100 text-yellow-800',
-            'cold' => 'bg-gray-100 text-gray-700',
-            default => 'bg-gray-100 text-gray-700',
+            'hot' => 'bg-red-500/10 text-red-300 ring-red-400/20',
+            'warm' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
+            'cold' => 'bg-white/5 text-slate-300 ring-white/10',
+            default => 'bg-white/5 text-slate-300 ring-white/10',
         };
     };
 
@@ -84,50 +87,52 @@
         if (! $lead->phone && ! $lead->phone_norm) {
             return [
                 'label' => 'No phone',
-                'class' => 'bg-gray-100 text-gray-700',
+                'class' => 'bg-white/5 text-slate-300 ring-white/10',
             ];
         }
 
         if (! $log) {
             return [
                 'label' => 'Not contacted',
-                'class' => 'bg-yellow-100 text-yellow-800',
+                'class' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
             ];
         }
 
         if (in_array($log->provider_status, ['failed', 'undelivered', 'error'])) {
             return [
                 'label' => 'Message failed',
-                'class' => 'bg-red-100 text-red-800',
+                'class' => 'bg-red-500/10 text-red-300 ring-red-400/20',
             ];
         }
 
         if ($log->direction === 'in') {
             return [
                 'label' => 'Customer replied',
-                'class' => 'bg-green-100 text-green-800',
+                'class' => 'bg-green-500/10 text-green-300 ring-green-400/20',
             ];
         }
 
         if (in_array($log->provider_status, ['delivered', 'read'])) {
             return [
                 'label' => ucfirst($log->provider_status),
-                'class' => 'bg-green-100 text-green-800',
+                'class' => 'bg-green-500/10 text-green-300 ring-green-400/20',
             ];
         }
 
         if (in_array($log->provider_status, ['queued', 'sent'])) {
             return [
                 'label' => ucfirst($log->provider_status),
-                'class' => 'bg-blue-100 text-blue-800',
+                'class' => 'bg-blue-500/10 text-blue-300 ring-blue-400/20',
             ];
         }
 
         return [
             'label' => 'Phone available',
-            'class' => 'bg-gray-100 text-gray-700',
+            'class' => 'bg-white/5 text-slate-300 ring-white/10',
         ];
     };
+
+    $badgeBase = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1';
 
     $bucketCards = [
         [
@@ -189,334 +194,350 @@
     ];
 @endphp
 
-<div class="px-6 py-6 space-y-6">
+<div class="sf-page space-y-6">
 
     {{-- Header --}}
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div class="sf-page-header">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900">
+            <div class="sf-kicker">
+                Lead Command Center
+            </div>
+
+            <h1 class="sf-page-title mt-3">
                 {{ $pageTitle ?? 'Leads' }}
             </h1>
-            <p class="text-sm text-gray-500">
-                {{ $pageSubtitle ?? 'Manage leads and qualification flow.' }}
+
+            <p class="sf-page-subtitle">
+                {{ $pageSubtitle ?? 'Manage leads, qualification flow, follow-ups, WhatsApp status, and lead buckets.' }}
             </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('admin.leads.create') }}"
-               class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm shadow">
+            <a href="{{ route('admin.leads.create') }}" class="sf-btn-primary">
                 + Add Lead
             </a>
 
-            <a href="{{ route('admin.leads.import.options') }}"
-               class="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-md text-sm shadow">
+            <a href="{{ route('admin.leads.import.options') }}" class="sf-btn-secondary">
                 Import
             </a>
         </div>
     </div>
 
     {{-- Lead Command Cards --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <a href="{{ route('admin.leads.index') }}"
-           class="rounded-xl border p-5 block transition {{ $cardClass($pageMode === 'open' && blank($bucket)) }}">
-            <div class="text-sm font-medium text-gray-500">Open Leads</div>
-            <div class="text-3xl font-bold mt-2">{{ $leadCounts['open'] ?? 0 }}</div>
-            <div class="text-xs text-gray-500 mt-1">Needs action</div>
+           class="rounded-3xl border p-5 shadow-xl shadow-black/20 transition {{ $cardClass($pageMode === 'open' && blank($bucket)) }}">
+            <div class="text-sm font-bold text-slate-400">Open Leads</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">{{ $leadCounts['open'] ?? 0 }}</div>
+            <div class="mt-1 text-xs font-medium text-slate-500">Needs action</div>
         </a>
 
         <a href="{{ route('admin.leads.qualified') }}"
-           class="rounded-xl border p-5 block transition {{ $cardClass($pageMode === 'qualified') }}">
-            <div class="text-sm font-medium text-gray-500">Qualified / Converted</div>
-            <div class="text-3xl font-bold mt-2">{{ $leadCounts['qualified'] ?? 0 }}</div>
-            <div class="text-xs text-gray-500 mt-1">Won or moved ahead</div>
+           class="rounded-3xl border p-5 shadow-xl shadow-black/20 transition {{ $cardClass($pageMode === 'qualified') }}">
+            <div class="text-sm font-bold text-slate-400">Qualified / Converted</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">{{ $leadCounts['qualified'] ?? 0 }}</div>
+            <div class="mt-1 text-xs font-medium text-slate-500">Won or moved ahead</div>
         </a>
 
         <a href="{{ route('admin.leads.disqualified') }}"
-           class="rounded-xl border p-5 block transition {{ $cardClass($pageMode === 'disqualified') }}">
-            <div class="text-sm font-medium text-gray-500">Disqualified</div>
-            <div class="text-3xl font-bold mt-2">{{ $leadCounts['disqualified'] ?? 0 }}</div>
-            <div class="text-xs text-gray-500 mt-1">Invalid/lost leads</div>
+           class="rounded-3xl border p-5 shadow-xl shadow-black/20 transition {{ $cardClass($pageMode === 'disqualified') }}">
+            <div class="text-sm font-bold text-slate-400">Disqualified</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">{{ $leadCounts['disqualified'] ?? 0 }}</div>
+            <div class="mt-1 text-xs font-medium text-slate-500">Invalid / lost leads</div>
         </a>
 
         <a href="{{ route('admin.leads.duplicates.index') }}"
-           class="rounded-xl border border-amber-100 bg-amber-50 p-5 block hover:bg-amber-100 transition">
-            <div class="text-sm font-medium text-amber-700">Duplicates</div>
-            <div class="text-3xl font-bold text-amber-900 mt-2">{{ $leadCounts['duplicates'] ?? 0 }}</div>
-            <div class="text-xs text-amber-700 mt-1">Review same numbers</div>
+           class="rounded-3xl border border-yellow-400/20 bg-yellow-500/10 p-5 text-yellow-200 shadow-xl shadow-black/20 transition hover:border-yellow-400/40 hover:bg-yellow-500/20">
+            <div class="text-sm font-bold text-yellow-300">Duplicates</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">{{ $leadCounts['duplicates'] ?? 0 }}</div>
+            <div class="mt-1 text-xs font-medium text-yellow-200">Review same numbers</div>
         </a>
 
         <a href="{{ route('admin.leads.import.options') }}"
-           class="rounded-xl border border-blue-100 bg-blue-50 p-5 block hover:bg-blue-100 transition">
-            <div class="text-sm font-medium text-blue-700">Import</div>
-            <div class="text-3xl font-bold text-blue-900 mt-2">⬆</div>
-            <div class="text-xs text-blue-700 mt-1">Bulk upload leads</div>
+           class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 text-blue-200 shadow-xl shadow-black/20 transition hover:border-blue-400/40 hover:bg-blue-500/20">
+            <div class="text-sm font-bold text-blue-300">Import</div>
+            <div class="mt-2 text-3xl font-extrabold text-white">⬆</div>
+            <div class="mt-1 text-xs font-medium text-blue-200">Bulk upload leads</div>
         </a>
     </div>
 
     {{-- Bucket Cards --}}
     @if($pageMode === 'open')
-        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <div class="sf-card">
+            <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900">Lead Buckets</h2>
-                    <p class="text-sm text-gray-500">
+                    <h2 class="sf-section-title">Lead Buckets</h2>
+                    <p class="sf-section-subtitle">
                         Quick filters for categorization, retention, and follow-up.
                     </p>
                 </div>
 
                 @if(! blank($bucket))
-                    <a href="{{ route('admin.leads.index') }}"
-                       class="text-sm text-blue-600 hover:underline">
+                    <a href="{{ route('admin.leads.index') }}" class="sf-link">
                         Clear bucket filter
                     </a>
                 @endif
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
-                @foreach($bucketCards as $bucketCard)
-                    <a href="{{ route('admin.leads.index', ['bucket' => $bucketCard['key'], 'q' => $q]) }}"
-                       class="rounded-xl border p-4 block transition {{ $bucketCardClass($bucket === $bucketCard['key']) }}">
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="text-xl">{{ $bucketCard['emoji'] }}</div>
-                            <div class="text-2xl font-bold">{{ $bucketCard['count'] }}</div>
-                        </div>
+            <div class="sf-card-body">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                    @foreach($bucketCards as $bucketCard)
+                        <a href="{{ route('admin.leads.index', ['bucket' => $bucketCard['key'], 'q' => $q]) }}"
+                           class="block rounded-2xl border p-4 transition {{ $bucketCardClass($bucket === $bucketCard['key']) }}">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="text-xl">{{ $bucketCard['emoji'] }}</div>
+                                <div class="text-2xl font-extrabold text-white">{{ $bucketCard['count'] }}</div>
+                            </div>
 
-                        <div class="text-sm font-semibold mt-3 leading-tight">
-                            {{ $bucketCard['title'] }}
-                        </div>
+                            <div class="mt-3 text-sm font-extrabold leading-tight text-white">
+                                {{ $bucketCard['title'] }}
+                            </div>
 
-                        <div class="text-xs text-gray-500 mt-1">
-                            {{ $bucketCard['note'] }}
-                        </div>
-                    </a>
-                @endforeach
+                            <div class="mt-1 text-xs font-medium text-slate-500">
+                                {{ $bucketCard['note'] }}
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
             </div>
         </div>
     @endif
 
     {{-- Search --}}
-    <form method="GET" class="max-w-2xl">
-        <div class="flex flex-col sm:flex-row gap-2">
-            @if(! blank($bucket))
-                <input type="hidden" name="bucket" value="{{ $bucket }}">
-            @endif
+    <form method="GET" class="sf-card">
+        <div class="sf-card-body">
+            <div class="flex flex-col gap-2 lg:flex-row">
+                @if(! blank($bucket))
+                    <input type="hidden" name="bucket" value="{{ $bucket }}">
+                @endif
 
-            <input
-                name="q"
-                value="{{ $q }}"
-                placeholder="Search name, phone, email, source, category, vehicle, campaign..."
-                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            />
+                <input
+                    name="q"
+                    value="{{ $q }}"
+                    placeholder="Search name, phone, email, source, category, vehicle, campaign..."
+                    class="sf-input lg:flex-1"
+                />
 
-            <button type="submit"
-                    class="px-4 py-2 rounded-md bg-gray-900 text-white text-sm">
-                Search
-            </button>
+                <button type="submit" class="sf-btn-primary">
+                    Search
+                </button>
 
-            @if(! blank($q) || ! blank($bucket))
-                <a href="{{ route('admin.leads.index') }}"
-                   class="px-4 py-2 rounded-md bg-gray-100 text-gray-700 text-sm text-center hover:bg-gray-200">
-                    Reset
-                </a>
-            @endif
+                @if(! blank($q) || ! blank($bucket))
+                    <a href="{{ route('admin.leads.index') }}" class="sf-btn-secondary">
+                        Reset
+                    </a>
+                @endif
+            </div>
         </div>
     </form>
 
     {{-- Table --}}
-    <div class="bg-white rounded-lg shadow overflow-x-auto">
-        <table class="min-w-full text-sm">
-            <thead class="bg-gray-50 border-b">
-                <tr>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Lead</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Bucket</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Vehicle</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Score</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Priority</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Follow-up</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">WhatsApp</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Source</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-600">Created</th>
-                    <th class="px-4 py-3 text-right font-medium text-gray-600">Action</th>
-                </tr>
-            </thead>
+    <div class="sf-table-wrap">
+        <div class="sf-table-scroll">
+            <table class="sf-table">
+                <thead>
+                    <tr>
+                        <th class="w-[24%]">Lead</th>
+                        <th class="w-[18%]">Request</th>
+                        <th class="w-[16%]">Vehicle</th>
+                        <th class="w-[14%]">Score / Priority</th>
+                        <th class="w-[12%]">Follow-up</th>
+                        <th class="w-[12%]">WhatsApp / Status</th>
+                        <th class="w-[4%] text-right">Action</th>
+                    </tr>
+                </thead>
 
-            <tbody class="divide-y">
-                @forelse($leads as $lead)
-                    @php
-                        $score = $leadScores[$lead->id] ?? 0;
-                        $log = $whatsappByLead[$lead->id] ?? null;
-                        $wa = $whatsappStatus($lead, $log);
+                <tbody>
+                    @forelse($leads as $lead)
+                        @php
+                            $score = $leadScores[$lead->id] ?? 0;
+                            $log = $whatsappByLead[$lead->id] ?? null;
+                            $wa = $whatsappStatus($lead, $log);
 
-                        $vehicleText = trim(
-                            ($lead->vehicle_make ?? $lead->other_make ?? '') . ' ' .
-                            ($lead->vehicle_model ?? $lead->other_model ?? '')
-                        );
+                            $vehicleText = trim(
+                                ($lead->vehicle_make ?? $lead->other_make ?? '') . ' ' .
+                                ($lead->vehicle_model ?? $lead->other_model ?? '')
+                            );
 
-                        if ($vehicleText === '') {
-                            $vehicleText = $lead->vehicle_label ?? '';
-                        }
-                    @endphp
+                            if ($vehicleText === '') {
+                                $vehicleText = $lead->vehicle_label ?? '';
+                            }
+                        @endphp
 
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3 min-w-[220px]">
-                            <div class="flex items-center gap-2">
-                                <a href="{{ route('admin.leads.show', $lead) }}"
-                                   class="text-blue-600 font-medium hover:underline">
-                                    {{ $lead->name ?? 'Unnamed Lead' }}
-                                </a>
+                        <tr>
+                            {{-- Lead --}}
+                            <td>
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <a href="{{ route('admin.leads.show', $lead) }}"
+                                           class="font-extrabold text-white hover:text-orange-300">
+                                            {{ $lead->name ?? 'Unnamed Lead' }}
+                                        </a>
 
-                                @if((bool) ($lead->is_hot ?? false))
-                                    <span class="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">
-                                        🔥 Hot
-                                    </span>
-                                @endif
-                            </div>
+                                        @if((bool) ($lead->is_hot ?? false))
+                                            <span class="{{ $badgeBase }} bg-red-500/10 text-red-300 ring-red-400/20">
+                                                🔥
+                                            </span>
+                                        @endif
+                                    </div>
 
-                            <div class="text-xs text-gray-500 mt-1">
-                                {{ $lead->email ?? 'No email' }}
-                            </div>
-                        </td>
+                                    <div class="mt-1 truncate text-xs font-medium text-slate-500">
+                                        {{ $lead->email ?? 'No email' }}
+                                    </div>
 
-                        <td class="px-4 py-3 text-gray-700 whitespace-nowrap">
-                            {{ $lead->phone ?? $lead->phone_norm ?? '—' }}
-                        </td>
-
-                        <td class="px-4 py-3 min-w-[190px]">
-                            @if($lead->service_category)
-                                <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $categoryBadge($lead->service_category) }}">
-                                    {{ ucfirst(str_replace('_', ' ', $lead->service_category)) }}
-                                </span>
-                            @else
-                                <span class="text-gray-400">—</span>
-                            @endif
-
-                            @if($lead->service_type)
-                                <div class="text-xs text-gray-500 mt-1">
-                                    {{ ucfirst($lead->service_type) }}
+                                    <div class="mt-1 text-sm font-bold text-slate-300">
+                                        {{ $lead->phone ?? $lead->phone_norm ?? 'No phone' }}
+                                    </div>
                                 </div>
-                            @endif
+                            </td>
 
-                            @if($lead->retention_tag)
-                                <div class="text-xs text-blue-600 mt-1">
-                                    {{ str_replace('_', ' ', $lead->retention_tag) }}
-                                </div>
-                            @endif
-                        </td>
-
-                        <td class="px-4 py-3 min-w-[160px] text-gray-700">
-                            @if($vehicleText)
-                                <div>{{ $vehicleText }}</div>
-                                <div class="text-xs text-gray-500">
-                                    {{ $lead->vehicle_year ?? '' }}
-                                    @if($lead->plate_number)
-                                        · {{ $lead->plate_number }}
+                            {{-- Request --}}
+                            <td>
+                                <div class="flex flex-wrap gap-1">
+                                    @if($lead->service_category)
+                                        <span class="{{ $badgeBase }} {{ $categoryBadge($lead->service_category) }}">
+                                            {{ ucfirst(str_replace('_', ' ', $lead->service_category)) }}
+                                        </span>
+                                    @else
+                                        <span class="text-slate-600">—</span>
                                     @endif
                                 </div>
-                            @else
-                                <span class="text-gray-400">—</span>
-                            @endif
-                        </td>
 
-                        <td class="px-4 py-3">
-                            <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $scoreBadge($score) }}">
-                                {{ $score }}/100
-                            </span>
-                        </td>
+                                @if($lead->service_type)
+                                    <div class="mt-1 truncate text-xs text-slate-500">
+                                        {{ ucfirst($lead->service_type) }}
+                                    </div>
+                                @endif
 
-                        <td class="px-4 py-3 min-w-[130px]">
-                            @if($lead->lead_temperature)
-                                <span class="px-2 py-0.5 rounded-full text-xs {{ $temperatureBadge($lead->lead_temperature) }}">
-                                    {{ ucfirst($lead->lead_temperature) }}
-                                </span>
-                            @endif
+                                @if($lead->retention_tag)
+                                    <div class="mt-1 truncate text-xs font-bold text-orange-300">
+                                        {{ str_replace('_', ' ', $lead->retention_tag) }}
+                                    </div>
+                                @endif
 
-                            @if($lead->lead_priority)
-                                <span class="px-2 py-0.5 rounded-full text-xs {{ $priorityBadge($lead->lead_priority) }}">
-                                    {{ ucfirst($lead->lead_priority) }}
-                                </span>
-                            @endif
+                                <div class="mt-1 truncate text-xs text-slate-500">
+                                    {{ $lead->source ?? 'No source' }}
+                                    @if($lead->campaign_name)
+                                        · {{ $lead->campaign_name }}
+                                    @elseif($lead->leadSource)
+                                        · {{ $lead->leadSource->name }}
+                                    @endif
+                                </div>
+                            </td>
 
-                            @if(! $lead->lead_temperature && ! $lead->lead_priority)
-                                <span class="text-gray-400">—</span>
-                            @endif
-                        </td>
+                            {{-- Vehicle --}}
+                            <td>
+                                @if($vehicleText)
+                                    <div class="font-bold text-slate-200">
+                                        {{ $vehicleText }}
+                                    </div>
 
-                        <td class="px-4 py-3 min-w-[140px]">
-                            @if($lead->follow_up_required)
-                                <div class="text-xs font-medium text-gray-900">
-                                    Required
+                                    <div class="mt-1 truncate text-xs text-slate-500">
+                                        {{ $lead->vehicle_year ?? '' }}
+
+                                        @if($lead->plate_number)
+                                            · {{ $lead->plate_number }}
+                                        @endif
+                                    </div>
+                                @else
+                                    <span class="text-slate-600">—</span>
+                                @endif
+                            </td>
+
+                            {{-- Score / Priority --}}
+                            <td>
+                                <div class="flex flex-wrap gap-1">
+                                    <span class="{{ $badgeBase }} {{ $scoreBadge($score) }}">
+                                        {{ $score }}/100
+                                    </span>
                                 </div>
 
-                                <div class="text-xs {{ $lead->follow_up_date && \Carbon\Carbon::parse($lead->follow_up_date)->isPast() ? 'text-red-600' : 'text-gray-500' }}">
-                                    {{ optional($lead->follow_up_date)->format('d M Y') ?? 'No date' }}
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    @if($lead->lead_temperature)
+                                        <span class="{{ $badgeBase }} {{ $temperatureBadge($lead->lead_temperature) }}">
+                                            {{ ucfirst($lead->lead_temperature) }}
+                                        </span>
+                                    @endif
+
+                                    @if($lead->lead_priority)
+                                        <span class="{{ $badgeBase }} {{ $priorityBadge($lead->lead_priority) }}">
+                                            {{ ucfirst($lead->lead_priority) }}
+                                        </span>
+                                    @endif
+
+                                    @if(! $lead->lead_temperature && ! $lead->lead_priority)
+                                        <span class="text-slate-600">—</span>
+                                    @endif
                                 </div>
-                            @else
-                                <span class="text-gray-400">—</span>
-                            @endif
-                        </td>
+                            </td>
 
-                        <td class="px-4 py-3">
-                            <span class="px-2 py-0.5 rounded-full text-xs {{ $wa['class'] }}">
-                                {{ $wa['label'] }}
-                            </span>
-                        </td>
+                            {{-- Follow-up --}}
+                            <td>
+                                @if($lead->follow_up_required)
+                                    <div class="text-xs font-extrabold text-white">
+                                        Required
+                                    </div>
 
-                        <td class="px-4 py-3">
-                            <span class="px-2 py-0.5 rounded-full text-xs {{ $statusBadge($lead->status) }}">
-                                {{ ucfirst(str_replace('_',' ', $lead->status)) }}
-                            </span>
-                        </td>
+                                    <div class="mt-1 text-xs font-bold {{ $lead->follow_up_date && \Carbon\Carbon::parse($lead->follow_up_date)->isPast() ? 'text-red-300' : 'text-orange-300' }}">
+                                        {{ optional($lead->follow_up_date)->format('d M Y') ?? 'No date' }}
+                                    </div>
+                                @else
+                                    <span class="text-slate-600">—</span>
+                                @endif
+                            </td>
 
-                        <td class="px-4 py-3 text-gray-600">
-                            <div>{{ $lead->source ?? '—' }}</div>
-
-                            @if($lead->campaign_name)
-                                <div class="text-xs text-gray-400">
-                                    {{ $lead->campaign_name }}
+                            {{-- WhatsApp / Status --}}
+                            <td>
+                                <div class="flex flex-wrap gap-1">
+                                    <span class="{{ $badgeBase }} {{ $wa['class'] }}">
+                                        {{ $wa['label'] }}
+                                    </span>
                                 </div>
-                            @elseif($lead->leadSource)
-                                <div class="text-xs text-gray-400">
-                                    {{ $lead->leadSource->name }}
+
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    <span class="{{ $badgeBase }} {{ $statusBadge($lead->status) }}">
+                                        {{ ucfirst(str_replace('_',' ', $lead->status)) }}
+                                    </span>
                                 </div>
-                            @endif
-                        </td>
 
-                        <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
-                            {{ optional($lead->created_at)->format('d M Y') }}
-                        </td>
+                                <div class="mt-1 text-xs text-slate-500">
+                                    {{ optional($lead->created_at)->format('d M Y') }}
+                                </div>
+                            </td>
 
-                        <td class="px-4 py-3 text-right">
-                            <a href="{{ route('admin.leads.show', $lead) }}"
-                               class="text-blue-600 hover:underline text-sm">
-                                View
-                            </a>
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="12" class="py-10 text-center text-gray-400">
-                            @if($pageMode === 'open' && blank($bucket))
-                                🎉 No open leads need action right now.
-                            @elseif($pageMode === 'open' && ! blank($bucket))
-                                No leads found in this bucket.
-                            @elseif($pageMode === 'qualified')
-                                No qualified or converted leads found.
-                            @elseif($pageMode === 'disqualified')
-                                No disqualified leads found.
-                            @else
-                                No leads found.
-                            @endif
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
+                            {{-- Action --}}
+                            <td class="text-right">
+                                <a href="{{ route('admin.leads.show', $lead) }}" class="sf-link">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="7">
+                                <div class="sf-empty">
+                                    @if($pageMode === 'open' && blank($bucket))
+                                        🎉 No open leads need action right now.
+                                    @elseif($pageMode === 'open' && ! blank($bucket))
+                                        No leads found in this bucket.
+                                    @elseif($pageMode === 'qualified')
+                                        No qualified or converted leads found.
+                                    @elseif($pageMode === 'disqualified')
+                                        No disqualified leads found.
+                                    @else
+                                        No leads found.
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
 
     {{-- Pagination --}}
-    <div>
+    <div class="text-slate-300">
         {{ $leads->links() }}
     </div>
 

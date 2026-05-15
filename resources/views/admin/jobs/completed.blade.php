@@ -1,207 +1,222 @@
 @extends('layouts.app')
 
-@section('content')
-<div class="max-w-7xl mx-auto px-4 py-6">
+@section('title', 'Completed Jobs')
 
-    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+@section('content')
+<div class="sf-page space-y-6">
+
+    {{-- Header --}}
+    <div class="sf-page-header">
         <div>
-            <h2 class="text-2xl font-bold text-gray-900">Completed Jobs</h2>
-            <p class="text-sm text-gray-500 mt-1">
+            <div class="sf-kicker">
+                Job Archive
+            </div>
+
+            <h1 class="sf-page-title mt-3">
+                Completed Jobs
+            </h1>
+
+            <p class="sf-page-subtitle">
                 Closed jobs with invoice value captured for ROI reporting.
             </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('admin.jobs.index') }}"
-               class="inline-flex items-center justify-center border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm text-sm font-medium">
+            <a href="{{ route('admin.jobs.index') }}" class="sf-btn-secondary">
                 Open Jobs
             </a>
         </div>
     </div>
 
-    <form method="GET" action="{{ route('admin.jobs.completed') }}" class="bg-white border rounded-xl p-4 shadow-sm mb-5">
-        <div class="flex gap-2">
-            <input type="text"
-                   name="q"
-                   value="{{ $q ?? '' }}"
-                   placeholder="Search job code, client, phone, service..."
-                   class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500" />
+    {{-- Search --}}
+    <form method="GET" action="{{ route('admin.jobs.completed') }}" class="sf-card">
+        <div class="sf-card-body">
+            <div class="flex flex-col gap-3 md:flex-row">
+                <input type="text"
+                       name="q"
+                       value="{{ $q ?? '' }}"
+                       placeholder="Search job code, client, phone, service..."
+                       class="sf-input md:flex-1" />
 
-            <button class="bg-gray-900 hover:bg-gray-800 text-white rounded-lg px-4 py-2 text-sm font-medium">
-                Search
-            </button>
+                <button class="sf-btn-primary">
+                    Search
+                </button>
 
-            <a href="{{ route('admin.jobs.completed') }}"
-               class="border rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                Reset
-            </a>
+                <a href="{{ route('admin.jobs.completed') }}" class="sf-btn-secondary">
+                    Reset
+                </a>
+            </div>
         </div>
     </form>
 
-    <div class="overflow-x-auto bg-white rounded-xl border shadow-sm">
+    {{-- Table --}}
+    <div class="sf-table-wrap">
+        <div class="sf-table-scroll">
+            <table class="sf-table">
 
-        <table class="min-w-full text-sm">
+                <thead>
+                    <tr>
+                        <th class="w-[18%]">Job</th>
+                        <th class="w-[16%]">Client</th>
+                        <th class="w-[14%]">Service</th>
+                        <th class="w-[14%]">Invoice No.</th>
+                        <th class="w-[14%]">Invoice Amount</th>
+                        <th class="w-[14%]">ROI Status</th>
+                        <th class="w-[10%] text-right">Actions</th>
+                    </tr>
+                </thead>
 
-            <thead class="bg-gray-50 border-b">
-                <tr>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">Job</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">Client</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">Service</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">Invoice No.</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">Invoice Amount</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-600">ROI Status</th>
-                    <th class="px-4 py-3 text-right font-semibold text-gray-600">Actions</th>
-                </tr>
-            </thead>
+                <tbody>
+                @forelse($jobs as $job)
 
-            <tbody>
+                    @php
+                        $invoice = $job->invoice ?? $job->invoices?->first();
 
-            @forelse($jobs as $job)
+                        $invoiceNumber = $invoice?->invoice_number
+                            ?? $invoice?->number
+                            ?? $job->invoice_no
+                            ?? '—';
 
-                @php
-                    $invoice = $job->invoice ?? $job->invoices?->first();
+                        $invoiceAmount = $invoice?->amount ?? null;
 
-                    $invoiceNumber = $invoice?->invoice_number
-                        ?? $invoice?->number
-                        ?? $job->invoice_no
-                        ?? '—';
+                        $jobText = strtolower(trim(
+                            ($job->description ?? '') . ' ' .
+                            ($job->work_summary ?? '') . ' ' .
+                            ($job->issues_found ?? '') . ' ' .
+                            ($job->parts_used ?? '')
+                        ));
 
-                    $invoiceAmount = $invoice?->amount ?? null;
+                        $serviceBucket = 'General Service';
 
-                    $jobText = strtolower(trim(
-                        ($job->description ?? '') . ' ' .
-                        ($job->work_summary ?? '') . ' ' .
-                        ($job->issues_found ?? '') . ' ' .
-                        ($job->parts_used ?? '')
-                    ));
+                        if (str_contains($jobText, 'oil')) {
+                            $serviceBucket = 'Oil Service';
+                        } elseif (str_contains($jobText, 'battery')) {
+                            $serviceBucket = 'Battery Service';
+                        } elseif (str_contains($jobText, 'tyre') || str_contains($jobText, 'tire')) {
+                            $serviceBucket = 'Tyre Service';
+                        } elseif (str_contains($jobText, 'ac') || str_contains($jobText, 'a/c') || str_contains($jobText, 'air condition')) {
+                            $serviceBucket = 'AC Service';
+                        } elseif (str_contains($jobText, 'brake')) {
+                            $serviceBucket = 'Brake Service';
+                        } elseif (str_contains($jobText, 'wash') || str_contains($jobText, 'detailing')) {
+                            $serviceBucket = 'Car Wash / Detailing';
+                        }
 
-                    $serviceBucket = 'General Service';
+                        $serviceBadge = match($serviceBucket) {
+                            'Oil Service' => 'sf-badge-orange',
+                            'Battery Service' => 'sf-badge-blue',
+                            'Tyre Service' => 'sf-badge-slate',
+                            'AC Service' => 'sf-badge-blue',
+                            'Brake Service' => 'sf-badge-red',
+                            'Car Wash / Detailing' => 'sf-badge-green',
+                            default => 'sf-badge-slate',
+                        };
+                    @endphp
 
-                    if (str_contains($jobText, 'oil')) {
-                        $serviceBucket = 'Oil Service';
-                    } elseif (str_contains($jobText, 'battery')) {
-                        $serviceBucket = 'Battery Service';
-                    } elseif (str_contains($jobText, 'tyre') || str_contains($jobText, 'tire')) {
-                        $serviceBucket = 'Tyre Service';
-                    } elseif (str_contains($jobText, 'ac') || str_contains($jobText, 'a/c') || str_contains($jobText, 'air condition')) {
-                        $serviceBucket = 'AC Service';
-                    } elseif (str_contains($jobText, 'brake')) {
-                        $serviceBucket = 'Brake Service';
-                    } elseif (str_contains($jobText, 'wash') || str_contains($jobText, 'detailing')) {
-                        $serviceBucket = 'Car Wash / Detailing';
-                    }
+                    <tr>
 
-                    $serviceBadge = match($serviceBucket) {
-                        'Oil Service' => 'bg-amber-50 text-amber-800 border-amber-100',
-                        'Battery Service' => 'bg-purple-50 text-purple-800 border-purple-100',
-                        'Tyre Service' => 'bg-slate-50 text-slate-800 border-slate-200',
-                        'AC Service' => 'bg-cyan-50 text-cyan-800 border-cyan-100',
-                        'Brake Service' => 'bg-red-50 text-red-800 border-red-100',
-                        'Car Wash / Detailing' => 'bg-green-50 text-green-800 border-green-100',
-                        default => 'bg-gray-50 text-gray-800 border-gray-200',
-                    };
-                @endphp
+                        {{-- Job --}}
+                        <td>
+                            <div class="font-extrabold text-white">
+                                {{ $job->job_code ?? '—' }}
+                            </div>
 
-                <tr class="border-t hover:bg-gray-50 align-top">
+                            <div class="mt-1 max-w-[260px] text-xs font-medium text-slate-500">
+                                <span class="block truncate" title="{{ $job->description }}">
+                                    {{ $job->description ?: 'No description added' }}
+                                </span>
+                            </div>
+                        </td>
 
-                    <td class="px-4 py-4">
-                        <div class="font-semibold text-gray-900">
-                            {{ $job->job_code ?? '—' }}
-                        </div>
+                        {{-- Client --}}
+                        <td>
+                            <div class="font-bold text-slate-200">
+                                {{ $job->client?->name ?? 'N/A' }}
+                            </div>
 
-                        <div class="text-xs text-gray-500 mt-1 max-w-[260px]">
-                            <span class="block truncate" title="{{ $job->description }}">
-                                {{ $job->description ?: 'No description added' }}
+                            <div class="mt-1 text-xs font-medium text-slate-500">
+                                {{ $job->client?->phone ?: $job->client?->phone_norm ?: 'No phone' }}
+                            </div>
+                        </td>
+
+                        {{-- Service --}}
+                        <td>
+                            <span class="{{ $serviceBadge }}">
+                                {{ $serviceBucket }}
                             </span>
-                        </div>
-                    </td>
+                        </td>
 
-                    <td class="px-4 py-4">
-                        <div class="font-medium text-gray-900">
-                            {{ $job->client?->name ?? 'N/A' }}
-                        </div>
+                        {{-- Invoice No --}}
+                        <td>
+                            <div class="font-extrabold text-white">
+                                {{ $invoiceNumber }}
+                            </div>
+                        </td>
 
-                        <div class="text-xs text-gray-500 mt-1">
-                            {{ $job->client?->phone ?: $job->client?->phone_norm ?: 'No phone' }}
-                        </div>
-                    </td>
+                        {{-- Invoice Amount --}}
+                        <td>
+                            <div class="font-extrabold text-orange-300">
+                                {{ $invoiceAmount ? 'AED ' . number_format((float) $invoiceAmount, 2) : '—' }}
+                            </div>
+                        </td>
 
-                    <td class="px-4 py-4">
-                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ $serviceBadge }}">
-                            {{ $serviceBucket }}
-                        </span>
-                    </td>
+                        {{-- ROI Status --}}
+                        <td>
+                            @if($invoiceAmount)
+                                <span class="sf-badge-green">
+                                    Ready for ROI
+                                </span>
+                            @else
+                                <span class="sf-badge-red">
+                                    Missing amount
+                                </span>
+                            @endif
+                        </td>
 
-                    <td class="px-4 py-4">
-                        <span class="font-medium text-gray-900">
-                            {{ $invoiceNumber }}
-                        </span>
-                    </td>
+                        {{-- Actions --}}
+                        <td class="text-right">
+                            <div class="flex justify-end gap-3 whitespace-nowrap">
+                                <a href="{{ route('admin.jobs.show', $job->id) }}" class="sf-link">
+                                    View
+                                </a>
 
-                    <td class="px-4 py-4">
-                        <span class="font-semibold text-gray-900">
-                            {{ $invoiceAmount ? 'AED ' . number_format((float) $invoiceAmount, 2) : '—' }}
-                        </span>
-                    </td>
+                                <a href="{{ route('admin.jobs.edit', $job->id) }}" class="sf-link">
+                                    Edit
+                                </a>
+                            </div>
+                        </td>
 
-                    <td class="px-4 py-4">
-                        @if($invoiceAmount)
-                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-800 border border-green-100">
-                                Ready for ROI
-                            </span>
-                        @else
-                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-800 border border-red-100">
-                                Missing amount
-                            </span>
-                        @endif
-                    </td>
+                    </tr>
 
-                    <td class="px-4 py-4">
-                        <div class="flex justify-end gap-3 whitespace-nowrap">
+                @empty
 
-                            <a href="{{ route('admin.jobs.show', $job->id) }}"
-                               class="text-blue-600 hover:text-blue-800 hover:underline font-medium">
-                                View
-                            </a>
+                    <tr>
+                        <td colspan="7">
+                            <div class="sf-empty">
+                                <div class="text-lg font-extrabold text-white">
+                                    No completed jobs found
+                                </div>
 
-                            <a href="{{ route('admin.jobs.edit', $job->id) }}"
-                               class="text-green-600 hover:text-green-800 hover:underline font-medium">
-                                Edit
-                            </a>
+                                <p class="mt-2 text-sm font-medium text-slate-500">
+                                    Jobs will appear here after they are closed with invoice number and amount.
+                                </p>
 
-                        </div>
-                    </td>
+                                <a href="{{ route('admin.jobs.index') }}" class="sf-btn-primary mt-4">
+                                    Go to Open Jobs
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
 
-                </tr>
+                @endforelse
+                </tbody>
 
-            @empty
-
-                <tr>
-                    <td colspan="7" class="px-4 py-12 text-center">
-                        <div class="text-lg font-semibold text-gray-800">
-                            No completed jobs found
-                        </div>
-
-                        <p class="text-sm text-gray-500 mt-1">
-                            Jobs will appear here after they are closed with invoice number and amount.
-                        </p>
-
-                        <a href="{{ route('admin.jobs.index') }}"
-                           class="inline-flex mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                            Go to Open Jobs
-                        </a>
-                    </td>
-                </tr>
-
-            @endforelse
-
-            </tbody>
-
-        </table>
-
+            </table>
+        </div>
     </div>
 
-    <div class="mt-4">
+    {{-- Pagination --}}
+    <div class="text-slate-300">
         {{ $jobs->links() }}
     </div>
 
