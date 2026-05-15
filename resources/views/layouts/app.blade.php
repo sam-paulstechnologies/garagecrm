@@ -13,7 +13,7 @@
 
     {{-- Vite --}}
     @viteReactRefresh
-    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
+    @vite(['resources/js/app.jsx'])
 
     @stack('styles')
 </head>
