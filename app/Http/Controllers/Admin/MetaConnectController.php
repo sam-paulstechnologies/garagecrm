@@ -3,20 +3,33 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\LeadSource;
 use App\Models\MetaPage;
 use App\Services\Settings\SettingsStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class MetaConnectController extends Controller
 {
+    private function metaConfig(string $key, mixed $default = null): mixed
+    {
+        return config("services.meta_leads.{$key}")
+            ?? config("services.meta.{$key}")
+            ?? $default;
+    }
+
+    private function graphVersion(): string
+    {
+        return trim((string) $this->metaConfig('graph_version', 'v20.0'), '/');
+    }
+
     private function graphBase(): string
     {
-        $base = rtrim((string) config('services.meta_leads.graph_base', 'https://graph.facebook.com'), '/');
-        $version = trim((string) config('services.meta_leads.graph_version', 'v20.0'), '/');
+        $base = rtrim((string) $this->metaConfig('graph_base', 'https://graph.facebook.com'), '/');
 
-        return "{$base}/{$version}";
+        return "{$base}/{$this->graphVersion()}";
     }
 
     /**
@@ -24,7 +37,7 @@ class MetaConnectController extends Controller
      */
     public function start(Request $request)
     {
-        $appId = (string) config('services.meta_leads.app_id');
+        $appId = (string) $this->metaConfig('app_id', '');
 
         if ($appId === '') {
             return redirect()
@@ -41,15 +54,16 @@ class MetaConnectController extends Controller
             'scope'         => implode(',', [
                 'pages_show_list',
                 'pages_read_engagement',
+                'pages_manage_metadata',
                 'leads_retrieval',
             ]),
         ]);
 
-        return redirect("https://www.facebook.com/" . config('services.meta_leads.graph_version', 'v20.0') . "/dialog/oauth?{$query}");
+        return redirect("https://www.facebook.com/{$this->graphVersion()}/dialog/oauth?{$query}");
     }
 
     /**
-     * Step 2: OAuth callback → exchange token → prepare page selection.
+     * Step 2: OAuth callback → exchange token → fetch available pages → ask user to select page.
      */
     public function callback(Request $request)
     {
@@ -73,8 +87,8 @@ class MetaConnectController extends Controller
 
         $companyId = auth()->user()->company_id;
 
-        $appId = (string) config('services.meta_leads.app_id');
-        $appSecret = (string) config('services.meta_leads.app_secret');
+        $appId = (string) $this->metaConfig('app_id', '');
+        $appSecret = (string) $this->metaConfig('app_secret', '');
 
         if ($appId === '' || $appSecret === '') {
             return redirect()
@@ -85,7 +99,7 @@ class MetaConnectController extends Controller
         $redirectUri = route('admin.lead-sources.meta.callback');
 
         try {
-            $tokenResponse = Http::asForm()->get("{$this->graphBase()}/oauth/access_token", [
+            $tokenResponse = Http::timeout(20)->get("{$this->graphBase()}/oauth/access_token", [
                 'client_id'     => $appId,
                 'client_secret' => $appSecret,
                 'redirect_uri'  => $redirectUri,
@@ -128,7 +142,7 @@ class MetaConnectController extends Controller
         }
 
         try {
-            $pagesResponse = Http::get("{$this->graphBase()}/me/accounts", [
+            $pagesResponse = Http::timeout(20)->get("{$this->graphBase()}/me/accounts", [
                 'fields'       => 'id,name,access_token',
                 'access_token' => $userAccessToken,
                 'limit'        => 100,
@@ -158,6 +172,12 @@ class MetaConnectController extends Controller
 
         $pages = $pagesResponse->json('data', []);
 
+        if (empty($pages)) {
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('error', 'No Facebook Pages were returned. Please make sure your Meta user has access to the Page.');
+        }
+
         session([
             'meta_company_id' => $companyId,
             'meta_user_token' => $userAccessToken,
@@ -166,17 +186,17 @@ class MetaConnectController extends Controller
 
         return redirect()
             ->route('admin.lead-sources.meta')
-            ->with('success', 'Facebook connected. Please select a page.');
+            ->with('success', 'Facebook connected. Please select the Page you want to use for Meta lead capture.');
     }
 
     /**
-     * Step 3: Page selected → fetch page token + lead forms.
+     * Step 3: Page selected → save page token → fetch forms → create/update lead sources → subscribe page.
      */
     public function selectPage(Request $request)
     {
         $request->validate([
             'page_id'   => 'required|string',
-            'page_name' => 'required|string',
+            'page_name' => 'nullable|string',
         ]);
 
         $companyId = session('meta_company_id');
@@ -184,11 +204,15 @@ class MetaConnectController extends Controller
 
         abort_unless($companyId && $userToken, 419, 'Session expired. Please reconnect Facebook.');
 
-        $pageId   = (string) $request->page_id;
-        $pageName = (string) $request->page_name;
+        if ((int) $companyId !== (int) auth()->user()->company_id) {
+            abort(403, 'Invalid Meta connection session.');
+        }
+
+        $pageId = (string) $request->page_id;
+        $pageName = (string) $request->input('page_name', '');
 
         try {
-            $pageInfo = Http::get("{$this->graphBase()}/{$pageId}", [
+            $pageInfo = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}", [
                 'fields'       => 'access_token,name',
                 'access_token' => $userToken,
             ])->throw()->json();
@@ -205,7 +229,7 @@ class MetaConnectController extends Controller
         }
 
         $pageAccessToken = $pageInfo['access_token'] ?? null;
-        $resolvedPageName = $pageInfo['name'] ?? $pageName;
+        $resolvedPageName = $pageInfo['name'] ?? $pageName ?: 'Facebook Page';
 
         if (! $pageAccessToken) {
             return redirect()
@@ -213,20 +237,7 @@ class MetaConnectController extends Controller
                 ->with('error', 'Unable to fetch Page access token.');
         }
 
-        try {
-            $forms = Http::get("{$this->graphBase()}/{$pageId}/leadgen_forms", [
-                'access_token' => $pageAccessToken,
-                'limit'        => 200,
-            ])->throw()->json('data', []);
-        } catch (\Throwable $e) {
-            Log::error('[META_CONNECT][FORMS_FETCH_FAILED]', [
-                'company_id' => $companyId,
-                'page_id'    => $pageId,
-                'error'      => $e->getMessage(),
-            ]);
-
-            $forms = [];
-        }
+        $forms = $this->fetchForms($companyId, $pageId, $pageAccessToken);
 
         $meta = MetaPage::updateOrCreate(
             [
@@ -240,6 +251,19 @@ class MetaConnectController extends Controller
             ]
         );
 
+        $createdOrUpdatedSources = $this->syncLeadSourcesFromForms(
+            companyId: (int) $companyId,
+            pageId: $pageId,
+            pageName: $resolvedPageName,
+            forms: $forms
+        );
+
+        $subscriptionOk = $this->subscribePageToLeadgen(
+            companyId: (int) $companyId,
+            pageId: $pageId,
+            pageAccessToken: $pageAccessToken
+        );
+
         $settings = new SettingsStore($companyId);
         $settings->set('meta_leads.page_id', $pageId);
 
@@ -249,13 +273,19 @@ class MetaConnectController extends Controller
 
         session()->forget(['meta_company_id', 'meta_user_token', 'meta_pages']);
 
+        if (! $subscriptionOk) {
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('warning', "Connected {$meta->page_name} and synced " . count($forms) . " forms, but leadgen webhook subscription failed. Please check Meta permissions and try Refresh Forms.");
+        }
+
         return redirect()
             ->route('admin.lead-sources.meta')
-            ->with('success', "Connected {$meta->page_name} and synced " . count($forms) . " forms.");
+            ->with('success', "Connected {$meta->page_name}, synced " . count($forms) . " forms, and prepared {$createdOrUpdatedSources} lead sources.");
     }
 
     /**
-     * Refresh lead forms.
+     * Refresh lead forms and lead sources.
      */
     public function refresh()
     {
@@ -265,26 +295,34 @@ class MetaConnectController extends Controller
 
         abort_unless($meta && $meta->page_access_token, 400, 'No connected Meta page.');
 
-        try {
-            $forms = Http::get("{$this->graphBase()}/{$meta->page_id}/leadgen_forms", [
-                'access_token' => $meta->page_access_token,
-                'limit'        => 200,
-            ])->throw()->json('data', []);
-        } catch (\Throwable $e) {
-            Log::error('[META_CONNECT][REFRESH_FORMS_FAILED]', [
-                'company_id' => $companyId,
-                'page_id'    => $meta->page_id,
-                'error'      => $e->getMessage(),
-            ]);
-
-            return back()->with('error', 'Unable to refresh Meta lead forms.');
-        }
+        $forms = $this->fetchForms(
+            companyId: (int) $companyId,
+            pageId: (string) $meta->page_id,
+            pageAccessToken: (string) $meta->page_access_token
+        );
 
         $meta->update([
             'forms_json' => json_encode($forms),
         ]);
 
-        return back()->with('success', 'Forms refreshed: ' . count($forms));
+        $createdOrUpdatedSources = $this->syncLeadSourcesFromForms(
+            companyId: (int) $companyId,
+            pageId: (string) $meta->page_id,
+            pageName: (string) $meta->page_name,
+            forms: $forms
+        );
+
+        $subscriptionOk = $this->subscribePageToLeadgen(
+            companyId: (int) $companyId,
+            pageId: (string) $meta->page_id,
+            pageAccessToken: (string) $meta->page_access_token
+        );
+
+        if (! $subscriptionOk) {
+            return back()->with('warning', 'Forms refreshed, but leadgen webhook subscription failed. Please check Meta app permissions.');
+        }
+
+        return back()->with('success', 'Forms refreshed: ' . count($forms) . '. Lead sources updated: ' . $createdOrUpdatedSources . '.');
     }
 
     /**
@@ -296,10 +334,124 @@ class MetaConnectController extends Controller
 
         MetaPage::where('company_id', $companyId)->delete();
 
+        LeadSource::where('company_id', $companyId)
+            ->where('type', 'meta')
+            ->update([
+                'status' => 'inactive',
+            ]);
+
         $settings = new SettingsStore($companyId);
         $settings->delete('meta_leads.page_id');
         $settings->delete('meta_leads.form_id');
 
-        return back()->with('success', 'Disconnected from Facebook Page.');
+        session()->forget(['meta_company_id', 'meta_user_token', 'meta_pages']);
+
+        return back()->with('success', 'Disconnected from Facebook Page. Existing Meta lead sources were marked inactive.');
+    }
+
+    private function fetchForms(int $companyId, string $pageId, string $pageAccessToken): array
+    {
+        try {
+            $forms = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}/leadgen_forms", [
+                'fields'       => 'id,name,status,created_time,questions',
+                'access_token' => $pageAccessToken,
+                'limit'        => 200,
+            ])->throw()->json('data', []);
+
+            return is_array($forms) ? $forms : [];
+        } catch (\Throwable $e) {
+            Log::error('[META_CONNECT][FORMS_FETCH_FAILED]', [
+                'company_id' => $companyId,
+                'page_id'    => $pageId,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    private function subscribePageToLeadgen(int $companyId, string $pageId, string $pageAccessToken): bool
+    {
+        try {
+            $response = Http::asForm()
+                ->timeout(20)
+                ->post("{$this->graphBase()}/{$pageId}/subscribed_apps", [
+                    'subscribed_fields' => 'leadgen',
+                    'access_token'      => $pageAccessToken,
+                ]);
+
+            if (! $response->ok()) {
+                Log::error('[META_CONNECT][LEADGEN_SUBSCRIPTION_FAILED]', [
+                    'company_id' => $companyId,
+                    'page_id'    => $pageId,
+                    'status'     => $response->status(),
+                    'response'   => $response->json(),
+                ]);
+
+                return false;
+            }
+
+            Log::info('[META_CONNECT][LEADGEN_SUBSCRIBED]', [
+                'company_id' => $companyId,
+                'page_id'    => $pageId,
+                'response'   => $response->json(),
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('[META_CONNECT][LEADGEN_SUBSCRIPTION_EXCEPTION]', [
+                'company_id' => $companyId,
+                'page_id'    => $pageId,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function syncLeadSourcesFromForms(int $companyId, string $pageId, string $pageName, array $forms): int
+    {
+        $count = 0;
+
+        foreach ($forms as $form) {
+            $formId = data_get($form, 'id');
+
+            if (! $formId) {
+                continue;
+            }
+
+            $formName = data_get($form, 'name', "Meta Form {$formId}");
+
+            $leadSource = LeadSource::where('company_id', $companyId)
+                ->where('type', 'meta')
+                ->where('config->form_id', (string) $formId)
+                ->first();
+
+            if (! $leadSource) {
+                $leadSource = new LeadSource();
+                $leadSource->company_id = $companyId;
+                $leadSource->type = 'meta';
+                $leadSource->form_token = 'meta_' . Str::random(32);
+            }
+
+            $leadSource->name = 'Meta - ' . $formName;
+            $leadSource->status = 'active';
+            $leadSource->config = [
+                'provider'        => 'meta',
+                'page_id'         => $pageId,
+                'page_name'       => $pageName,
+                'form_id'         => (string) $formId,
+                'form_name'       => $formName,
+                'form_status'     => data_get($form, 'status'),
+                'form_created_at' => data_get($form, 'created_time'),
+                'questions'       => data_get($form, 'questions', []),
+            ];
+
+            $leadSource->save();
+
+            $count++;
+        }
+
+        return $count;
     }
 }

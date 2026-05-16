@@ -23,9 +23,27 @@ class MetaWebhookController extends Controller
 
     private function metaConfig(string $key, mixed $default = null): mixed
     {
-        return config("services.meta_leads.{$key}")
-            ?? config("services.meta.{$key}")
-            ?? $default;
+        $value = config("services.meta_leads.{$key}")
+            ?? config("services.meta.{$key}");
+
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+
+        if ($key === 'verify_token') {
+            return config('services.meta.whatsapp_verify_token')
+                ?? env('META_LEADS_VERIFY_TOKEN')
+                ?? env('META_WHATSAPP_VERIFY_TOKEN')
+                ?? $default;
+        }
+
+        if ($key === 'app_secret') {
+            return config('services.meta.app_secret')
+                ?? env('META_APP_SECRET')
+                ?? $default;
+        }
+
+        return $default;
     }
 
     /**
@@ -52,6 +70,8 @@ class MetaWebhookController extends Controller
         Log::warning('[META_LEADS][VERIFY_FAILED]', [
             'mode' => $mode,
             'has_token' => ! empty($token),
+            'expected_token_configured' => $expectedToken !== '',
+            'expected_token_source' => 'services.meta_leads.verify_token / services.meta.verify_token / services.meta.whatsapp_verify_token / env',
         ]);
 
         return response('Forbidden', 403);

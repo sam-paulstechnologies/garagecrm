@@ -87,6 +87,11 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             Route::get('/whatsapp', [LeadSourceController::class, 'whatsapp'])
                 ->name('whatsapp');
 
+            /*
+            |--------------------------------------------------------------------------
+            | Website Lead Sources
+            |--------------------------------------------------------------------------
+            */
             Route::prefix('website')->name('website.')->group(function () {
                 Route::get('/', [LeadSourceController::class, 'websiteIndex'])
                     ->name('index');
@@ -98,6 +103,21 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
                     ->name('show');
             });
 
+            /*
+            |--------------------------------------------------------------------------
+            | SF Meta Lead Capture
+            |--------------------------------------------------------------------------
+            | Meta / Facebook / Instagram lead form connection.
+            |
+            | Flow:
+            | Admin connects Facebook
+            | -> selects Page
+            | -> SayaraForce saves Page token
+            | -> fetches lead forms
+            | -> creates/updates lead_sources
+            | -> subscribes Page to leadgen webhook
+            |--------------------------------------------------------------------------
+            */
             Route::get('/meta', [LeadSourceController::class, 'meta'])
                 ->name('meta');
 
@@ -527,13 +547,18 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             response()->json(['message' => 'Garage CRM Admin routes working'])
         );
 
+        /*
+        |--------------------------------------------------------------------------
+        | Inbox Main Page
+        |--------------------------------------------------------------------------
+        */
         Route::get('inbox', function () {
             return inertia('Admin/Inbox/Index');
         })->name('inbox.index');
 
         /*
         |--------------------------------------------------------------------------
-        | WhatsApp Inbox Popup
+        | WhatsApp Inbox Popup / JSON APIs
         |--------------------------------------------------------------------------
         */
         Route::prefix('inbox')->name('inbox.')->group(function () {
