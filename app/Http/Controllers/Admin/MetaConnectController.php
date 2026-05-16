@@ -51,6 +51,18 @@ class MetaConnectController extends Controller
             'client_id'     => $appId,
             'redirect_uri'  => $redirectUri,
             'response_type' => 'code',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Force Permission Re-request
+            |--------------------------------------------------------------------------
+            | We added pages_manage_ads later.
+            | Without auth_type=rerequest, Facebook can silently reuse the old approval
+            | and return a page token without the new permission.
+            |--------------------------------------------------------------------------
+            */
+            'auth_type'     => 'rerequest',
+
             'scope'         => implode(',', [
                 'pages_show_list',
                 'pages_read_engagement',
