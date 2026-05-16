@@ -55,6 +55,7 @@ class MetaConnectController extends Controller
                 'pages_show_list',
                 'pages_read_engagement',
                 'pages_manage_metadata',
+                'pages_manage_ads',
                 'leads_retrieval',
             ]),
         ]);
@@ -291,7 +292,10 @@ class MetaConnectController extends Controller
     {
         $companyId = auth()->user()->company_id;
 
-        $meta = MetaPage::where('company_id', $companyId)->first();
+        $meta = MetaPage::where('company_id', $companyId)
+            ->whereNot('page_id', 'like', 'TEST_%')
+            ->latest('id')
+            ->first();
 
         abort_unless($meta && $meta->page_access_token, 400, 'No connected Meta page.');
 
@@ -352,15 +356,28 @@ class MetaConnectController extends Controller
     private function fetchForms(int $companyId, string $pageId, string $pageAccessToken): array
     {
         try {
-            $forms = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}/leadgen_forms", [
+            $response = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}/leadgen_forms", [
                 'fields'       => 'id,name,status,created_time,questions',
                 'access_token' => $pageAccessToken,
                 'limit'        => 200,
-            ])->throw()->json('data', []);
+            ]);
+
+            if (! $response->ok()) {
+                Log::error('[META_CONNECT][FORMS_FETCH_FAILED]', [
+                    'company_id' => $companyId,
+                    'page_id'    => $pageId,
+                    'status'     => $response->status(),
+                    'response'   => $response->json(),
+                ]);
+
+                return [];
+            }
+
+            $forms = $response->json('data', []);
 
             return is_array($forms) ? $forms : [];
         } catch (\Throwable $e) {
-            Log::error('[META_CONNECT][FORMS_FETCH_FAILED]', [
+            Log::error('[META_CONNECT][FORMS_FETCH_EXCEPTION]', [
                 'company_id' => $companyId,
                 'page_id'    => $pageId,
                 'error'      => $e->getMessage(),
