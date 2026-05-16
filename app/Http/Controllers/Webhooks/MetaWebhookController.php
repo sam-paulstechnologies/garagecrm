@@ -53,9 +53,37 @@ class MetaWebhookController extends Controller
      */
     public function verify(Request $request)
     {
-        $mode = $request->query('hub.mode');
-        $token = $request->query('hub.verify_token');
-        $challenge = $request->query('hub.challenge');
+        /*
+        |--------------------------------------------------------------------------
+        | Important
+        |--------------------------------------------------------------------------
+        | Meta sends query params as:
+        | hub.mode
+        | hub.verify_token
+        | hub.challenge
+        |
+        | Depending on PHP/server handling, dotted params may also appear as:
+        | hub_mode
+        | hub_verify_token
+        | hub_challenge
+        |
+        | So we support both formats.
+        |--------------------------------------------------------------------------
+        */
+        $mode = $request->query('hub.mode')
+            ?? $request->query('hub_mode')
+            ?? $request->input('hub.mode')
+            ?? $request->input('hub_mode');
+
+        $token = $request->query('hub.verify_token')
+            ?? $request->query('hub_verify_token')
+            ?? $request->input('hub.verify_token')
+            ?? $request->input('hub_verify_token');
+
+        $challenge = $request->query('hub.challenge')
+            ?? $request->query('hub_challenge')
+            ?? $request->input('hub.challenge')
+            ?? $request->input('hub_challenge');
 
         $expectedToken = (string) $this->metaConfig('verify_token', '');
 
@@ -71,6 +99,8 @@ class MetaWebhookController extends Controller
             'mode' => $mode,
             'has_token' => ! empty($token),
             'expected_token_configured' => $expectedToken !== '',
+            'query_all' => $request->query(),
+            'input_all' => $request->all(),
             'expected_token_source' => 'services.meta_leads.verify_token / services.meta.verify_token / services.meta.whatsapp_verify_token / env',
         ]);
 
