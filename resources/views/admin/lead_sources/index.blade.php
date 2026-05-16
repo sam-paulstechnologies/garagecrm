@@ -21,7 +21,7 @@
             </h1>
 
             <p class="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-400">
-                Configure how leads enter SayaraForce from WhatsApp, website forms, and Meta lead ads.
+                Configure how leads enter SayaraForce from WhatsApp, website forms, Meta lead ads, and Google Ads lead forms.
             </p>
         </div>
 
@@ -54,7 +54,7 @@
     </div>
 
     {{-- Source Cards --}}
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
 
         {{-- WhatsApp --}}
         <div class="{{ $cardClass }}">
@@ -137,7 +137,7 @@
             <div class="border-b border-white/10 bg-cyan-500/5 px-6 py-4">
                 <div class="flex items-center justify-between gap-3">
                     <span class="inline-flex rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-extrabold text-cyan-300 ring-1 ring-cyan-400/20">
-                        Meta • Setup Required
+                        Meta • Ready
                     </span>
 
                     <span class="text-3xl">📣</span>
@@ -159,13 +159,51 @@
                     </p>
 
                     <p class="mt-2 text-sm font-extrabold text-cyan-300">
-                        Account not connected
+                        Facebook lead capture enabled
                     </p>
                 </div>
 
                 <a href="{{ route('admin.lead-sources.meta') }}"
                    class="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-cyan-600 px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-700">
-                    Connect Meta Account
+                    Manage Meta Account
+                </a>
+            </div>
+        </div>
+
+        {{-- Google --}}
+        <div class="{{ $cardClass }}">
+            <div class="border-b border-white/10 bg-orange-500/5 px-6 py-4">
+                <div class="flex items-center justify-between gap-3">
+                    <span class="inline-flex rounded-full bg-orange-500/10 px-3 py-1 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">
+                        Google Ads • Ready
+                    </span>
+
+                    <span class="text-3xl">🔎</span>
+                </div>
+            </div>
+
+            <div class="px-6 py-6">
+                <h2 class="text-xl font-black text-white">
+                    Google Lead Forms
+                </h2>
+
+                <p class="mt-3 min-h-[72px] text-sm font-medium leading-6 text-slate-400">
+                    Capture Google Ads Lead Form submissions using webhook URL and webhook key.
+                </p>
+
+                <div class="mt-5 rounded-2xl border border-white/10 bg-slate-950/55 p-4">
+                    <p class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                        Status
+                    </p>
+
+                    <p class="mt-2 text-sm font-extrabold text-orange-300">
+                        Webhook setup available
+                    </p>
+                </div>
+
+                <a href="{{ route('admin.lead-sources.google') }}"
+                   class="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-700">
+                    Open Google Setup
                 </a>
             </div>
         </div>
@@ -179,7 +217,7 @@
         </p>
 
         <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">
-            Start with WhatsApp and Website Forms first. Meta can be connected once the garage is ready to capture paid campaign leads.
+            Start with WhatsApp and Website Forms first. Then connect Meta and Google Ads when the garage is ready to capture paid campaign leads.
         </p>
     </div>
 </div>

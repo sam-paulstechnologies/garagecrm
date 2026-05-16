@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\MetaWebhookController;
+use App\Http\Controllers\Webhooks\GoogleLeadWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -49,6 +50,24 @@ Route::prefix('v1')->group(function () {
         '/website-leads/{token}',
         [WebsiteLeadController::class, 'store']
     )->name('api.website-leads.store');
+
+    /*
+    |--------------------------------------------------------------------------
+    | GOOGLE ADS LEAD FORM WEBHOOK
+    |--------------------------------------------------------------------------
+    | This is for Google Ads Lead Form webhook submissions.
+    |
+    | Google Ads setup:
+    | Webhook URL:
+    | https://app.sayaraforce.com/api/v1/webhooks/google/leads
+    |
+    | Webhook Key:
+    | lead_sources.form_token for the Google lead source.
+    */
+    Route::post(
+        '/webhooks/google/leads',
+        [GoogleLeadWebhookController::class, 'handle']
+    )->name('api.webhooks.google.leads.handle');
 
     /*
     |--------------------------------------------------------------------------
@@ -99,7 +118,6 @@ Route::prefix('v1')->group(function () {
     )->name('api.webhooks.twilio.whatsapp.status');
 
     Route::get('/webhooks/twilio/ping', fn () => 'twilio-ok');
-
 });
 
 /*

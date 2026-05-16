@@ -128,6 +128,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google Ads Lead Forms
+    |--------------------------------------------------------------------------
+    | This is for Google Ads Lead Form webhook capture.
+    |
+    | v1 does not need Google OAuth.
+    | Garage enters:
+    | - Webhook URL: https://app.sayaraforce.com/api/v1/webhooks/google/leads
+    | - Webhook Key: lead_sources.form_token
+    |--------------------------------------------------------------------------
+    */
+
+    'google_leads' => [
+        'default_webhook_key' => env('GOOGLE_LEADS_WEBHOOK_KEY'),
+        'source_type'         => env('GOOGLE_LEADS_SOURCE_TYPE', 'google'),
+        'default_source_name' => env('GOOGLE_LEADS_DEFAULT_SOURCE_NAME', 'Google Ads'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Leads Config
     |--------------------------------------------------------------------------
     */

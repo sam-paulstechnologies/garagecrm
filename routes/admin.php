@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\{
     LeadImportController,
     LeadDuplicateController,
     LeadSourceController,
+    GoogleLeadSourceController,
     OpportunityController,
     PlanController,
     SettingsController,
@@ -135,6 +136,34 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
 
             Route::post('/meta/disconnect', [MetaConnectController::class, 'disconnect'])
                 ->name('meta.disconnect');
+
+            /*
+            |--------------------------------------------------------------------------
+            | SF Google Ads Lead Capture
+            |--------------------------------------------------------------------------
+            | Google Ads Lead Form webhook setup.
+            |
+            | Flow:
+            | Admin creates Google source
+            | -> SayaraForce generates webhook key
+            | -> Garage/agency pastes webhook URL + key in Google Ads Lead Form
+            | -> Google sends submitted leads to SayaraForce webhook
+            |--------------------------------------------------------------------------
+            */
+            Route::get('/google', [GoogleLeadSourceController::class, 'index'])
+                ->name('google');
+
+            Route::post('/google', [GoogleLeadSourceController::class, 'store'])
+                ->name('google.store');
+
+            Route::patch('/google/{leadSource}/rotate', [GoogleLeadSourceController::class, 'rotateToken'])
+                ->name('google.rotate');
+
+            Route::patch('/google/{leadSource}/activate', [GoogleLeadSourceController::class, 'activate'])
+                ->name('google.activate');
+
+            Route::patch('/google/{leadSource}/deactivate', [GoogleLeadSourceController::class, 'deactivate'])
+                ->name('google.deactivate');
         });
 
         /*
@@ -152,6 +181,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         Route::pattern('vehicle', '[0-9]+');
         Route::pattern('communication', '[0-9]+');
         Route::pattern('lead', '[0-9]+');
+        Route::pattern('leadSource', '[0-9]+');
         Route::pattern('conversation', '[0-9]+');
         Route::pattern('enrollment', '[0-9]+');
         Route::pattern('audience', '[0-9]+');
