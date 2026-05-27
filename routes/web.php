@@ -40,6 +40,17 @@ Route::get('/', function (Request $request) {
 
 /*
 |--------------------------------------------------------------------------
+| Public Legal Pages
+|--------------------------------------------------------------------------
+| These must remain publicly accessible without login.
+| Required for Meta App Review / WhatsApp Tech Provider review.
+|--------------------------------------------------------------------------
+*/
+Route::view('/privacy-policy', 'legal.privacy-policy')
+    ->name('privacy-policy');
+
+/*
+|--------------------------------------------------------------------------
 | Health Check
 |--------------------------------------------------------------------------
 */
