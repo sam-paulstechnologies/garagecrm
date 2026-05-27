@@ -5,12 +5,21 @@ namespace App\Services\WhatsApp;
 use App\Models\Client\Opportunity;
 use App\Models\User;
 use App\Services\Booking\BookingLinkGenerator;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class ManagerBookingNotifier
 {
-    protected string $eventKey = 'manager.attention_required';
+    /*
+    |--------------------------------------------------------------------------
+    | Event key alignment
+    |--------------------------------------------------------------------------
+    | Use one consistent event key for manager booking approval notifications.
+    |--------------------------------------------------------------------------
+    */
+    protected string $eventKey = 'manager.booking_confirmation_required';
 
     public function notify(Opportunity $opportunity): void
     {
@@ -27,6 +36,35 @@ class ManagerBookingNotifier
             return;
         }
 
+        if (! $opportunity->company_id) {
+            Log::warning('[ManagerBookingNotifier] Opportunity missing company_id', [
+                'opportunity_id' => $opportunity->id,
+            ]);
+
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Duplicate protection
+        |--------------------------------------------------------------------------
+        | Manager notification may be triggered from OpportunityStatusUpdated and
+        | other booking handoff flows. This lock avoids repeated manager messages.
+        |--------------------------------------------------------------------------
+        */
+
+        $lockKey = 'manager_booking_notification_sent_' . $opportunity->company_id . '_' . $opportunity->id;
+
+        if (! Cache::add($lockKey, true, now()->addHours(6))) {
+            Log::info('[ManagerBookingNotifier] duplicate skipped by lock', [
+                'opportunity_id' => $opportunity->id,
+                'company_id' => $opportunity->company_id,
+                'event_key' => $this->eventKey,
+            ]);
+
+            return;
+        }
+
         $manager = $this->resolveManagerUser($opportunity);
         $managerPhone = $this->phoneFromUser($manager) ?: $this->cleanPhone(config('whatsapp.default_manager'));
 
@@ -37,6 +75,7 @@ class ManagerBookingNotifier
                 'assigned_to' => $opportunity->assigned_to,
             ]);
 
+            Cache::forget($lockKey);
             return;
         }
 
@@ -58,9 +97,7 @@ class ManagerBookingNotifier
                 [
                     /*
                     |--------------------------------------------------------------------------
-                    | Template variables for manager_attention_required_v1
-                    |--------------------------------------------------------------------------
-                    | Your Meta template expects 5 variables.
+                    | Template variables
                     |--------------------------------------------------------------------------
                     */
 
@@ -94,20 +131,21 @@ class ManagerBookingNotifier
                     'event_key' => $this->eventKey,
                     'booking_link' => $link,
                     'send_mode' => 'meta_template',
+                    'dedupe_key' => $lockKey,
                 ]
             );
 
             Log::info('[ManagerBookingNotifier] Manager template notification fired', [
                 'opportunity_id' => $opportunity->id,
                 'company_id' => $opportunity->company_id,
-                'manager_phone' => $managerPhone,
                 'event_key' => $this->eventKey,
             ]);
         } catch (\Throwable $e) {
+            Cache::forget($lockKey);
+
             Log::error('[ManagerBookingNotifier] Failed to fire manager template notification', [
                 'opportunity_id' => $opportunity->id,
                 'company_id' => $opportunity->company_id,
-                'manager_phone' => $managerPhone,
                 'event_key' => $this->eventKey,
                 'error' => $e->getMessage(),
             ]);
@@ -165,12 +203,18 @@ class ManagerBookingNotifier
 
     protected function preferredDateTime(Opportunity $opportunity): string
     {
-        $date = $opportunity->expected_close_date
-            ? $opportunity->expected_close_date->format('d M Y')
-            : null;
+        $date = $opportunity->expected_close_date ?? null;
 
         if ($date) {
-            return $date;
+            try {
+                if ($date instanceof Carbon) {
+                    return $date->format('d M Y');
+                }
+
+                return Carbon::parse($date)->format('d M Y');
+            } catch (\Throwable) {
+                return (string) $date;
+            }
         }
 
         return 'Check booking request';

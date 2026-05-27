@@ -287,8 +287,15 @@ class JobController extends Controller
         $this->setIfColumnExists($payload, 'job_id', $job->id);
         $this->setIfColumnExists($payload, 'booking_id', $job->booking_id ?? null);
         $this->setIfColumnExists($payload, 'client_id', $job->client_id ?? $job->booking?->client_id ?? null);
-        $this->setIfColumnExists($payload, 'invoice_number', $existingInvoice->invoice_number ?? $this->nextInvoiceNumber($job->company_id));
-        $this->setIfColumnExists($payload, 'reference_number', $existingInvoice->reference_number ?? $this->nextInvoiceNumber($job->company_id));
+
+        $invoiceNumber = $existingInvoice->number
+            ?? $existingInvoice->invoice_number
+            ?? $existingInvoice->reference_number
+            ?? $this->nextInvoiceNumber($job->company_id);
+
+        $this->setIfColumnExists($payload, 'number', $invoiceNumber);
+        $this->setIfColumnExists($payload, 'invoice_number', $invoiceNumber);
+        $this->setIfColumnExists($payload, 'reference_number', $invoiceNumber);
 
         $this->setIfColumnExists($payload, 'labour_amount', $labourAmount);
         $this->setIfColumnExists($payload, 'labor_amount', $labourAmount);
@@ -304,12 +311,25 @@ class JobController extends Controller
         $this->setIfColumnExists($payload, 'grand_total', $totalAmount);
         $this->setIfColumnExists($payload, 'amount', $totalAmount);
 
-        $this->setIfColumnExists($payload, 'status', 'issued');
-        $this->setIfColumnExists($payload, 'payment_status', 'unpaid');
+        /*
+        |--------------------------------------------------------------------------
+        | Invoice schema alignment
+        |--------------------------------------------------------------------------
+        | Current SQL source of truth:
+        | - invoices.status accepts pending, paid, overdue.
+        | - invoices.due_date is NOT NULL.
+        |
+        | Do not write legacy values like issued / unpaid into status.
+        */
+        $this->setIfColumnExists($payload, 'status', 'pending');
+        $this->setIfColumnExists($payload, 'payment_status', 'pending');
+        $this->setIfColumnExists($payload, 'source', 'manager_job_completion');
+        $this->setIfColumnExists($payload, 'currency', 'AED');
         $this->setIfColumnExists($payload, 'notes', $data['invoice_notes'] ?? null);
         $this->setIfColumnExists($payload, 'invoice_notes', $data['invoice_notes'] ?? null);
         $this->setIfColumnExists($payload, 'issued_at', now());
         $this->setIfColumnExists($payload, 'invoice_date', now()->toDateString());
+        $this->setIfColumnExists($payload, 'due_date', now()->addDays(7)->toDateString());
         $this->setIfColumnExists($payload, 'created_by', auth()->id());
         $this->setIfColumnExists($payload, 'updated_by', auth()->id());
 

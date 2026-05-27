@@ -93,7 +93,7 @@ class BookingFlow
 
         $data = $this->conversationData($lead);
 
-        $slot = $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->inferSlotFromTime($date, 'morning');
 
         $data['timeslot_attempts'] = 0;
         $data['pending_booking'] = [
@@ -205,7 +205,9 @@ class BookingFlow
         }
 
         $date = Carbon::parse($pending['date']);
-        $slot = $pending['slot'] ?? $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->normalizeBookingSlot(
+            $pending['slot'] ?? $this->bookingService->inferSlotFromTime($date, 'morning')
+        );
 
         /*
         |--------------------------------------------------------------------------
@@ -442,8 +444,6 @@ class BookingFlow
         );
     }
 
-
-
     /**
      * Active booking edge case → user is asked if they want to reschedule.
      */
@@ -571,7 +571,7 @@ class BookingFlow
             );
         }
 
-        $slot = $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->inferSlotFromTime($date, 'morning');
 
         if (! $this->isSlotAvailableForReschedule($lead, $date, $slot, (int) $booking->id)) {
             return $this->retryRescheduleTimeslot(
@@ -679,7 +679,9 @@ class BookingFlow
         }
 
         $date = Carbon::parse($pending['date']);
-        $slot = $pending['slot'] ?? $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->normalizeBookingSlot(
+            $pending['slot'] ?? $this->bookingService->inferSlotFromTime($date, 'morning')
+        );
 
         if ($date->isPast()) {
             unset($data['pending_reschedule']);
@@ -887,7 +889,9 @@ class BookingFlow
      */
     protected function isSlotAvailable(Lead $lead, Carbon $date, ?string $slot = null): bool
     {
-        $slot = $slot ?: $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->normalizeBookingSlot(
+            $slot ?: $this->bookingService->inferSlotFromTime($date, 'morning')
+        );
 
         return ! Booking::where('company_id', $lead->company_id)
             ->whereDate('booking_date', $date->toDateString())
@@ -1304,8 +1308,6 @@ class BookingFlow
             . "They will contact you shortly to confirm the slot.";
     }
 
-
-
     protected function retryRescheduleTimeslot(
         Lead $lead,
         string $reason,
@@ -1486,7 +1488,9 @@ class BookingFlow
 
     protected function isSlotAvailableForReschedule(Lead $lead, Carbon $date, ?string $slot, int $ignoreBookingId): bool
     {
-        $slot = $slot ?: $this->bookingService->inferSlotFromTime($date, 'Morning');
+        $slot = $this->bookingService->normalizeBookingSlot(
+            $slot ?: $this->bookingService->inferSlotFromTime($date, 'morning')
+        );
 
         return ! Booking::where('company_id', $lead->company_id)
             ->where('id', '!=', $ignoreBookingId)
@@ -1506,6 +1510,8 @@ class BookingFlow
 
     protected function appendBookingRescheduleNote(Booking $booking, Carbon $date, string $slot): void
     {
+        $slot = $this->bookingService->normalizeBookingSlot($slot);
+
         if (! Schema::hasColumn('bookings', 'notes')) {
             return;
         }
@@ -1523,8 +1529,6 @@ class BookingFlow
             ]);
         }
     }
-
-
 
     protected function confirmRescheduleBody(string $dateLabel): string
     {

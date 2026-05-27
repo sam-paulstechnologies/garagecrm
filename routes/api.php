@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\WhatsAppMessageApiController;
 use App\Http\Controllers\Api\WhatsAppSettingApiController;
 use App\Http\Controllers\Api\BookingSummaryController;
 use App\Http\Controllers\Api\BookingTransitionController;
+use App\Http\Controllers\Api\LeadSummaryController;
 use App\Http\Controllers\Api\MeController;
 
 /*
@@ -129,17 +130,30 @@ Route::prefix('v1')
     ->middleware(['auth:sanctum', 'throttle:60,1'])
     ->group(function () {
 
-        Route::get('/me', MeController::class)->name('api.me');
+        Route::get('/me', MeController::class)
+            ->name('api.me');
 
         Route::prefix('whatsapp/templates')
             ->as('api.whatsapp.templates.')
             ->group(function () {
                 Route::get('/', [WhatsAppTemplateApiController::class, 'index'])->name('index');
                 Route::post('/', [WhatsAppTemplateApiController::class, 'store'])->name('store');
-                Route::get('/{id}', [WhatsAppTemplateApiController::class, 'show'])->name('show');
-                Route::put('/{id}', [WhatsAppTemplateApiController::class, 'update'])->name('update');
-                Route::delete('/{id}', [WhatsAppTemplateApiController::class, 'destroy'])->name('destroy');
-                Route::post('/{id}/preview', [WhatsAppTemplateApiController::class, 'preview'])->name('preview');
+
+                Route::get('/{id}', [WhatsAppTemplateApiController::class, 'show'])
+                    ->whereNumber('id')
+                    ->name('show');
+
+                Route::put('/{id}', [WhatsAppTemplateApiController::class, 'update'])
+                    ->whereNumber('id')
+                    ->name('update');
+
+                Route::delete('/{id}', [WhatsAppTemplateApiController::class, 'destroy'])
+                    ->whereNumber('id')
+                    ->name('destroy');
+
+                Route::post('/{id}/preview', [WhatsAppTemplateApiController::class, 'preview'])
+                    ->whereNumber('id')
+                    ->name('preview');
             });
 
         Route::prefix('whatsapp/campaigns')
@@ -147,18 +161,36 @@ Route::prefix('v1')
             ->group(function () {
                 Route::get('/', [WhatsAppCampaignApiController::class, 'index'])->name('index');
                 Route::post('/', [WhatsAppCampaignApiController::class, 'store'])->name('store');
-                Route::get('/{id}', [WhatsAppCampaignApiController::class, 'show'])->name('show');
-                Route::put('/{id}', [WhatsAppCampaignApiController::class, 'update'])->name('update');
-                Route::delete('/{id}', [WhatsAppCampaignApiController::class, 'destroy'])->name('destroy');
-                Route::post('/{id}/send', [WhatsAppCampaignApiController::class, 'sendNow'])->name('send');
+
+                Route::get('/{id}', [WhatsAppCampaignApiController::class, 'show'])
+                    ->whereNumber('id')
+                    ->name('show');
+
+                Route::put('/{id}', [WhatsAppCampaignApiController::class, 'update'])
+                    ->whereNumber('id')
+                    ->name('update');
+
+                Route::delete('/{id}', [WhatsAppCampaignApiController::class, 'destroy'])
+                    ->whereNumber('id')
+                    ->name('destroy');
+
+                Route::post('/{id}/send', [WhatsAppCampaignApiController::class, 'sendNow'])
+                    ->whereNumber('id')
+                    ->name('send');
             });
 
         Route::prefix('whatsapp/messages')
             ->as('api.whatsapp.messages.')
             ->group(function () {
                 Route::get('/', [WhatsAppMessageApiController::class, 'index'])->name('index');
-                Route::get('/{id}', [WhatsAppMessageApiController::class, 'show'])->name('show');
-                Route::post('/{id}/retry', [WhatsAppMessageApiController::class, 'retry'])->name('retry');
+
+                Route::get('/{id}', [WhatsAppMessageApiController::class, 'show'])
+                    ->whereNumber('id')
+                    ->name('show');
+
+                Route::post('/{id}/retry', [WhatsAppMessageApiController::class, 'retry'])
+                    ->whereNumber('id')
+                    ->name('retry');
             });
 
         Route::prefix('whatsapp/settings')
@@ -168,10 +200,16 @@ Route::prefix('v1')
                 Route::post('/', [WhatsAppSettingApiController::class, 'update'])->name('update');
             });
 
+        Route::get('/leads/{id}/summary', [LeadSummaryController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.leads.summary');
+
         Route::get('/bookings/{id}/summary', [BookingSummaryController::class, 'show'])
+            ->whereNumber('id')
             ->name('api.bookings.summary');
 
         Route::post('/bookings/{id}/transition', [BookingTransitionController::class, 'store'])
+            ->whereNumber('id')
             ->name('api.bookings.transition');
     });
 

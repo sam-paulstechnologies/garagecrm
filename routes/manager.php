@@ -42,6 +42,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('inbox.list');
 
         Route::get('inbox/messages/{conversation}', [ManagerInboxController::class, 'jsonMessages'])
+            ->whereNumber('conversation')
             ->name('inbox.messages');
 
         Route::post('inbox/send', [ManagerInboxController::class, 'send'])
@@ -59,12 +60,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
         |--------------------------------------------------------------------------
         */
         Route::get('inbox/{lead}', [ManagerInboxController::class, 'show'])
+            ->whereNumber('lead')
             ->name('inbox.show');
 
         Route::post('inbox/{lead}/reply', [ManagerInboxController::class, 'reply'])
+            ->whereNumber('lead')
             ->name('inbox.reply');
 
         Route::patch('inbox/{lead}/resume', [ManagerInboxController::class, 'resumeBot'])
+            ->whereNumber('lead')
             ->name('inbox.resume');
 
         /*
@@ -76,12 +80,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('escalations');
 
         Route::get('conversation/{lead}', [ManagerInboxController::class, 'show'])
+            ->whereNumber('lead')
             ->name('conversation');
 
         Route::post('conversation/{lead}/reply', [ManagerInboxController::class, 'reply'])
+            ->whereNumber('lead')
             ->name('conversation.reply');
 
         Route::patch('conversation/{lead}/resume', [ManagerInboxController::class, 'resumeBot'])
+            ->whereNumber('lead')
             ->name('conversation.resume');
 
         /*
@@ -93,12 +100,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('leads.index');
 
         Route::patch('leads/{lead}/status', [ManagerLeadController::class, 'updateStatus'])
+            ->whereNumber('lead')
             ->name('leads.status');
 
         Route::patch('leads/{lead}/assign', [ManagerLeadController::class, 'assign'])
+            ->whereNumber('lead')
             ->name('leads.assign');
 
         Route::patch('leads/{lead}/follow-up', [ManagerLeadController::class, 'updateFollowUp'])
+            ->whereNumber('lead')
             ->name('leads.follow-up');
 
         /*
@@ -110,24 +120,31 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('opportunities.index');
 
         Route::get('opportunities/{opportunity}', [ManagerOpportunityController::class, 'show'])
+            ->whereNumber('opportunity')
             ->name('opportunities.show');
 
         Route::patch('opportunities/{opportunity}/stage', [ManagerOpportunityController::class, 'updateStage'])
+            ->whereNumber('opportunity')
             ->name('opportunities.stage');
 
         Route::patch('opportunities/{opportunity}/assign', [ManagerOpportunityController::class, 'assign'])
+            ->whereNumber('opportunity')
             ->name('opportunities.assign');
 
         Route::patch('opportunities/{opportunity}/follow-up', [ManagerOpportunityController::class, 'updateFollowUp'])
+            ->whereNumber('opportunity')
             ->name('opportunities.follow-up');
 
         Route::post('opportunities/{opportunity}/schedule-booking', [ManagerOpportunityController::class, 'scheduleBooking'])
+            ->whereNumber('opportunity')
             ->name('opportunities.schedule-booking');
 
         Route::patch('opportunities/{opportunity}/mark-won', [ManagerOpportunityController::class, 'markWon'])
+            ->whereNumber('opportunity')
             ->name('opportunities.mark-won');
 
         Route::patch('opportunities/{opportunity}/mark-lost', [ManagerOpportunityController::class, 'markLost'])
+            ->whereNumber('opportunity')
             ->name('opportunities.mark-lost');
 
         /*
@@ -139,18 +156,23 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('bookings.index');
 
         Route::get('bookings/{booking}', [ManagerBookingController::class, 'show'])
+            ->whereNumber('booking')
             ->name('bookings.show');
 
         Route::post('bookings/{booking}/confirm', [ManagerBookingController::class, 'confirm'])
+            ->whereNumber('booking')
             ->name('bookings.confirm');
 
         Route::patch('bookings/{booking}/reschedule', [ManagerBookingController::class, 'reschedule'])
+            ->whereNumber('booking')
             ->name('bookings.reschedule');
 
         Route::post('bookings/{booking}/reject', [ManagerBookingController::class, 'reject'])
+            ->whereNumber('booking')
             ->name('bookings.reject');
 
         Route::post('bookings/{booking}/convert-to-job', [ManagerBookingController::class, 'convertToJob'])
+            ->whereNumber('booking')
             ->name('bookings.convert-to-job');
 
         /*
@@ -165,18 +187,23 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('jobs.completed');
 
         Route::get('jobs/{job}', [ManagerJobController::class, 'show'])
+            ->whereNumber('job')
             ->name('jobs.show');
 
         Route::patch('jobs/{job}/status', [ManagerJobController::class, 'updateStatus'])
+            ->whereNumber('job')
             ->name('jobs.status');
 
         Route::patch('jobs/{job}/complete-with-invoice', [ManagerJobController::class, 'completeWithInvoice'])
+            ->whereNumber('job')
             ->name('jobs.complete-with-invoice');
 
         Route::patch('jobs/{job}/assign', [ManagerJobController::class, 'assign'])
+            ->whereNumber('job')
             ->name('jobs.assign');
 
         Route::patch('jobs/{job}/work-details', [ManagerJobController::class, 'updateWorkDetails'])
+            ->whereNumber('job')
             ->name('jobs.work-details');
 
         /*
@@ -188,12 +215,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             ->name('invoices.index');
 
         Route::get('invoices/{invoice}', [ManagerInvoiceController::class, 'show'])
+            ->whereNumber('invoice')
             ->name('invoices.show');
 
         Route::patch('invoices/{invoice}/mark-paid', [ManagerInvoiceController::class, 'markPaid'])
+            ->whereNumber('invoice')
             ->name('invoices.mark-paid');
 
         Route::patch('invoices/{invoice}/mark-unpaid', [ManagerInvoiceController::class, 'markUnpaid'])
+            ->whereNumber('invoice')
             ->name('invoices.mark-unpaid');
 
         /*

@@ -19,7 +19,7 @@ class BookingService
         protected BookingStateService $stateService
     ) {}
 
-    public function create(Lead $lead, Carbon $scheduledAt, string $slot = 'Morning'): Booking
+    public function create(Lead $lead, Carbon $scheduledAt, string $slot = 'morning'): Booking
     {
         return DB::transaction(function () use ($lead, $scheduledAt, $slot) {
 
@@ -443,19 +443,32 @@ class BookingService
             || preg_match('/\b([01]?\d|2[0-3]):([0-5]\d)\b/', $text);
     }
 
-    public function inferSlotFromTime(Carbon $dt, string $fallback = 'Morning'): string
+    public function inferSlotFromTime(Carbon $dt, string $fallback = 'morning'): string
     {
         $hour = (int) $dt->format('H');
 
         if ($hour >= 6 && $hour < 14) {
-            return 'Morning';
+            return 'morning';
         }
 
         if ($hour >= 14 && $hour <= 23) {
-            return 'Evening';
+            return 'evening';
         }
 
-        return $fallback ?: 'Morning';
+        return $this->normalizeBookingSlot($fallback);
+    }
+
+    public function normalizeBookingSlot(?string $slot): string
+    {
+        $normalized = strtolower(trim((string) $slot));
+
+        return match ($normalized) {
+            'morning' => 'morning',
+            'afternoon' => 'afternoon',
+            'evening' => 'evening',
+            'full_day', 'full day', 'fullday' => 'full_day',
+            default => 'morning',
+        };
     }
 
     protected function buildNotes(Lead $lead, Carbon $scheduledAt, ?string $serviceType): string

@@ -27,14 +27,35 @@ class GoogleLeadWebhookController extends Controller
             $payload = $request->all();
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Safe webhook logging
+        |--------------------------------------------------------------------------
+        | Do not log full payload because Google lead payload can contain PII:
+        | name, email, phone, vehicle details, etc.
+        |--------------------------------------------------------------------------
+        */
         Log::info('[GOOGLE_LEADS][WEBHOOK_HIT]', [
             'ip' => $request->ip(),
             'has_payload' => ! empty($payload),
             'lead_id' => $payload['lead_id'] ?? null,
             'form_id' => $payload['form_id'] ?? null,
             'campaign_id' => $payload['campaign_id'] ?? null,
+            'has_google_key' => ! empty($payload['google_key']),
+            'user_column_count' => is_array($payload['user_column_data'] ?? null)
+                ? count($payload['user_column_data'])
+                : 0,
+            'content_type' => $request->header('Content-Type'),
         ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Keep request metadata minimal
+        |--------------------------------------------------------------------------
+        | Pass useful technical metadata only. Avoid passing all headers or full
+        | request details into service logs.
+        |--------------------------------------------------------------------------
+        */
         $result = $this->googleLeadService->ingest($payload, [
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -45,6 +66,13 @@ class GoogleLeadWebhookController extends Controller
         ]);
 
         $httpStatus = (int) ($result['http_status'] ?? 200);
+
+        Log::info('[GOOGLE_LEADS][WEBHOOK_RESULT]', [
+            'success' => (bool) ($result['ok'] ?? false),
+            'status' => $result['status'] ?? 'unknown',
+            'lead_id' => $result['lead_id'] ?? null,
+            'http_status' => $httpStatus,
+        ]);
 
         return response()->json([
             'success' => (bool) ($result['ok'] ?? false),

@@ -53,23 +53,6 @@ class MetaWebhookController extends Controller
      */
     public function verify(Request $request)
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Important
-        |--------------------------------------------------------------------------
-        | Meta sends query params as:
-        | hub.mode
-        | hub.verify_token
-        | hub.challenge
-        |
-        | Depending on PHP/server handling, dotted params may also appear as:
-        | hub_mode
-        | hub_verify_token
-        | hub_challenge
-        |
-        | So we support both formats.
-        |--------------------------------------------------------------------------
-        */
         $mode = $request->query('hub.mode')
             ?? $request->query('hub_mode')
             ?? $request->input('hub.mode')
@@ -95,13 +78,20 @@ class MetaWebhookController extends Controller
             return response($challenge, 200);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Safe verification failure logging
+        |--------------------------------------------------------------------------
+        | Do not log query_all/input_all because verify_token is sensitive.
+        |--------------------------------------------------------------------------
+        */
         Log::warning('[META_LEADS][VERIFY_FAILED]', [
             'mode' => $mode,
             'has_token' => ! empty($token),
             'expected_token_configured' => $expectedToken !== '',
-            'query_all' => $request->query(),
-            'input_all' => $request->all(),
-            'expected_token_source' => 'services.meta_leads.verify_token / services.meta.verify_token / services.meta.whatsapp_verify_token / env',
+            'has_challenge' => ! empty($challenge),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
         ]);
 
         return response('Forbidden', 403);
@@ -116,26 +106,57 @@ class MetaWebhookController extends Controller
     {
         $secret = (string) $this->metaConfig('app_secret', '');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Signature hardening
+        |--------------------------------------------------------------------------
+        | In production, Meta app secret must be configured.
+        | In local/dev, allow unsigned payloads only for testing.
+        |--------------------------------------------------------------------------
+        */
+        if ($secret === '' && app()->environment('production')) {
+            Log::error('[META_LEADS][APP_SECRET_MISSING]', [
+                'environment' => app()->environment(),
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->noContent(Response::HTTP_UNAUTHORIZED);
+        }
+
         if ($secret !== '') {
             $signature = (string) $request->header('X-Hub-Signature-256', '');
 
             if (! $this->validSignature($signature, $request->getContent(), $secret)) {
                 Log::warning('[META_LEADS][INVALID_SIGNATURE]', [
                     'has_signature' => $signature !== '',
+                    'ip' => $request->ip(),
+                    'content_length' => strlen($request->getContent()),
                 ]);
 
                 return response()->noContent(Response::HTTP_UNAUTHORIZED);
             }
+        } else {
+            Log::warning('[META_LEADS][SIGNATURE_SKIPPED_NON_PRODUCTION]', [
+                'environment' => app()->environment(),
+                'ip' => $request->ip(),
+            ]);
         }
 
         $entries = (array) $request->json('entry', []);
+
+        Log::info('[META_LEADS][WEBHOOK_HIT]', [
+            'entry_count' => count($entries),
+            'ip' => $request->ip(),
+            'has_signature' => $request->header('X-Hub-Signature-256') !== null,
+        ]);
 
         foreach ($entries as $entry) {
             $pageId = $entry['id'] ?? null;
 
             if (! $pageId) {
                 Log::warning('[META_LEADS][MISSING_PAGE_ID]', [
-                    'entry' => $entry,
+                    'has_changes' => ! empty($entry['changes']),
+                    'change_count' => is_array($entry['changes'] ?? null) ? count($entry['changes']) : 0,
                 ]);
 
                 continue;
@@ -163,7 +184,8 @@ class MetaWebhookController extends Controller
                     Log::warning('[META_LEADS][MISSING_LEADGEN_ID]', [
                         'company_id' => $companyId,
                         'page_id' => $pageId,
-                        'change' => $change,
+                        'form_id' => $formId,
+                        'has_value' => ! empty($value),
                     ]);
 
                     continue;
@@ -278,6 +300,17 @@ class MetaWebhookController extends Controller
         $sourceName = $leadSource?->name ?? 'Meta Lead Ads';
         $leadSourceConfig = $this->leadSourceConfig($leadSource);
 
+        $safeExternalPayload = $this->safeExternalPayload(
+            row: $row,
+            pageId: $pageId,
+            metaPage: $metaPage,
+            leadSource: $leadSource,
+            formId: $formId,
+            leadgenId: $leadgenId,
+            leadSourceConfig: $leadSourceConfig,
+            rawChange: $rawChange
+        );
+
         $payload = [
             'client_id' => $client?->id,
             'name' => $name,
@@ -291,17 +324,7 @@ class MetaWebhookController extends Controller
             'external_source' => 'meta',
             'external_id' => $leadgenId,
             'external_form_id' => $formId,
-            'external_payload' => array_merge($row, [
-                '_webhook' => [
-                    'page_id' => $pageId,
-                    'page_name' => (string) $metaPage->page_name,
-                    'form_id' => $formId,
-                    'form_name' => data_get($leadSourceConfig, 'form_name'),
-                    'lead_source_id' => $leadSource?->id,
-                    'leadgen_id' => $leadgenId,
-                    'raw_change' => $rawChange,
-                ],
-            ]),
+            'external_payload' => $safeExternalPayload,
             'external_received_at' => now(),
             'lead_source_id' => $leadSource?->id,
             'campaign_name' => $row['campaign_name'] ?? null,
@@ -315,9 +338,6 @@ class MetaWebhookController extends Controller
         |--------------------------------------------------------------------------
         | 1. external_id first
         | 2. then phone/email inside same company
-        |
-        | This avoids creating duplicate CRM leads when Meta sends the same person
-        | again or when the same lead already exists from WhatsApp / Website.
         |--------------------------------------------------------------------------
         */
         $lead = $this->findLeadByExternalId($companyId, $leadgenId);
@@ -345,7 +365,7 @@ class MetaWebhookController extends Controller
                     phone: $phone,
                     phoneNorm: $phoneNorm,
                     matchedOn: $matchedExistingBy,
-                    payload: $row
+                    payload: $safeExternalPayload
                 );
             }
         }
@@ -610,6 +630,46 @@ class MetaWebhookController extends Controller
         }
 
         return is_array($config) ? $config : [];
+    }
+
+    private function safeExternalPayload(
+        array $row,
+        string $pageId,
+        MetaPage $metaPage,
+        ?LeadSource $leadSource,
+        ?string $formId,
+        string $leadgenId,
+        array $leadSourceConfig,
+        array $rawChange
+    ): array {
+        /*
+        |--------------------------------------------------------------------------
+        | Keep useful attribution, avoid storing raw webhook dump.
+        |--------------------------------------------------------------------------
+        | Direct lead PII is already stored in dedicated CRM columns.
+        | external_payload should be metadata-focused.
+        |--------------------------------------------------------------------------
+        */
+        return [
+            'leadgen_id' => $leadgenId,
+            'form_id' => $formId,
+            'form_name' => data_get($leadSourceConfig, 'form_name'),
+            'page_id' => $pageId,
+            'page_name' => (string) $metaPage->page_name,
+            'lead_source_id' => $leadSource?->id,
+            'campaign_id' => $row['campaign_id'] ?? null,
+            'campaign_name' => $row['campaign_name'] ?? null,
+            'ad_id' => $row['ad_id'] ?? null,
+            'ad_name' => $row['ad_name'] ?? null,
+            'adset_id' => $row['adset_id'] ?? null,
+            'adset_name' => $row['adset_name'] ?? null,
+            'created_time' => $row['created_time'] ?? null,
+            'platform' => 'meta',
+            'webhook' => [
+                'field' => $rawChange['field'] ?? null,
+                'has_value' => ! empty($rawChange['value']),
+            ],
+        ];
     }
 
     private function filterForModel(object $model, array $values): array

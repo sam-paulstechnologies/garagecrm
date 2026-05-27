@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client\Opportunity;
+use App\Models\Job\Booking as JobBooking;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,17 +17,18 @@ class OpportunityController extends Controller
     |--------------------------------------------------------------------------
     | IMPORTANT
     |--------------------------------------------------------------------------
-    | These values must match the Admin pipeline values.
-    | Do not store display labels like "Closed Won" in the database.
+    | These values must match the actual opportunity stage values.
+    | Do not store display labels like "Closed Won" or unsupported stages like
+    | "follow_up" if the database enum does not support them.
     |--------------------------------------------------------------------------
     */
     protected array $opportunityStages = [
         'new',
         'attempting_contact',
+        'collecting_details',
         'manager_confirmation_pending',
         'appointment',
         'offer',
-        'follow_up',
         'closed_won',
         'closed_lost',
     ];
@@ -34,10 +36,10 @@ class OpportunityController extends Controller
     protected array $stageLabels = [
         'new' => 'New',
         'attempting_contact' => 'Attempting Contact',
+        'collecting_details' => 'Collecting Details',
         'manager_confirmation_pending' => 'Manager Confirmation Pending',
         'appointment' => 'Appointment',
         'offer' => 'Offer',
-        'follow_up' => 'Follow Up',
         'closed_won' => 'Closed Won',
         'closed_lost' => 'Closed Lost',
     ];
@@ -56,7 +58,7 @@ class OpportunityController extends Controller
         $companyId = $this->companyId();
 
         $q = trim((string) $request->get('q', ''));
-        $stage = trim((string) $request->get('stage', ''));
+        $stage = $this->normalizeOpportunityStage($request->get('stage'));
         $status = trim((string) $request->get('status', ''));
 
         $opportunities = Opportunity::query()
@@ -70,6 +72,7 @@ class OpportunityController extends Controller
                         'title',
                         'name',
                         'customer_name',
+                        'client_name',
                         'phone',
                         'mobile',
                         'phone_number',
@@ -124,6 +127,19 @@ class OpportunityController extends Controller
     {
         $this->authorizeOpportunity($opportunity);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Safe fallback
+        |--------------------------------------------------------------------------
+        | If the show blade is missing in this build, do not crash.
+        |--------------------------------------------------------------------------
+        */
+        if (! view()->exists('manager.opportunities.show')) {
+            return redirect()
+                ->route('manager.opportunities.index')
+                ->with('success', 'Opportunity details page is not available yet. You can manage the opportunity from the opportunities list.');
+        }
+
         $managers = $this->assignableUsers($this->companyId());
         $opportunityStages = $this->opportunityStages;
         $stageLabels = $this->stageLabels;
@@ -141,13 +157,19 @@ class OpportunityController extends Controller
         $this->authorizeOpportunity($opportunity);
 
         $validated = $request->validate([
-            'stage' => ['required', 'string', Rule::in($this->opportunityStages)],
+            'stage' => ['required', 'string'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        DB::transaction(function () use ($opportunity, $validated) {
-            $stage = $validated['stage'];
+        $stage = $this->normalizeOpportunityStage($validated['stage']);
 
+        if (! in_array($stage, $this->opportunityStages, true)) {
+            return back()->withErrors([
+                'stage' => 'Invalid opportunity stage selected.',
+            ]);
+        }
+
+        DB::transaction(function () use ($opportunity, $validated, $stage) {
             if (Schema::hasColumn('opportunities', 'stage')) {
                 $opportunity->stage = $stage;
             }
@@ -229,6 +251,15 @@ class OpportunityController extends Controller
                 $opportunity->follow_up_required = (bool) ($validated['follow_up_required'] ?? false);
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Follow-up handling
+            |--------------------------------------------------------------------------
+            | Do not set stage to "follow_up". Some schema versions do not support it.
+            | Keep the current valid stage and only save follow-up fields/notes.
+            |--------------------------------------------------------------------------
+            */
+
             if (! empty($validated['notes'])) {
                 $this->appendNotes($opportunity, $validated['notes']);
             }
@@ -246,10 +277,12 @@ class OpportunityController extends Controller
         $validated = $request->validate([
             'booking_date' => ['required', 'date'],
             'booking_time' => ['nullable', 'date_format:H:i'],
-            'slot' => ['nullable', 'string', 'max:100'],
+            'slot' => ['nullable', 'string', Rule::in(['morning', 'afternoon', 'evening', 'full_day'])],
             'service_type' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        $validated['slot'] = $this->normalizeBookingSlot($validated['slot'] ?? null);
 
         $bookingId = null;
 
@@ -314,6 +347,10 @@ class OpportunityController extends Controller
                 $booking->email = $opportunity->email ?? null;
             }
 
+            if (Schema::hasColumn('bookings', 'vehicle_id') && ! empty($opportunity->vehicle_id)) {
+                $booking->vehicle_id = $opportunity->vehicle_id;
+            }
+
             if (Schema::hasColumn('bookings', 'vehicle_make')) {
                 $booking->vehicle_make = $opportunity->vehicle_make ?? $opportunity->make ?? null;
             }
@@ -355,11 +392,11 @@ class OpportunityController extends Controller
             }
 
             if (Schema::hasColumn('bookings', 'slot')) {
-                $booking->slot = $validated['slot'] ?? null;
+                $booking->slot = $validated['slot'];
             }
 
             if (Schema::hasColumn('bookings', 'time_slot')) {
-                $booking->time_slot = $validated['slot'] ?? null;
+                $booking->time_slot = $validated['slot'];
             }
 
             if (Schema::hasColumn('bookings', 'service_type')) {
@@ -372,8 +409,28 @@ class OpportunityController extends Controller
                 $booking->service_category = $opportunity->service_category ?? null;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Manager scheduled booking
+            |--------------------------------------------------------------------------
+            | This path is manager-confirmed, so booking should become scheduled.
+            | This matches the current bookings.status enum.
+            |--------------------------------------------------------------------------
+            */
             if (Schema::hasColumn('bookings', 'status')) {
                 $booking->status = 'scheduled';
+            }
+
+            if (Schema::hasColumn('bookings', 'confirmed_at')) {
+                $booking->confirmed_at = now();
+            }
+
+            if (Schema::hasColumn('bookings', 'state_changed_at')) {
+                $booking->state_changed_at = now();
+            }
+
+            if (Schema::hasColumn('bookings', 'state_changed_by')) {
+                $booking->state_changed_by = auth()->id();
             }
 
             if (Schema::hasColumn('bookings', 'notes')) {
@@ -492,6 +549,21 @@ class OpportunityController extends Controller
     {
         $this->authorizeOpportunity($opportunity);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Guardrail
+        |--------------------------------------------------------------------------
+        | Manager should not close an opportunity as won without a booking path.
+        | The proper manager journey is:
+        | Opportunity → Schedule Booking → Booking → Job → Invoice.
+        |--------------------------------------------------------------------------
+        */
+        if (! $this->opportunityHasBooking($opportunity)) {
+            return back()->withErrors([
+                'opportunity' => 'Please schedule a booking before marking this opportunity as won.',
+            ]);
+        }
+
         $validated = $request->validate([
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
@@ -531,7 +603,9 @@ class OpportunityController extends Controller
         return match ($stage) {
             'closed_won' => 'won',
             'closed_lost' => 'lost',
-            'appointment', 'offer', 'follow_up', 'manager_confirmation_pending' => 'open',
+            'manager_confirmation_pending',
+            'appointment',
+            'offer' => 'open',
             default => 'active',
         };
     }
@@ -594,14 +668,62 @@ class OpportunityController extends Controller
 
     protected function bookingModelClass(): string
     {
-        if (class_exists(\App\Models\Booking\Booking::class)) {
-            return \App\Models\Booking\Booking::class;
+        return JobBooking::class;
+    }
+
+    protected function normalizeBookingSlot(?string $slot): string
+    {
+        $slot = strtolower(trim((string) $slot));
+
+        return match ($slot) {
+            'morning' => 'morning',
+            'afternoon' => 'afternoon',
+            'evening' => 'evening',
+            'full_day', 'full day', 'fullday' => 'full_day',
+            default => 'morning',
+        };
+    }
+
+    protected function normalizeOpportunityStage(?string $stage): string
+    {
+        $stage = strtolower(trim((string) $stage));
+        $stage = str_replace(['-', ' '], '_', $stage);
+
+        return match ($stage) {
+            'new' => 'new',
+            'attempting_contact', 'attempting', 'contacting', 'contacted' => 'attempting_contact',
+            'collecting_details', 'collecting', 'details', 'details_collection' => 'collecting_details',
+            'manager_confirmation_pending', 'manager_confirmation', 'confirmation_pending' => 'manager_confirmation_pending',
+            'appointment', 'scheduled', 'booking_scheduled' => 'appointment',
+            'offer', 'quotation', 'quote', 'follow_up' => 'offer',
+            'closed_won', 'won' => 'closed_won',
+            'closed_lost', 'lost' => 'closed_lost',
+            default => $stage,
+        };
+    }
+
+    protected function opportunityHasBooking(Opportunity $opportunity): bool
+    {
+        if (Schema::hasColumn('opportunities', 'booking_id') && ! empty($opportunity->booking_id)) {
+            return true;
         }
 
-        if (class_exists(\App\Models\Booking::class)) {
-            return \App\Models\Booking::class;
+        if (! Schema::hasTable('bookings')) {
+            return false;
         }
 
-        abort(500, 'Booking model not found.');
+        return JobBooking::query()
+            ->where('company_id', $opportunity->company_id)
+            ->when(Schema::hasColumn('bookings', 'opportunity_id'), function ($query) use ($opportunity) {
+                $query->where('opportunity_id', $opportunity->id);
+            })
+            ->when(Schema::hasColumn('bookings', 'status'), function ($query) {
+                $query->whereIn('status', [
+                    'pending',
+                    'scheduled',
+                    'converted_to_job',
+                ]);
+            })
+            ->exists();
     }
 }

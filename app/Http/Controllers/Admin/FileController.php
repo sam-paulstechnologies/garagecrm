@@ -3,74 +3,126 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Shared\File;
 use App\Models\Client\Client;
+use App\Models\Shared\File;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class FileController extends Controller
 {
-    /* ================= Helpers ================= */
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
 
     protected function companyId(): int
     {
-        return auth()->user()->company_id;
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(! $companyId, 403);
+
+        return $companyId;
     }
 
     protected function authorizeCompany(File $file): void
     {
-        abort_if($file->company_id !== $this->companyId(), 403);
+        abort_unless((int) $file->company_id === $this->companyId(), 404);
     }
 
-    /* ================= Index ================= */
+    /*
+    |--------------------------------------------------------------------------
+    | Index
+    |--------------------------------------------------------------------------
+    */
 
     public function index()
     {
-        $files = File::with(['client', 'uploader'])
-            ->forCompany($this->companyId())
+        $companyId = $this->companyId();
+
+        $files = File::query()
+            ->with([
+                'client' => fn ($query) => $query->where('company_id', $companyId),
+                'uploader',
+            ])
+            ->forCompany($companyId)
             ->orderByDesc('uploaded_at')
             ->paginate(20);
 
         return view('admin.files.index', compact('files'));
     }
 
-    /* ================= Create ================= */
+    /*
+    |--------------------------------------------------------------------------
+    | Create
+    |--------------------------------------------------------------------------
+    */
 
     public function create()
     {
-        $clients = Client::where('company_id', $this->companyId())
+        $companyId = $this->companyId();
+
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
 
         return view('admin.files.create', compact('clients'));
     }
 
-    /* ================= Store ================= */
+    /*
+    |--------------------------------------------------------------------------
+    | Store
+    |--------------------------------------------------------------------------
+    */
 
     public function store(Request $request)
     {
+        $companyId = $this->companyId();
+
         $data = $request->validate([
-            'client_id'  => ['required', 'exists:clients,id'],
-            'file_type'  => ['required', 'string', 'max:50'],
-            'category'   => ['nullable', 'string', 'max:50'],
-            'notes'      => ['nullable', 'string'],
-            'file_name'  => ['nullable', 'string', 'max:255'],
-            'file'       => ['required', 'file', 'max:20480'], // 20MB
+            'client_id' => [
+                'required',
+                Rule::exists('clients', 'id')->where('company_id', $companyId),
+            ],
+            'file_type' => [
+                'required',
+                Rule::in(['Contract', 'Album', 'Sample', 'Invoice']),
+            ],
+            'category' => [
+                'nullable',
+                Rule::in(['before_service', 'after_service', 'contract', 'invoice', 'quote', 'other']),
+            ],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'file_name' => ['nullable', 'string', 'max:255'],
+            'file' => [
+                'required',
+                'file',
+                'mimes:pdf,jpg,jpeg,png',
+                'max:20480',
+            ],
         ]);
 
-        $path = $request->file('file')->store('uploads/files', 'public');
+        $client = Client::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($data['client_id']);
+
+        $uploadedFile = $request->file('file');
+
+        $path = $uploadedFile->store(
+            "companies/{$companyId}/uploads/files",
+            'public'
+        );
 
         File::create([
-            'company_id'  => $this->companyId(),
-            'client_id'   => $data['client_id'],
-            'file_type'   => $data['file_type'],
-            'category'    => $data['category'] ?? null,
-            'notes'       => $data['notes'] ?? null,
-
-            'file_name'   => $data['file_name']
-                ?? $request->file('file')->getClientOriginalName(),
-
-            'file_path'   => $path,
+            'company_id' => $companyId,
+            'client_id' => $client->id,
+            'file_type' => $data['file_type'],
+            'category' => $data['category'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'file_name' => $data['file_name'] ?? $uploadedFile->getClientOriginalName(),
+            'file_path' => $path,
             'uploaded_by' => auth()->id(),
             'uploaded_at' => now(),
         ]);
@@ -80,13 +132,17 @@ class FileController extends Controller
             ->with('success', 'File uploaded successfully.');
     }
 
-    /* ================= Destroy ================= */
+    /*
+    |--------------------------------------------------------------------------
+    | Destroy
+    |--------------------------------------------------------------------------
+    */
 
     public function destroy(File $file)
     {
         $this->authorizeCompany($file);
 
-        // Safety: prevent deleting files tied to jobs/invoices
+        // Safety: prevent deleting files tied to jobs/invoices.
         if ($file->job_id || $file->invoice_id) {
             return back()->with(
                 'warning',

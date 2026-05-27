@@ -8,6 +8,7 @@ use App\Models\CompanySetting;
 use App\Models\Job\Booking;
 use App\Services\WhatsApp\ManagerBookingNotifier;
 use App\Services\WhatsApp\SendWhatsAppMessage;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -29,11 +30,11 @@ class SendManagerBookingNotification
     protected function handleOpportunityStatusUpdated(OpportunityStatusUpdated $event): void
     {
         $status = strtolower(trim((string) $event->status));
+        $status = str_replace(['-', ' '], '_', $status);
 
         if (! in_array($status, [
             'manager_confirmation_pending',
             'ready_for_booking',
-            'ready for booking',
         ], true)) {
             Log::info('[ManagerBookingNotification] skipped opportunity status', [
                 'opportunity_id' => $event->opportunity->id ?? null,
@@ -54,7 +55,9 @@ class SendManagerBookingNotification
 
     protected function handleBookingStatusUpdated(BookingStatusUpdated $event): void
     {
-        if ($event->status !== Booking::STATUS_SCHEDULED) {
+        $status = strtolower(trim((string) $event->status));
+
+        if ($status !== Booking::STATUS_SCHEDULED && $status !== 'scheduled') {
             return;
         }
 
@@ -73,8 +76,9 @@ class SendManagerBookingNotification
         |--------------------------------------------------------------------------
         | Duplicate protection
         |--------------------------------------------------------------------------
-        | Current flow may dispatch BookingStatusUpdated more than once.
-        | This prevents duplicate booking confirmation WhatsApp messages.
+        | Booking confirmation should be sent from this listener only.
+        | This lock prevents duplicate customer WhatsApp confirmations if the same
+        | BookingStatusUpdated event is fired multiple times.
         |--------------------------------------------------------------------------
         */
 
@@ -109,10 +113,10 @@ class SendManagerBookingNotification
 
         /*
         |--------------------------------------------------------------------------
-        | Template variables required by booking_confirmed_by_manager_v1
+        | Template variables required by booking.confirmed
         |--------------------------------------------------------------------------
-        | DB variables:
-        | ["name", "vehicle", "date_time", "garage", "location"]
+        | Expected variables:
+        | name, vehicle, date_time, garage, location
         |--------------------------------------------------------------------------
         */
 
@@ -122,9 +126,10 @@ class SendManagerBookingNotification
             ?: $booking->opportunity?->vehicle_label
             ?: 'your vehicle';
 
-        $date = optional($booking->booking_date)->format('d M Y') ?: 'confirmed date';
+        $date = $this->formatDate($booking->booking_date ?? null, 'confirmed date');
 
-        $slot = $booking->slot_label ?: 'confirmed slot';
+        $slot = $booking->slot_label
+            ?? $this->formatSlot($booking->slot ?? null);
 
         $dateTime = trim($date . ', ' . $slot);
 
@@ -189,13 +194,13 @@ class SendManagerBookingNotification
                     'event_key' => 'booking.confirmed',
                     'send_mode' => 'meta_template',
                     'action' => 'booking_confirmed',
+                    'dedupe_key' => $lockKey,
                 ]
             );
 
             Log::info('[BookingScheduledConfirmation] booking.confirmed fired', [
                 'booking_id' => $booking->id,
                 'company_id' => $booking->company_id,
-                'phone' => $phone,
                 'template_vars' => [
                     'name' => $name,
                     'vehicle' => $vehicle,
@@ -229,5 +234,35 @@ class SendManagerBookingNotification
         } catch (\Throwable $e) {
             return $fallback;
         }
+    }
+
+    protected function formatDate(mixed $date, string $fallback): string
+    {
+        if (! $date) {
+            return $fallback;
+        }
+
+        try {
+            if ($date instanceof Carbon) {
+                return $date->format('d M Y');
+            }
+
+            return Carbon::parse($date)->format('d M Y');
+        } catch (\Throwable) {
+            return $fallback;
+        }
+    }
+
+    protected function formatSlot(?string $slot): string
+    {
+        $slot = strtolower(trim((string) $slot));
+
+        return match ($slot) {
+            'morning' => 'Morning',
+            'afternoon' => 'Afternoon',
+            'evening' => 'Evening',
+            'full_day' => 'Full Day',
+            default => 'confirmed slot',
+        };
     }
 }

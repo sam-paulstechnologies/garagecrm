@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -18,9 +19,20 @@ class InvoiceController extends Controller
         return $companyId;
     }
 
+    protected function requireTenantColumn(string $table): void
+    {
+        abort_unless(Schema::hasTable($table), 404, ucfirst($table) . ' table not found.');
+
+        abort_unless(
+            Schema::hasColumn($table, 'company_id'),
+            500,
+            "Security configuration error: {$table}.company_id is required."
+        );
+    }
+
     public function index(Request $request)
     {
-        abort_unless(Schema::hasTable('invoices'), 404, 'Invoices table not found.');
+        $this->requireTenantColumn('invoices');
 
         $companyId = $this->companyId();
 
@@ -28,11 +40,8 @@ class InvoiceController extends Controller
         $status = trim((string) $request->get('status', ''));
         $paymentStatus = trim((string) $request->get('payment_status', ''));
 
-        $query = DB::table('invoices');
-
-        if (Schema::hasColumn('invoices', 'company_id')) {
-            $query->where('company_id', $companyId);
-        }
+        $query = DB::table('invoices')
+            ->where('company_id', $companyId);
 
         if ($status !== '' && Schema::hasColumn('invoices', 'status')) {
             $query->where('status', $status);
@@ -57,16 +66,18 @@ class InvoiceController extends Controller
                     }
                 }
 
-                if (Schema::hasColumn('invoices', 'job_id') && is_numeric($q)) {
-                    $sub->orWhere('job_id', (int) $q);
-                }
+                if (is_numeric($q)) {
+                    if (Schema::hasColumn('invoices', 'job_id')) {
+                        $sub->orWhere('job_id', (int) $q);
+                    }
 
-                if (Schema::hasColumn('invoices', 'booking_id') && is_numeric($q)) {
-                    $sub->orWhere('booking_id', (int) $q);
-                }
+                    if (Schema::hasColumn('invoices', 'booking_id')) {
+                        $sub->orWhere('booking_id', (int) $q);
+                    }
 
-                if (Schema::hasColumn('invoices', 'client_id') && is_numeric($q)) {
-                    $sub->orWhere('client_id', (int) $q);
+                    if (Schema::hasColumn('invoices', 'client_id')) {
+                        $sub->orWhere('client_id', (int) $q);
+                    }
                 }
             });
         }
@@ -81,15 +92,15 @@ class InvoiceController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $invoiceIds = collect($invoices->items())->pluck('id')->filter()->values();
+        $invoiceItems = collect($invoices->items());
 
-        $jobIds = collect($invoices->items())->pluck('job_id')->filter()->unique()->values();
-        $bookingIds = collect($invoices->items())->pluck('booking_id')->filter()->unique()->values();
-        $clientIds = collect($invoices->items())->pluck('client_id')->filter()->unique()->values();
+        $jobIds = $invoiceItems->pluck('job_id')->filter()->unique()->values();
+        $bookingIds = $invoiceItems->pluck('booking_id')->filter()->unique()->values();
+        $clientIds = $invoiceItems->pluck('client_id')->filter()->unique()->values();
 
-        $jobs = $this->getJobs($jobIds);
-        $bookings = $this->getBookings($bookingIds);
-        $clients = $this->getClients($clientIds);
+        $jobs = $this->getJobs($jobIds, $companyId);
+        $bookings = $this->getBookings($bookingIds, $companyId);
+        $clients = $this->getClients($clientIds, $companyId);
 
         $counts = $this->invoiceCounts($companyId);
 
@@ -107,17 +118,14 @@ class InvoiceController extends Controller
 
     public function show(int $invoice)
     {
-        abort_unless(Schema::hasTable('invoices'), 404, 'Invoices table not found.');
+        $this->requireTenantColumn('invoices');
 
         $companyId = $this->companyId();
 
-        $query = DB::table('invoices')->where('id', $invoice);
-
-        if (Schema::hasColumn('invoices', 'company_id')) {
-            $query->where('company_id', $companyId);
-        }
-
-        $invoiceRow = $query->first();
+        $invoiceRow = DB::table('invoices')
+            ->where('id', $invoice)
+            ->where('company_id', $companyId)
+            ->first();
 
         abort_if(! $invoiceRow, 404);
 
@@ -155,17 +163,14 @@ class InvoiceController extends Controller
 
     public function markPaid(int $invoice)
     {
-        abort_unless(Schema::hasTable('invoices'), 404, 'Invoices table not found.');
+        $this->requireTenantColumn('invoices');
 
         $companyId = $this->companyId();
 
-        $query = DB::table('invoices')->where('id', $invoice);
-
-        if (Schema::hasColumn('invoices', 'company_id')) {
-            $query->where('company_id', $companyId);
-        }
-
-        $invoiceRow = $query->first();
+        $invoiceRow = DB::table('invoices')
+            ->where('id', $invoice)
+            ->where('company_id', $companyId)
+            ->first();
 
         abort_if(! $invoiceRow, 404);
 
@@ -194,6 +199,7 @@ class InvoiceController extends Controller
         if (! empty($payload)) {
             DB::table('invoices')
                 ->where('id', $invoiceRow->id)
+                ->where('company_id', $companyId)
                 ->update($payload);
         }
 
@@ -202,17 +208,14 @@ class InvoiceController extends Controller
 
     public function markUnpaid(int $invoice)
     {
-        abort_unless(Schema::hasTable('invoices'), 404, 'Invoices table not found.');
+        $this->requireTenantColumn('invoices');
 
         $companyId = $this->companyId();
 
-        $query = DB::table('invoices')->where('id', $invoice);
-
-        if (Schema::hasColumn('invoices', 'company_id')) {
-            $query->where('company_id', $companyId);
-        }
-
-        $invoiceRow = $query->first();
+        $invoiceRow = DB::table('invoices')
+            ->where('id', $invoice)
+            ->where('company_id', $companyId)
+            ->first();
 
         abort_if(! $invoiceRow, 404);
 
@@ -241,6 +244,7 @@ class InvoiceController extends Controller
         if (! empty($payload)) {
             DB::table('invoices')
                 ->where('id', $invoiceRow->id)
+                ->where('company_id', $companyId)
                 ->update($payload);
         }
 
@@ -249,11 +253,10 @@ class InvoiceController extends Controller
 
     protected function invoiceCounts(int $companyId): array
     {
-        $base = DB::table('invoices');
+        $this->requireTenantColumn('invoices');
 
-        if (Schema::hasColumn('invoices', 'company_id')) {
-            $base->where('company_id', $companyId);
-        }
+        $base = DB::table('invoices')
+            ->where('company_id', $companyId);
 
         $total = (clone $base)->count();
 
@@ -263,7 +266,9 @@ class InvoiceController extends Controller
         $totalAmount = 0;
 
         if (Schema::hasColumn('invoices', 'status')) {
-            $issued = (clone $base)->whereIn('status', ['issued', 'open', 'unpaid'])->count();
+            $issued = (clone $base)
+                ->whereIn('status', ['issued', 'open', 'unpaid'])
+                ->count();
         }
 
         if (Schema::hasColumn('invoices', 'payment_status')) {
@@ -271,7 +276,9 @@ class InvoiceController extends Controller
             $unpaid = (clone $base)->where('payment_status', 'unpaid')->count();
         } elseif (Schema::hasColumn('invoices', 'status')) {
             $paid = (clone $base)->where('status', 'paid')->count();
-            $unpaid = (clone $base)->whereIn('status', ['issued', 'open', 'unpaid'])->count();
+            $unpaid = (clone $base)
+                ->whereIn('status', ['issued', 'open', 'unpaid'])
+                ->count();
         }
 
         foreach (['total_amount', 'grand_total', 'amount'] as $amountColumn) {
@@ -290,37 +297,52 @@ class InvoiceController extends Controller
         ];
     }
 
-    protected function getJobs($ids)
+    protected function getJobs(Collection $ids, int $companyId): Collection
     {
         if (! Schema::hasTable('jobs') || $ids->isEmpty()) {
             return collect();
         }
 
+        if (! Schema::hasColumn('jobs', 'company_id')) {
+            return collect();
+        }
+
         return DB::table('jobs')
+            ->where('company_id', $companyId)
             ->whereIn('id', $ids)
             ->get()
             ->keyBy('id');
     }
 
-    protected function getBookings($ids)
+    protected function getBookings(Collection $ids, int $companyId): Collection
     {
         if (! Schema::hasTable('bookings') || $ids->isEmpty()) {
             return collect();
         }
 
+        if (! Schema::hasColumn('bookings', 'company_id')) {
+            return collect();
+        }
+
         return DB::table('bookings')
+            ->where('company_id', $companyId)
             ->whereIn('id', $ids)
             ->get()
             ->keyBy('id');
     }
 
-    protected function getClients($ids)
+    protected function getClients(Collection $ids, int $companyId): Collection
     {
         if (! Schema::hasTable('clients') || $ids->isEmpty()) {
             return collect();
         }
 
+        if (! Schema::hasColumn('clients', 'company_id')) {
+            return collect();
+        }
+
         return DB::table('clients')
+            ->where('company_id', $companyId)
             ->whereIn('id', $ids)
             ->get()
             ->keyBy('id');
@@ -332,13 +354,14 @@ class InvoiceController extends Controller
             return null;
         }
 
-        $query = DB::table('jobs')->where('id', $id);
-
-        if (Schema::hasColumn('jobs', 'company_id')) {
-            $query->where('company_id', $companyId);
+        if (! Schema::hasColumn('jobs', 'company_id')) {
+            return null;
         }
 
-        return $query->first();
+        return DB::table('jobs')
+            ->where('id', $id)
+            ->where('company_id', $companyId)
+            ->first();
     }
 
     protected function getBooking(int $id, int $companyId)
@@ -347,13 +370,14 @@ class InvoiceController extends Controller
             return null;
         }
 
-        $query = DB::table('bookings')->where('id', $id);
-
-        if (Schema::hasColumn('bookings', 'company_id')) {
-            $query->where('company_id', $companyId);
+        if (! Schema::hasColumn('bookings', 'company_id')) {
+            return null;
         }
 
-        return $query->first();
+        return DB::table('bookings')
+            ->where('id', $id)
+            ->where('company_id', $companyId)
+            ->first();
     }
 
     protected function getClient(int $id, int $companyId)
@@ -362,12 +386,13 @@ class InvoiceController extends Controller
             return null;
         }
 
-        $query = DB::table('clients')->where('id', $id);
-
-        if (Schema::hasColumn('clients', 'company_id')) {
-            $query->where('company_id', $companyId);
+        if (! Schema::hasColumn('clients', 'company_id')) {
+            return null;
         }
 
-        return $query->first();
+        return DB::table('clients')
+            ->where('id', $id)
+            ->where('company_id', $companyId)
+            ->first();
     }
 }

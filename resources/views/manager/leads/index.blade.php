@@ -6,15 +6,41 @@
 @php
     use Illuminate\Support\Facades\Route;
 
-    $leadStatuses = [
-        'New',
-        'Attempting Contact',
-        'Contacted',
-        'Qualified',
-        'Disqualified',
-        'On Hold',
-        'Assigned',
+    $leadStatuses = $leadStatuses ?? [
+        'new',
+        'attempting_contact',
+        'qualified',
+        'converted',
+        'lost',
     ];
+
+    $statusLabels = $statusLabels ?? [
+        'new' => 'New',
+        'attempting_contact' => 'Attempting Contact',
+        'qualified' => 'Qualified',
+        'converted' => 'Converted',
+        'lost' => 'Lost',
+    ];
+
+    $normalizeStatus = function ($status) {
+        $status = strtolower(trim((string) $status));
+        $status = str_replace(['-', ' '], '_', $status);
+
+        return match ($status) {
+            'new' => 'new',
+            'attempting_contact', 'attempting', 'contacting', 'contacted', 'assigned', 'on_hold', 'contact_on_hold' => 'attempting_contact',
+            'qualified' => 'qualified',
+            'converted', 'converted_to_opportunity' => 'converted',
+            'lost', 'disqualified', 'closed_lost', 'closed' => 'lost',
+            default => $status,
+        };
+    };
+
+    $statusLabel = function ($status) use ($statusLabels, $normalizeStatus) {
+        $normalized = $normalizeStatus($status);
+
+        return $statusLabels[$normalized] ?? ucwords(str_replace('_', ' ', $normalized ?: 'new'));
+    };
 
     $leadName = function ($lead) {
         return $lead->name
@@ -48,16 +74,15 @@
             ?? null;
     };
 
-    $statusClass = function ($status) {
-        $status = strtolower(str_replace(' ', '_', (string) $status));
+    $statusClass = function ($status) use ($normalizeStatus) {
+        $status = $normalizeStatus($status);
 
         return match ($status) {
             'new' => 'badge-soft-primary',
             'attempting_contact' => 'badge-soft-warning',
-            'contacted' => 'badge-soft-info',
-            'qualified', 'assigned' => 'badge-soft-success',
-            'disqualified' => 'badge-soft-danger',
-            'on_hold' => 'badge-soft-orange',
+            'qualified' => 'badge-soft-success',
+            'converted' => 'badge-soft-info',
+            'lost' => 'badge-soft-danger',
             default => 'badge-soft-muted',
         };
     };
@@ -89,7 +114,6 @@
         @endif
     </div>
 
-
     {{-- Alerts --}}
     @if(session('success'))
         <div class="alert alert-success mb-4">
@@ -107,7 +131,6 @@
             </ul>
         </div>
     @endif
-
 
     {{-- Filters --}}
     <div class="sf-panel mb-4">
@@ -141,8 +164,9 @@
                         <select name="status" class="form-select">
                             <option value="">All Statuses</option>
                             @foreach($leadStatuses as $item)
-                                <option value="{{ $item }}" @selected(($status ?? request('status')) === $item)>
-                                    {{ $item }}
+                                @php($itemValue = $normalizeStatus($item))
+                                <option value="{{ $itemValue }}" @selected($normalizeStatus($status ?? request('status')) === $itemValue)>
+                                    {{ $statusLabels[$itemValue] ?? $statusLabel($itemValue) }}
                                 </option>
                             @endforeach
                         </select>
@@ -171,7 +195,6 @@
             </form>
         </div>
     </div>
-
 
     {{-- Leads Table --}}
     <div class="sf-panel overflow-hidden">
@@ -256,15 +279,16 @@
                                                 onchange="this.form.submit()"
                                             >
                                                 @foreach($leadStatuses as $item)
-                                                    <option value="{{ $item }}" @selected(($lead->status ?? '') === $item)>
-                                                        {{ $item }}
+                                                    @php($itemValue = $normalizeStatus($item))
+                                                    <option value="{{ $itemValue }}" @selected($normalizeStatus($lead->status ?? '') === $itemValue)>
+                                                        {{ $statusLabels[$itemValue] ?? $statusLabel($itemValue) }}
                                                     </option>
                                                 @endforeach
                                             </select>
                                         </form>
                                     @else
-                                        <span class="manager-badge {{ $statusClass($lead->status ?? 'New') }}">
-                                            {{ $lead->status ?? 'New' }}
+                                        <span class="manager-badge {{ $statusClass($lead->status ?? 'new') }}">
+                                            {{ $statusLabel($lead->status ?? 'new') }}
                                         </span>
                                     @endif
                                 </td>
@@ -375,12 +399,6 @@
 
 @push('styles')
 <style>
-    /*
-    |--------------------------------------------------------------------------
-    | Strong Manager Leads UI
-    |--------------------------------------------------------------------------
-    */
-
     .manager-leads-page {
         width: 100%;
     }
@@ -405,12 +423,6 @@
         font-weight: 950;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Page Header Fix
-    |--------------------------------------------------------------------------
-    */
-
     .sf-page-title {
         color: #ffffff !important;
         font-size: 38px !important;
@@ -425,12 +437,6 @@
         font-size: 15px;
         font-weight: 700;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Panels
-    |--------------------------------------------------------------------------
-    */
 
     .sf-panel {
         background: #ffffff;
@@ -464,12 +470,6 @@
         padding: 24px;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Filter Section
-    |--------------------------------------------------------------------------
-    */
-
     .form-label {
         color: #0f172a !important;
         font-size: 12px;
@@ -499,12 +499,6 @@
         border-color: #2563eb;
         box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.15);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Buttons
-    |--------------------------------------------------------------------------
-    */
 
     .sf-action-button {
         min-height: 42px;
@@ -537,12 +531,6 @@
         border-color: #94a3b8;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Count Pill
-    |--------------------------------------------------------------------------
-    */
-
     .manager-count-pill {
         display: inline-flex;
         align-items: center;
@@ -555,12 +543,6 @@
         font-weight: 950;
         white-space: nowrap;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Table - Stronger Readability
-    |--------------------------------------------------------------------------
-    */
 
     .manager-leads-table {
         margin-bottom: 0;
@@ -616,12 +598,6 @@
         color: #020617 !important;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Lead Row Cells
-    |--------------------------------------------------------------------------
-    */
-
     .manager-status-cell {
         min-width: 190px;
     }
@@ -650,12 +626,6 @@
         padding: 0 12px;
         border-radius: 9px;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Action Buttons inside table
-    |--------------------------------------------------------------------------
-    */
 
     .manager-leads-table .btn {
         border-radius: 10px;
@@ -686,12 +656,6 @@
         background: #0f172a;
         border-color: #0f172a;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Badges
-    |--------------------------------------------------------------------------
-    */
 
     .manager-badge {
         display: inline-flex;
@@ -748,12 +712,6 @@
         border-color: #cbd5e1;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Notes Row
-    |--------------------------------------------------------------------------
-    */
-
     .manager-notes-row td {
         background: #fff7ed !important;
         padding: 16px 20px !important;
@@ -772,12 +730,6 @@
         font-size: 13px;
         font-weight: 750;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Empty / Pagination
-    |--------------------------------------------------------------------------
-    */
 
     .sf-empty {
         padding: 64px 20px;
@@ -809,12 +761,6 @@
         display: flex;
         justify-content: flex-end;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Mobile
-    |--------------------------------------------------------------------------
-    */
 
     @media (max-width: 768px) {
         .sf-page-title {

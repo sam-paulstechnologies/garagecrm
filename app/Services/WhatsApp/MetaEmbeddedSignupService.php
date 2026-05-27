@@ -5,6 +5,7 @@ namespace App\Services\WhatsApp;
 use App\Models\System\Company;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -40,19 +41,25 @@ class MetaEmbeddedSignupService
             ?: env('META_APP_SECRET');
     }
 
-    public function createState(int $companyId, ?int $userId = null): string
+    public function createState(int $companyId, ?int $userId = null, string $connectionMode = 'coexistence'): string
     {
         $state = Str::random(48);
+        $connectionMode = $this->normalizeConnectionMode($connectionMode);
 
         if (Schema::hasTable('whatsapp_connect_sessions')) {
             $now = now();
 
             try {
-                \DB::table('whatsapp_connect_sessions')->insert([
+                DB::table('whatsapp_connect_sessions')->insert([
                     'company_id' => $companyId,
                     'user_id' => $userId,
                     'state' => $state,
                     'status' => 'started',
+                    'payload' => json_encode([
+                        'connection_mode' => $connectionMode,
+                        'started_from' => 'embedded_signup',
+                        'started_at' => $now->toIso8601String(),
+                    ]),
                     'started_at' => $now,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -61,12 +68,45 @@ class MetaEmbeddedSignupService
                 logger()->warning('[SF-WA Connect] Failed to store connect session', [
                     'company_id' => $companyId,
                     'user_id' => $userId,
+                    'connection_mode' => $connectionMode,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
         return $state;
+    }
+
+    public function getSessionConnectionMode(?string $state): ?string
+    {
+        if (blank($state) || ! Schema::hasTable('whatsapp_connect_sessions')) {
+            return null;
+        }
+
+        try {
+            $row = DB::table('whatsapp_connect_sessions')
+                ->where('state', $state)
+                ->first();
+
+            if (! $row || blank($row->payload ?? null)) {
+                return null;
+            }
+
+            $payload = json_decode((string) $row->payload, true);
+
+            if (! is_array($payload)) {
+                return null;
+            }
+
+            return $this->normalizeConnectionMode($payload['connection_mode'] ?? null);
+        } catch (\Throwable $e) {
+            logger()->warning('[SF-WA Connect] Failed to read session connection mode', [
+                'state' => $state,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     public function markSessionFailed(string $state, string $message, array $payload = []): void
@@ -76,7 +116,7 @@ class MetaEmbeddedSignupService
         }
 
         try {
-            \DB::table('whatsapp_connect_sessions')
+            DB::table('whatsapp_connect_sessions')
                 ->where('state', $state)
                 ->update([
                     'status' => 'failed',
@@ -99,7 +139,7 @@ class MetaEmbeddedSignupService
         }
 
         try {
-            \DB::table('whatsapp_connect_sessions')
+            DB::table('whatsapp_connect_sessions')
                 ->where('state', $state)
                 ->update([
                     'status' => 'completed',
@@ -184,11 +224,14 @@ class MetaEmbeddedSignupService
         ?string $phoneNumberId,
         ?string $businessId = null,
         ?string $displayPhoneNumber = null,
-        array $metaPayload = []
+        array $metaPayload = [],
+        string $connectionMode = 'coexistence'
     ): Company {
         if (blank($phoneNumberId)) {
             throw new RuntimeException('phone_number_id is required to connect WhatsApp.');
         }
+
+        $connectionMode = $this->normalizeConnectionMode($connectionMode);
 
         $company->meta_phone_number_id = $phoneNumberId;
         $company->meta_access_token = $this->encryptToken($accessToken);
@@ -211,6 +254,30 @@ class MetaEmbeddedSignupService
             $company->meta_display_phone_number = $displayPhoneNumber;
         }
 
+        if (Schema::hasColumn('companies', 'whatsapp_connection_mode')) {
+            $company->whatsapp_connection_mode = $connectionMode;
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_coexistence_enabled')) {
+            $company->whatsapp_coexistence_enabled = $connectionMode === 'coexistence';
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_coexistence_status')) {
+            $company->whatsapp_coexistence_status = $connectionMode === 'coexistence'
+                ? 'connected'
+                : null;
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_onboarding_source')) {
+            $company->whatsapp_onboarding_source = $connectionMode === 'coexistence'
+                ? 'embedded_signup_coexistence'
+                : 'embedded_signup_cloud_api';
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_connected_at')) {
+            $company->whatsapp_connected_at = now();
+        }
+
         $company->save();
 
         logger()->info('[SF-WA Connect] WhatsApp connected for company', [
@@ -218,6 +285,8 @@ class MetaEmbeddedSignupService
             'waba_id' => $wabaId,
             'phone_number_id' => $phoneNumberId,
             'display_phone_number' => $displayPhoneNumber,
+            'connection_mode' => $connectionMode,
+            'coexistence_enabled' => $connectionMode === 'coexistence',
         ]);
 
         return $company->fresh();
@@ -235,6 +304,18 @@ class MetaEmbeddedSignupService
             $company->meta_token_expires_at = null;
         }
 
+        if (Schema::hasColumn('companies', 'whatsapp_connection_mode')) {
+            $company->whatsapp_connection_mode = 'manual';
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_coexistence_enabled')) {
+            $company->whatsapp_coexistence_enabled = false;
+        }
+
+        if (Schema::hasColumn('companies', 'whatsapp_coexistence_status')) {
+            $company->whatsapp_coexistence_status = 'disconnected';
+        }
+
         $company->save();
 
         logger()->info('[SF-WA Connect] WhatsApp disconnected for company', [
@@ -246,6 +327,14 @@ class MetaEmbeddedSignupService
 
     public function connectionStatus(Company $company): array
     {
+        $connectionMode = $company->whatsapp_connection_mode ?? null;
+
+        if (blank($connectionMode)) {
+            $connectionMode = ((bool) ($company->is_whatsapp_active ?? false) && filled($company->meta_phone_number_id ?? null))
+                ? 'cloud_api'
+                : 'manual';
+        }
+
         return [
             'is_connected' => filled($company->meta_phone_number_id ?? null)
                 && filled($company->meta_access_token ?? null)
@@ -254,8 +343,17 @@ class MetaEmbeddedSignupService
             'is_active' => (bool) ($company->is_whatsapp_active ?? false),
             'waba_id' => $company->meta_waba_id ?? null,
             'phone_number_id' => $company->meta_phone_number_id ?? null,
+            'business_id' => $company->meta_business_id ?? null,
+            'display_phone_number' => $company->meta_display_phone_number ?? null,
             'token_expires_at' => $company->meta_token_expires_at ?? null,
             'verify_token' => $company->meta_verify_token ?? null,
+
+            'connection_mode' => $connectionMode,
+            'coexistence_enabled' => (bool) ($company->whatsapp_coexistence_enabled ?? false),
+            'coexistence_status' => $company->whatsapp_coexistence_status ?? null,
+            'onboarding_source' => $company->whatsapp_onboarding_source ?? null,
+            'last_echo_at' => $company->whatsapp_last_echo_at ?? null,
+            'connected_at' => $company->whatsapp_connected_at ?? null,
         ];
     }
 
@@ -281,6 +379,15 @@ class MetaEmbeddedSignupService
 
             return $token;
         }
+    }
+
+    protected function normalizeConnectionMode(?string $mode): string
+    {
+        $mode = strtolower(trim((string) $mode));
+
+        return in_array($mode, ['manual', 'cloud_api', 'coexistence'], true)
+            ? $mode
+            : 'coexistence';
     }
 
     protected function graphUrl(string $path): string

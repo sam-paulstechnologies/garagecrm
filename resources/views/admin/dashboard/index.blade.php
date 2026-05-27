@@ -694,6 +694,183 @@
         font-size: 0.72rem !important;
     }
 }
+/* =========================================================
+   Dashboard Light Mode Correction v2
+   ========================================================= */
+
+/* Top navigation light mode */
+html[data-theme="light"] nav,
+html[data-theme="light"] .sf-topbar,
+html[data-theme="light"] .sf-navbar,
+html[data-theme="light"] .app-navigation,
+html[data-theme="light"] header {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-theme="light"] nav a,
+html[data-theme="light"] header a,
+html[data-theme="light"] nav button,
+html[data-theme="light"] header button {
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] nav .bg-slate-950,
+html[data-theme="light"] nav .bg-slate-900,
+html[data-theme="light"] nav .bg-white\/5,
+html[data-theme="light"] header .bg-slate-950,
+html[data-theme="light"] header .bg-slate-900,
+html[data-theme="light"] header .bg-white\/5 {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+/* Dashboard width and breathing space */
+html[data-theme="light"] .sf-page {
+    background: #f4f7fb !important;
+}
+
+html[data-theme="light"] main {
+    background: #f4f7fb !important;
+}
+
+/* Card consistency */
+html[data-theme="light"] .sf-card,
+html[data-theme="light"] .sf-stat-card,
+html[data-theme="light"] .sf-panel,
+html[data-theme="light"] .rounded-2xl,
+html[data-theme="light"] .rounded-3xl {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07) !important;
+}
+
+/* Inner rows should not look like dark pills */
+html[data-theme="light"] .sf-page .bg-slate-950\/60,
+html[data-theme="light"] .sf-page .bg-slate-900\/60,
+html[data-theme="light"] .sf-page .bg-slate-900,
+html[data-theme="light"] .sf-page .bg-slate-800,
+html[data-theme="light"] .sf-page .bg-gray-700,
+html[data-theme="light"] .sf-page .bg-gray-800 {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+}
+
+/* Text readability */
+html[data-theme="light"] .sf-page h1,
+html[data-theme="light"] .sf-page h2,
+html[data-theme="light"] .sf-page h3,
+html[data-theme="light"] .sf-page h4,
+html[data-theme="light"] .sf-page p,
+html[data-theme="light"] .sf-page span,
+html[data-theme="light"] .sf-page div {
+    color: inherit;
+}
+
+html[data-theme="light"] .sf-page .text-white,
+html[data-theme="light"] .sf-page .text-slate-50,
+html[data-theme="light"] .sf-page .text-slate-100,
+html[data-theme="light"] .sf-page .text-slate-200 {
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] .sf-page .text-slate-300,
+html[data-theme="light"] .sf-page .text-slate-400,
+html[data-theme="light"] .sf-page .text-gray-300,
+html[data-theme="light"] .sf-page .text-gray-400,
+html[data-theme="light"] .sf-page .text-white\/60,
+html[data-theme="light"] .sf-page .text-white\/70 {
+    color: #64748b !important;
+}
+
+/* Revenue snapshot should stay premium and readable */
+html[data-theme="light"] .sf-gradient-panel,
+html[data-theme="light"] .revenue-card,
+html[data-theme="light"] .revenue-snapshot {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #f97316 100%) !important;
+    border: 0 !important;
+    color: #ffffff !important;
+}
+
+html[data-theme="light"] .sf-gradient-panel *,
+html[data-theme="light"] .revenue-card *,
+html[data-theme="light"] .revenue-snapshot * {
+    color: #ffffff !important;
+}
+
+html[data-theme="light"] .sf-gradient-panel .bg-white\/10,
+html[data-theme="light"] .sf-gradient-panel .bg-white\/15,
+html[data-theme="light"] .sf-gradient-panel .bg-white\/20 {
+    background: rgba(255, 255, 255, 0.20) !important;
+}
+
+/* WhatsApp Health cards */
+html[data-theme="light"] .sf-page .whatsapp-health-card,
+html[data-theme="light"] .sf-page .health-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] .sf-page .whatsapp-health-card *,
+html[data-theme="light"] .sf-page .health-card * {
+    color: #0f172a !important;
+}
+
+/* Quick Actions */
+html[data-theme="light"] .sf-page .quick-actions,
+html[data-theme="light"] .sf-page .quick-action-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+html[data-theme="light"] .sf-page .quick-actions .btn,
+html[data-theme="light"] .sf-page .quick-actions a,
+html[data-theme="light"] .sf-page .quick-actions button {
+    opacity: 1 !important;
+    color: #ffffff !important;
+    background: #f97316 !important;
+    border-color: #f97316 !important;
+    box-shadow: 0 10px 22px rgba(249, 115, 22, 0.22) !important;
+}
+
+html[data-theme="light"] .sf-page .quick-actions .btn:first-child,
+html[data-theme="light"] .sf-page .quick-actions a:first-child,
+html[data-theme="light"] .sf-page .quick-actions button:first-child {
+    color: #1d4ed8 !important;
+    background: #eff6ff !important;
+    border-color: #bfdbfe !important;
+}
+
+/* Calendar */
+html[data-theme="light"] .fc,
+html[data-theme="light"] .fc-view-harness,
+html[data-theme="light"] .fc-scrollgrid {
+    background: #ffffff !important;
+}
+
+html[data-theme="light"] .fc-daygrid-day {
+    background: #ffffff !important;
+}
+
+html[data-theme="light"] .fc-daygrid-day:hover {
+    background: #f8fafc !important;
+}
+
+html[data-theme="light"] .fc-day-today {
+    background: #fff7ed !important;
+}
+
+/* Make disabled/faded looking elements readable */
+html[data-theme="light"] .opacity-40,
+html[data-theme="light"] .opacity-50,
+html[data-theme="light"] .opacity-60 {
+    opacity: 1 !important;
+}
+
 </style>
 @endpush
 

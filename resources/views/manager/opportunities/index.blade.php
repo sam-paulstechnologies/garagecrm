@@ -9,28 +9,37 @@
     $stageLabels = $stageLabels ?? [
         'new' => 'New',
         'attempting_contact' => 'Attempting Contact',
+        'collecting_details' => 'Collecting Details',
         'manager_confirmation_pending' => 'Manager Confirmation Pending',
         'appointment' => 'Appointment',
         'offer' => 'Offer',
-        'follow_up' => 'Follow Up',
         'closed_won' => 'Closed Won',
         'closed_lost' => 'Closed Lost',
     ];
 
     $opportunityStages = $opportunityStages ?? array_keys($stageLabels);
 
-    $stageLabel = function ($value) use ($stageLabels) {
-        return $stageLabels[$value] ?? match ($value) {
-            'New' => 'New',
-            'Attempting Contact' => 'Attempting Contact',
-            'Manager Confirmation Pending' => 'Manager Confirmation Pending',
-            'Appointment' => 'Appointment',
-            'Offer' => 'Offer',
-            'Follow Up' => 'Follow Up',
-            'Closed Won' => 'Closed Won',
-            'Closed Lost' => 'Closed Lost',
-            default => $value ? ucwords(str_replace('_', ' ', $value)) : 'New',
+    $normalizeStage = function ($stage) {
+        $stage = strtolower(trim((string) $stage));
+        $stage = str_replace(['-', ' '], '_', $stage);
+
+        return match ($stage) {
+            'new' => 'new',
+            'attempting_contact', 'attempting', 'contacting', 'contacted' => 'attempting_contact',
+            'collecting_details', 'collecting', 'details', 'details_collection' => 'collecting_details',
+            'manager_confirmation_pending', 'manager_confirmation', 'confirmation_pending' => 'manager_confirmation_pending',
+            'appointment', 'scheduled', 'booking_scheduled' => 'appointment',
+            'offer', 'quotation', 'quote', 'follow_up' => 'offer',
+            'closed_won', 'won' => 'closed_won',
+            'closed_lost', 'lost' => 'closed_lost',
+            default => $stage,
         };
+    };
+
+    $stageLabel = function ($value) use ($stageLabels, $normalizeStage) {
+        $normalized = $normalizeStage($value);
+
+        return $stageLabels[$normalized] ?? ucwords(str_replace('_', ' ', $normalized ?: 'new'));
     };
 
     $opportunityName = function ($opportunity) {
@@ -77,16 +86,16 @@
         };
     };
 
-    $stageClass = function ($stage) {
-        $stage = strtolower((string) $stage);
+    $stageClass = function ($stage) use ($normalizeStage) {
+        $stage = $normalizeStage($stage);
 
         return match ($stage) {
             'new' => 'badge-soft-primary',
             'attempting_contact' => 'badge-soft-warning',
+            'collecting_details' => 'badge-soft-info',
             'manager_confirmation_pending' => 'badge-soft-orange',
             'appointment' => 'badge-soft-info',
             'offer' => 'badge-soft-purple',
-            'follow_up' => 'badge-soft-warning',
             'closed_won' => 'badge-soft-success',
             'closed_lost' => 'badge-soft-danger',
             default => 'badge-soft-muted',
@@ -120,7 +129,6 @@
         @endif
     </div>
 
-
     {{-- Alerts --}}
     @if(session('success'))
         <div class="alert alert-success mb-4">
@@ -138,7 +146,6 @@
             </ul>
         </div>
     @endif
-
 
     {{-- Filters --}}
     <div class="sf-panel mb-4">
@@ -172,7 +179,7 @@
                         <select name="stage" class="form-select">
                             <option value="">All Stages</option>
                             @foreach($opportunityStages as $value)
-                                <option value="{{ $value }}" @selected(($stage ?? request('stage')) === $value)>
+                                <option value="{{ $value }}" @selected($normalizeStage($stage ?? request('stage')) === $normalizeStage($value))>
                                     {{ $stageLabel($value) }}
                                 </option>
                             @endforeach
@@ -201,7 +208,6 @@
             </form>
         </div>
     </div>
-
 
     {{-- Opportunities Table --}}
     <div class="sf-panel overflow-hidden">
@@ -274,7 +280,7 @@
                                                 onchange="this.form.submit()"
                                             >
                                                 @foreach($opportunityStages as $value)
-                                                    <option value="{{ $value }}" @selected(($opportunity->stage ?? '') === $value)>
+                                                    <option value="{{ $value }}" @selected($normalizeStage($opportunity->stage ?? '') === $normalizeStage($value))>
                                                         {{ $stageLabel($value) }}
                                                     </option>
                                                 @endforeach
@@ -423,7 +429,6 @@
 
 </div>
 
-
 {{-- Schedule Booking Modals --}}
 @if($opportunities->count() && Route::has('manager.opportunities.schedule-booking'))
     @foreach($opportunities as $opportunity)
@@ -487,8 +492,7 @@
                                         <option value="morning">Morning</option>
                                         <option value="afternoon">Afternoon</option>
                                         <option value="evening">Evening</option>
-                                        <option value="pickup">Pickup</option>
-                                        <option value="dropoff">Dropoff</option>
+                                        <option value="full_day">Full Day</option>
                                     </select>
                                 </div>
 
@@ -701,12 +705,6 @@
         font-weight: 950;
         white-space: nowrap;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | No horizontal scrollbar table
-    |--------------------------------------------------------------------------
-    */
 
     .opportunity-table-wrap {
         width: 100%;
@@ -1050,12 +1048,6 @@
         display: flex;
         justify-content: flex-end;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Schedule Booking Modal
-    |--------------------------------------------------------------------------
-    */
 
     .schedule-modal-content {
         border: 0;

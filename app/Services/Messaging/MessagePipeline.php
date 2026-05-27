@@ -18,28 +18,34 @@ class MessagePipeline
     ) {}
 
     /**
-     * Main entry point for all inbound messages
+     * Main entry point for all inbound messages.
      */
     public function handle(array $payload): ?array
     {
-        $companyId = $payload['company_id'] ?? null;
-        $from      = $payload['from'] ?? null;
-        $to        = $payload['to'] ?? null;
-        $text      = trim((string)($payload['body'] ?? ''));
+        $companyId = (int) ($payload['company_id'] ?? 0);
+        $from = $payload['from'] ?? null;
+        $to = $payload['to'] ?? null;
+        $text = trim((string) ($payload['body'] ?? ''));
 
-        if (!$companyId || !$from) {
+        if (! $companyId || ! $from) {
             Log::warning('[Pipeline] Missing required payload fields', [
-                'payload' => $payload
+                'has_company_id' => (bool) $companyId,
+                'has_from' => (bool) $from,
+                'source' => $payload['source'] ?? null,
+                'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
             ]);
+
             return null;
         }
 
-        $digits = preg_replace('/\D+/', '', $from);
+        $digits = preg_replace('/\D+/', '', (string) $from);
 
         if ($text === '') {
             Log::info('[Pipeline] Ignoring empty message', [
-                'from' => $from
+                'company_id' => $companyId,
+                'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
             ]);
+
             return null;
         }
 
@@ -47,21 +53,27 @@ class MessagePipeline
         |--------------------------------------------------------------------------
         | 1. Resolve Lead
         |--------------------------------------------------------------------------
+        | LeadResolver requires companyId as the second argument.
+        |--------------------------------------------------------------------------
         */
 
         $lead = $this->leadResolver->resolve([
             'company_id' => $companyId,
-            'phone'      => $from,
+            'phone' => $from,
             'phone_norm' => $digits,
-            'name'       => $payload['profile_name'] ?? 'WhatsApp Lead',
-            'source'     => 'whatsapp'
-        ]);
+            'name' => $payload['profile_name'] ?? 'WhatsApp Lead',
+            'source' => 'whatsapp',
+            'preferred_channel' => 'whatsapp',
+            'external_source' => $payload['external_source'] ?? 'whatsapp',
+            'external_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
+            'external_payload' => $this->safePayloadForLead($payload),
+            'external_received_at' => now(),
+        ], $companyId);
 
-        if (!$lead) {
-
+        if (! $lead) {
             Log::warning('[Pipeline] Lead resolution failed', [
                 'company_id' => $companyId,
-                'phone'      => $from
+                'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
             ]);
 
             return null;
@@ -85,40 +97,38 @@ class MessagePipeline
         */
 
         $this->messageLogger->logInbound([
-            'company_id'         => $companyId,
-            'lead_id'            => $lead->id,
-            'conversation_id'    => $conversation?->id,
-            'from'               => $from,
-            'to'                 => $to,
-            'body'               => $text,
-            'provider_message_id'=> $payload['sid'] ?? null,
-            'meta'               => $payload
+            'company_id' => $companyId,
+            'lead_id' => $lead->id,
+            'conversation_id' => $conversation?->id,
+            'from' => $from,
+            'to' => $to,
+            'body' => $text,
+            'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
+            'meta' => $this->safePayloadForMessageLog($payload),
         ]);
 
         /*
         |--------------------------------------------------------------------------
-        | 4. Route conversation
+        | 4. Route Conversation
         |--------------------------------------------------------------------------
         */
 
         try {
-
             $response = $this->router->route($lead, $text);
-
         } catch (\Throwable $e) {
-
             Log::error('[Pipeline] Router failed', [
                 'lead_id' => $lead->id,
-                'error'   => $e->getMessage()
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
             ]);
 
             return null;
         }
 
-        if (!$response) {
-
+        if (! $response) {
             Log::info('[Pipeline] Router returned no response', [
-                'lead_id' => $lead->id
+                'lead_id' => $lead->id,
+                'company_id' => $companyId,
             ]);
 
             return null;
@@ -131,9 +141,34 @@ class MessagePipeline
         */
 
         return [
-            'lead'         => $lead,
+            'lead' => $lead,
             'conversation' => $conversation,
-            'response'     => $response
+            'response' => $response,
+        ];
+    }
+
+    protected function safePayloadForLead(array $payload): array
+    {
+        return [
+            'source' => $payload['source'] ?? 'whatsapp',
+            'external_source' => $payload['external_source'] ?? 'whatsapp',
+            'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
+            'message_type' => $payload['message_type'] ?? $payload['type'] ?? null,
+            'profile_name' => $payload['profile_name'] ?? null,
+            'received_at' => now()->toIso8601String(),
+        ];
+    }
+
+    protected function safePayloadForMessageLog(array $payload): array
+    {
+        return [
+            'source' => $payload['source'] ?? 'whatsapp',
+            'external_source' => $payload['external_source'] ?? 'whatsapp',
+            'provider_message_id' => $payload['sid'] ?? $payload['provider_message_id'] ?? null,
+            'message_type' => $payload['message_type'] ?? $payload['type'] ?? null,
+            'profile_name' => $payload['profile_name'] ?? null,
+            'to' => $payload['to'] ?? null,
+            'received_at' => now()->toIso8601String(),
         ];
     }
 }

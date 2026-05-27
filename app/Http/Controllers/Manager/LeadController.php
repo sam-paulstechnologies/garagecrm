@@ -8,18 +8,31 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\Rule;
 
 class LeadController extends Controller
 {
+    /*
+    |--------------------------------------------------------------------------
+    | IMPORTANT
+    |--------------------------------------------------------------------------
+    | These values must match the actual DB/model values.
+    | Do not store display labels like "Assigned" or "Disqualified".
+    |--------------------------------------------------------------------------
+    */
     protected array $leadStatuses = [
-        'New',
-        'Attempting Contact',
-        'Contacted',
-        'Qualified',
-        'Disqualified',
-        'On Hold',
-        'Assigned',
+        'new',
+        'attempting_contact',
+        'qualified',
+        'converted',
+        'lost',
+    ];
+
+    protected array $statusLabels = [
+        'new' => 'New',
+        'attempting_contact' => 'Attempting Contact',
+        'qualified' => 'Qualified',
+        'converted' => 'Converted',
+        'lost' => 'Lost',
     ];
 
     protected function companyId(): int
@@ -36,7 +49,7 @@ class LeadController extends Controller
         $companyId = $this->companyId();
 
         $q = trim((string) $request->get('q', ''));
-        $status = trim((string) $request->get('status', ''));
+        $status = $this->normalizeLeadStatus($request->get('status'));
         $source = trim((string) $request->get('source', ''));
 
         $leads = Lead::query()
@@ -46,7 +59,20 @@ class LeadController extends Controller
             })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
-                    foreach (['name', 'full_name', 'customer_name', 'phone', 'mobile', 'email', 'vehicle_make', 'vehicle_model', 'notes'] as $column) {
+                    foreach ([
+                        'name',
+                        'full_name',
+                        'customer_name',
+                        'client_name',
+                        'phone',
+                        'mobile',
+                        'phone_number',
+                        'whatsapp_number',
+                        'email',
+                        'vehicle_make',
+                        'vehicle_model',
+                        'notes',
+                    ] as $column) {
                         if (Schema::hasColumn('leads', $column)) {
                             $sub->orWhere($column, 'like', '%' . $q . '%');
                         }
@@ -61,10 +87,12 @@ class LeadController extends Controller
             })
             ->when(Schema::hasColumn('leads', 'status'), function ($query) {
                 $query->whereNotIn('status', [
-                    'Disqualified',
-                    'Closed',
+                    'converted',
+                    'lost',
                     'Converted',
                     'Converted to Opportunity',
+                    'Disqualified',
+                    'Closed',
                 ]);
             })
             ->latest('id')
@@ -73,6 +101,8 @@ class LeadController extends Controller
 
         $sources = $this->leadSources($companyId);
         $managers = $this->assignableUsers($companyId);
+        $leadStatuses = $this->leadStatuses;
+        $statusLabels = $this->statusLabels;
 
         return view('manager.leads.index', compact(
             'leads',
@@ -80,7 +110,9 @@ class LeadController extends Controller
             'managers',
             'q',
             'status',
-            'source'
+            'source',
+            'leadStatuses',
+            'statusLabels'
         ));
     }
 
@@ -88,9 +120,30 @@ class LeadController extends Controller
     {
         $this->authorizeLead($lead);
 
-        $managers = $this->assignableUsers($this->companyId());
+        /*
+        |--------------------------------------------------------------------------
+        | Safe fallback
+        |--------------------------------------------------------------------------
+        | Some builds do not have resources/views/manager/leads/show.blade.php.
+        | Without this check, clicking a show route can throw a 500 error.
+        |--------------------------------------------------------------------------
+        */
+        if (! view()->exists('manager.leads.show')) {
+            return redirect()
+                ->route('manager.leads.index')
+                ->with('success', 'Lead details page is not available yet. You can manage the lead from the leads list.');
+        }
 
-        return view('manager.leads.show', compact('lead', 'managers'));
+        $managers = $this->assignableUsers($this->companyId());
+        $leadStatuses = $this->leadStatuses;
+        $statusLabels = $this->statusLabels;
+
+        return view('manager.leads.show', compact(
+            'lead',
+            'managers',
+            'leadStatuses',
+            'statusLabels'
+        ));
     }
 
     public function updateStatus(Request $request, Lead $lead)
@@ -98,28 +151,45 @@ class LeadController extends Controller
         $this->authorizeLead($lead);
 
         $validated = $request->validate([
-            'status' => ['required', 'string', Rule::in($this->leadStatuses)],
+            'status' => ['required', 'string'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        DB::transaction(function () use ($lead, $validated) {
+        $status = $this->normalizeLeadStatus($validated['status']);
+
+        if (! in_array($status, $this->leadStatuses, true)) {
+            return back()->withErrors([
+                'status' => 'Invalid lead status selected.',
+            ]);
+        }
+
+        DB::transaction(function () use ($lead, $validated, $status) {
             if (Schema::hasColumn('leads', 'status')) {
-                $lead->status = $validated['status'];
+                $lead->status = $status;
             }
 
             if (! empty($validated['notes'])) {
                 $this->appendNotes($lead, $validated['notes']);
             }
 
-            if (Schema::hasColumn('leads', 'last_contacted_at') && in_array($validated['status'], ['Attempting Contact', 'Contacted'], true)) {
+            if (
+                Schema::hasColumn('leads', 'last_contacted_at')
+                && $status === 'attempting_contact'
+            ) {
                 $lead->last_contacted_at = now();
             }
 
-            if (Schema::hasColumn('leads', 'qualified_at') && $validated['status'] === 'Qualified') {
+            if (
+                Schema::hasColumn('leads', 'qualified_at')
+                && $status === 'qualified'
+            ) {
                 $lead->qualified_at = now();
             }
 
-            if (Schema::hasColumn('leads', 'disqualified_at') && $validated['status'] === 'Disqualified') {
+            if (
+                Schema::hasColumn('leads', 'disqualified_at')
+                && $status === 'lost'
+            ) {
                 $lead->disqualified_at = now();
             }
 
@@ -154,8 +224,19 @@ class LeadController extends Controller
                 $lead->{$assignedColumn} = $assignee->id;
             }
 
-            if (Schema::hasColumn('leads', 'status') && in_array((string) $lead->status, ['New', 'Attempting Contact'], true)) {
-                $lead->status = 'Assigned';
+            /*
+            |--------------------------------------------------------------------------
+            | Assignment status handling
+            |--------------------------------------------------------------------------
+            | Do not save "Assigned" because it is not a valid DB/model status.
+            | If a lead is still new, assignment moves it into attempting_contact.
+            |--------------------------------------------------------------------------
+            */
+            if (
+                Schema::hasColumn('leads', 'status')
+                && in_array((string) $lead->status, ['new', 'New', '', null], true)
+            ) {
+                $lead->status = 'attempting_contact';
             }
 
             if (Schema::hasColumn('leads', 'assigned_at')) {
@@ -270,5 +351,26 @@ class LeadController extends Controller
         }
 
         return null;
+    }
+
+    protected function normalizeLeadStatus(?string $status): string
+    {
+        $status = trim((string) $status);
+
+        if ($status === '') {
+            return '';
+        }
+
+        $normalized = strtolower($status);
+        $normalized = str_replace(['-', ' '], '_', $normalized);
+
+        return match ($normalized) {
+            'new' => 'new',
+            'attempting_contact', 'attempting', 'contacting', 'contacted', 'assigned', 'on_hold', 'contact_on_hold' => 'attempting_contact',
+            'qualified' => 'qualified',
+            'converted', 'converted_to_opportunity' => 'converted',
+            'lost', 'disqualified', 'closed_lost', 'closed' => 'lost',
+            default => $normalized,
+        };
     }
 }

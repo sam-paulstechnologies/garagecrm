@@ -29,7 +29,23 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        // 🔥 CRITICAL FIX (ROLE + ACTIVE + FORCE PASSWORD)
+        /*
+        |--------------------------------------------------------------------------
+        | CSRF Exceptions
+        |--------------------------------------------------------------------------
+        | External webhook providers cannot send Laravel CSRF tokens.
+        | These endpoints must be protected by their own webhook secret/signature.
+        |--------------------------------------------------------------------------
+        */
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/email/inbound',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Middleware Aliases
+        |--------------------------------------------------------------------------
+        */
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,

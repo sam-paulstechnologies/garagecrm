@@ -78,8 +78,35 @@ class MetaWhatsAppWebhookController extends Controller
             return response()->noContent();
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Status updates
+        |--------------------------------------------------------------------------
+        | Status payloads can arrive separately or alongside other webhook changes.
+        | We process them but do not let them block echo/inbound detection.
+        */
         if (! empty($value['statuses'])) {
-            return $this->handleStatuses($value);
+            $this->handleStatuses($value);
+
+            if (empty($value['smb_message_echoes']) && empty($value['messages'][0])) {
+                return response()->noContent();
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | WhatsApp Business App Coexistence Echoes
+        |--------------------------------------------------------------------------
+        | Messages sent by the garage from the WhatsApp Business mobile app arrive
+        | as smb_message_echoes. These must be logged as outbound/manual messages.
+        |
+        | IMPORTANT:
+        | Do not dispatch ProcessInboundWhatsApp here.
+        | Do not create/reuse leads here.
+        | Do not trigger bot replies here.
+        */
+        if (! empty($value['smb_message_echoes'])) {
+            return $this->handleSmbMessageEchoes($payload, $value);
         }
 
         if (empty($value['messages'][0])) {
@@ -225,6 +252,104 @@ class MetaWhatsAppWebhookController extends Controller
         return response()->noContent();
     }
 
+    protected function handleSmbMessageEchoes(array $payload, array $value)
+    {
+        $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
+        $displayPhoneNumber = $value['metadata']['display_phone_number'] ?? null;
+
+        if (! $phoneNumberId) {
+            Log::warning('[SF-WA Connect][META][COEXISTENCE] Echo missing phone_number_id');
+            return response()->noContent();
+        }
+
+        $company = $this->resolveCompanyByPhoneNumberId($phoneNumberId);
+
+        if (! $company) {
+            Log::warning('[SF-WA Connect][META][COEXISTENCE] Echo company not resolved', [
+                'phone_number_id' => $phoneNumberId,
+            ]);
+
+            return response()->noContent();
+        }
+
+        if (! (bool) ($company->is_whatsapp_active ?? false)) {
+            Log::warning('[SF-WA Connect][META][COEXISTENCE] Company WhatsApp inactive; echo ignored', [
+                'company_id' => $company->id,
+                'phone_number_id' => $phoneNumberId,
+            ]);
+
+            return response()->noContent();
+        }
+
+        foreach ($value['smb_message_echoes'] as $echo) {
+            $providerMessageId = $echo['id'] ?? null;
+
+            if ($providerMessageId) {
+                $alreadyLogged = MessageLog::query()
+                    ->where('company_id', $company->id)
+                    ->where('provider_message_id', $providerMessageId)
+                    ->exists();
+
+                if ($alreadyLogged) {
+                    Log::info('[SF-WA Connect][META][COEXISTENCE] Echo already logged', [
+                        'company_id' => $company->id,
+                        'provider_message_id' => $providerMessageId,
+                    ]);
+
+                    continue;
+                }
+            }
+
+            $body = $this->extractMessageBody($echo);
+
+            if ($body === '') {
+                $body = '[WhatsApp Business App message]';
+            }
+
+            $customerNumber = $this->extractEchoCustomerNumber($echo);
+
+            DB::table('message_logs')->insert([
+                'company_id' => $company->id,
+                'lead_id' => null,
+                'conversation_id' => null,
+                'direction' => 'out',
+                'source' => 'whatsapp_business_app',
+                'is_ai' => 0,
+                'channel' => 'whatsapp',
+                'to_number' => $customerNumber,
+                'from_number' => $displayPhoneNumber,
+                'template' => null,
+                'template_id' => null,
+                'body' => $body,
+                'provider_message_id' => $providerMessageId,
+                'provider_status' => 'sent_from_business_app',
+                'meta' => json_encode([
+                    'provider' => 'meta',
+                    'provider_message_type' => 'smb_message_echoes',
+                    'is_echo' => true,
+                    'echo_payload' => $echo,
+                    'webhook_value' => $value,
+                    'webhook_payload' => $payload,
+                    'received_at' => now()->toIso8601String(),
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->updateCompanyLastEchoAt($company);
+
+            Log::info('[SF-WA Connect][META][COEXISTENCE] Business App echo logged', [
+                'company_id' => $company->id,
+                'provider_message_id' => $providerMessageId,
+                'from_number' => $displayPhoneNumber,
+                'to_number' => $customerNumber,
+                'body' => $body,
+            ]);
+        }
+
+        return response()->noContent();
+    }
+
     protected function handleInboundMessage(array $payload, array $value)
     {
         $msg = $value['messages'][0];
@@ -298,6 +423,43 @@ class MetaWhatsAppWebhookController extends Controller
             ->first();
     }
 
+    protected function updateCompanyLastEchoAt(Company $company): void
+    {
+        if (! Schema::hasColumn('companies', 'whatsapp_last_echo_at')) {
+            return;
+        }
+
+        try {
+            $updates = [
+                'whatsapp_last_echo_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            if (Schema::hasColumn('companies', 'whatsapp_coexistence_status')) {
+                $updates['whatsapp_coexistence_status'] = 'active';
+            }
+
+            DB::table('companies')
+                ->where('id', $company->id)
+                ->update($updates);
+        } catch (\Throwable $e) {
+            Log::warning('[SF-WA Connect][META][COEXISTENCE] Failed to update last echo timestamp', [
+                'company_id' => $company->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function extractEchoCustomerNumber(array $echo): ?string
+    {
+        return $echo['to']
+            ?? $echo['recipient_id']
+            ?? $echo['customer']
+            ?? $echo['wa_id']
+            ?? $echo['contacts'][0]['wa_id']
+            ?? null;
+    }
+
     protected function storeUsageLogIfAvailable(
         Company $company,
         ?MessageLog $messageLog,
@@ -347,7 +509,7 @@ class MetaWhatsAppWebhookController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Extract Meta inbound body
+    | Extract Meta inbound / echo body
     |--------------------------------------------------------------------------
     */
     protected function extractMessageBody(array $msg): string
@@ -384,6 +546,22 @@ class MetaWhatsAppWebhookController extends Controller
                     ?? ''
                 ));
             }
+        }
+
+        if ($type === 'image') {
+            return '[Image message sent from WhatsApp Business App]';
+        }
+
+        if ($type === 'document') {
+            return '[Document message sent from WhatsApp Business App]';
+        }
+
+        if ($type === 'audio') {
+            return '[Audio message sent from WhatsApp Business App]';
+        }
+
+        if ($type === 'video') {
+            return '[Video message sent from WhatsApp Business App]';
         }
 
         return '';

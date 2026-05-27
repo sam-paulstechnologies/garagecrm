@@ -30,12 +30,17 @@ class InvoiceController extends Controller
 
     protected function guardCompanyOrAbort($companyId): void
     {
-        abort_if((int) $companyId !== (int) $this->companyId(), 403);
+        abort_unless((int) $companyId === $this->companyId(), 404);
     }
 
     protected function invoicesScope()
     {
-        return Invoice::where('company_id', $this->companyId());
+        return Invoice::query()->where('company_id', $this->companyId());
+    }
+
+    protected function invoiceHasColumn(string $column): bool
+    {
+        return Schema::hasColumn('invoices', $column);
     }
 
     /*
@@ -46,13 +51,15 @@ class InvoiceController extends Controller
 
     public function index(Request $request)
     {
+        $companyId = $this->companyId();
+
         $q = trim((string) $request->get('q'));
         $status = $request->get('status');
 
         $query = $this->invoicesScope()
             ->with([
-                'client',
-                'job',
+                'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+                'job' => fn ($jobQuery) => $jobQuery->where('company_id', $companyId),
             ]);
 
         if (in_array($status, ['pending', 'paid', 'overdue'], true)) {
@@ -60,23 +67,44 @@ class InvoiceController extends Controller
         }
 
         if ($q !== '') {
-            $query->where(function ($w) use ($q) {
-                $w->where('number', 'like', "%{$q}%")
-                    ->orWhere('invoice_number', 'like', "%{$q}%")
-                    ->orWhere('amount', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($c) use ($q) {
-                        $c->where('name', 'like', "%{$q}%")
-                            ->orWhere('phone', 'like', "%{$q}%")
-                            ->orWhere('email', 'like', "%{$q}%");
-                    })
-                    ->orWhereHas('job', function ($j) use ($q) {
-                        $j->where('job_code', 'like', "%{$q}%")
-                            ->orWhere('description', 'like', "%{$q}%");
-                    });
+            $query->where(function ($where) use ($q, $companyId) {
+                if ($this->invoiceHasColumn('number')) {
+                    $where->orWhere('number', 'like', "%{$q}%");
+                }
+
+                if ($this->invoiceHasColumn('invoice_number')) {
+                    $where->orWhere('invoice_number', 'like', "%{$q}%");
+                }
+
+                if ($this->invoiceHasColumn('amount')) {
+                    $where->orWhere('amount', 'like', "%{$q}%");
+                }
+
+                $where->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                    $clientQuery
+                        ->where('company_id', $companyId)
+                        ->where(function ($clientSearch) use ($q) {
+                            $clientSearch
+                                ->where('name', 'like', "%{$q}%")
+                                ->orWhere('phone', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%");
+                        });
+                });
+
+                $where->orWhereHas('job', function ($jobQuery) use ($q, $companyId) {
+                    $jobQuery
+                        ->where('company_id', $companyId)
+                        ->where(function ($jobSearch) use ($q) {
+                            $jobSearch
+                                ->where('job_code', 'like', "%{$q}%")
+                                ->orWhere('description', 'like', "%{$q}%");
+                        });
+                });
             });
         }
 
-        $invoices = $query->latest('id')
+        $invoices = $query
+            ->latest('id')
             ->paginate(20)
             ->withQueryString();
 
@@ -103,11 +131,13 @@ class InvoiceController extends Controller
     {
         $companyId = $this->companyId();
 
-        $clients = Client::where('company_id', $companyId)
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name', 'phone', 'email']);
 
-        $jobs = Job::where('company_id', $companyId)
+        $jobs = Job::query()
+            ->where('company_id', $companyId)
             ->whereIn('status', ['pending', 'in_progress', 'completed'])
             ->latest('id')
             ->get(['id', 'client_id', 'job_code', 'status', 'description']);
@@ -165,7 +195,7 @@ class InvoiceController extends Controller
         $invoice->version = 1;
         $invoice->is_primary = true;
 
-        if (Schema::hasColumn('invoices', 'invoice_number')) {
+        if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
 
@@ -192,9 +222,11 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
+        $companyId = $this->companyId();
+
         $invoice->load([
-            'client',
-            'job',
+            'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+            'job' => fn ($jobQuery) => $jobQuery->where('company_id', $companyId),
         ]);
 
         return view('admin.invoices.show', compact('invoice'));
@@ -212,11 +244,18 @@ class InvoiceController extends Controller
 
         $companyId = $this->companyId();
 
-        $clients = Client::where('company_id', $companyId)
+        $invoice->load([
+            'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+            'job' => fn ($jobQuery) => $jobQuery->where('company_id', $companyId),
+        ]);
+
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name', 'phone', 'email']);
 
-        $jobs = Job::where('company_id', $companyId)
+        $jobs = Job::query()
+            ->where('company_id', $companyId)
             ->where('client_id', $invoice->client_id)
             ->latest('id')
             ->get(['id', 'client_id', 'job_code', 'status', 'description']);
@@ -276,7 +315,7 @@ class InvoiceController extends Controller
         $invoice->source = $invoice->source ?: 'generated';
         $invoice->uploaded_by = $invoice->uploaded_by ?? auth()->id();
 
-        if (Schema::hasColumn('invoices', 'invoice_number')) {
+        if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
 
@@ -287,6 +326,8 @@ class InvoiceController extends Controller
                 ->update(['is_primary' => false]);
 
             $invoice->is_primary = true;
+        } else {
+            $invoice->is_primary = false;
         }
 
         $invoice->save();
@@ -323,12 +364,12 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
-        $path = $invoice->file_path;
+        $path = $this->safeInvoiceFilePath($invoice);
 
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
         $ext = pathinfo($path, PATHINFO_EXTENSION) ?: 'pdf';
-        $number = $invoice->number ?? $invoice->invoice_number ?? $invoice->id;
+        $number = $invoice->number ?? ($this->invoiceHasColumn('invoice_number') ? $invoice->invoice_number : null) ?? $invoice->id;
         $filename = "invoice-{$number}.{$ext}";
 
         $mime = $invoice->mime
@@ -337,6 +378,7 @@ class InvoiceController extends Controller
 
         return Storage::disk('public')->download($path, $filename, [
             'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -344,7 +386,7 @@ class InvoiceController extends Controller
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
-        $path = $invoice->file_path;
+        $path = $this->safeInvoiceFilePath($invoice);
 
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
@@ -353,11 +395,14 @@ class InvoiceController extends Controller
             ?? (Storage::disk('public')->mimeType($path) ?: 'application/pdf');
 
         if (stripos($mime, 'pdf') === false) {
-            return Storage::disk('public')->download($path);
+            return Storage::disk('public')->download($path, null, [
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
         }
 
         return response()->file(Storage::disk('public')->path($path), [
             'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -420,7 +465,7 @@ class InvoiceController extends Controller
         $invoice->version = 1 + (int) $this->invoicesScope()->where('job_id', $job->id)->max('version');
         $invoice->is_primary = true;
 
-        if (Schema::hasColumn('invoices', 'invoice_number')) {
+        if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
 
@@ -454,7 +499,9 @@ class InvoiceController extends Controller
         ]);
 
         if (! empty($data['job_id'])) {
-            $job = Job::where('company_id', $companyId)->findOrFail($data['job_id']);
+            $job = Job::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($data['job_id']);
 
             abort_unless((int) $job->client_id === (int) $client->id, 422);
         }
@@ -478,7 +525,7 @@ class InvoiceController extends Controller
         $invoice->version = 1;
         $invoice->is_primary = ! empty($invoice->job_id);
 
-        if (Schema::hasColumn('invoices', 'invoice_number')) {
+        if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
 
@@ -522,9 +569,25 @@ class InvoiceController extends Controller
             return;
         }
 
-        $job = Job::where('company_id', $companyId)
+        $job = Job::query()
+            ->where('company_id', $companyId)
             ->findOrFail($data['job_id']);
 
         abort_unless((int) $job->client_id === (int) $data['client_id'], 422);
+    }
+
+    protected function safeInvoiceFilePath(Invoice $invoice): ?string
+    {
+        $path = trim((string) $invoice->file_path);
+
+        if ($path === '') {
+            return null;
+        }
+
+        if (str_contains($path, '..') || str_starts_with($path, '/') || preg_match('/^[a-zA-Z]:[\/\\\\]/', $path)) {
+            abort(404);
+        }
+
+        return $path;
     }
 }

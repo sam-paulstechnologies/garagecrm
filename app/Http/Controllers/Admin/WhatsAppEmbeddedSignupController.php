@@ -23,14 +23,20 @@ class WhatsAppEmbeddedSignupController extends Controller
     {
         $company = $this->resolveCompany($request);
 
+        $connectionMode = $this->normalizeConnectionMode(
+            $request->query('mode', 'coexistence')
+        );
+
         $state = $this->embeddedSignupService->createState(
             (int) $company->id,
-            $request->user()?->id
+            $request->user()?->id,
+            $connectionMode
         );
 
         return view('admin.whatsapp.connect', [
             'company' => $company,
             'state' => $state,
+            'connectionMode' => $connectionMode,
             'status' => $this->embeddedSignupService->connectionStatus($company),
             'metaAppId' => config('services.meta.app_id')
                 ?: config('services.meta_leads.app_id')
@@ -62,9 +68,16 @@ class WhatsAppEmbeddedSignupController extends Controller
             'waba_id' => ['nullable', 'string'],
             'phone_number_id' => ['nullable', 'string'],
             'display_phone_number' => ['nullable', 'string'],
+            'connection_mode' => ['nullable', 'in:manual,cloud_api,coexistence'],
         ]);
 
         $state = $validated['state'] ?? '';
+
+        $connectionMode = $validated['connection_mode']
+            ?? $this->embeddedSignupService->getSessionConnectionMode($state)
+            ?? 'coexistence';
+
+        $connectionMode = $this->normalizeConnectionMode($connectionMode);
 
         try {
             $accessToken = null;
@@ -106,7 +119,8 @@ class WhatsAppEmbeddedSignupController extends Controller
                 phoneNumberId: $phoneNumberId,
                 businessId: $validated['business_id'] ?? null,
                 displayPhoneNumber: $displayPhoneNumber,
-                metaPayload: $tokenPayload
+                metaPayload: $tokenPayload,
+                connectionMode: $connectionMode
             );
 
             if (filled($state)) {
@@ -115,6 +129,10 @@ class WhatsAppEmbeddedSignupController extends Controller
                     'waba_id' => $wabaId,
                     'phone_number_id' => $phoneNumberId,
                     'display_phone_number' => $displayPhoneNumber,
+                    'connection_mode' => $connectionMode,
+                    'onboarding_source' => $connectionMode === 'coexistence'
+                        ? 'embedded_signup_coexistence'
+                        : 'embedded_signup_cloud_api',
                     'token_response' => $this->safeTokenPayload($tokenPayload),
                 ]);
             }
@@ -122,23 +140,32 @@ class WhatsAppEmbeddedSignupController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'ok' => true,
-                    'message' => 'WhatsApp connected successfully.',
+                    'message' => $connectionMode === 'coexistence'
+                        ? 'WhatsApp connected successfully in coexistence mode.'
+                        : 'WhatsApp connected successfully.',
                     'status' => $this->embeddedSignupService->connectionStatus($company),
                 ]);
             }
 
             return $this->redirectToConnect()
-                ->with('success', 'WhatsApp connected successfully.');
+                ->with(
+                    'success',
+                    $connectionMode === 'coexistence'
+                        ? 'WhatsApp connected successfully in coexistence mode.'
+                        : 'WhatsApp connected successfully.'
+                );
         } catch (Throwable $e) {
             logger()->error('[SF-WA Connect] Embedded signup callback failed', [
                 'company_id' => $company->id ?? null,
                 'state' => $state,
+                'connection_mode' => $connectionMode,
                 'error' => $e->getMessage(),
             ]);
 
             if (filled($state)) {
                 $this->embeddedSignupService->markSessionFailed($state, $e->getMessage(), [
                     'request' => $request->except(['code']),
+                    'connection_mode' => $connectionMode,
                 ]);
             }
 
@@ -218,5 +245,14 @@ class WhatsAppEmbeddedSignupController extends Controller
         }
 
         return $payload;
+    }
+
+    protected function normalizeConnectionMode(?string $mode): string
+    {
+        $mode = strtolower(trim((string) $mode));
+
+        return in_array($mode, ['manual', 'cloud_api', 'coexistence'], true)
+            ? $mode
+            : 'coexistence';
     }
 }

@@ -8,6 +8,7 @@ use App\Http\Requests\StoreJobRequest;
 use App\Http\Requests\UpdateJobRequest;
 use App\Http\Requests\UploadJobDocumentRequest;
 use App\Models\Client\Client;
+use App\Models\Job\Booking;
 use App\Models\Job\Invoice;
 use App\Models\Job\Job;
 use App\Models\Job\JobCard;
@@ -26,14 +27,23 @@ class JobController extends Controller
         private JobNumberService $jobNumbers = new JobNumberService(),
     ) {}
 
+    protected function companyId(): int
+    {
+        $companyId = (int) (auth()->user()?->company_id ?? 0);
+
+        abort_if(! $companyId, 403);
+
+        return $companyId;
+    }
+
     protected function authorizeCompany(Job $job): void
     {
-        abort_if($job->company_id !== auth()->user()->company_id, 403);
+        abort_unless((int) $job->company_id === $this->companyId(), 404);
     }
 
     protected function companyScope()
     {
-        return Job::where('company_id', auth()->user()->company_id);
+        return Job::query()->where('company_id', $this->companyId());
     }
 
     protected function nextJobCode(): string
@@ -49,6 +59,8 @@ class JobController extends Controller
 
     public function index(Request $request)
     {
+        $companyId = $this->companyId();
+
         $q = trim((string) $request->get('q'));
         $status = $request->get('status');
 
@@ -56,10 +68,10 @@ class JobController extends Controller
 
         $query = $this->companyScope()
             ->with([
-                'client',
-                'assignedUser:id,name',
-                'invoice',
-                'invoices',
+                'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+                'assignedUser:id,name,company_id',
+                'invoice' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
+                'invoices' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
             ])
             ->where('is_archived', false)
             ->whereIn('status', $openStatuses);
@@ -69,21 +81,28 @@ class JobController extends Controller
         }
 
         if ($q !== '') {
-            $query->where(function ($w) use ($q) {
-                $w->where('job_code', 'like', "%{$q}%")
+            $query->where(function ($where) use ($q, $companyId) {
+                $where
+                    ->where('job_code', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%")
                     ->orWhere('work_summary', 'like', "%{$q}%")
                     ->orWhere('issues_found', 'like', "%{$q}%")
                     ->orWhere('parts_used', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($c) use ($q) {
-                        $c->where('name', 'like', "%{$q}%")
-                            ->orWhere('phone', 'like', "%{$q}%")
-                            ->orWhere('email', 'like', "%{$q}%");
+                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                        $clientQuery
+                            ->where('company_id', $companyId)
+                            ->where(function ($clientSearch) use ($q) {
+                                $clientSearch
+                                    ->where('name', 'like', "%{$q}%")
+                                    ->orWhere('phone', 'like', "%{$q}%")
+                                    ->orWhere('email', 'like', "%{$q}%");
+                            });
                     });
             });
         }
 
-        $jobs = $query->latest('id')
+        $jobs = $query
+            ->latest('id')
             ->paginate(15)
             ->withQueryString();
 
@@ -91,17 +110,9 @@ class JobController extends Controller
             ->where('is_archived', false);
 
         $stats = [
-            'open_jobs' => (clone $base)
-                ->whereIn('status', $openStatuses)
-                ->count(),
-
-            'pending' => (clone $base)
-                ->where('status', 'pending')
-                ->count(),
-
-            'in_progress' => (clone $base)
-                ->where('status', 'in_progress')
-                ->count(),
+            'open_jobs' => (clone $base)->whereIn('status', $openStatuses)->count(),
+            'pending' => (clone $base)->where('status', 'pending')->count(),
+            'in_progress' => (clone $base)->where('status', 'in_progress')->count(),
         ];
 
         return view('admin.jobs.index', compact('jobs', 'q', 'status', 'stats'));
@@ -115,33 +126,42 @@ class JobController extends Controller
 
     public function completed(Request $request)
     {
+        $companyId = $this->companyId();
+
         $q = trim((string) $request->get('q'));
 
         $query = $this->companyScope()
             ->with([
-                'client',
-                'invoice',
-                'invoices',
+                'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+                'invoice' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
+                'invoices' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
             ])
             ->where('is_archived', false)
             ->where('status', 'completed');
 
         if ($q !== '') {
-            $query->where(function ($w) use ($q) {
-                $w->where('job_code', 'like', "%{$q}%")
+            $query->where(function ($where) use ($q, $companyId) {
+                $where
+                    ->where('job_code', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%")
                     ->orWhere('work_summary', 'like', "%{$q}%")
                     ->orWhere('issues_found', 'like', "%{$q}%")
                     ->orWhere('parts_used', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($c) use ($q) {
-                        $c->where('name', 'like', "%{$q}%")
-                            ->orWhere('phone', 'like', "%{$q}%")
-                            ->orWhere('email', 'like', "%{$q}%");
+                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                        $clientQuery
+                            ->where('company_id', $companyId)
+                            ->where(function ($clientSearch) use ($q) {
+                                $clientSearch
+                                    ->where('name', 'like', "%{$q}%")
+                                    ->orWhere('phone', 'like', "%{$q}%")
+                                    ->orWhere('email', 'like', "%{$q}%");
+                            });
                     });
             });
         }
 
-        $jobs = $query->latest('updated_at')
+        $jobs = $query
+            ->latest('updated_at')
             ->paginate(15)
             ->withQueryString();
 
@@ -156,11 +176,16 @@ class JobController extends Controller
 
     public function archived(Request $request)
     {
+        $companyId = $this->companyId();
+
         $q = trim((string) $request->get('q'));
         $status = $request->get('status');
 
         $query = $this->companyScope()
-            ->with(['client', 'assignedUser:id,name'])
+            ->with([
+                'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+                'assignedUser:id,name,company_id',
+            ])
             ->where('is_archived', true);
 
         if (in_array($status, ['pending', 'in_progress', 'completed'], true)) {
@@ -168,16 +193,20 @@ class JobController extends Controller
         }
 
         if ($q !== '') {
-            $query->where(function ($w) use ($q) {
-                $w->where('job_code', 'like', "%{$q}%")
+            $query->where(function ($where) use ($q, $companyId) {
+                $where
+                    ->where('job_code', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($c) use ($q) {
-                        $c->where('name', 'like', "%{$q}%");
+                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                        $clientQuery
+                            ->where('company_id', $companyId)
+                            ->where('name', 'like', "%{$q}%");
                     });
             });
         }
 
-        $jobs = $query->latest('id')
+        $jobs = $query
+            ->latest('id')
             ->paginate(15)
             ->withQueryString();
 
@@ -192,13 +221,15 @@ class JobController extends Controller
 
     public function create()
     {
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
-        $clients = Client::where('company_id', $companyId)
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $users = User::where('company_id', $companyId)
+        $users = User::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -213,11 +244,15 @@ class JobController extends Controller
 
     public function store(StoreJobRequest $request)
     {
+        $companyId = $this->companyId();
+
         $data = $request->validated();
-        $companyId = auth()->user()->company_id;
+
+        $this->validateClientAndAssignee($data, $companyId);
 
         if (! empty($data['booking_id'])) {
-            $booking = \App\Models\Job\Booking::where('company_id', $companyId)
+            $booking = Booking::query()
+                ->where('company_id', $companyId)
                 ->findOrFail($data['booking_id']);
 
             abort_unless((int) $booking->client_id === (int) $data['client_id'], 422);
@@ -250,11 +285,13 @@ class JobController extends Controller
     {
         $this->authorizeCompany($job);
 
+        $companyId = $this->companyId();
+
         $job->load([
-            'client',
-            'assignedUser',
-            'invoice',
-            'invoices',
+            'client' => fn ($clientQuery) => $clientQuery->where('company_id', $companyId),
+            'assignedUser:id,name,company_id',
+            'invoice' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
+            'invoices' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
         ]);
 
         return view('admin.jobs.show', compact('job'));
@@ -270,17 +307,22 @@ class JobController extends Controller
     {
         $this->authorizeCompany($job);
 
-        $companyId = auth()->user()->company_id;
+        $companyId = $this->companyId();
 
-        $clients = Client::where('company_id', $companyId)
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $users = User::where('company_id', $companyId)
+        $users = User::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $job->load(['invoice', 'invoices']);
+        $job->load([
+            'invoice' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
+            'invoices' => fn ($invoiceQuery) => $invoiceQuery->where('company_id', $companyId),
+        ]);
 
         return view('admin.jobs.edit', compact('job', 'clients', 'users'));
     }
@@ -295,11 +337,15 @@ class JobController extends Controller
     {
         $this->authorizeCompany($job);
 
+        $companyId = $this->companyId();
+
         $validated = $request->validated();
-        $companyId = auth()->user()->company_id;
+
+        $this->validateClientAndAssignee($validated, $companyId);
 
         if (! empty($validated['booking_id'])) {
-            $booking = \App\Models\Job\Booking::where('company_id', $companyId)
+            $booking = Booking::query()
+                ->where('company_id', $companyId)
                 ->findOrFail($validated['booking_id']);
 
             abort_unless((int) $booking->client_id === (int) $validated['client_id'], 422);
@@ -319,29 +365,21 @@ class JobController extends Controller
 
         unset($validated['invoice_number'], $validated['invoice_amount']);
 
-        DB::transaction(function () use ($job, $validated, $newStatus, $invoiceNumber, $invoiceAmount) {
+        DB::transaction(function () use ($job, $validated, $newStatus, $invoiceNumber, $invoiceAmount, $companyId) {
             $job->update($validated);
 
             if ($newStatus === 'completed') {
-                $invoice = $job->invoice ?: new Invoice();
+                $invoice = $job->invoice()
+                    ->where('company_id', $companyId)
+                    ->first() ?: new Invoice();
 
                 $invoice->company_id = $job->company_id;
                 $invoice->client_id = $job->client_id;
                 $invoice->job_id = $job->id;
-                $invoice->amount = $invoiceAmount;
+                $invoice->amount = $invoiceAmount ?? $invoice->amount ?? 0;
                 $invoice->status = 'paid';
                 $invoice->due_date = now();
                 $invoice->currency = 'AED';
-
-                /*
-                |--------------------------------------------------------------------------
-                | IMPORTANT
-                |--------------------------------------------------------------------------
-                | Keep source as an allowed invoice enum value.
-                | garage_invoice caused SQL ENUM truncation error.
-                |--------------------------------------------------------------------------
-                */
-
                 $invoice->source = 'generated';
 
                 if (Schema::hasColumn('invoices', 'invoice_number')) {
@@ -452,14 +490,35 @@ class JobController extends Controller
     |--------------------------------------------------------------------------
     */
 
+    protected function validateClientAndAssignee(array $data, int $companyId): void
+    {
+        if (! empty($data['client_id'])) {
+            Client::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($data['client_id']);
+        }
+
+        if (! empty($data['assigned_to'])) {
+            User::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($data['assigned_to']);
+        }
+    }
+
     protected function ensureInvoice(Job $job): void
     {
-        if ($job->invoice) {
+        $companyId = (int) $job->company_id;
+
+        $invoice = $job->invoice()
+            ->where('company_id', $companyId)
+            ->first();
+
+        if ($invoice) {
             return;
         }
 
         Invoice::create([
-            'company_id' => $job->company_id,
+            'company_id' => $companyId,
             'client_id' => $job->client_id,
             'job_id' => $job->id,
             'amount' => 0,
@@ -477,6 +536,8 @@ class JobController extends Controller
         if (! $freshJob) {
             return;
         }
+
+        $this->authorizeCompany($freshJob);
 
         $invoiceUrl = null;
 

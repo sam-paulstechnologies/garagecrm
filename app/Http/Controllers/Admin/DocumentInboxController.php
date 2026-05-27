@@ -16,21 +16,42 @@ class DocumentInboxController extends Controller
 {
     public function __construct(protected UploadIngestService $ingest) {}
 
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
     protected function companyId(): int
     {
         $companyId = (int) (auth()->user()?->company_id ?? auth()->user()?->company?->id ?? 0);
 
-        abort_if(!$companyId, 403);
+        abort_if(! $companyId, 403);
 
         return $companyId;
     }
+
+    protected function authorizeDocument(JobDocument $doc): int
+    {
+        $companyId = $this->companyId();
+
+        abort_unless((int) $doc->company_id === $companyId, 404);
+
+        return $companyId;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Index
+    |--------------------------------------------------------------------------
+    */
 
     public function index(Request $request)
     {
         $companyId = $this->companyId();
 
         $query = JobDocument::query()
-            ->where('company_id', $companyId)
+            ->forCompany($companyId)
             ->latest('received_at')
             ->latest('id');
 
@@ -47,10 +68,11 @@ class DocumentInboxController extends Controller
         }
 
         if ($request->filled('q')) {
-            $q = (string) $request->string('q');
+            $q = trim((string) $request->string('q'));
 
-            $query->where(function ($qq) use ($q) {
-                $qq->where('original_name', 'like', "%{$q}%")
+            $query->where(function ($subQuery) use ($q) {
+                $subQuery
+                    ->where('original_name', 'like', "%{$q}%")
                     ->orWhere('sender_email', 'like', "%{$q}%")
                     ->orWhere('sender_phone', 'like', "%{$q}%")
                     ->orWhere('provider_message_id', 'like', "%{$q}%")
@@ -65,46 +87,48 @@ class DocumentInboxController extends Controller
         $filters = [
             'status' => (string) $request->query('status', ''),
             'source' => (string) $request->query('source', ''),
-            'type'   => (string) $request->query('type', ''),
-            'q'      => (string) $request->query('q', ''),
+            'type' => (string) $request->query('type', ''),
+            'q' => (string) $request->query('q', ''),
         ];
 
         return view('admin.documents.index', compact('docs', 'filters'));
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Show
+    |--------------------------------------------------------------------------
+    */
+
     public function show(JobDocument $doc)
     {
-        $companyId = $this->companyId();
+        $companyId = $this->authorizeDocument($doc);
 
-        abort_unless((int) $doc->company_id === $companyId, 404);
-
-        $clients = Client::where('company_id', $companyId)
+        $clients = Client::query()
+            ->where('company_id', $companyId)
             ->orderBy('name')
             ->limit(500)
-            ->get(['id','name']);
+            ->get(['id', 'name']);
 
-        $jobs = $doc->client_id
-            ? Job::where('company_id', $companyId)
-                ->where('client_id', $doc->client_id)
-                ->orderByDesc('id')
-                ->limit(500)
-                ->get(['id','job_code'])
-            : Job::where('company_id', $companyId)
-                ->orderByDesc('id')
-                ->limit(200)
-                ->get(['id','job_code']);
+        $jobs = Job::query()
+            ->where('company_id', $companyId)
+            ->when($doc->client_id, fn ($query) => $query->where('client_id', $doc->client_id))
+            ->orderByDesc('id')
+            ->limit($doc->client_id ? 500 : 200)
+            ->get(['id', 'job_code', 'client_id']);
 
         return view('admin.documents.show', compact('doc', 'clients', 'jobs'));
     }
 
-    /**
-     * Manual assignment (status -> assigned by default)
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Manual Assignment
+    |--------------------------------------------------------------------------
+    */
+
     public function assign(Request $request, JobDocument $doc)
     {
-        $companyId = $this->companyId();
-
-        abort_unless((int) $doc->company_id === $companyId, 404);
+        $companyId = $this->authorizeDocument($doc);
 
         $data = $request->validate([
             'client_id' => [
@@ -115,23 +139,31 @@ class DocumentInboxController extends Controller
                 'nullable',
                 Rule::exists('jobs', 'id')->where('company_id', $companyId),
             ],
-            'type'   => ['nullable','in:invoice,job_card,other'],
-            'status' => ['nullable','in:assigned,needs_review,matched'],
+            'type' => ['nullable', Rule::in(['invoice', 'job_card', 'other'])],
+            'status' => ['nullable', Rule::in(['assigned', 'needs_review', 'matched'])],
         ]);
 
-        if (!empty($data['job_id'])) {
-            $job = Job::where('company_id', $companyId)
-                ->findOrFail($data['job_id']);
+        $client = Client::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($data['client_id']);
 
-            abort_unless((int) $job->client_id === (int) $data['client_id'], 422);
+        $jobId = $data['job_id'] ?? null;
+
+        if ($jobId) {
+            $job = Job::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($jobId);
+
+            abort_unless((int) $job->client_id === (int) $client->id, 422);
         }
 
         $doc->fill([
-            'client_id' => $data['client_id'],
-            'job_id'    => $data['job_id'] ?? null,
+            'company_id' => $companyId,
+            'client_id' => $client->id,
+            'job_id' => $jobId,
         ]);
 
-        if (!empty($data['type'])) {
+        if (! empty($data['type'])) {
             $doc->type = $data['type'];
         }
 
@@ -140,12 +172,12 @@ class DocumentInboxController extends Controller
 
         Log::info('doc.assigned', [
             'company_id' => $companyId,
-            'doc_id'    => $doc->id,
-            'by_user'   => $request->user()?->id,
+            'doc_id' => $doc->id,
+            'by_user' => $request->user()?->id,
             'client_id' => $doc->client_id,
-            'job_id'    => $doc->job_id,
-            'status'    => $doc->status,
-            'at'        => now()->toDateTimeString(),
+            'job_id' => $doc->job_id,
+            'status' => $doc->status,
+            'at' => now()->toDateTimeString(),
         ]);
 
         return redirect()
@@ -153,9 +185,12 @@ class DocumentInboxController extends Controller
             ->with('success', 'Document assigned successfully.');
     }
 
-    /**
-     * Admin upload shortcut (e.g., from client page)
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Upload Shortcut
+    |--------------------------------------------------------------------------
+    */
+
     public function uploadForClient(UploadDocumentRequest $request, Client $client)
     {
         $companyId = $this->companyId();
@@ -163,6 +198,8 @@ class DocumentInboxController extends Controller
         abort_unless((int) $client->company_id === $companyId, 404);
 
         $type = (string) $request->input('type', 'other');
+
+        abort_unless(in_array($type, ['invoice', 'job_card', 'other'], true), 422);
 
         $doc = $this->ingest->ingestUploadedFile(
             $request->file('file'),
@@ -172,8 +209,8 @@ class DocumentInboxController extends Controller
 
         $doc->update([
             'company_id' => $companyId,
-            'client_id'  => $client->id,
-            'status'     => 'assigned',
+            'client_id' => $client->id,
+            'status' => 'assigned',
         ]);
 
         return back()->with('success', 'Document uploaded and assigned.');
