@@ -595,6 +595,11 @@
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 
 <style>
+    .sf-page .sf-card,
+    .sf-page .rounded-3xl {
+        border-color: #1e293b;
+    }
+
     .select2-container--default .select2-selection--single {
         height: 42px;
         border-radius: 0.75rem;
@@ -633,6 +638,71 @@
         background: #020617;
         color: #e2e8f0;
         border-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    html[data-theme="light"] .sf-page .border-white\/10 {
+        border-color: #e2e8f0 !important;
+    }
+
+    html[data-theme="light"] .sf-page .bg-slate-950,
+    html[data-theme="light"] .sf-page .bg-slate-950\/60 {
+        background-color: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-slate-300,
+    html[data-theme="light"] .sf-page .text-slate-200 {
+        color: #334155 !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-orange-100\/80,
+    html[data-theme="light"] .sf-page .text-orange-100\/70 {
+        color: #9a3412 !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-blue-100\/80 {
+        color: #1e40af !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-page .text-green-100\/80 {
+        color: #166534 !important;
+    }
+
+    html[data-theme="light"] .select2-container--default .select2-selection--single {
+        border-color: #cbd5e1;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .select2-container--default .select2-selection--single .select2-selection__rendered {
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .select2-dropdown,
+    html[data-theme="light"] .select2-search__field {
+        background: #ffffff;
+        border-color: #cbd5e1 !important;
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .select2-container--default .select2-results__option[aria-selected=true] {
+        background: #fff7ed;
+        color: #9a3412;
     }
 </style>
 @endpush
