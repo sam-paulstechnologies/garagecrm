@@ -169,19 +169,50 @@ export default function Index() {
     return (
         <AuthenticatedLayout>
             <style>{`
-                body {
-                    overflow: hidden;
-                    background: #070b16;
-                }
-
                 .sf-inbox-page {
+                    --sf-inbox-page-bg:
+                        radial-gradient(circle at top right, rgba(255, 122, 26, 0.10), transparent 30%),
+                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+                        #050914;
+                    --sf-inbox-panel: rgba(11, 18, 32, 0.96);
+                    --sf-inbox-panel-soft: rgba(8, 17, 31, 0.78);
+                    --sf-inbox-panel-deep: #08111f;
+                    --sf-inbox-border: #1e293b;
+                    --sf-inbox-border-soft: rgba(148, 163, 184, 0.14);
+                    --sf-inbox-text: #f1f5f9;
+                    --sf-inbox-heading: #ffffff;
+                    --sf-inbox-muted: #94a3b8;
+                    --sf-inbox-muted-strong: #cbd5e1;
+                    --sf-inbox-orange: #ff7a1a;
+                    --sf-inbox-orange-hover: #ea6508;
+                    --sf-inbox-blue-soft: rgba(59, 130, 246, 0.16);
+                    --sf-inbox-green-soft: rgba(34, 197, 94, 0.14);
+                    --sf-inbox-danger-soft: rgba(239, 68, 68, 0.10);
+                    --sf-inbox-shadow: 0 24px 45px rgba(0, 0, 0, 0.28);
                     height: calc(100vh - 64px);
                     overflow: hidden;
-                    background:
-                        radial-gradient(circle at top right, rgba(249, 115, 22, 0.10), transparent 30%),
-                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
-                        #070b16;
-                    color: #e5e7eb;
+                    background: var(--sf-inbox-page-bg);
+                    color: var(--sf-inbox-text);
+                }
+
+                html[data-theme="light"] .sf-inbox-page {
+                    --sf-inbox-page-bg:
+                        radial-gradient(circle at top right, rgba(255, 122, 26, 0.11), transparent 30%),
+                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34%),
+                        #f3f6fb;
+                    --sf-inbox-panel: #ffffff;
+                    --sf-inbox-panel-soft: #f8fafc;
+                    --sf-inbox-panel-deep: #eef4fb;
+                    --sf-inbox-border: #dbe3ef;
+                    --sf-inbox-border-soft: #e5edf7;
+                    --sf-inbox-text: #0f172a;
+                    --sf-inbox-heading: #020617;
+                    --sf-inbox-muted: #64748b;
+                    --sf-inbox-muted-strong: #334155;
+                    --sf-inbox-blue-soft: #eff6ff;
+                    --sf-inbox-green-soft: #ecfdf5;
+                    --sf-inbox-danger-soft: #fef2f2;
+                    --sf-inbox-shadow: 0 20px 45px rgba(15, 23, 42, 0.10);
                 }
 
                 .sf-inbox-shell {
@@ -200,9 +231,9 @@ export default function Index() {
 
                 .sf-panel {
                     min-width: 0;
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    background: rgba(15, 23, 42, 0.92);
-                    box-shadow: 0 24px 45px rgba(0, 0, 0, 0.28);
+                    border: 1px solid var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel);
+                    box-shadow: var(--sf-inbox-shadow);
                     overflow: hidden;
                 }
 
@@ -223,20 +254,20 @@ export default function Index() {
                     align-items: center;
                     justify-content: space-between;
                     gap: 14px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                    background: rgba(2, 6, 23, 0.40);
+                    border-bottom: 1px solid var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-soft);
                 }
 
                 .sf-title {
                     font-size: 18px;
                     font-weight: 900;
-                    color: #ffffff;
+                    color: var(--sf-inbox-heading);
                     letter-spacing: -0.02em;
                 }
 
                 .sf-subtitle {
                     margin-top: 4px;
-                    color: #94a3b8;
+                    color: var(--sf-inbox-muted);
                     font-size: 12px;
                     font-weight: 600;
                 }
@@ -249,12 +280,12 @@ export default function Index() {
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    background: linear-gradient(135deg, #f97316, #ea580c);
+                    background: linear-gradient(135deg, var(--sf-inbox-orange), var(--sf-inbox-orange-hover));
                     color: #ffffff;
                     font-size: 24px;
                     line-height: 1;
                     font-weight: 800;
-                    box-shadow: 0 14px 26px rgba(249, 115, 22, 0.28);
+                    box-shadow: 0 14px 26px rgba(255, 122, 26, 0.28);
                 }
 
                 .sf-search-area {
@@ -940,6 +971,291 @@ export default function Index() {
 
                 .sf-mobile-back {
                     display: none;
+                }
+
+                .sf-inbox-page .sf-search-area,
+                .sf-inbox-page .sf-chat-header,
+                .sf-inbox-page .sf-composer,
+                .sf-inbox-page .sf-right-panel,
+                .sf-inbox-page .sf-right-section {
+                    border-color: var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-soft);
+                }
+
+                .sf-inbox-page .sf-search-box,
+                .sf-inbox-page .sf-menu-dots,
+                .sf-inbox-page .sf-date-pill,
+                .sf-inbox-page .sf-input-box,
+                .sf-inbox-page .sf-send-extra,
+                .sf-inbox-page .sf-action-btn {
+                    border-color: var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-deep);
+                    color: var(--sf-inbox-muted-strong);
+                }
+
+                .sf-inbox-page .sf-search-box input,
+                .sf-inbox-page .sf-input-box textarea {
+                    color: var(--sf-inbox-heading);
+                }
+
+                .sf-inbox-page .sf-search-box input::placeholder,
+                .sf-inbox-page .sf-input-box textarea::placeholder {
+                    color: var(--sf-inbox-muted);
+                }
+
+                .sf-inbox-page .sf-conv-name,
+                .sf-inbox-page .sf-chat-name,
+                .sf-inbox-page .sf-empty-card h2,
+                .sf-inbox-page .sf-right-title,
+                .sf-inbox-page .sf-profile-name,
+                .sf-inbox-page .sf-info-value {
+                    color: var(--sf-inbox-heading);
+                }
+
+                .sf-inbox-page .sf-conv-time,
+                .sf-inbox-page .sf-conv-preview,
+                .sf-inbox-page .sf-empty-list,
+                .sf-inbox-page .sf-chat-phone,
+                .sf-inbox-page .sf-empty-card p,
+                .sf-inbox-page .sf-message-meta,
+                .sf-inbox-page .sf-right-subtitle,
+                .sf-inbox-page .sf-profile-phone,
+                .sf-inbox-page .sf-info-label,
+                .sf-inbox-page .sf-input-icons,
+                .sf-inbox-page .sf-ai-note {
+                    color: var(--sf-inbox-muted);
+                }
+
+                .sf-inbox-page .sf-conversation:hover {
+                    background: rgba(148, 163, 184, 0.10);
+                }
+
+                .sf-inbox-page .sf-conversation.active {
+                    background: linear-gradient(135deg, rgba(255, 122, 26, 0.16), rgba(37, 99, 235, 0.10));
+                    box-shadow: inset 3px 0 0 var(--sf-inbox-orange);
+                }
+
+                .sf-inbox-page .sf-conv-avatar,
+                .sf-inbox-page .sf-chat-avatar,
+                .sf-inbox-page .sf-profile-avatar {
+                    background: rgba(148, 163, 184, 0.16);
+                    color: var(--sf-inbox-muted-strong);
+                }
+
+                .sf-inbox-page .sf-conversation.active .sf-conv-avatar,
+                .sf-inbox-page .sf-empty-icon,
+                .sf-inbox-page .sf-send-extra,
+                .sf-inbox-page .sf-mobile-back {
+                    color: var(--sf-inbox-orange);
+                }
+
+                .sf-inbox-page .sf-unread,
+                .sf-inbox-page .sf-send-btn {
+                    background: linear-gradient(135deg, var(--sf-inbox-orange), var(--sf-inbox-orange-hover));
+                    color: #ffffff;
+                }
+
+                .sf-inbox-page .sf-lead-chip,
+                .sf-inbox-page .sf-ai-chip {
+                    background: var(--sf-inbox-blue-soft);
+                    color: #93c5fd;
+                    border-color: rgba(96, 165, 250, 0.22);
+                }
+
+                .sf-inbox-page .sf-status-pill {
+                    background: var(--sf-inbox-green-soft);
+                    color: #86efac;
+                    border-color: rgba(34, 197, 94, 0.20);
+                }
+
+                .sf-inbox-page .sf-outline-btn {
+                    background: rgba(255, 122, 26, 0.10);
+                    border-color: rgba(255, 122, 26, 0.36);
+                    color: #fdba74;
+                }
+
+                .sf-inbox-page .sf-action-btn:hover,
+                .sf-inbox-page .sf-icon-btn:hover {
+                    background: rgba(255, 122, 26, 0.10);
+                    border-color: rgba(255, 122, 26, 0.32);
+                    color: var(--sf-inbox-orange);
+                }
+
+                .sf-inbox-page .sf-action-btn.danger {
+                    color: #fca5a5;
+                }
+
+                .sf-inbox-page .sf-action-btn.danger:hover {
+                    background: var(--sf-inbox-danger-soft);
+                    color: #fecaca;
+                }
+
+                .sf-inbox-page .sf-messages {
+                    background-color: #0b1220;
+                    border-color: var(--sf-inbox-border);
+                }
+
+                .sf-inbox-page .sf-empty-card {
+                    border-color: var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel);
+                    box-shadow: var(--sf-inbox-shadow);
+                }
+
+                .sf-inbox-page .sf-message-row.in .sf-bubble {
+                    background: var(--sf-inbox-panel);
+                    border-color: var(--sf-inbox-border);
+                    color: var(--sf-inbox-text);
+                }
+
+                .sf-inbox-page .sf-message-row.out .sf-bubble {
+                    background: linear-gradient(135deg, rgba(255, 122, 26, 0.24), rgba(37, 99, 235, 0.16));
+                    border-color: rgba(255, 122, 26, 0.24);
+                    color: var(--sf-inbox-text);
+                }
+
+                .sf-inbox-page .sf-composer-tabs {
+                    border-color: var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-deep);
+                }
+
+                .sf-inbox-page .sf-composer-tab {
+                    color: var(--sf-inbox-muted);
+                }
+
+                .sf-inbox-page .sf-composer-tab.active {
+                    color: var(--sf-inbox-heading);
+                }
+
+                .sf-inbox-page .sf-tone-select,
+                .sf-inbox-page .sf-ai-btn {
+                    border-color: var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-deep);
+                    color: var(--sf-inbox-heading);
+                }
+
+                .sf-inbox-page .sf-ai-btn:hover {
+                    border-color: rgba(255, 122, 26, 0.36);
+                    color: var(--sf-inbox-orange);
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-panel {
+                    background: #ffffff;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-search-area,
+                html[data-theme="light"] .sf-inbox-page .sf-chat-header,
+                html[data-theme="light"] .sf-inbox-page .sf-composer,
+                html[data-theme="light"] .sf-inbox-page .sf-right-panel,
+                html[data-theme="light"] .sf-inbox-page .sf-right-section {
+                    background: #ffffff;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-left-header,
+                html[data-theme="light"] .sf-inbox-page .sf-search-area {
+                    background: #f8fafc;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-search-box,
+                html[data-theme="light"] .sf-inbox-page .sf-menu-dots,
+                html[data-theme="light"] .sf-inbox-page .sf-date-pill,
+                html[data-theme="light"] .sf-inbox-page .sf-input-box,
+                html[data-theme="light"] .sf-inbox-page .sf-send-extra,
+                html[data-theme="light"] .sf-inbox-page .sf-action-btn,
+                html[data-theme="light"] .sf-inbox-page .sf-tone-select,
+                html[data-theme="light"] .sf-inbox-page .sf-ai-btn {
+                    background: #f8fafc;
+                    border-color: #dbe3ef;
+                    color: #334155;
+                    box-shadow: none;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-conversation:hover {
+                    background: #f1f5f9;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-conversation.active {
+                    background: linear-gradient(135deg, rgba(255, 122, 26, 0.14), rgba(59, 130, 246, 0.10));
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-conv-avatar,
+                html[data-theme="light"] .sf-inbox-page .sf-chat-avatar,
+                html[data-theme="light"] .sf-inbox-page .sf-profile-avatar {
+                    background: #eaf1f8;
+                    color: #334155;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-conversation.active .sf-conv-avatar,
+                html[data-theme="light"] .sf-inbox-page .sf-empty-icon {
+                    background: #fff7ed;
+                    color: #ea6508;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-messages {
+                    background-color: #eef4fb;
+                    background-image:
+                        radial-gradient(circle at 16px 16px, rgba(255, 122, 26, 0.11) 1.1px, transparent 1.8px),
+                        radial-gradient(circle at 42px 38px, rgba(59, 130, 246, 0.10) 1.1px, transparent 1.8px);
+                    background-size: 58px 58px, 58px 58px;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-empty-card,
+                html[data-theme="light"] .sf-inbox-page .sf-message-row.in .sf-bubble {
+                    background: #ffffff;
+                    border-color: #dbe3ef;
+                    color: #0f172a;
+                    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-message-row.out .sf-bubble {
+                    background: #fff7ed;
+                    border-color: rgba(255, 122, 26, 0.30);
+                    color: #0f172a;
+                    box-shadow: 0 14px 28px rgba(249, 115, 22, 0.10);
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-message-meta {
+                    color: #64748b;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-lead-chip,
+                html[data-theme="light"] .sf-inbox-page .sf-ai-chip {
+                    background: #eff6ff;
+                    border-color: #bfdbfe;
+                    color: #1d4ed8;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-status-pill {
+                    background: #ecfdf5;
+                    border-color: #bbf7d0;
+                    color: #047857;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-outline-btn {
+                    background: #fff7ed;
+                    border-color: rgba(255, 122, 26, 0.34);
+                    color: #c2410c;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-action-btn:hover,
+                html[data-theme="light"] .sf-inbox-page .sf-icon-btn:hover,
+                html[data-theme="light"] .sf-inbox-page .sf-ai-btn:hover {
+                    background: #fff7ed;
+                    color: #c2410c;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-action-btn.danger {
+                    color: #b91c1c;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-action-btn.danger:hover {
+                    background: #fef2f2;
+                    border-color: #fecaca;
+                    color: #991b1b;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-send-extra,
+                html[data-theme="light"] .sf-inbox-page .sf-mobile-back {
+                    color: #c2410c;
                 }
 
                 @media (max-width: 1400px) {

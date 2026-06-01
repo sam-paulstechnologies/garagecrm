@@ -1,3 +1,93 @@
+<style>
+    .sf-vehicle-edit-hero,
+    .sf-vehicle-form-panel {
+        border-color: rgba(30, 41, 59, 1);
+        background: rgba(15, 23, 42, 0.70);
+        color: #ffffff;
+    }
+
+    .sf-vehicle-form-title {
+        color: #ffffff;
+    }
+
+    .sf-vehicle-form-label {
+        color: #cbd5e1;
+    }
+
+    .sf-vehicle-form-input {
+        border-color: #334155;
+        background: rgba(2, 6, 23, 0.70);
+        color: #e2e8f0;
+    }
+
+    .sf-vehicle-form-input::placeholder {
+        color: #64748b;
+    }
+
+    .sf-vehicle-form-input:disabled {
+        opacity: 0.72;
+    }
+
+    .sf-vehicle-form-help,
+    .sf-vehicle-form-secondary {
+        color: #94a3b8;
+    }
+
+    .sf-vehicle-form-secondary:hover {
+        color: #fb923c;
+    }
+
+    html[data-theme="light"] .sf-vehicle-edit-hero,
+    html[data-theme="light"] .sf-vehicle-form-panel {
+        border-color: #d9e1ec !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-edit-hero h1,
+    html[data-theme="light"] .sf-vehicle-form-title {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-edit-hero p {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-edit-hero p:first-child {
+        color: #ea580c !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-label {
+        color: #334155 !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-input {
+        border-color: #cbd5e1 !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-input[readonly],
+    html[data-theme="light"] .sf-vehicle-form-input:disabled {
+        background: #f8fafc !important;
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-input::placeholder {
+        color: #94a3b8 !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-help,
+    html[data-theme="light"] .sf-vehicle-form-secondary {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-vehicle-form-secondary:hover {
+        color: #ea580c !important;
+    }
+</style>
+
 <form method="POST" action="{{ $action }}" class="space-y-6">
     @csrf
 
@@ -42,27 +132,27 @@
     @endif
 
     {{-- Owner + Vehicle --}}
-    <div class="bg-white border border-gray-100 rounded-xl p-5">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+    <div class="sf-vehicle-form-panel rounded-2xl border p-5 shadow-sm">
+        <h2 class="sf-vehicle-form-title text-lg font-extrabold mb-4">
             Vehicle Details
         </h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
             {{-- Client --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Client</label>
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Client</label>
 
                 @if($prefillClientId)
                     <input type="hidden" name="client_id" value="{{ $prefillClientId }}">
 
                     <input type="text"
                            value="{{ $prefillClient?->name ?? 'Client' }}"
-                           class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-sm"
+                           class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold"
                            readonly>
                 @else
                     <select name="client_id"
                             required
-                            class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
+                            class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
                         <option value="">-- Select Client --</option>
 
                         @foreach($clients as $client)
@@ -81,11 +171,11 @@
 
             {{-- Make --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Make</label>
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Make</label>
 
                 <select id="make_id"
                         name="make_id"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm">
+                        class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
                     <option value="">-- Select Make --</option>
 
                     @foreach(($makes ?? collect()) as $m)
@@ -102,11 +192,11 @@
 
             {{-- Model --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Model</label>
 
                 <select id="model_id"
                         name="model_id"
-                        class="block w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm"
+                        class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold"
                         disabled>
                     <option value="">{{ $selectedMakeId ? 'Select Model' : 'Select make first' }}</option>
                 </select>
@@ -118,13 +208,13 @@
 
             {{-- Year --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Year</label>
 
                 <input type="text"
                        name="year"
                        value="{{ $oldOr('year') }}"
                        placeholder="2021"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('year')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -132,14 +222,14 @@
             </div>
 
             {{-- Plate Number --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Plate Number</label>
+            <div id="vehicle-plate">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Plate Number</label>
 
                 <input type="text"
                        name="plate_number"
                        value="{{ $oldOr('plate_number') }}"
                        placeholder="Dubai A 12345"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('plate_number')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -147,17 +237,17 @@
             </div>
 
             {{-- VIN --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">VIN</label>
+            <div id="vehicle-vin">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">VIN</label>
 
                 <input type="text"
                        name="vin"
                        value="{{ $oldOr('vin') }}"
                        maxlength="17"
                        placeholder="17-character VIN"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm uppercase">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold uppercase">
 
-                <p class="text-xs text-gray-500 mt-1">
+                <p class="sf-vehicle-form-help text-xs mt-1">
                     Optional for now, but improves profile completion.
                 </p>
 
@@ -168,13 +258,13 @@
 
             {{-- Color --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Color</label>
 
                 <input type="text"
                        name="color"
                        value="{{ $oldOr('color') }}"
                        placeholder="White"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('color')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -182,15 +272,15 @@
             </div>
 
             {{-- Current Mileage --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Current Mileage</label>
+            <div id="vehicle-mileage">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">Current Mileage</label>
 
                 <input type="number"
                        name="current_mileage"
                        value="{{ $oldOr('current_mileage') }}"
                        min="0"
                        placeholder="85000"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('current_mileage')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -200,22 +290,22 @@
     </div>
 
     {{-- Expiry / Compliance --}}
-    <div class="bg-white border border-gray-100 rounded-xl p-5">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+    <div class="sf-vehicle-form-panel rounded-2xl border p-5 shadow-sm">
+        <h2 class="sf-vehicle-form-title text-lg font-extrabold mb-4">
             Expiry & Compliance
         </h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
             {{-- Registration / Mulkia Expiry --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+            <div id="vehicle-registration">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">
                     Mulkia / Registration Expiry Date
                 </label>
 
                 <input type="date"
                        name="registration_expiry_date"
                        value="{{ old('registration_expiry_date', $fmtDate($veh->registration_expiry_date ?? null)) }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('registration_expiry_date')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -223,15 +313,15 @@
             </div>
 
             {{-- Insurance Expiry --}}
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+            <div id="vehicle-insurance">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">
                     Insurance Expiry Date
                 </label>
 
                 <input type="date"
                        name="insurance_expiry_date"
                        value="{{ old('insurance_expiry_date', $fmtDate($veh->insurance_expiry_date ?? null)) }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('insurance_expiry_date')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -240,14 +330,14 @@
 
             {{-- Last Inspection Date --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">
                     Last Inspection Date
                 </label>
 
                 <input type="date"
                        name="last_inspection_date"
                        value="{{ old('last_inspection_date', $fmtDate($veh->last_inspection_date ?? null)) }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('last_inspection_date')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -256,14 +346,14 @@
 
             {{-- Inspection Expiry Date --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+                <label class="sf-vehicle-form-label block text-sm font-bold mb-1">
                     Inspection Expiry Date
                 </label>
 
                 <input type="date"
                        name="inspection_expiry_date"
                        value="{{ old('inspection_expiry_date', $fmtDate($veh->inspection_expiry_date ?? null)) }}"
-                       class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                       class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('inspection_expiry_date')
                     <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
@@ -275,12 +365,12 @@
     {{-- Actions --}}
     <div class="flex items-center justify-between gap-3">
         <a href="{{ url()->previous() }}"
-           class="text-sm text-gray-600 hover:underline">
+           class="sf-vehicle-form-secondary text-sm font-bold hover:underline">
             ← Back
         </a>
 
         <button type="submit"
-                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+                class="rounded-xl bg-orange-500 px-6 py-2 text-sm font-extrabold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600">
             {{ (($method ?? 'POST') === 'PUT') ? 'Update' : 'Save' }} Vehicle
         </button>
     </div>

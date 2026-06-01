@@ -9,7 +9,97 @@
     $selectClass = $inputClass;
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+<style>
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-900\/80,
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-900,
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-950\/35,
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-950\/50,
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-950\/60,
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-950\/70 {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .bg-slate-800 {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .border-white\/10 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page :where(h1, h2, h3, p, div, td, th, label, span, a, button).text-white,
+    html[data-theme="light"] .sf-whatsapp-templates-page input.text-white,
+    html[data-theme="light"] .sf-whatsapp-templates-page select.text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-slate-200,
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-slate-300,
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-slate-400 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-blue-200,
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-blue-100\/80 {
+        color: #1e40af !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-yellow-300 {
+        color: #a16207 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-red-300 {
+        color: #b91c1c !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page :where(.bg-orange-500, .bg-orange-600, .bg-red-600).text-white,
+    html[data-theme="light"] .sf-whatsapp-templates-page :where(.bg-orange-500, .bg-orange-600, .bg-red-600) .text-white {
+        color: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page input,
+    html[data-theme="light"] .sf-whatsapp-templates-page select {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page input::placeholder {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page table,
+    html[data-theme="light"] .sf-whatsapp-templates-page tbody {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page thead {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-templates-page tbody tr:hover {
+        background: #f3f6fb !important;
+    }
+</style>
+
+<div class="sf-whatsapp-templates-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

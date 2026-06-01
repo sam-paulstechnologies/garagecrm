@@ -24,7 +24,9 @@
     $badgeClass = 'rounded-full px-2.5 py-0.5 text-xs font-extrabold';
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+@include('admin.settings.index-partials._styles')
+
+<div class="sf-integration-settings-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

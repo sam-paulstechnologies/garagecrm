@@ -148,6 +148,126 @@
         html[data-theme="light"] .sf-panel-subtitle {
             color: #020617 !important;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | SayaraForce Dashboard / Admin Partial Light Mode Fix
+        |--------------------------------------------------------------------------
+        */
+
+        html[data-theme="light"] .sf-page {
+            background: #f4f7fb !important;
+            color: #0f172a !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-slate-900\/70,
+        html[data-theme="light"] .sf-page .bg-slate-900\/60,
+        html[data-theme="light"] .sf-page .bg-slate-900\/80,
+        html[data-theme="light"] .sf-page .bg-slate-950\/60,
+        html[data-theme="light"] .sf-page .bg-slate-950\/50,
+        html[data-theme="light"] .sf-page .bg-slate-950\/40,
+        html[data-theme="light"] .sf-page .bg-slate-950\/70,
+        html[data-theme="light"] .sf-page .bg-slate-800\/60,
+        html[data-theme="light"] .sf-page .bg-slate-800,
+        html[data-theme="light"] .sf-page .bg-slate-800\/40 {
+            background-color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-page .border-slate-800,
+        html[data-theme="light"] .sf-page .border-slate-700 {
+            border-color: #d9e1ec !important;
+        }
+
+        html[data-theme="light"] .sf-page .text-white,
+        html[data-theme="light"] .sf-page .text-slate-100,
+        html[data-theme="light"] .sf-page .text-slate-200 {
+            color: #0f172a !important;
+        }
+
+        html[data-theme="light"] .sf-page .text-slate-300,
+        html[data-theme="light"] .sf-page .text-slate-400,
+        html[data-theme="light"] .sf-page .text-slate-500 {
+            color: #475569 !important;
+        }
+
+        html[data-theme="light"] .sf-page .text-slate-600 {
+            color: #64748b !important;
+        }
+
+        html[data-theme="light"] .sf-page .shadow-sm {
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06) !important;
+        }
+
+        html[data-theme="light"] .sf-page .rounded-xl.border {
+            background-color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-orange-500\/10 {
+            background-color: #fff7ed !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-blue-500\/10,
+        html[data-theme="light"] .sf-page .bg-blue-600\/15,
+        html[data-theme="light"] .sf-page .bg-sky-500\/10 {
+            background-color: #eff6ff !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-emerald-500\/10 {
+            background-color: #ecfdf5 !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-red-500\/10 {
+            background-color: #fef2f2 !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-gradient-to-br {
+            color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-page .bg-gradient-to-br .text-white,
+        html[data-theme="light"] .sf-page .bg-gradient-to-br .text-white\/90,
+        html[data-theme="light"] .sf-page .bg-gradient-to-br .text-blue-100\/80 {
+            color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-page .border-t.border-slate-800,
+        html[data-theme="light"] .sf-page .border-l.border-slate-800,
+        html[data-theme="light"] .sf-page .border-b.border-slate-800,
+        html[data-theme="light"] .sf-page .border-r.border-slate-800 {
+            border-color: #d9e1ec !important;
+        }
+
+        html[data-theme="light"] .sf-page .cursor-not-allowed {
+            color: #94a3b8 !important;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Floating Quick Action Bar
+        |--------------------------------------------------------------------------
+        */
+
+        .sf-floating-quick-actions {
+            background-color: rgba(2, 44, 34, 0.96) !important;
+            border-color: rgba(249, 115, 22, 0.24) !important;
+        }
+
+        .sf-floating-quick-actions a,
+        .sf-floating-quick-actions svg,
+        .sf-floating-quick-actions span {
+            color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-floating-quick-actions {
+            background-color: rgba(2, 44, 34, 0.96) !important;
+            border-color: rgba(249, 115, 22, 0.24) !important;
+        }
+
+        html[data-theme="light"] .sf-floating-quick-actions a,
+        html[data-theme="light"] .sf-floating-quick-actions svg,
+        html[data-theme="light"] .sf-floating-quick-actions span {
+            color: #ffffff !important;
+        }
     </style>
 
     @stack('styles')
@@ -199,6 +319,46 @@
             @include('partials.whatsapp-popup')
         @elseif(View::exists('admin.partials.whatsapp-popup'))
             @include('admin.partials.whatsapp-popup')
+        @endif
+    @endauth
+
+    {{-- Admin Floating Quick Actions --}}
+    @auth
+        @php
+            $showAdminQuickActions =
+                request()->routeIs([
+                    'admin.dashboard',
+                    'admin.dashboard.*',
+                    'admin.clients.*',
+                    'admin.leads.*',
+                    'admin.opportunities.*',
+                    'admin.bookings.*',
+                    'admin.jobs.*',
+                    'admin.invoices.*',
+                    'admin.calendar.*',
+                ])
+                || request()->is([
+                    'admin',
+                    'admin/dashboard',
+                    'admin/clients',
+                    'admin/clients/*',
+                    'admin/leads',
+                    'admin/leads/*',
+                    'admin/opportunities',
+                    'admin/opportunities/*',
+                    'admin/bookings',
+                    'admin/bookings/*',
+                    'admin/jobs',
+                    'admin/jobs/*',
+                    'admin/invoices',
+                    'admin/invoices/*',
+                    'admin/calendar',
+                    'admin/calendar/*',
+                ]);
+        @endphp
+
+        @if($showAdminQuickActions && View::exists('admin.partials._floating_quick_actions'))
+            @include('admin.partials._floating_quick_actions')
         @endif
     @endauth
 

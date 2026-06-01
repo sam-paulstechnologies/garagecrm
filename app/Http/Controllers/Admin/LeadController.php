@@ -34,6 +34,7 @@ class LeadController extends Controller
         $companyId = $this->companyId();
         $q = trim((string) $request->get('q', ''));
         $bucket = trim((string) $request->get('bucket', ''));
+        $leadFilters = $this->leadIndexFilters($request);
 
         $query = $this->baseLeadQuery($companyId, $q)
             ->where('is_active', 1)
@@ -44,6 +45,7 @@ class LeadController extends Controller
             ]);
 
         $this->applyBucketFilter($query, $bucket);
+        $this->applyLeadIndexFilters($query, $leadFilters);
 
         $leads = $query
             ->latest()
@@ -63,6 +65,10 @@ class LeadController extends Controller
             'bucketCounts' => $this->bucketCounts($companyId),
             'leadScores' => $leadScores,
             'whatsappByLead' => $whatsappByLead,
+            'leadFilters' => $leadFilters,
+            'assignedUsers' => User::where('company_id', $companyId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -574,6 +580,100 @@ class LeadController extends Controller
                         });
                 });
             });
+    }
+
+    protected function leadIndexFilters(Request $request): array
+    {
+        return [
+            'date_range' => $request->get('date_range', 'all_time'),
+            'from_date' => $request->get('from_date'),
+            'to_date' => $request->get('to_date'),
+            'lead_source' => $request->get('lead_source', 'all'),
+            'assigned_user' => $request->get('assigned_user', 'all'),
+            'service_type' => $request->get('service_type', 'all'),
+            'customer_type' => $request->get('customer_type', 'all'),
+        ];
+    }
+
+    protected function applyLeadIndexFilters($query, array $filters): void
+    {
+        [$from, $to] = $this->leadDateRange($filters);
+
+        if ($from) {
+            $query->where('created_at', '>=', $from);
+        }
+
+        if ($to) {
+            $query->where('created_at', '<=', $to);
+        }
+
+        if (($filters['lead_source'] ?? 'all') !== 'all') {
+            $source = trim((string) $filters['lead_source']);
+
+            $query->where(function ($sub) use ($source) {
+                $sub->where('source', 'like', "%{$source}%")
+                    ->orWhere('external_source', 'like', "%{$source}%")
+                    ->orWhereHas('leadSource', function ($sourceQuery) use ($source) {
+                        $sourceQuery->where('type', 'like', "%{$source}%")
+                            ->orWhere('name', 'like', "%{$source}%");
+                    });
+            });
+        }
+
+        if (($filters['assigned_user'] ?? 'all') !== 'all' && is_numeric($filters['assigned_user'])) {
+            $query->where('assigned_to', (int) $filters['assigned_user']);
+        }
+
+        if (($filters['service_type'] ?? 'all') !== 'all') {
+            $serviceType = trim((string) $filters['service_type']);
+            $serviceLabel = str_replace('_', ' ', $serviceType);
+
+            $query->where(function ($sub) use ($serviceType, $serviceLabel) {
+                $sub->where('service_type', 'like', "%{$serviceType}%")
+                    ->orWhere('service_type', 'like', "%{$serviceLabel}%")
+                    ->orWhere('service_category', $serviceType)
+                    ->orWhere('service_category', $serviceLabel);
+            });
+        }
+
+        if (($filters['customer_type'] ?? 'all') !== 'all') {
+            $customerType = trim((string) $filters['customer_type']);
+
+            if ($customerType === 'returning') {
+                $customerType = 'existing';
+            }
+
+            $query->where('customer_type', $customerType);
+        }
+    }
+
+    protected function leadDateRange(array $filters): array
+    {
+        return match ((string) ($filters['date_range'] ?? 'all_time')) {
+            'today' => [now()->startOfDay(), now()->endOfDay()],
+            'yesterday' => [now()->subDay()->startOfDay(), now()->subDay()->endOfDay()],
+            'last_7_days' => [now()->subDays(6)->startOfDay(), now()->endOfDay()],
+            'this_month' => [now()->startOfMonth(), now()->endOfMonth()],
+            'last_month' => [now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth()],
+            'custom' => [
+                $this->parseLeadFilterDate($filters['from_date'] ?? null)?->startOfDay(),
+                $this->parseLeadFilterDate($filters['to_date'] ?? null)?->endOfDay(),
+            ],
+            default => [null, null],
+        };
+    }
+
+    protected function parseLeadFilterDate(?string $date): ?\Illuminate\Support\Carbon
+    {
+        if (! filled($date)) {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($date);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     protected function applyBucketFilter($query, ?string $bucket): void

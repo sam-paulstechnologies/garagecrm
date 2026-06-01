@@ -19,6 +19,74 @@
     }
 @endphp
 
+<style>
+    html[data-theme="light"] .sf-whatsapp-template-form .bg-slate-900\/80,
+    html[data-theme="light"] .sf-whatsapp-template-form .bg-slate-900,
+    html[data-theme="light"] .sf-whatsapp-template-form .bg-slate-950\/35,
+    html[data-theme="light"] .sf-whatsapp-template-form .bg-slate-950\/55,
+    html[data-theme="light"] .sf-whatsapp-template-form .bg-slate-950\/70 {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .border-white\/10 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form :where(h1, h2, h3, p, div, td, th, label, span, a, button, code).text-white,
+    html[data-theme="light"] .sf-whatsapp-template-form input.text-white,
+    html[data-theme="light"] .sf-whatsapp-template-form textarea.text-white,
+    html[data-theme="light"] .sf-whatsapp-template-form select.text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-slate-200,
+    html[data-theme="light"] .sf-whatsapp-template-form .text-slate-300,
+    html[data-theme="light"] .sf-whatsapp-template-form .text-slate-400 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-purple-300 {
+        color: #7e22ce !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form .text-red-200,
+    html[data-theme="light"] .sf-whatsapp-template-form .text-red-300,
+    html[data-theme="light"] .sf-whatsapp-template-form .text-red-400 {
+        color: #b91c1c !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form :where(.bg-orange-500, .bg-orange-600).text-white,
+    html[data-theme="light"] .sf-whatsapp-template-form :where(.bg-orange-500, .bg-orange-600) .text-white {
+        color: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form input,
+    html[data-theme="light"] .sf-whatsapp-template-form select,
+    html[data-theme="light"] .sf-whatsapp-template-form textarea {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-form input::placeholder,
+    html[data-theme="light"] .sf-whatsapp-template-form textarea::placeholder {
+        color: #64748b !important;
+    }
+</style>
+
+<div class="sf-whatsapp-template-form">
 {{-- Errors --}}
 @if($errors->any())
     <div class="mb-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -326,3 +394,4 @@
         </button>
     </div>
 </form>
+</div>

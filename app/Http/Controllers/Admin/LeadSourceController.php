@@ -7,6 +7,7 @@ use App\Models\Company\CompanySetting;
 use App\Models\LeadSource;
 use App\Models\MetaPage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
 class LeadSourceController extends Controller
@@ -32,6 +33,9 @@ class LeadSourceController extends Controller
         /*
         |--------------------------------------------------------------------------
         | WhatsApp
+        |--------------------------------------------------------------------------
+        | Meta/WABA is now the preferred WhatsApp path.
+        | Twilio is still kept as a legacy/backward-compatible provider.
         |--------------------------------------------------------------------------
         */
         $waFrom = trim((string) config('services.whatsapp.twilio.from'));
@@ -91,7 +95,7 @@ class LeadSourceController extends Controller
             [
                 'key'         => 'whatsapp',
                 'title'       => 'WhatsApp',
-                'subtitle'    => 'Inbound leads & conversations',
+                'subtitle'    => 'Meta/WABA intake, inbound leads & conversations',
                 'status'      => $waConfigured ? 'Connected' : 'Not configured',
                 'statusTone'  => $waConfigured ? 'green' : 'gray',
                 'meta'        => $waConfigured ? "From: {$waFrom}" : 'Not configured',
@@ -203,12 +207,32 @@ class LeadSourceController extends Controller
             ->pluck('value', 'key')
             ->toArray();
 
+        /*
+        |--------------------------------------------------------------------------
+        | WhatsApp Webhook URLs
+        |--------------------------------------------------------------------------
+        | Meta/WABA is the primary WhatsApp provider path.
+        | Twilio is retained only as a legacy/backward-compatible provider.
+        |--------------------------------------------------------------------------
+        */
+        $metaWebhookUrl = Route::has('api.webhooks.meta.whatsapp.handle')
+            ? route('api.webhooks.meta.whatsapp.handle')
+            : null;
+
+        $legacyTwilioWebhookUrl = Route::has('api.webhooks.twilio.whatsapp')
+            ? route('api.webhooks.twilio.whatsapp')
+            : null;
+
+        $webhookUrl = $metaWebhookUrl ?? $legacyTwilioWebhookUrl;
+
         return view('admin.lead_sources.whatsapp', [
-            'waFrom'             => config('services.whatsapp.twilio.from'),
-            'managerWhatsapp'    => $settings['whatsapp_manager_number'] ?? '',
-            'googleReviewLink'   => $settings['google_review_link'] ?? '',
-            'garageLocationLink' => $settings['garage_location_link'] ?? '',
-            'webhookUrl'         => route('webhooks.twilio.whatsapp'),
+            'waFrom'                 => config('services.whatsapp.twilio.from'),
+            'managerWhatsapp'        => $settings['whatsapp_manager_number'] ?? '',
+            'googleReviewLink'       => $settings['google_review_link'] ?? '',
+            'garageLocationLink'     => $settings['garage_location_link'] ?? '',
+            'webhookUrl'             => $webhookUrl,
+            'metaWebhookUrl'         => $metaWebhookUrl,
+            'legacyTwilioWebhookUrl' => $legacyTwilioWebhookUrl,
         ]);
     }
 

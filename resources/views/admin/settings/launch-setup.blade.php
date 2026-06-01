@@ -27,7 +27,9 @@
     $sectionSubClass = 'mt-1 text-sm font-medium text-slate-500';
 @endphp
 
-<div class="sf-page mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+@include('admin.settings.launch-setup-partials._styles')
+
+<div class="sf-page sf-launch-setup-page mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

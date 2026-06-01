@@ -13,7 +13,90 @@
     $inputClass = 'block w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-semibold text-white placeholder:text-slate-600 outline-none transition focus:border-orange-400/50 focus:ring-2 focus:ring-orange-500/10';
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+<style>
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-900\/80,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-900,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/35,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/55,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/60,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/70 {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .border-white\/10 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix :where(h1, h2, h3, p, div, td, th, label).text-white,
+    html[data-theme="light"] .sf-growth-visual-fix input.text-white,
+    html[data-theme="light"] .sf-growth-visual-fix textarea.text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-300,
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-400 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-100\/80 {
+        color: #1e40af !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-red-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-red-300 {
+        color: #b91c1c !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-100\/80 {
+        color: #9a3412 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix input,
+    html[data-theme="light"] .sf-growth-visual-fix textarea {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix input::placeholder,
+    html[data-theme="light"] .sf-growth-visual-fix textarea::placeholder {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix thead {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix tbody {
+        border-color: #e2e8f0 !important;
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix tbody tr:hover {
+        background: #f3f6fb !important;
+    }
+</style>
+
+<div class="sf-growth-visual-fix mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

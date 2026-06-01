@@ -16,7 +16,77 @@
     $textareaClass = $inputClass . ' min-h-[110px]';
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+<style>
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-slate-900\/80,
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-slate-900,
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-slate-950\/35,
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-slate-950\/70 {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .border-white\/10 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show :where(h1, h2, h3, p, div, td, th, label, span, a, button).text-white,
+    html[data-theme="light"] .sf-whatsapp-template-show input.text-white,
+    html[data-theme="light"] .sf-whatsapp-template-show textarea.text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-\[\#075E54\],
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-\[\#075E54\] :where(div, span).text-white {
+        color: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .bg-\[\#075E54\] .text-white\/70 {
+        color: rgba(255, 255, 255, 0.78) !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .text-slate-200,
+    html[data-theme="light"] .sf-whatsapp-template-show .text-slate-300,
+    html[data-theme="light"] .sf-whatsapp-template-show .text-slate-400 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show :where(.bg-orange-500, .bg-orange-600).text-white,
+    html[data-theme="light"] .sf-whatsapp-template-show :where(.bg-orange-500, .bg-orange-600) .text-white {
+        color: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show input,
+    html[data-theme="light"] .sf-whatsapp-template-show textarea {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show input:disabled,
+    html[data-theme="light"] .sf-whatsapp-template-show textarea:disabled {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+        opacity: 1 !important;
+    }
+
+    html[data-theme="light"] .sf-whatsapp-template-show input::placeholder,
+    html[data-theme="light"] .sf-whatsapp-template-show textarea::placeholder {
+        color: #64748b !important;
+    }
+</style>
+
+<div class="sf-whatsapp-template-show mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

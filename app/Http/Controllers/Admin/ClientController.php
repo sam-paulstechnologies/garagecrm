@@ -8,6 +8,8 @@ use App\Models\Client\Note;
 use App\Models\Job\Job;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class ClientController extends Controller
@@ -18,37 +20,157 @@ class ClientController extends Controller
     public function index(Request $request)
     {
         $companyId = auth()->user()->company_id;
+
         $q = trim((string) $request->get('q', ''));
 
-        $clients = Client::with([
+        $filters = [
+            'q'               => $q,
+            'customer_type'   => $request->get('customer_type', 'all'),
+            'vehicle_make'    => $request->get('vehicle_make', 'all'),
+            'service_history' => $request->get('service_history', 'all'),
+            'last_activity'   => $request->get('last_activity', 'all'),
+            'source'          => $request->get('source', 'all'),
+        ];
+
+        $clientsQuery = Client::with([
                 'vehicles.make',
                 'vehicles.model',
             ])
             ->where('company_id', $companyId)
-            ->where('is_archived', false)
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    $sub->where('name', 'like', "%{$q}%")
-                        ->orWhere('phone', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('whatsapp', 'like', "%{$q}%")
-                        ->orWhereHas('vehicles.make', function ($vehicleMakeQuery) use ($q) {
-                            $vehicleMakeQuery->where('name', 'like', "%{$q}%");
-                        })
-                        ->orWhereHas('vehicles.model', function ($vehicleModelQuery) use ($q) {
-                            $vehicleModelQuery->where('name', 'like', "%{$q}%");
-                        })
-                        ->orWhereHas('vehicles', function ($vehicleQuery) use ($q) {
-                            $vehicleQuery->where('plate_number', 'like', "%{$q}%")
-                                ->orWhere('vin', 'like', "%{$q}%");
-                        });
-                });
-            })
+            ->where('is_archived', false);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search
+        |--------------------------------------------------------------------------
+        */
+        $clientsQuery->when($q, function ($query) use ($q) {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('name', 'like', "%{$q}%")
+                    ->orWhere('phone', 'like', "%{$q}%")
+                    ->orWhere('email', 'like', "%{$q}%")
+                    ->orWhere('whatsapp', 'like', "%{$q}%")
+                    ->orWhereHas('vehicles.make', function ($vehicleMakeQuery) use ($q) {
+                        $vehicleMakeQuery->where('name', 'like', "%{$q}%");
+                    })
+                    ->orWhereHas('vehicles.model', function ($vehicleModelQuery) use ($q) {
+                        $vehicleModelQuery->where('name', 'like', "%{$q}%");
+                    })
+                    ->orWhereHas('vehicles', function ($vehicleQuery) use ($q) {
+                        $vehicleQuery->where('plate_number', 'like', "%{$q}%")
+                            ->orWhere('vin', 'like', "%{$q}%");
+                    });
+            });
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Customer Type
+        |--------------------------------------------------------------------------
+        */
+        if ($filters['customer_type'] === 'new') {
+            $clientsQuery->where('created_at', '>=', now()->subDays(30)->startOfDay());
+        }
+
+        if ($filters['customer_type'] === 'returning') {
+            $clientsQuery->where('created_at', '<', now()->subDays(30)->startOfDay());
+        }
+
+        if ($filters['customer_type'] === 'vip' && Schema::hasColumn('clients', 'is_vip')) {
+            $clientsQuery->where('is_vip', true);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Vehicle Make
+        |--------------------------------------------------------------------------
+        */
+        if ($filters['vehicle_make'] !== 'all') {
+            $clientsQuery->whereHas('vehicles', function ($vehicleQuery) use ($filters) {
+                $vehicleQuery->where('make_id', $filters['vehicle_make']);
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Service History
+        |--------------------------------------------------------------------------
+        */
+        if ($filters['service_history'] === 'has_booking') {
+            $clientsQuery->whereHas('bookings');
+        }
+
+        if ($filters['service_history'] === 'has_job') {
+            $clientsQuery->whereExists(function ($subQuery) {
+                $subQuery->select(DB::raw(1))
+                    ->from('jobs')
+                    ->whereColumn('jobs.client_id', 'clients.id');
+            });
+        }
+
+        if ($filters['service_history'] === 'has_invoice') {
+            $clientsQuery->whereExists(function ($subQuery) {
+                $subQuery->select(DB::raw(1))
+                    ->from('invoices')
+                    ->whereColumn('invoices.client_id', 'clients.id')
+                    ->whereNull('invoices.deleted_at');
+            });
+        }
+
+        if ($filters['service_history'] === 'has_unpaid_invoice') {
+            $clientsQuery->whereExists(function ($subQuery) {
+                $subQuery->select(DB::raw(1))
+                    ->from('invoices')
+                    ->whereColumn('invoices.client_id', 'clients.id')
+                    ->whereNull('invoices.deleted_at')
+                    ->where('invoices.status', '!=', 'paid');
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Last Activity
+        |--------------------------------------------------------------------------
+        | Current v1 rule: based on client updated_at.
+        |--------------------------------------------------------------------------
+        */
+        if ($filters['last_activity'] === 'last_7_days') {
+            $clientsQuery->where('updated_at', '>=', now()->subDays(7)->startOfDay());
+        }
+
+        if ($filters['last_activity'] === 'this_month') {
+            $clientsQuery->whereBetween('updated_at', [
+                now()->startOfMonth()->startOfDay(),
+                now()->endOfDay(),
+            ]);
+        }
+
+        if ($filters['last_activity'] === 'last_90_days') {
+            $clientsQuery->where('updated_at', '>=', now()->subDays(90)->startOfDay());
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Source
+        |--------------------------------------------------------------------------
+        */
+        if ($filters['source'] !== 'all' && Schema::hasColumn('clients', 'source')) {
+            $clientsQuery->where('source', $filters['source']);
+        }
+
+        $clients = $clientsQuery
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.clients.index', compact('clients', 'q'));
+        $vehicleMakes = $this->vehicleMakesForCompany($companyId);
+
+        return view('admin.clients.index', compact(
+            'clients',
+            'q',
+            'filters',
+            'vehicleMakes'
+        ));
     }
 
     public function create()
@@ -157,14 +279,6 @@ class ClientController extends Controller
         $missingItems = [];
         $score = 0;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Garage Customer Profile Completion Score
-        |--------------------------------------------------------------------------
-        | Total = 100
-        |--------------------------------------------------------------------------
-        */
-
         if ($client->name) {
             $score += 10;
         } else {
@@ -225,15 +339,6 @@ class ClientController extends Controller
             $missingItems[] = 'Current mileage';
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Service History + Next Service Logic
-        |--------------------------------------------------------------------------
-        | Current rule:
-        | - Last Service = latest completed job end_time
-        | - Next Service = Last Service + 6 months
-        |--------------------------------------------------------------------------
-        */
         $lastCompletedJob = $serviceHistory->first();
 
         $lastServiceDate = $lastCompletedJob?->end_time;
@@ -345,18 +450,41 @@ class ClientController extends Controller
             ->with('success', 'Client archived.');
     }
 
-    public function archived()
+    public function archived(Request $request)
     {
+        $companyId = auth()->user()->company_id;
+
+        $q = trim((string) $request->get('q', ''));
+
         $clients = Client::with([
                 'vehicles.make',
                 'vehicles.model',
             ])
-            ->where('company_id', auth()->user()->company_id)
+            ->where('company_id', $companyId)
             ->where('is_archived', true)
+            ->when($q, function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('name', 'like', "%{$q}%")
+                        ->orWhere('phone', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('whatsapp', 'like', "%{$q}%")
+                        ->orWhereHas('vehicles.make', function ($vehicleMakeQuery) use ($q) {
+                            $vehicleMakeQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicles.model', function ($vehicleModelQuery) use ($q) {
+                            $vehicleModelQuery->where('name', 'like', "%{$q}%");
+                        })
+                        ->orWhereHas('vehicles', function ($vehicleQuery) use ($q) {
+                            $vehicleQuery->where('plate_number', 'like', "%{$q}%")
+                                ->orWhere('vin', 'like', "%{$q}%");
+                        });
+                });
+            })
             ->orderBy('name')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('admin.clients.archived', compact('clients'));
+        return view('admin.clients.archived', compact('clients', 'q'));
     }
 
     public function restore(Client $client)
@@ -433,6 +561,30 @@ class ClientController extends Controller
         return redirect()
             ->route('admin.clients.show', $client->id)
             ->with('success', 'Note added.');
+    }
+
+    /**
+     * Vehicle makes available for current company clients.
+     */
+    private function vehicleMakesForCompany(int $companyId)
+    {
+        if (
+            ! Schema::hasTable('vehicles') ||
+            ! Schema::hasTable('vehicle_makes') ||
+            ! Schema::hasColumn('vehicles', 'make_id')
+        ) {
+            return collect();
+        }
+
+        return DB::table('vehicle_makes')
+            ->join('vehicles', 'vehicles.make_id', '=', 'vehicle_makes.id')
+            ->join('clients', 'clients.id', '=', 'vehicles.client_id')
+            ->where('clients.company_id', $companyId)
+            ->where('clients.is_archived', false)
+            ->select('vehicle_makes.id', 'vehicle_makes.name')
+            ->distinct()
+            ->orderBy('vehicle_makes.name')
+            ->get();
     }
 
     /**

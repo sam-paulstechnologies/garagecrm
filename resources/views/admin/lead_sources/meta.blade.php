@@ -41,7 +41,88 @@
     }
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+<style>
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-900\/80,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-900,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/35,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/50,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/55,
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-950\/70 {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .bg-slate-800 {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .border-white\/10 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix :where(h1, h2, h3, h4, p, div, td, th, label, li).text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-300,
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-400 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-blue-100\/80 {
+        color: #1e40af !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-green-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-green-300 {
+        color: #15803d !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-red-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-red-300 {
+        color: #b91c1c !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-yellow-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-yellow-300 {
+        color: #a16207 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-yellow-100\/80 {
+        color: #854d0e !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-200,
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix .text-orange-100\/80 {
+        color: #9a3412 !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix table,
+    html[data-theme="light"] .sf-growth-visual-fix tbody {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-growth-visual-fix thead {
+        background: #f8fafc !important;
+    }
+</style>
+
+<div class="sf-growth-visual-fix mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
     {{-- Alerts --}}
     @if(session('success'))
