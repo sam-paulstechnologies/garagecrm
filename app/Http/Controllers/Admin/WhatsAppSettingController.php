@@ -98,14 +98,16 @@ class WhatsAppSettingController extends Controller
             'whatsapp.positive_feedback_threshold' => (string) $data['positive_feedback_threshold'],
         ];
 
+        $companyId = $this->companyId();
+
         foreach ($settingsToSave as $key => $value) {
             CompanySetting::updateOrCreate(
                 [
-                    'company_id' => $this->companyId(),
-                    'group'      => 'whatsapp',
+                    'company_id' => $companyId,
                     'key'        => $key,
                 ],
                 [
+                    'group' => 'whatsapp',
                     'value' => $value,
                 ]
             );
