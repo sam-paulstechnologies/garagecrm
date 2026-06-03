@@ -16,6 +16,8 @@ use App\Models\Job\JobDocument;
 use App\Models\User;
 use App\Services\DocumentUploadService;
 use App\Services\JobNumberService;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -61,10 +63,26 @@ class JobController extends Controller
     {
         $companyId = $this->companyId();
 
-        $q = trim((string) $request->get('q'));
-        $status = $request->get('status');
+        $q = trim((string) $request->get('q', ''));
+        $status = (string) $request->get('status', '');
+        $bucket = (string) $request->get('bucket', '');
 
         $openStatuses = ['pending', 'in_progress'];
+
+        $jobFilters = [
+            'date_range' => $request->get('date_range', 'all_time'),
+            'lead_source' => $request->get('lead_source', 'all'),
+            'assigned_user' => $request->get('assigned_user', 'all'),
+            'service_type' => $request->get('service_type', 'all'),
+            'customer_type' => $request->get('customer_type', 'all'),
+            'from_date' => $request->get('from_date'),
+            'to_date' => $request->get('to_date'),
+        ];
+
+        $assignedUsers = User::query()
+            ->where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $query = $this->companyScope()
             ->with([
@@ -76,29 +94,14 @@ class JobController extends Controller
             ->where('is_archived', false)
             ->whereIn('status', $openStatuses);
 
+        $this->applyJobIndexFilters($query, $request, $companyId, $openStatuses);
+
         if (in_array($status, $openStatuses, true)) {
             $query->where('status', $status);
         }
 
-        if ($q !== '') {
-            $query->where(function ($where) use ($q, $companyId) {
-                $where
-                    ->where('job_code', 'like', "%{$q}%")
-                    ->orWhere('description', 'like', "%{$q}%")
-                    ->orWhere('work_summary', 'like', "%{$q}%")
-                    ->orWhere('issues_found', 'like', "%{$q}%")
-                    ->orWhere('parts_used', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
-                        $clientQuery
-                            ->where('company_id', $companyId)
-                            ->where(function ($clientSearch) use ($q) {
-                                $clientSearch
-                                    ->where('name', 'like', "%{$q}%")
-                                    ->orWhere('phone', 'like', "%{$q}%")
-                                    ->orWhere('email', 'like', "%{$q}%");
-                            });
-                    });
-            });
+        if ($bucket !== '') {
+            $this->applyJobBucketFilter($query, $bucket);
         }
 
         $jobs = $query
@@ -107,15 +110,29 @@ class JobController extends Controller
             ->withQueryString();
 
         $base = $this->companyScope()
-            ->where('is_archived', false);
+            ->where('is_archived', false)
+            ->whereIn('status', $openStatuses);
+
+        $this->applyJobIndexFilters($base, $request, $companyId, $openStatuses, false);
 
         $stats = [
-            'open_jobs' => (clone $base)->whereIn('status', $openStatuses)->count(),
+            'open_jobs' => (clone $base)->count(),
             'pending' => (clone $base)->where('status', 'pending')->count(),
             'in_progress' => (clone $base)->where('status', 'in_progress')->count(),
         ];
 
-        return view('admin.jobs.index', compact('jobs', 'q', 'status', 'stats'));
+        $bucketCounts = $this->buildJobBucketCounts((clone $base)->get());
+
+        return view('admin.jobs.index', compact(
+            'jobs',
+            'q',
+            'status',
+            'bucket',
+            'stats',
+            'bucketCounts',
+            'jobFilters',
+            'assignedUsers'
+        ));
     }
 
     /*
@@ -357,12 +374,6 @@ class JobController extends Controller
         $invoiceNumber = $validated['invoice_number'] ?? null;
         $invoiceAmount = $validated['invoice_amount'] ?? null;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Invoice fields should not go into jobs table
-        |--------------------------------------------------------------------------
-        */
-
         unset($validated['invoice_number'], $validated['invoice_amount']);
 
         DB::transaction(function () use ($job, $validated, $newStatus, $invoiceNumber, $invoiceAmount, $companyId) {
@@ -393,19 +404,6 @@ class JobController extends Controller
                 $invoice->save();
             }
         });
-
-        /*
-        |--------------------------------------------------------------------------
-        | JobCompleted event
-        |--------------------------------------------------------------------------
-        |
-        | JobObserver no longer dispatches this event to avoid duplicate
-        | WhatsApp feedback messages.
-        |
-        | This controller is now the authoritative source for admin-driven
-        | job completion.
-        |
-        */
 
         if ($oldStatus !== 'completed' && $newStatus === 'completed') {
             $this->dispatchJobCompleted($job);
@@ -482,6 +480,260 @@ class JobController extends Controller
         ]);
 
         return back()->with('success', 'Job card uploaded.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Index Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    protected function applyJobIndexFilters(
+        Builder $query,
+        Request $request,
+        int $companyId,
+        array $openStatuses,
+        bool $includeStatus = true
+    ): void {
+        $q = trim((string) $request->get('q', ''));
+        $status = (string) $request->get('status', '');
+        $dateRange = (string) $request->get('date_range', 'all_time');
+        $leadSource = (string) $request->get('lead_source', 'all');
+        $assignedUser = (string) $request->get('assigned_user', 'all');
+        $serviceType = (string) $request->get('service_type', 'all');
+        $customerType = (string) $request->get('customer_type', 'all');
+
+        if ($includeStatus && in_array($status, $openStatuses, true)) {
+            $query->where('status', $status);
+        }
+
+        if ($q !== '') {
+            $query->where(function ($where) use ($q, $companyId) {
+                $where
+                    ->where('job_code', 'like', "%{$q}%")
+                    ->orWhere('description', 'like', "%{$q}%")
+                    ->orWhere('work_summary', 'like', "%{$q}%")
+                    ->orWhere('issues_found', 'like', "%{$q}%")
+                    ->orWhere('parts_used', 'like', "%{$q}%")
+                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                        $clientQuery
+                            ->where('company_id', $companyId)
+                            ->where(function ($clientSearch) use ($q) {
+                                $clientSearch
+                                    ->where('name', 'like', "%{$q}%")
+                                    ->orWhere('phone', 'like', "%{$q}%")
+                                    ->orWhere('email', 'like', "%{$q}%");
+                            });
+                    });
+            });
+        }
+
+        [$fromDate, $toDate, $applyDateFilter] = $this->resolveJobDateRange($request, $dateRange);
+
+        if ($applyDateFilter && Schema::hasColumn('jobs', 'created_at')) {
+            $query->whereBetween('created_at', [$fromDate, $toDate]);
+        }
+
+        if ($leadSource !== 'all') {
+            $sourceColumn = $this->firstExistingJobColumn(['lead_source', 'source', 'source_type', 'channel']);
+
+            if ($sourceColumn) {
+                $query->where($sourceColumn, $leadSource);
+            }
+        }
+
+        if ($assignedUser !== 'all') {
+            $assignedColumn = $this->firstExistingJobColumn(['assigned_to', 'assigned_user_id', 'user_id', 'owner_id']);
+
+            if ($assignedColumn) {
+                $query->where($assignedColumn, $assignedUser);
+            }
+        }
+
+        if ($serviceType !== 'all') {
+            $this->applyServiceTextFilter($query, $serviceType);
+        }
+
+        if ($customerType !== 'all' && Schema::hasColumn('jobs', 'client_id')) {
+            $query->whereIn('client_id', function ($subQuery) use ($customerType, $fromDate, $toDate) {
+                $subQuery->select('id')->from('clients');
+
+                if ($customerType === 'new') {
+                    $subQuery->whereBetween('created_at', [$fromDate, $toDate]);
+                }
+
+                if (in_array($customerType, ['returning', 'existing'], true)) {
+                    $subQuery->where('created_at', '<', $fromDate);
+                }
+
+                if (in_array($customerType, ['fleet', 'corporate'], true)) {
+                    $subQuery->where(function ($clientQuery) use ($customerType) {
+                        $clientQuery
+                            ->where('customer_type', $customerType)
+                            ->orWhere('type', $customerType)
+                            ->orWhere('source', $customerType);
+                    });
+                }
+            });
+        }
+    }
+
+    protected function resolveJobDateRange(Request $request, string $range): array
+    {
+        return match ($range) {
+            'today' => [
+                now()->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'yesterday' => [
+                now()->subDay()->startOfDay(),
+                now()->subDay()->endOfDay(),
+                true,
+            ],
+
+            'last_7_days' => [
+                now()->subDays(6)->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'this_month' => [
+                now()->startOfMonth()->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'last_month' => [
+                now()->subMonthNoOverflow()->startOfMonth()->startOfDay(),
+                now()->subMonthNoOverflow()->endOfMonth()->endOfDay(),
+                true,
+            ],
+
+            'custom' => [
+                $request->filled('from_date')
+                    ? Carbon::parse($request->get('from_date'))->startOfDay()
+                    : now()->startOfMonth()->startOfDay(),
+
+                $request->filled('to_date')
+                    ? Carbon::parse($request->get('to_date'))->endOfDay()
+                    : now()->endOfDay(),
+
+                true,
+            ],
+
+            default => [
+                Carbon::create(1970, 1, 1)->startOfDay(),
+                now()->endOfDay(),
+                false,
+            ],
+        };
+    }
+
+    protected function firstExistingJobColumn(array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if (Schema::hasColumn('jobs', $column)) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    protected function applyJobBucketFilter(Builder $query, string $bucket): void
+    {
+        match ($bucket) {
+            'oil' => $this->applyServiceTextFilter($query, 'oil'),
+            'battery' => $this->applyServiceTextFilter($query, 'battery'),
+            'tyres' => $this->applyServiceTextFilter($query, 'tyres'),
+            'ac' => $this->applyServiceTextFilter($query, 'ac'),
+            'brakes' => $this->applyServiceTextFilter($query, 'brakes'),
+            'wash' => $this->applyServiceTextFilter($query, 'wash'),
+            'general' => null,
+            default => null,
+        };
+    }
+
+    protected function applyServiceTextFilter(Builder $query, string $serviceType): void
+    {
+        $keywords = match ($serviceType) {
+            'oil' => ['oil'],
+            'battery' => ['battery'],
+            'tyres' => ['tyre', 'tire'],
+            'ac' => ['ac', 'a/c', 'air condition'],
+            'brakes' => ['brake'],
+            'wash' => ['wash', 'detailing'],
+            'general_service' => ['general', 'service'],
+            default => [$serviceType],
+        };
+
+        $query->where(function ($where) use ($keywords) {
+            foreach ($keywords as $keyword) {
+                $where
+                    ->orWhere('description', 'like', "%{$keyword}%")
+                    ->orWhere('work_summary', 'like', "%{$keyword}%")
+                    ->orWhere('issues_found', 'like', "%{$keyword}%")
+                    ->orWhere('parts_used', 'like', "%{$keyword}%");
+            }
+        });
+    }
+
+    protected function buildJobBucketCounts($jobs): array
+    {
+        $counts = [
+            'General Service' => 0,
+            'Oil Service' => 0,
+            'Battery Service' => 0,
+            'Tyre Service' => 0,
+            'AC Service' => 0,
+            'Brake Service' => 0,
+            'Car Wash / Detailing' => 0,
+        ];
+
+        foreach ($jobs as $job) {
+            $signal = $this->detectJobServiceSignal($job);
+            $counts[$signal] = ($counts[$signal] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    protected function detectJobServiceSignal($job): string
+    {
+        $jobText = strtolower(trim(
+            ($job->description ?? '') . ' ' .
+            ($job->work_summary ?? '') . ' ' .
+            ($job->issues_found ?? '') . ' ' .
+            ($job->parts_used ?? '')
+        ));
+
+        if (str_contains($jobText, 'oil')) {
+            return 'Oil Service';
+        }
+
+        if (str_contains($jobText, 'battery')) {
+            return 'Battery Service';
+        }
+
+        if (str_contains($jobText, 'tyre') || str_contains($jobText, 'tire')) {
+            return 'Tyre Service';
+        }
+
+        if (str_contains($jobText, 'ac') || str_contains($jobText, 'a/c') || str_contains($jobText, 'air condition')) {
+            return 'AC Service';
+        }
+
+        if (str_contains($jobText, 'brake')) {
+            return 'Brake Service';
+        }
+
+        if (str_contains($jobText, 'wash') || str_contains($jobText, 'detailing')) {
+            return 'Car Wash / Detailing';
+        }
+
+        return 'General Service';
     }
 
     /*

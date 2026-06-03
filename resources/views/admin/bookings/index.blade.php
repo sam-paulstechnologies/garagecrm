@@ -1,3 +1,5 @@
+{{-- resources/views/admin/bookings/index.blade.php --}}
+
 @extends('layouts.app')
 
 @section('title', 'Bookings')
@@ -8,13 +10,16 @@
     <div class="sf-page sf-bookings-page mx-auto max-w-7xl px-4 py-6 space-y-6">
         @include('admin.bookings.index-partials._hero')
 
-        @include('admin.bookings.index-partials._alerts')
+        {{-- Search and filter first --}}
+        @include('admin.bookings.index-partials._filters')
 
-        @include('admin.bookings.index-partials._stats')
-
+        {{-- Booking buckets second --}}
         @include('admin.bookings.index-partials._bucket_cards')
 
-        @include('admin.bookings.index-partials._filters')
+        {{-- KPI tiles third --}}
+        @include('admin.bookings.index-partials._stats')
+
+        @include('admin.bookings.index-partials._alerts')
 
         @include('admin.bookings.index-partials._table')
 

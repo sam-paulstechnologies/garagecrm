@@ -15,19 +15,19 @@
         ->toArray();
 @endphp
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-            <h2 class="text-sm font-extrabold text-white">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 shadow-sm">
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0 lg:flex lg:items-baseline lg:gap-2">
+            <h2 class="text-xs font-extrabold uppercase tracking-wide text-white">
                 Jump to Client
             </h2>
 
-            <p class="mt-1 text-xs font-medium text-slate-500">
-                Use letters to move quickly through the current client list.
+            <p class="mt-0.5 text-[11px] font-medium leading-4 text-slate-500 lg:mt-0">
+                Use letters to jump through the list.
             </p>
         </div>
 
-        <div class="flex flex-wrap gap-1.5">
+        <div class="flex flex-wrap gap-1">
             @foreach($letters as $letter)
                 @php
                     $isAvailable = in_array($letter, $availableLetters, true);
@@ -36,13 +36,13 @@
                 @if($isAvailable)
                     <a
                         href="#client-letter-{{ $letter }}"
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-xs font-black text-slate-200 transition hover:border-orange-400/40 hover:bg-orange-500/10 hover:text-orange-300"
+                        class="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 px-2 text-xs font-black text-slate-200 transition hover:border-orange-400/40 hover:bg-orange-500/10 hover:text-orange-300"
                     >
                         {{ $letter }}
                     </a>
                 @else
                     <span
-                        class="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 text-xs font-black text-slate-700"
+                        class="inline-flex h-7 min-w-7 cursor-not-allowed items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-2 text-xs font-black text-slate-700"
                     >
                         {{ $letter }}
                     </span>

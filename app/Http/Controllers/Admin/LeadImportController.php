@@ -31,7 +31,7 @@ class LeadImportController extends Controller
     */
     public function showCsvForm(Request $request)
     {
-        return view('admin.leads.import');
+        return view('admin.leads.import.index');
     }
 
     /*
@@ -43,9 +43,11 @@ class LeadImportController extends Controller
     {
         $request->validate([
             'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
+            'import_type' => ['nullable', 'in:standard,historic,recent'],
         ]);
 
         $companyId = (int) $request->user()->company_id;
+        $importType = $request->input('import_type', 'standard') ?: 'standard';
 
         abort_if(! $companyId, 403);
 
@@ -128,6 +130,9 @@ class LeadImportController extends Controller
                     continue;
                 }
 
+                $originalSource = $this->normalizeImportSource($data['source'] ?? 'csv');
+                $leadSource = $this->sourceForImportType($importType, $originalSource);
+
                 /*
                 |--------------------------------------------------------------------------
                 | Create/update Client first
@@ -135,7 +140,7 @@ class LeadImportController extends Controller
                 |
                 | Import should always create/reuse client, then attach the lead.
                 | Imported leads are still skipped from instant WhatsApp ACK by
-                | HandleLeadCreatedOutbound, because their source is import/csv.
+                | HandleLeadCreatedOutbound, because external_source stays import.
                 */
 
                 [$client, $clientWasCreated] = $this->resolveOrCreateClient(
@@ -143,7 +148,7 @@ class LeadImportController extends Controller
                     name: $name,
                     phone: $phone,
                     email: $email,
-                    source: $data['source'] ?? 'csv',
+                    source: $leadSource,
                     extra: $data
                 );
 
@@ -157,10 +162,10 @@ class LeadImportController extends Controller
                     'name'              => $name,
                     'phone'             => $phone,
                     'email'             => $email,
-                    'source'            => $this->normalizeImportSource($data['source'] ?? 'csv'),
+                    'source'            => $leadSource,
                     'external_source'   => 'import',
                     'status'            => Lead::STATUS_NEW,
-                    'notes'             => $data['notes'] ?? null,
+                    'notes'             => $this->notesForImportType($data['notes'] ?? null, $importType, $originalSource),
                     'preferred_channel' => $data['preferred_channel'] ?? 'whatsapp',
                     'window_days'       => 30,
                 ];
@@ -179,6 +184,11 @@ class LeadImportController extends Controller
                         'row_number' => $rowNumber,
                         'raw' => $data,
                     ];
+
+                    if ($importType !== 'standard') {
+                        $leadPayload['external_payload']['import_type'] = $importType;
+                        $leadPayload['external_payload']['original_source'] = $originalSource;
+                    }
                 }
 
                 if (Schema::hasColumn('leads', 'external_received_at')) {
@@ -207,6 +217,8 @@ class LeadImportController extends Controller
                     }
                 }
 
+                $this->applyImportModeOverrides($leadPayload, $importType, $data);
+
                 if (
                     Schema::hasColumn('leads', 'assigned_to')
                     && ! empty($data['assigned_to'])
@@ -218,7 +230,9 @@ class LeadImportController extends Controller
                     }
                 }
 
-                $result = $this->factory->createOrDetectDuplicate($leadPayload);
+                $result = $importType === 'standard'
+                    ? $this->factory->createOrDetectDuplicate($leadPayload)
+                    : Lead::withoutEvents(fn () => $this->factory->createOrDetectDuplicate($leadPayload));
 
                 if ($result instanceof Lead) {
                     $lead = $result;
@@ -259,7 +273,7 @@ class LeadImportController extends Controller
 
         fclose($handle);
 
-        $message = "CSV import done: +{$inserted} new, ~{$updated} updated, ⚠{$dupes} duplicates, {$skipped} skipped. "
+        $message = $this->importTypeLabel($importType) . " completed: +{$inserted} new, ~{$updated} updated, {$dupes} duplicates, {$skipped} skipped. "
             . "Clients created: {$clientsCreated}. Vehicles created: {$vehiclesCreated}. Segments applied: {$segmentsApplied}.";
 
         return back()
@@ -555,6 +569,86 @@ class LeadImportController extends Controller
         }
 
         return $source;
+    }
+
+    private function sourceForImportType(string $importType, string $originalSource): string
+    {
+        return match ($importType) {
+            'historic' => 'imported_historic',
+            'recent' => 'imported_recent',
+            default => $originalSource,
+        };
+    }
+
+    private function importTypeLabel(string $importType): string
+    {
+        return match ($importType) {
+            'historic' => 'Historic Data Import',
+            'recent' => 'Recent Leads Import',
+            default => 'Standard Import',
+        };
+    }
+
+    private function notesForImportType(?string $notes, string $importType, string $originalSource): ?string
+    {
+        $lines = [];
+
+        if ($notes) {
+            $lines[] = trim($notes);
+        }
+
+        if ($importType === 'historic') {
+            $lines[] = 'Historic data import - customer/vehicle history record.';
+        }
+
+        if ($importType === 'recent') {
+            $lines[] = 'Recent imported lead - conversation required.';
+        }
+
+        if (in_array($importType, ['historic', 'recent'], true)) {
+            $lines[] = "Original CSV source: {$originalSource}";
+        }
+
+        return $lines ? implode(PHP_EOL, $lines) : null;
+    }
+
+    private function applyImportModeOverrides(array &$leadPayload, string $importType, array $data): void
+    {
+        if ($importType === 'historic') {
+            if (Schema::hasColumn('leads', 'is_active')) {
+                $leadPayload['is_active'] = false;
+            }
+
+            if (Schema::hasColumn('leads', 'follow_up_required')) {
+                $leadPayload['follow_up_required'] = false;
+            }
+
+            return;
+        }
+
+        if ($importType !== 'recent') {
+            return;
+        }
+
+        if (Schema::hasColumn('leads', 'is_active')) {
+            $leadPayload['is_active'] = true;
+        }
+
+        if (
+            Schema::hasColumn('leads', 'follow_up_required')
+            && ! $this->isExplicitFalse($data['follow_up_required'] ?? null)
+        ) {
+            $leadPayload['follow_up_required'] = true;
+        }
+    }
+
+    private function isExplicitFalse(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['0', 'no', 'n', 'false'], true);
     }
 
     private function normalizeFieldValue(string $field, mixed $value): mixed

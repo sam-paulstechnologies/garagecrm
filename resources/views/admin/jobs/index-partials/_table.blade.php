@@ -1,3 +1,5 @@
+{{-- resources/views/admin/jobs/index-partials/_table.blade.php --}}
+
 <div class="sf-table-wrap">
     <div class="sf-table-scroll">
         <table class="sf-table">
@@ -27,11 +29,11 @@
 
                     <tr>
                         <td>
-                            <div class="font-extrabold text-white">
+                            <div class="font-extrabold sf-job-value">
                                 {{ $job->job_code ?? '-' }}
                             </div>
 
-                            <div class="mt-1 max-w-[260px] text-xs font-medium text-slate-500">
+                            <div class="sf-job-muted mt-1 max-w-[260px] text-xs font-medium">
                                 <span class="block truncate" title="{{ $job->description }}">
                                     {{ $job->description ?: 'No description added' }}
                                 </span>
@@ -39,7 +41,7 @@
                         </td>
 
                         <td>
-                            <div class="font-bold text-slate-200">
+                            <div class="font-bold sf-job-value">
                                 {{ $job->client?->name ?? 'N/A' }}
                             </div>
                         </td>
@@ -57,7 +59,7 @@
                         </td>
 
                         <td>
-                            <div class="font-medium leading-6 text-slate-300">
+                            <div class="sf-job-muted font-medium leading-6">
                                 {{ $customerUpdate }}
                             </div>
                         </td>
@@ -67,7 +69,7 @@
                                 Invoice required to close
                             </div>
 
-                            <div class="mt-1 text-xs font-medium text-slate-500">
+                            <div class="sf-job-muted mt-1 text-xs font-medium">
                                 Capture invoice no. + amount for campaign ROI.
                             </div>
                         </td>

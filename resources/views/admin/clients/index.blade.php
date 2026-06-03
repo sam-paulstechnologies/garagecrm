@@ -5,7 +5,16 @@
 @section('title', 'Clients')
 
 @section('content')
-    <div class="sf-page mx-auto max-w-7xl px-4 py-6 space-y-6">
+    <style>
+        .sf-clients-page {
+            max-width: none !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            width: 100% !important;
+        }
+    </style>
+
+    <div class="sf-page sf-clients-page w-full px-4 py-4 space-y-4 sm:px-6 lg:px-8">
 
         {{-- Import / status messages --}}
         @include('admin.clients.index-partials._alerts')

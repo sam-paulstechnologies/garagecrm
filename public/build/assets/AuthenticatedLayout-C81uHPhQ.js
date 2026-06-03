@@ -1,1 +1,0 @@
-import{j as e}from"./app-C3zc2IXJ.js";function x({header:r,children:s}){return e.jsxs(e.Fragment,{children:[r&&e.jsx("header",{className:"border-b border-white/10 bg-[#050914]",children:e.jsx("div",{className:"mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8",children:r})}),e.jsx("main",{children:s})]})}export{x as A};

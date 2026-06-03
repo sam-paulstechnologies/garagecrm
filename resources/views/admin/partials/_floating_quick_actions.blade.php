@@ -42,12 +42,13 @@
                 $href = \Illuminate\Support\Facades\Route::has($action['route'])
                     ? route($action['route'])
                     : $action['fallback'];
+                $isActive = request()->routeIs($action['route']);
             @endphp
 
             <a
                 href="{{ $href }}"
-                title="{{ $action['label'] }}"
-                class="group relative flex h-16 w-16 items-center justify-center border-b border-white/10 text-white transition last:border-b-0 hover:bg-orange-500 first:rounded-tl-2xl last:rounded-bl-2xl"
+                aria-label="{{ $action['label'] }}"
+                class="group relative flex h-16 w-16 items-center justify-center border-b border-white/10 text-white transition last:border-b-0 first:rounded-tl-2xl last:rounded-bl-2xl {{ $isActive ? 'sf-floating-action-active' : '' }}"
             >
                 {{-- Client Icon --}}
                 @if ($action['icon'] === 'client')
@@ -91,7 +92,7 @@
                 @endif
 
                 {{-- Slide-out label --}}
-                <span class="pointer-events-none absolute right-20 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-l-xl rounded-r-md bg-slate-950 px-4 py-3 text-xs font-extrabold text-white shadow-xl ring-1 ring-white/10 group-hover:block">
+                <span class="sf-floating-tooltip">
                     {{ $action['label'] }}
                 </span>
             </a>

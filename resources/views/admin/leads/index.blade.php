@@ -5,15 +5,19 @@
 @section('content')
     @include('admin.leads.index-partials._styles')
 
-    <div class="sf-page sf-leads-page mx-auto max-w-7xl px-4 py-6 space-y-6">
+    <div class="sf-page sf-leads-page w-full px-4 py-6 space-y-6 sm:px-6 lg:px-8">
         @include('admin.leads.index-partials._hero')
 
-        @include('admin.leads.index-partials._stats')
-
-        @include('admin.leads.index-partials._bucket_cards')
-
+        {{-- Search and filter first --}}
         @include('admin.leads.index-partials._filters')
 
+        {{-- Lead buckets second --}}
+        @include('admin.leads.index-partials._bucket_cards')
+
+        {{-- KPI tiles third --}}
+        @include('admin.leads.index-partials._stats')
+
+        {{-- Table --}}
         @include('admin.leads.index-partials._table')
 
         @include('admin.leads.index-partials._pagination')

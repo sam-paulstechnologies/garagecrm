@@ -6,6 +6,7 @@
             'pending' => 'Pending',
             'scheduled' => 'Scheduled',
             'confirmed' => 'Confirmed',
+            'vehicle_received' => 'Vehicle Received',
             'converted_to_job' => 'Converted To Job',
             'completed' => 'Completed',
             'lost' => 'Lost Booking',
@@ -18,6 +19,7 @@
         return match (strtolower((string) $status)) {
             'pending' => 'sf-badge-yellow',
             'scheduled', 'confirmed' => 'sf-badge-green',
+            'vehicle_received' => 'sf-badge-orange',
             'converted_to_job', 'completed' => 'sf-badge-blue',
             'lost', 'cancelled', 'canceled', 'rejected' => 'sf-badge-red',
             default => 'sf-badge-slate',
@@ -48,6 +50,7 @@
         return match (strtolower((string) $booking->status)) {
             'pending' => 'Confirm booking',
             'scheduled', 'confirmed' => 'Receive vehicle',
+            'vehicle_received' => 'Create job',
             'converted_to_job', 'completed' => 'Review job',
             'lost', 'cancelled', 'canceled', 'rejected' => 'No action',
             default => 'Review',
@@ -136,7 +139,9 @@
                         </td>
 
                         <td class="px-5 py-4 align-top">
-                            <div class="sf-booking-value font-bold">{{ $dateFormatted }}</div>
+                            <div class="sf-booking-value font-bold">
+                                {{ $dateFormatted }}
+                            </div>
 
                             <div class="mt-1">
                                 <span class="{{ $slotBadge($booking->slot ?? '') }}">
@@ -158,7 +163,9 @@
                         </td>
 
                         <td class="px-5 py-4 align-top">
-                            <div class="font-bold text-orange-300">{{ $nextAction($booking) }}</div>
+                            <div class="font-bold text-orange-300">
+                                {{ $nextAction($booking) }}
+                            </div>
 
                             @if(!empty($booking->assignedUser?->name))
                                 <div class="sf-booking-muted mt-1 text-xs">
@@ -169,7 +176,9 @@
 
                         <td class="px-5 py-4 text-right align-top">
                             @if(Route::has('admin.bookings.show'))
-                                <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-link">View</a>
+                                <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-link">
+                                    View
+                                </a>
                             @endif
                         </td>
                     </tr>
@@ -177,7 +186,9 @@
                     <tr>
                         <td colspan="7" class="px-5 py-10">
                             <div class="sf-booking-soft-panel rounded-2xl border p-8 text-center">
-                                <div class="sf-booking-title font-extrabold">No bookings found.</div>
+                                <div class="sf-booking-title font-extrabold">
+                                    No bookings found.
+                                </div>
                             </div>
                         </td>
                     </tr>

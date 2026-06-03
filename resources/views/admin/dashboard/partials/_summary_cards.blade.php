@@ -83,12 +83,14 @@
         ?? 0;
 
     $monthlyRevenueValue = $toMoney($monthlyRevenueRaw);
+    $dashboardPeriodLabel = $dashboardPeriodLabel ?? 'This Month';
+    $dashboardContextLabel = $dashboardContextLabel ?? $dashboardPeriodLabel;
 
     $topCards = [
         [
             'label' => 'Leads',
             'value' => $leadCount,
-            'subtext' => 'this month',
+            'subtext' => $dashboardContextLabel,
             'route' => 'admin.leads.index',
             'accent' => 'text-blue-400',
             'iconBg' => 'bg-blue-500/10',
@@ -98,7 +100,7 @@
         [
             'label' => 'Opportunities',
             'value' => $opportunityCount,
-            'subtext' => 'this month',
+            'subtext' => $dashboardContextLabel,
             'route' => 'admin.opportunities.index',
             'accent' => 'text-orange-400',
             'iconBg' => 'bg-orange-500/10',
@@ -108,7 +110,7 @@
         [
             'label' => 'Bookings',
             'value' => $bookingCount,
-            'subtext' => 'this month',
+            'subtext' => $dashboardContextLabel,
             'route' => 'admin.bookings.index',
             'accent' => 'text-blue-400',
             'iconBg' => 'bg-sky-500/10',
@@ -118,7 +120,7 @@
         [
             'label' => 'Jobs',
             'value' => $jobCount,
-            'subtext' => 'this month',
+            'subtext' => $dashboardContextLabel,
             'route' => 'admin.jobs.index',
             'accent' => 'text-emerald-400',
             'iconBg' => 'bg-emerald-500/10',
@@ -141,7 +143,7 @@
         [
             'label' => 'Monthly Revenue',
             'value' => 'AED ' . number_format($monthlyRevenueValue, 2),
-            'subtext' => 'paid invoices',
+            'subtext' => 'paid invoices / ' . $dashboardContextLabel,
             'route' => 'admin.invoices.index',
             'accent' => 'text-orange-400',
             'iconBg' => 'bg-orange-500/10',

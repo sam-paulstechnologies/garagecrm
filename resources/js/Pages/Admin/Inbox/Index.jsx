@@ -189,7 +189,8 @@ export default function Index() {
                     --sf-inbox-green-soft: rgba(34, 197, 94, 0.14);
                     --sf-inbox-danger-soft: rgba(239, 68, 68, 0.10);
                     --sf-inbox-shadow: 0 24px 45px rgba(0, 0, 0, 0.28);
-                    height: calc(100vh - 64px);
+                    height: calc(100dvh - 64px);
+                    min-height: 0;
                     overflow: hidden;
                     background: var(--sf-inbox-page-bg);
                     color: var(--sf-inbox-text);
@@ -217,7 +218,7 @@ export default function Index() {
 
                 .sf-inbox-shell {
                     height: 100%;
-                    padding: 28px 24px;
+                    padding: 16px 24px 20px;
                 }
 
                 .sf-inbox-frame {

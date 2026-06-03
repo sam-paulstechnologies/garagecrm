@@ -1,3 +1,5 @@
+{{-- resources/views/admin/opportunities/index.blade.php --}}
+
 @extends('layouts.app')
 
 @section('title', 'Opportunities')
@@ -88,12 +90,22 @@
 
     <div class="sf-page sf-opportunities-page mx-auto max-w-7xl px-4 py-6 space-y-6">
         @include('admin.opportunities.index-partials._hero')
-        @include('admin.opportunities.index-partials._pipeline_guide')
-        @include('admin.opportunities.index-partials._alerts')
-        @include('admin.opportunities.index-partials._stats')
-        @include('admin.opportunities.index-partials._bucket_cards')
+
+        {{-- Search and filter first --}}
         @include('admin.opportunities.index-partials._filters')
+
+        {{-- Opportunity buckets second --}}
+        @include('admin.opportunities.index-partials._bucket_cards')
+
+        {{-- KPI tiles third --}}
+        @include('admin.opportunities.index-partials._stats')
+
+        {{-- Alerts if any --}}
+        @include('admin.opportunities.index-partials._alerts')
+
+        {{-- Table --}}
         @include('admin.opportunities.index-partials._table')
+
         @include('admin.opportunities.index-partials._pagination')
     </div>
 @endsection

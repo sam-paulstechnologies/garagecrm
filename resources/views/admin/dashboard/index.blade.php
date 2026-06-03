@@ -107,6 +107,37 @@
             'to_date' => request('to_date'),
         ];
 
+        $dashboardPeriodLabel = match ($dashboardFilters['date_range']) {
+            'today' => 'Today',
+            'yesterday' => 'Yesterday',
+            'last_7_days' => 'Last 7 Days',
+            'this_month' => 'This Month',
+            'last_month' => 'Last Month',
+            'custom' => 'Selected Period',
+            'all_time' => 'All Dates',
+            default => 'This Month',
+        };
+
+        $dashboardContextParts = [$dashboardPeriodLabel];
+
+        if (($dashboardFilters['lead_source'] ?? 'all') !== 'all') {
+            $dashboardContextParts[] = str($dashboardFilters['lead_source'])
+                ->replace('_', ' ')
+                ->title()
+                ->toString();
+        }
+
+        if (($dashboardFilters['assigned_user'] ?? 'all') !== 'all') {
+            $assignedUserName = collect($assignedUsers ?? [])
+                ->firstWhere('id', (int) $dashboardFilters['assigned_user'])?->name;
+
+            $dashboardContextParts[] = $assignedUserName
+                ? 'Staff: ' . $assignedUserName
+                : 'Selected Staff';
+        }
+
+        $dashboardContextLabel = implode(' / ', array_filter($dashboardContextParts));
+
         /*
         |--------------------------------------------------------------------------
         | Top Summary Counts

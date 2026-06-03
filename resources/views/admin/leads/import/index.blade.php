@@ -3,7 +3,9 @@
 @section('title', 'Import Leads')
 
 @section('content')
-<div class="sf-page space-y-6">
+@include('admin.leads.import.partials._styles')
+
+<div class="sf-page sf-import-page space-y-6">
 
     {{-- Header --}}
     <div class="sf-page-header">
@@ -109,6 +111,34 @@
                         @csrf
 
                         <div>
+                            <label for="import_type" class="sf-label">
+                                Import Type
+                            </label>
+
+                            <select id="import_type"
+                                    name="import_type"
+                                    class="sf-import-select focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                                <option value="standard" @selected(old('import_type', 'standard') === 'standard')>
+                                    Standard Import - use source values from CSV
+                                </option>
+                                <option value="historic" @selected(old('import_type') === 'historic')>
+                                    Historic Data Import - customer and vehicle history only
+                                </option>
+                                <option value="recent" @selected(old('import_type') === 'recent')>
+                                    Recent Leads Import - needs manual follow-up
+                                </option>
+                            </select>
+
+                            <p class="sf-help">
+                                Historic imports are inactive history records. Recent imports become active follow-up leads without sending WhatsApp messages.
+                            </p>
+
+                            @error('import_type')
+                                <div class="sf-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
                             <label class="sf-label">
                                 Select CSV file
                             </label>
@@ -117,7 +147,7 @@
                                    name="csv_file"
                                    accept=".csv,text/csv"
                                    required
-                                   class="block w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                                   class="sf-import-field block file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
 
                             <p class="sf-help">
                                 Use the sample CSV exactly. Do not rename the column headers.
@@ -190,7 +220,7 @@
                 </div>
             </div>
 
-            <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20">
+            <div class="sf-import-info-card">
                 <h3 class="font-extrabold text-blue-300">
                     Phone Format
                 </h3>
@@ -200,7 +230,7 @@
                 </p>
             </div>
 
-            <div class="rounded-3xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-xl shadow-black/20">
+            <div class="sf-import-info-card">
                 <h3 class="font-extrabold text-orange-300">
                     Duplicate Check
                 </h3>
@@ -226,7 +256,7 @@
         </div>
 
         <div class="sf-table-scroll">
-            <table class="sf-table">
+            <table class="sf-table sf-import-table">
                 <thead>
                     <tr>
                         <th>Column</th>

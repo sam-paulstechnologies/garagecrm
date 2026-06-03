@@ -1,3 +1,5 @@
+{{-- resources/views/admin/opportunities/index-partials/_table.blade.php --}}
+
 <div class="sf-opportunity-panel overflow-hidden rounded-2xl border shadow-sm">
     <div class="sf-table-scroll">
         <table class="sf-table sf-opportunity-table">
@@ -29,9 +31,13 @@
 
                     <tr>
                         <td>
-                            <div class="font-extrabold sf-opportunity-value">{{ $opportunity->title ?? 'Untitled Opportunity' }}</div>
+                            <div class="font-extrabold sf-opportunity-value">
+                                {{ $opportunity->title ?? 'Untitled Opportunity' }}
+                            </div>
+
                             <div class="mt-1 text-xs font-medium sf-opportunity-muted">
                                 #{{ $opportunity->id }}
+
                                 @if($opportunity->source)
                                     &middot; {{ $opportunity->source }}
                                 @endif
@@ -39,31 +45,57 @@
                         </td>
 
                         <td>
-                            <div class="font-bold sf-opportunity-value">{{ $opportunity->client?->name ?? 'No client' }}</div>
-                            <div class="mt-1 text-xs font-medium sf-opportunity-muted">{{ $vehicleLabel !== '' ? $vehicleLabel : 'No vehicle' }}</div>
+                            <div class="font-bold sf-opportunity-value">
+                                {{ $opportunity->client?->name ?? 'No client' }}
+                            </div>
+
+                            <div class="mt-1 text-xs font-medium sf-opportunity-muted">
+                                {{ $vehicleLabel !== '' ? $vehicleLabel : 'No vehicle' }}
+                            </div>
                         </td>
 
-                        <td><span class="{{ $stageBadge($opportunity->stage) }}">{{ $stageLabel($opportunity->stage) }}</span></td>
-
-                        <td><span class="{{ $priorityBadge($opportunity->priority ?? 'medium') }}">{{ ucfirst($opportunity->priority ?? 'Medium') }}</span></td>
-
-                        <td><div class="font-extrabold text-orange-300">AED {{ number_format((float) $value, 2) }}</div></td>
+                        <td>
+                            <span class="{{ $stageBadge($opportunity->stage) }}">
+                                {{ $stageLabel($opportunity->stage) }}
+                            </span>
+                        </td>
 
                         <td>
-                            <div class="font-bold sf-opportunity-value">{{ optional($opportunity->expected_close_date)->format('d M Y') ?? optional($opportunity->created_at)->format('d M Y') ?? '-' }}</div>
-                            <div class="text-xs sf-opportunity-muted">{{ optional($opportunity->created_at)->format('h:i A') ?? '' }}</div>
+                            <span class="{{ $priorityBadge($opportunity->priority ?? 'medium') }}">
+                                {{ ucfirst($opportunity->priority ?? 'Medium') }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <div class="font-extrabold text-orange-300">
+                                AED {{ number_format((float) $value, 2) }}
+                            </div>
+                        </td>
+
+                        <td>
+                            <div class="font-bold sf-opportunity-value">
+                                {{ optional($opportunity->expected_close_date)->format('d M Y') ?? optional($opportunity->created_at)->format('d M Y') ?? '-' }}
+                            </div>
+
+                            <div class="text-xs sf-opportunity-muted">
+                                {{ optional($opportunity->created_at)->format('h:i A') ?? '' }}
+                            </div>
                         </td>
 
                         <td class="text-right">
                             @if(Route::has('admin.opportunities.show'))
-                                <a href="{{ route('admin.opportunities.show', $opportunity) }}" class="sf-link">View</a>
+                                <a href="{{ route('admin.opportunities.show', $opportunity) }}" class="sf-link">
+                                    View
+                                </a>
                             @endif
                         </td>
                     </tr>
                 @empty
                     <tr>
                         <td colspan="7">
-                            <div class="sf-empty">No opportunities found.</div>
+                            <div class="sf-empty">
+                                No opportunities found.
+                            </div>
                         </td>
                     </tr>
                 @endforelse

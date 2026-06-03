@@ -1,3 +1,5 @@
+{{-- resources/views/admin/invoices/index.blade.php --}}
+
 @extends('layouts.app')
 
 @section('title', 'Invoices')
@@ -28,13 +30,22 @@
     };
 @endphp
 
-<div class="sf-page sf-invoices-page space-y-6">
+<div class="sf-page sf-invoices-page mx-auto max-w-7xl px-4 py-6 space-y-6">
     @include('admin.invoices.index-partials._hero')
-    @include('admin.invoices.index-partials._stats')
-    @include('admin.invoices.index-partials._note')
-    @include('admin.invoices.index-partials._alerts')
+
+    {{-- Search and filter first --}}
     @include('admin.invoices.index-partials._filters')
+
+    {{-- KPI tiles --}}
+    @include('admin.invoices.index-partials._stats')
+
+    {{-- ROI note --}}
+    @include('admin.invoices.index-partials._note')
+
+    @include('admin.invoices.index-partials._alerts')
+
     @include('admin.invoices.index-partials._table')
+
     @include('admin.invoices.index-partials._pagination')
 </div>
 @endsection

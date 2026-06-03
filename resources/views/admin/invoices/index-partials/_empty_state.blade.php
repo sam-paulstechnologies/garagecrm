@@ -1,11 +1,13 @@
+{{-- resources/views/admin/invoices/index-partials/_empty_state.blade.php --}}
+
 <tr>
     <td colspan="7">
         <div class="sf-empty">
-            <div class="text-lg font-extrabold text-white">
+            <div class="text-lg font-extrabold sf-invoice-title">
                 No invoices found
             </div>
 
-            <p class="mt-2 text-sm font-medium text-slate-500">
+            <p class="sf-invoice-muted mt-2 text-sm font-medium">
                 Invoices will appear here after jobs are closed or invoices are created manually.
             </p>
 

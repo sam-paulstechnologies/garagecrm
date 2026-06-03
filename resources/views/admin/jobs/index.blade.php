@@ -1,3 +1,5 @@
+{{-- resources/views/admin/jobs/index.blade.php --}}
+
 @extends('layouts.app')
 
 @section('title', 'Open Jobs')
@@ -45,7 +47,7 @@
         return 'General Service';
     };
 
-    $bucketCounts = [
+    $bucketCounts = array_merge([
         'General Service' => 0,
         'Oil Service' => 0,
         'Battery Service' => 0,
@@ -53,12 +55,7 @@
         'AC Service' => 0,
         'Brake Service' => 0,
         'Car Wash / Detailing' => 0,
-    ];
-
-    foreach ($visibleJobs as $visibleJob) {
-        $signal = $detectServiceSignal($visibleJob);
-        $bucketCounts[$signal] = ($bucketCounts[$signal] ?? 0) + 1;
-    }
+    ], $bucketCounts ?? []);
 
     $stats = $stats ?? [
         'open_jobs' => $jobs->total(),
@@ -87,13 +84,23 @@
     };
 @endphp
 
-<div class="sf-page sf-jobs-page space-y-6">
+<div class="sf-page sf-jobs-page mx-auto max-w-7xl px-4 py-6 space-y-6">
     @include('admin.jobs.index-partials._hero')
-    @include('admin.jobs.index-partials._stats')
-    @include('admin.jobs.index-partials._service_buckets')
-    @include('admin.jobs.index-partials._note')
+
+    {{-- Search and filter first --}}
     @include('admin.jobs.index-partials._filters')
+
+    {{-- Service buckets second --}}
+    @include('admin.jobs.index-partials._service_buckets')
+
+    {{-- KPI tiles third --}}
+    @include('admin.jobs.index-partials._stats')
+
+    {{-- Guidance note --}}
+    @include('admin.jobs.index-partials._note')
+
     @include('admin.jobs.index-partials._table')
+
     @include('admin.jobs.index-partials._pagination')
 </div>
 @endsection

@@ -114,6 +114,7 @@
     $paidThisMonthValue = $toNumber($paidThisMonthRaw);
     $pendingAmountValue = $toNumber($pendingAmountRaw);
     $averageInvoiceValue = $toNumber($averageInvoiceRaw);
+    $dashboardPeriodLabel = $dashboardPeriodLabel ?? 'This Month';
 
     $unpaidInvoiceCount = $unpaidInvoiceCount ?? $unpaidInvoicesCount ?? 0;
 
@@ -264,7 +265,7 @@
         <div class="space-y-3">
             <div class="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3">
                 <span class="text-sm font-extrabold text-white/90">
-                    Paid this month
+                    Paid - {{ $dashboardPeriodLabel }}
                 </span>
 
                 <span class="text-sm font-black text-white">

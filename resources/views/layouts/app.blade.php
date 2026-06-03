@@ -25,7 +25,7 @@
 
     {{-- Vite --}}
     @viteReactRefresh
-    @vite(['resources/js/app.jsx'])
+    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
 
     <style>
         :root {
@@ -250,23 +250,87 @@
         .sf-floating-quick-actions {
             background-color: rgba(2, 44, 34, 0.96) !important;
             border-color: rgba(249, 115, 22, 0.24) !important;
+            box-shadow: 0 18px 40px rgba(2, 44, 34, 0.26);
         }
 
         .sf-floating-quick-actions a,
-        .sf-floating-quick-actions svg,
-        .sf-floating-quick-actions span {
+        .sf-floating-quick-actions svg {
             color: #ffffff !important;
+        }
+
+        .sf-floating-quick-actions a {
+            position: relative;
+            outline: none;
+        }
+
+        .sf-floating-quick-actions a:hover,
+        .sf-floating-quick-actions a:focus-visible,
+        .sf-floating-quick-actions a.sf-floating-action-active {
+            background: #f97316 !important;
+            color: #ffffff !important;
+        }
+
+        .sf-floating-quick-actions a:focus-visible {
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75);
+        }
+
+        .sf-floating-quick-actions .sf-floating-tooltip {
+            pointer-events: none;
+            position: absolute;
+            right: calc(100% + 12px);
+            top: 50%;
+            z-index: 10000;
+            min-width: max-content;
+            transform: translateY(-50%) translateX(6px);
+            border-radius: 0.875rem;
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            background: #0f172a;
+            color: #f8fafc !important;
+            padding: 0.625rem 0.875rem;
+            font-size: 0.75rem;
+            font-weight: 900;
+            line-height: 1;
+            white-space: nowrap;
+            opacity: 0;
+            box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+
+        .sf-floating-quick-actions .sf-floating-tooltip::after {
+            content: "";
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            height: 9px;
+            width: 9px;
+            transform: translateY(-50%) rotate(45deg);
+            border-right: 1px solid rgba(148, 163, 184, 0.20);
+            border-top: 1px solid rgba(148, 163, 184, 0.20);
+            background: inherit;
+        }
+
+        .sf-floating-quick-actions a:hover .sf-floating-tooltip,
+        .sf-floating-quick-actions a:focus-visible .sf-floating-tooltip {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
         }
 
         html[data-theme="light"] .sf-floating-quick-actions {
             background-color: rgba(2, 44, 34, 0.96) !important;
             border-color: rgba(249, 115, 22, 0.24) !important;
+            box-shadow: 0 18px 40px rgba(2, 44, 34, 0.18);
         }
 
         html[data-theme="light"] .sf-floating-quick-actions a,
-        html[data-theme="light"] .sf-floating-quick-actions svg,
-        html[data-theme="light"] .sf-floating-quick-actions span {
+        html[data-theme="light"] .sf-floating-quick-actions svg {
             color: #ffffff !important;
+        }
+
+        html[data-theme="light"] .sf-floating-quick-actions .sf-floating-tooltip {
+            border-color: #dbe3ef;
+            background: #ffffff;
+            color: #0f172a !important;
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
         }
     </style>
 

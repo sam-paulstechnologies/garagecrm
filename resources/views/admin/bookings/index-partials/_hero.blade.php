@@ -3,14 +3,12 @@
 <div class="sf-booking-panel rounded-2xl border p-5 shadow-sm">
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-            <div class="sf-kicker">Booking Command Center</div>
-
-            <h1 class="sf-booking-title mt-3 text-3xl font-extrabold tracking-tight">
+            <h1 class="sf-booking-title text-3xl font-extrabold tracking-tight">
                 Bookings
             </h1>
 
             <p class="sf-booking-muted mt-2 max-w-3xl text-sm font-medium">
-                Default view shows open bookings. Converted jobs and lost bookings are available through filters.
+                Track confirmed appointments, pickup schedules, vehicle intake, and booking conversion to jobs.
             </p>
         </div>
 

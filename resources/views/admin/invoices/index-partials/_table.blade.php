@@ -1,3 +1,5 @@
+{{-- resources/views/admin/invoices/index-partials/_table.blade.php --}}
+
 <div class="sf-table-wrap">
     <div class="sf-table-scroll">
         <table class="sf-table">
@@ -30,38 +32,38 @@
 
                     <tr>
                         <td>
-                            <div class="font-extrabold text-white">
+                            <div class="font-extrabold sf-invoice-value">
                                 {{ $invoiceNumber }}
                             </div>
 
-                            <div class="mt-1 text-xs font-medium text-slate-500">
+                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                 {{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('Y-m-d') : 'No invoice date' }}
                             </div>
                         </td>
 
                         <td>
-                            <div class="font-bold text-slate-200">
+                            <div class="font-bold sf-invoice-value">
                                 {{ $invoice->client?->name ?? 'N/A' }}
                             </div>
 
-                            <div class="mt-1 text-xs font-medium text-slate-500">
+                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                 {{ $invoice->client?->phone ?? $invoice->client?->phone_norm ?? 'No phone' }}
                             </div>
                         </td>
 
                         <td>
                             @if($invoice->job)
-                                <div class="font-bold text-slate-200">
+                                <div class="font-bold sf-invoice-value">
                                     {{ $invoice->job->job_code ?? 'Job #' . $invoice->job->id }}
                                 </div>
 
-                                <div class="mt-1 max-w-[260px] text-xs font-medium text-slate-500">
+                                <div class="sf-invoice-muted mt-1 max-w-[260px] text-xs font-medium">
                                     <span class="block truncate" title="{{ $invoice->job->description }}">
                                         {{ $invoice->job->description ?: 'No job description' }}
                                     </span>
                                 </div>
                             @else
-                                <span class="font-medium text-slate-500">
+                                <span class="sf-invoice-muted font-medium">
                                     Not linked
                                 </span>
                             @endif
@@ -84,13 +86,13 @@
                             @if($roiReady)
                                 <span class="sf-badge-orange">ROI Ready</span>
 
-                                <div class="mt-1 text-xs font-medium text-slate-500">
+                                <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                     Job + paid revenue available
                                 </div>
                             @elseif(!$hasJob)
                                 <span class="sf-badge-slate">Link Job</span>
 
-                                <div class="mt-1 text-xs font-medium text-slate-500">
+                                <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                     Needed for attribution
                                 </div>
                             @elseif(!$hasRevenue)
@@ -98,7 +100,7 @@
                             @else
                                 <span class="sf-badge-yellow">Not Paid</span>
 
-                                <div class="mt-1 text-xs font-medium text-slate-500">
+                                <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                     Revenue not confirmed
                                 </div>
                             @endif

@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Job\Invoice;
 use App\Models\Job\Job;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -53,8 +56,23 @@ class InvoiceController extends Controller
     {
         $companyId = $this->companyId();
 
-        $q = trim((string) $request->get('q'));
-        $status = $request->get('status');
+        $q = trim((string) $request->get('q', $request->get('search', '')));
+        $status = (string) $request->get('status', '');
+
+        $invoiceFilters = [
+            'date_range'    => $request->get('date_range', 'all_time'),
+            'lead_source'   => $request->get('lead_source', 'all'),
+            'assigned_user' => $request->get('assigned_user', 'all'),
+            'service_type'  => $request->get('service_type', 'all'),
+            'customer_type' => $request->get('customer_type', 'all'),
+            'from_date'     => $request->get('from_date'),
+            'to_date'       => $request->get('to_date'),
+        ];
+
+        $assignedUsers = User::query()
+            ->where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $query = $this->invoicesScope()
             ->with([
@@ -62,46 +80,7 @@ class InvoiceController extends Controller
                 'job' => fn ($jobQuery) => $jobQuery->where('company_id', $companyId),
             ]);
 
-        if (in_array($status, ['pending', 'paid', 'overdue'], true)) {
-            $query->where('status', $status);
-        }
-
-        if ($q !== '') {
-            $query->where(function ($where) use ($q, $companyId) {
-                if ($this->invoiceHasColumn('number')) {
-                    $where->orWhere('number', 'like', "%{$q}%");
-                }
-
-                if ($this->invoiceHasColumn('invoice_number')) {
-                    $where->orWhere('invoice_number', 'like', "%{$q}%");
-                }
-
-                if ($this->invoiceHasColumn('amount')) {
-                    $where->orWhere('amount', 'like', "%{$q}%");
-                }
-
-                $where->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
-                    $clientQuery
-                        ->where('company_id', $companyId)
-                        ->where(function ($clientSearch) use ($q) {
-                            $clientSearch
-                                ->where('name', 'like', "%{$q}%")
-                                ->orWhere('phone', 'like', "%{$q}%")
-                                ->orWhere('email', 'like', "%{$q}%");
-                        });
-                });
-
-                $where->orWhereHas('job', function ($jobQuery) use ($q, $companyId) {
-                    $jobQuery
-                        ->where('company_id', $companyId)
-                        ->where(function ($jobSearch) use ($q) {
-                            $jobSearch
-                                ->where('job_code', 'like', "%{$q}%")
-                                ->orWhere('description', 'like', "%{$q}%");
-                        });
-                });
-            });
-        }
+        $this->applyInvoiceIndexFilters($query, $request, $companyId);
 
         $invoices = $query
             ->latest('id')
@@ -110,15 +89,24 @@ class InvoiceController extends Controller
 
         $base = $this->invoicesScope();
 
+        $this->applyInvoiceIndexFilters($base, $request, $companyId, false);
+
         $stats = [
-            'total' => (clone $base)->count(),
-            'paid' => (clone $base)->where('status', 'paid')->count(),
-            'pending' => (clone $base)->where('status', 'pending')->count(),
-            'overdue' => (clone $base)->where('status', 'overdue')->count(),
+            'total'       => (clone $base)->count(),
+            'paid'        => (clone $base)->where('status', 'paid')->count(),
+            'pending'     => (clone $base)->where('status', 'pending')->count(),
+            'overdue'     => (clone $base)->where('status', 'overdue')->count(),
             'roi_revenue' => (clone $base)->where('status', 'paid')->sum('amount'),
         ];
 
-        return view('admin.invoices.index', compact('invoices', 'q', 'status', 'stats'));
+        return view('admin.invoices.index', compact(
+            'invoices',
+            'q',
+            'status',
+            'stats',
+            'invoiceFilters',
+            'assignedUsers'
+        ));
     }
 
     /*
@@ -555,6 +543,235 @@ class InvoiceController extends Controller
         $invoice->update(['is_primary' => true]);
 
         return back()->with('success', 'Marked as primary.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Index Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    protected function applyInvoiceIndexFilters(
+        Builder $query,
+        Request $request,
+        int $companyId,
+        bool $includeStatus = true
+    ): void {
+        $q = trim((string) $request->get('q', $request->get('search', '')));
+        $status = (string) $request->get('status', '');
+        $dateRange = (string) $request->get('date_range', 'all_time');
+        $leadSource = (string) $request->get('lead_source', 'all');
+        $assignedUser = (string) $request->get('assigned_user', 'all');
+        $serviceType = (string) $request->get('service_type', 'all');
+        $customerType = (string) $request->get('customer_type', 'all');
+
+        if ($includeStatus && in_array($status, ['pending', 'paid', 'overdue'], true)) {
+            $query->where('status', $status);
+        }
+
+        if ($q !== '') {
+            $query->where(function ($where) use ($q, $companyId) {
+                if ($this->invoiceHasColumn('number')) {
+                    $where->orWhere('number', 'like', "%{$q}%");
+                }
+
+                if ($this->invoiceHasColumn('invoice_number')) {
+                    $where->orWhere('invoice_number', 'like', "%{$q}%");
+                }
+
+                if ($this->invoiceHasColumn('amount')) {
+                    $where->orWhere('amount', 'like', "%{$q}%");
+                }
+
+                $where->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
+                    $clientQuery
+                        ->where('company_id', $companyId)
+                        ->where(function ($clientSearch) use ($q) {
+                            $clientSearch
+                                ->where('name', 'like', "%{$q}%")
+                                ->orWhere('phone', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%");
+                        });
+                });
+
+                $where->orWhereHas('job', function ($jobQuery) use ($q, $companyId) {
+                    $jobQuery
+                        ->where('company_id', $companyId)
+                        ->where(function ($jobSearch) use ($q) {
+                            $jobSearch
+                                ->where('job_code', 'like', "%{$q}%")
+                                ->orWhere('description', 'like', "%{$q}%");
+                        });
+                });
+            });
+        }
+
+        [$fromDate, $toDate, $applyDateFilter] = $this->resolveInvoiceDateRange($request, $dateRange);
+
+        if ($applyDateFilter) {
+            $dateColumn = $this->firstExistingInvoiceColumn(['invoice_date', 'created_at']);
+
+            if ($dateColumn) {
+                $query->whereBetween($dateColumn, [$fromDate, $toDate]);
+            }
+        }
+
+        if ($leadSource !== 'all') {
+            $sourceColumn = $this->firstExistingInvoiceColumn(['lead_source', 'source', 'source_type', 'channel']);
+
+            if ($sourceColumn) {
+                $query->where($sourceColumn, $leadSource);
+            } else {
+                $query->whereHas('job', function ($jobQuery) use ($leadSource, $companyId) {
+                    $jobQuery->where('company_id', $companyId);
+
+                    foreach (['lead_source', 'source', 'source_type', 'channel'] as $column) {
+                        if (Schema::hasColumn('jobs', $column)) {
+                            $jobQuery->where($column, $leadSource);
+                            return;
+                        }
+                    }
+                });
+            }
+        }
+
+        if ($assignedUser !== 'all') {
+            $assignedColumn = $this->firstExistingInvoiceColumn(['uploaded_by', 'assigned_to', 'assigned_user_id', 'user_id', 'owner_id']);
+
+            if ($assignedColumn) {
+                $query->where($assignedColumn, $assignedUser);
+            } else {
+                $query->whereHas('job', function ($jobQuery) use ($assignedUser, $companyId) {
+                    $jobQuery->where('company_id', $companyId);
+
+                    foreach (['assigned_to', 'assigned_user_id', 'user_id', 'owner_id'] as $column) {
+                        if (Schema::hasColumn('jobs', $column)) {
+                            $jobQuery->where($column, $assignedUser);
+                            return;
+                        }
+                    }
+                });
+            }
+        }
+
+        if ($serviceType !== 'all') {
+            $query->whereHas('job', function ($jobQuery) use ($serviceType, $companyId) {
+                $jobQuery->where('company_id', $companyId);
+                $this->applyJobServiceTextFilter($jobQuery, $serviceType);
+            });
+        }
+
+        if ($customerType !== 'all' && $this->invoiceHasColumn('client_id')) {
+            $query->whereIn('client_id', function ($subQuery) use ($customerType, $fromDate, $toDate) {
+                $subQuery->select('id')->from('clients');
+
+                if ($customerType === 'new') {
+                    $subQuery->whereBetween('created_at', [$fromDate, $toDate]);
+                }
+
+                if (in_array($customerType, ['returning', 'existing'], true)) {
+                    $subQuery->where('created_at', '<', $fromDate);
+                }
+
+                if (in_array($customerType, ['fleet', 'corporate'], true)) {
+                    $subQuery->where(function ($clientQuery) use ($customerType) {
+                        foreach (['customer_type', 'type', 'source'] as $column) {
+                            if (Schema::hasColumn('clients', $column)) {
+                                $clientQuery->orWhere($column, $customerType);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    protected function resolveInvoiceDateRange(Request $request, string $range): array
+    {
+        return match ($range) {
+            'today' => [
+                now()->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'yesterday' => [
+                now()->subDay()->startOfDay(),
+                now()->subDay()->endOfDay(),
+                true,
+            ],
+
+            'last_7_days' => [
+                now()->subDays(6)->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'this_month' => [
+                now()->startOfMonth()->startOfDay(),
+                now()->endOfDay(),
+                true,
+            ],
+
+            'last_month' => [
+                now()->subMonthNoOverflow()->startOfMonth()->startOfDay(),
+                now()->subMonthNoOverflow()->endOfMonth()->endOfDay(),
+                true,
+            ],
+
+            'custom' => [
+                $request->filled('from_date')
+                    ? Carbon::parse($request->get('from_date'))->startOfDay()
+                    : now()->startOfMonth()->startOfDay(),
+
+                $request->filled('to_date')
+                    ? Carbon::parse($request->get('to_date'))->endOfDay()
+                    : now()->endOfDay(),
+
+                true,
+            ],
+
+            default => [
+                Carbon::create(1970, 1, 1)->startOfDay(),
+                now()->endOfDay(),
+                false,
+            ],
+        };
+    }
+
+    protected function firstExistingInvoiceColumn(array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if ($this->invoiceHasColumn($column)) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    protected function applyJobServiceTextFilter(Builder $query, string $serviceType): void
+    {
+        $keywords = match ($serviceType) {
+            'oil' => ['oil'],
+            'battery' => ['battery'],
+            'tyres' => ['tyre', 'tire'],
+            'ac' => ['ac', 'a/c', 'air condition'],
+            'brakes' => ['brake'],
+            'wash' => ['wash', 'detailing'],
+            'general_service' => ['general', 'service'],
+            default => [$serviceType],
+        };
+
+        $query->where(function ($where) use ($keywords) {
+            foreach ($keywords as $keyword) {
+                $where
+                    ->orWhere('description', 'like', "%{$keyword}%")
+                    ->orWhere('work_summary', 'like', "%{$keyword}%")
+                    ->orWhere('issues_found', 'like', "%{$keyword}%")
+                    ->orWhere('parts_used', 'like', "%{$keyword}%");
+            }
+        });
     }
 
     /*

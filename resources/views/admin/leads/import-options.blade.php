@@ -63,7 +63,7 @@
                         </h2>
 
                         <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">
-                            Upload existing garage leads using the approved import sheet.
+                            Upload existing garage leads with Standard, Historic Data, or Recent Leads import modes.
                         </p>
                     </div>
 

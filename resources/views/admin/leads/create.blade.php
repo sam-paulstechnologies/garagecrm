@@ -3,7 +3,9 @@
 @section('title', 'Create Lead')
 
 @section('content')
-<div class="sf-page space-y-6">
+@include('admin.leads.create-partials._styles')
+
+<div class="sf-page sf-lead-create-page space-y-6">
 
     {{-- Header --}}
     <div class="sf-page-header">
@@ -146,7 +148,7 @@
             </div>
 
             {{-- WhatsApp Trigger --}}
-            <div class="rounded-3xl border border-green-400/20 bg-green-500/10 p-5 shadow-xl shadow-black/20">
+            <div class="sf-lead-create-info-card border-green-400/20 bg-green-500/10">
                 <h3 class="font-extrabold text-green-300">
                     WhatsApp Trigger
                 </h3>
@@ -157,7 +159,7 @@
             </div>
 
             {{-- Phone Format --}}
-            <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20">
+            <div class="sf-lead-create-info-card border-blue-400/20 bg-blue-500/10">
                 <h3 class="font-extrabold text-blue-300">
                     Recommended Phone Format
                 </h3>
@@ -168,7 +170,7 @@
             </div>
 
             {{-- Source Note --}}
-            <div class="rounded-3xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-xl shadow-black/20">
+            <div class="sf-lead-create-info-card border-orange-400/20 bg-orange-500/10">
                 <h3 class="font-extrabold text-orange-300">
                     Source Tracking
                 </h3>
