@@ -339,6 +339,10 @@ class BookingController extends Controller
                 $data['client_id'] = $booking->client_id;
                 $data['opportunity_id'] = $booking->opportunity_id;
 
+                if (! array_key_exists('name', $data) || trim((string) $data['name']) === '') {
+                    $data['name'] = $booking->name;
+                }
+
                 if (empty($data['vehicle_id']) && ! empty($data['opportunity_id'])) {
                     $opportunity = Opportunity::where('company_id', $booking->company_id)
                         ->find($data['opportunity_id']);
@@ -496,7 +500,7 @@ class BookingController extends Controller
             'new_vehicle_year' => ['nullable', 'string', 'max:10'],
             'new_vehicle_color' => ['nullable', 'string', 'max:50'],
 
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [$isCreate ? 'required' : 'nullable', 'string', 'max:255'],
             'service_type' => ['nullable', 'string', 'max:255'],
 
             'booking_date' => ['required', 'date'],
