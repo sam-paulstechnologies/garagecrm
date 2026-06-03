@@ -59,6 +59,8 @@ class DashboardController extends Controller
             'apply_date_filter' => $applyDateFilter,
         ];
 
+        $bookingFilters = $this->dashboardBookingFilters($filters);
+
         $assignedUsers = User::where('company_id', $companyId)
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -116,9 +118,9 @@ class DashboardController extends Controller
         );
 
         $bookingsQuery = $this->applyDashboardFilters(
-            Booking::where('company_id', $companyId)->where('is_archived', false),
+            $this->activeBookingsQuery($companyId),
             Booking::class,
-            $filters,
+            $bookingFilters,
             'booking_date'
         );
 
@@ -262,14 +264,9 @@ class DashboardController extends Controller
         |--------------------------------------------------------------------------
         */
         $calendarBookings = $this->applyDashboardFilters(
-            Booking::with('client')
-                ->where('company_id', $companyId)
-                ->where(function ($q) {
-                    $q->whereNull('is_archived')
-                        ->orWhere('is_archived', false);
-                }),
+            $this->activeBookingsQuery($companyId)->with('client'),
             Booking::class,
-            $filters,
+            $bookingFilters,
             'booking_date',
             true
         )->get();
@@ -592,6 +589,33 @@ class DashboardController extends Controller
         }
 
         return $query;
+    }
+
+    private function activeBookingsQuery(int $companyId): Builder
+    {
+        return Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->whereIn('status', $this->activeBookingStatuses());
+    }
+
+    private function activeBookingStatuses(): array
+    {
+        return [
+            Booking::STATUS_PENDING,
+            Booking::STATUS_SCHEDULED,
+        ];
+    }
+
+    private function dashboardBookingFilters(array $filters): array
+    {
+        if (
+            ($filters['apply_date_filter'] ?? true)
+            && ($filters['date_range'] ?? 'this_month') === 'this_month'
+        ) {
+            $filters['to'] = Carbon::parse($filters['from'])->endOfMonth()->endOfDay();
+        }
+
+        return $filters;
     }
 
     private function firstExistingColumn(string $table, array $columns): ?string
