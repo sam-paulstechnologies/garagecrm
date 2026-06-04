@@ -118,7 +118,11 @@ Route::prefix('v1')->group(function () {
         [TwilioWhatsAppWebhookController::class, 'status']
     )->name('api.webhooks.twilio.whatsapp.status');
 
-    Route::get('/webhooks/twilio/ping', fn () => 'twilio-ok');
+    Route::get('/webhooks/twilio/ping', function () {
+        abort_unless(app()->environment('local'), 404);
+
+        return 'twilio-ok';
+    });
 });
 
 /*

@@ -38,7 +38,7 @@ class SendWhatsAppMessage implements ShouldQueue
 
             Log::info('[WA][Twilio] Sending message', [
                 'company_id' => $companyId ?: null,
-                'to' => $this->toE164,
+                'to' => $this->maskPhone($this->toE164),
                 'templateId' => $this->templateId
             ]);
 
@@ -92,9 +92,20 @@ class SendWhatsAppMessage implements ShouldQueue
 
             Log::error('[WA][Twilio] Send failed', [
                 'company_id' => $this->meta['company_id'] ?? null,
-                'to'  => $this->toE164,
+                'to'  => $this->maskPhone($this->toE164),
                 'err' => $e->getMessage()
             ]);
         }
+    }
+
+    protected function maskPhone(?string $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }

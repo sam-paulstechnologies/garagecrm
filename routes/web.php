@@ -70,6 +70,8 @@ Route::get('/healthz', function (Request $request) {
 |--------------------------------------------------------------------------
 */
 Route::get('/_ops/flush', function (Request $r) {
+    abort_unless(app()->environment('local'), 404);
+
     $token = env('OPS_TOKEN');
 
     abort_unless($token && hash_equals($token, (string) $r->query('t')), 403);

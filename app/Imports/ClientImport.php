@@ -35,12 +35,21 @@ class ClientImport implements ToCollection, WithHeadingRow
                 }
             }
 
-            Log::info("🔍 Processing Row {$index}", $data);
+            Log::info('Client import row processing', [
+                'row' => $index,
+                'company_id' => $this->companyId,
+                'has_email' => ! empty($data['email']),
+                'has_phone' => ! empty($data['phone']),
+            ]);
 
             // ✅ Duplicate check
             if (!empty($data['email']) && Client::where('email', $data['email'])->where('company_id', $this->companyId)->exists()) {
                 $this->skipped++;
-                Log::warning("⏭️ Skipping duplicate email: {$data['email']}");
+                Log::warning('Client import duplicate email skipped', [
+                    'row' => $index,
+                    'company_id' => $this->companyId,
+                    'email' => $this->maskEmail($data['email']),
+                ]);
                 continue;
             }
 
@@ -66,7 +75,11 @@ class ClientImport implements ToCollection, WithHeadingRow
 
             if ($validated->fails()) {
                 $this->skipped++;
-                Log::error("❌ Error on Row {$index}: " . json_encode($validated->errors()->all()));
+                Log::error('Client import row validation failed', [
+                    'row' => $index,
+                    'company_id' => $this->companyId,
+                    'errors' => $validated->errors()->keys(),
+                ]);
                 continue;
             }
 
@@ -77,9 +90,30 @@ class ClientImport implements ToCollection, WithHeadingRow
             ));
 
             $this->imported++;
-            Log::info("✅ Row {$index} imported successfully");
+            Log::info('Client import row imported successfully', [
+                'row' => $index,
+                'company_id' => $this->companyId,
+            ]);
         }
 
-        Log::info("🎉 Client import complete: {$this->imported} imported, {$this->skipped} skipped, {$this->total} total");
+        Log::info('Client import complete', [
+            'company_id' => $this->companyId,
+            'imported' => $this->imported,
+            'skipped' => $this->skipped,
+            'total' => $this->total,
+        ]);
+    }
+
+    protected function maskEmail(?string $email): ?string
+    {
+        $email = trim((string) $email);
+
+        if ($email === '' || ! str_contains($email, '@')) {
+            return null;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+
+        return substr($local, 0, 1).'***@'.$domain;
     }
 }

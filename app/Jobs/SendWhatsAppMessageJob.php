@@ -40,6 +40,17 @@ class SendWhatsAppMessageJob implements ShouldQueue
             'body' => $this->body,
         ]);
 
-        Log::info('[WA] Sent', ['sid' => $msg->sid, 'to' => $this->to]);
+        Log::info('[WA] Sent', ['sid' => $msg->sid, 'to' => $this->maskPhone($this->to)]);
+    }
+
+    protected function maskPhone(?string $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }

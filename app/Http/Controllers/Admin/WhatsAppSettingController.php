@@ -380,7 +380,13 @@ class WhatsAppSettingController extends Controller
             Log::warning('[UAT Reset] WhatsApp test data deleted', [
                 'company_id' => $companyId,
                 'user_id' => auth()->id(),
-                'summary' => $summary,
+                'phone' => $this->maskPhone($phone),
+                'deleted' => $deleted,
+                'client_count' => $clientIds->count(),
+                'lead_count' => $leadIds->count(),
+                'opportunity_count' => $opportunityIds->count(),
+                'booking_count' => $bookingIds->count(),
+                'job_count' => $jobIds->count(),
             ]);
 
             return $summary;
@@ -414,5 +420,16 @@ class WhatsAppSettingController extends Controller
         }
 
         return preg_match('/^\d{8,20}$/', $phone) ? $phone : null;
+    }
+
+    protected function maskPhone(?string $phone): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }

@@ -77,7 +77,14 @@ class TwilioWhatsAppService
             }
 
             $err = $resp->json('message') ?? $resp->body();
-            Log::error('Twilio WhatsApp send failed', ['status' => $resp->status(), 'error' => $err, 'payload' => $payload]);
+            Log::error('Twilio WhatsApp send failed', [
+                'status' => $resp->status(),
+                'error' => $err,
+                'to' => $this->maskPhone($payload['To'] ?? null),
+                'from' => $this->maskPhone($payload['From'] ?? null),
+                'template_key' => $templateKey,
+                'has_media' => ! empty($mediaUrls),
+            ]);
             return ['ok' => false, 'error' => is_string($err) ? $err : 'Twilio API error'];
         } catch (\Throwable $e) {
             Log::error('Twilio WhatsApp exception', ['e' => $e->getMessage()]);
@@ -141,5 +148,16 @@ class TwilioWhatsAppService
             return array_values($vars);
         }
         return $vars;
+    }
+
+    protected function maskPhone(?string $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }

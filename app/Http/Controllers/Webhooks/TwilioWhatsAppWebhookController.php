@@ -40,9 +40,9 @@ class TwilioWhatsAppWebhookController
 
         Log::info('[Twilio WhatsApp] Inbound', [
             'sid'  => $sid,
-            'from' => $fromRaw,
-            'to'   => $toRaw,
-            'body' => $body,
+            'from' => $this->maskPhone($fromRaw),
+            'to'   => $this->maskPhone($toRaw),
+            'body_length' => mb_strlen($body),
         ]);
 
         /*
@@ -57,7 +57,7 @@ class TwilioWhatsAppWebhookController
 
         if (!$companyId) {
             Log::warning('[Twilio WhatsApp] Company not resolved', [
-                'to' => $toRaw
+                'to' => $this->maskPhone($toRaw),
             ]);
             return response('OK', Response::HTTP_OK);
         }
@@ -128,8 +128,8 @@ class TwilioWhatsAppWebhookController
         if (!$companyId) {
             Log::warning('[Twilio WhatsApp] Status company not resolved', [
                 'sid'  => $sid,
-                'from' => $fromRaw,
-                'to'   => $toRaw,
+                'from' => $this->maskPhone($fromRaw),
+                'to'   => $this->maskPhone($toRaw),
             ]);
 
             return response('OK', Response::HTTP_OK);
@@ -211,5 +211,16 @@ class TwilioWhatsAppWebhookController
             ]);
             return false;
         }
+    }
+
+    private function maskPhone(?string $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }

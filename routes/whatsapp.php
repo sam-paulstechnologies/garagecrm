@@ -165,6 +165,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
         |--------------------------------------------------------------------------
         */
         Route::get('dev/wa-smoke', function (\Illuminate\Http\Request $r) {
+            abort_unless(app()->environment('local'), 404);
 
             $user = auth()->user();
             $companyId = (int) $user->company_id;
@@ -205,6 +206,6 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
                 context: []
             );
 
-            return "✅ Dispatched WA for lead #{$lead->id} ({$lead->name}). Check phone {$lead->phone}.";
+            return "Dispatched WA smoke test for lead #{$lead->id}.";
         })->name('dev.wa_smoke');
     });

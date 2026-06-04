@@ -177,7 +177,9 @@ class MetaWhatsAppWebhookController extends Controller
             if (! $messageId) {
                 Log::warning('[SF-WA Connect][META] Status update missing message id', [
                     'company_id' => $company->id,
-                    'status' => $status,
+                    'provider_status' => $providerStatus,
+                    'recipient_id' => $this->maskPhone($status['recipient_id'] ?? null),
+                    'status_keys' => array_keys($status),
                 ]);
 
                 continue;
@@ -194,7 +196,8 @@ class MetaWhatsAppWebhookController extends Controller
                     'company_id' => $company->id,
                     'provider_message_id' => $messageId,
                     'provider_status' => $providerStatus,
-                    'status_payload' => $status,
+                    'recipient_id' => $this->maskPhone($status['recipient_id'] ?? null),
+                    'status_keys' => array_keys($status),
                 ]);
 
                 $this->storeUsageLogIfAvailable($company, null, $messageId, $phoneNumberId, $status);
@@ -341,9 +344,9 @@ class MetaWhatsAppWebhookController extends Controller
             Log::info('[SF-WA Connect][META][COEXISTENCE] Business App echo logged', [
                 'company_id' => $company->id,
                 'provider_message_id' => $providerMessageId,
-                'from_number' => $displayPhoneNumber,
-                'to_number' => $customerNumber,
-                'body' => $body,
+                'from_number' => $this->maskPhone($displayPhoneNumber),
+                'to_number' => $this->maskPhone($customerNumber),
+                'body_length' => mb_strlen($body),
             ]);
         }
 
@@ -406,7 +409,8 @@ class MetaWhatsAppWebhookController extends Controller
         Log::info('[SF-WA Connect][META] Inbound message dispatched', [
             'company_id' => $company->id,
             'type' => $msg['type'] ?? null,
-            'body' => $body,
+            'from_number' => $this->maskPhone($msg['from'] ?? null),
+            'body_length' => mb_strlen($body),
         ]);
 
         return response()->noContent();
@@ -565,5 +569,16 @@ class MetaWhatsAppWebhookController extends Controller
         }
 
         return '';
+    }
+
+    protected function maskPhone(?string $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
     }
 }
