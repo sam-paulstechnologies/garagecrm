@@ -99,7 +99,7 @@
         @if($invoiceCreateRoute)
             <a
                 href="{{ $invoiceCreateRoute }}"
-                class="inline-flex h-10 items-center justify-center rounded-xl bg-orange-500 px-5 text-sm font-extrabold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
+                class="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg bg-orange-500 px-3 text-xs font-extrabold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
             >
                 Create Invoice
             </a>

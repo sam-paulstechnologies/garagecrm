@@ -6,12 +6,18 @@ use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Booking\Booking;
 use App\Models\Job\Job;
+use App\Services\Retention\VehicleRenewalOpportunityService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 class AudienceSegmentationAudienceService
 {
+    public function __construct(
+        protected VehicleRenewalOpportunityService $vehicleRenewalOpportunityService
+    ) {
+    }
+
     public function getAudienceForSegment(string $segmentKey, int $companyId): Collection
     {
         return match ($segmentKey) {
@@ -24,6 +30,9 @@ class AudienceSegmentationAudienceService
             'job_completed_feedback' => $this->jobCompletedFeedback($companyId),
             'promotion_eligible' => $this->promotionEligible($companyId),
             'repeat_customer' => $this->repeatCustomer($companyId),
+            VehicleRenewalOpportunityService::INSURANCE_RENEWAL => $this->vehicleRenewalAudience(VehicleRenewalOpportunityService::INSURANCE_RENEWAL, $companyId),
+            VehicleRenewalOpportunityService::MULKIA_RENEWAL => $this->vehicleRenewalAudience(VehicleRenewalOpportunityService::MULKIA_RENEWAL, $companyId),
+            VehicleRenewalOpportunityService::INSPECTION_RENEWAL => $this->vehicleRenewalAudience(VehicleRenewalOpportunityService::INSPECTION_RENEWAL, $companyId),
             default => collect(),
         };
     }
@@ -262,6 +271,11 @@ class AudienceSegmentationAudienceService
                         : null,
                 ];
             });
+    }
+
+    protected function vehicleRenewalAudience(string $segmentKey, int $companyId): Collection
+    {
+        return $this->vehicleRenewalOpportunityService->audienceForCompany($companyId, $segmentKey);
     }
 
     protected function leadBase(int $companyId): Builder

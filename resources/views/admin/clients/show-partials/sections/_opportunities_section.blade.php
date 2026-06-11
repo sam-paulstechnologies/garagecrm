@@ -154,12 +154,12 @@
                         </div>
 
                         <div class="flex items-center gap-2">
-                            <span class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
+                            <span class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-700 dark:text-orange-200">
                                 {{ $opportunity->stage ?? 'new' }}
                             </span>
 
                             @if($showRoute)
-                                <a href="{{ $showRoute }}" class="text-xs font-black text-orange-300 hover:text-orange-200">
+                                <a href="{{ $showRoute }}" class="text-xs font-black text-orange-700 hover:text-orange-800 dark:text-orange-200 dark:hover:text-orange-100">
                                     View
                                 </a>
                             @endif

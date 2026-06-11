@@ -134,7 +134,7 @@
         @if($notesRoute)
             <a
                 href="{{ $notesRoute }}"
-                class="sf-notes-secondary-btn inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-bold transition"
+                class="sf-notes-secondary-btn inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg border px-3 text-xs font-bold transition"
             >
                 View All
             </a>

@@ -173,12 +173,12 @@
                         </div>
 
                         <div class="flex items-center gap-2">
-                            <span class="inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-300">
+                            <span class="inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-700 dark:text-blue-200">
                                 {{ $lead->status ?? 'new' }}
                             </span>
 
                             @if($showRoute)
-                                <a href="{{ $showRoute }}" class="text-xs font-black text-orange-300 hover:text-orange-200">
+                                <a href="{{ $showRoute }}" class="text-xs font-black text-orange-700 hover:text-orange-800 dark:text-orange-200 dark:hover:text-orange-100">
                                     View
                                 </a>
                             @endif

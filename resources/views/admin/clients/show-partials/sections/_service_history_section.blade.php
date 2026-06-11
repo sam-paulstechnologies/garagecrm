@@ -95,6 +95,34 @@
         color: #cbd5e1;
     }
 
+    .sf-service-icon {
+        border-color: rgba(148, 163, 184, 0.24);
+        background: rgba(148, 163, 184, 0.10);
+        color: #cbd5e1;
+    }
+
+    .sf-service-icon svg {
+        stroke-width: 2.2;
+    }
+
+    .sf-service-icon-blue {
+        border-color: rgba(96, 165, 250, 0.30);
+        background: rgba(59, 130, 246, 0.14);
+        color: #93c5fd;
+    }
+
+    .sf-service-icon-orange {
+        border-color: rgba(251, 146, 60, 0.32);
+        background: rgba(249, 115, 22, 0.14);
+        color: #fdba74;
+    }
+
+    .sf-service-icon-slate {
+        border-color: rgba(203, 213, 225, 0.24);
+        background: rgba(148, 163, 184, 0.14);
+        color: #cbd5e1;
+    }
+
     html[data-theme="light"] .sf-service-shell {
         border-color: #d9e1ec !important;
         background: #ffffff !important;
@@ -157,6 +185,24 @@
         background: #f1f5f9 !important;
         color: #475569 !important;
     }
+
+    html[data-theme="light"] .sf-service-icon-blue {
+        border-color: #bfdbfe !important;
+        background: #dbeafe !important;
+        color: #2563eb !important;
+    }
+
+    html[data-theme="light"] .sf-service-icon-orange {
+        border-color: #fed7aa !important;
+        background: #ffedd5 !important;
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-service-icon-slate {
+        border-color: #e2e8f0 !important;
+        background: #f1f5f9 !important;
+        color: #475569 !important;
+    }
 </style>
 
 <section id="service-history" class="sf-service-shell rounded-2xl border p-5 shadow-sm">
@@ -193,8 +239,10 @@
                     </p>
                 </div>
 
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/10 text-xl">
-                    🛠️
+                <div class="sf-service-icon sf-service-icon-blue flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.4 2.4-3-3 2.4-2.4Z" />
+                    </svg>
                 </div>
             </div>
         </div>
@@ -215,8 +263,15 @@
                     </p>
                 </div>
 
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-500/10 text-xl">
-                    🗓️
+                <div class="sf-service-icon sf-service-icon-orange flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M7 3v3" />
+                        <path d="M17 3v3" />
+                        <rect x="4" y="5" width="16" height="15" rx="2" />
+                        <path d="M4 10h16" />
+                        <path d="M9 15h4" />
+                        <path d="M13 15l-2 2" />
+                    </svg>
                 </div>
             </div>
         </div>
@@ -237,8 +292,12 @@
                     </p>
                 </div>
 
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-500/20 bg-slate-500/10 text-xl">
-                    🔧
+                <div class="sf-service-icon sf-service-icon-slate flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 20h4" />
+                        <path d="M12 4a5 5 0 0 0-5 5v3.5L5.5 16h13L17 12.5V9a5 5 0 0 0-5-5Z" />
+                        <path d="M9 16a3 3 0 0 0 6 0" />
+                    </svg>
                 </div>
             </div>
         </div>
