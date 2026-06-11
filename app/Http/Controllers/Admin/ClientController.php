@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Note;
 use App\Models\Job\Job;
+use App\Services\Retention\VehicleRenewalOpportunityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -239,7 +240,7 @@ class ClientController extends Controller
     /**
      * 👁️ View client profile
      */
-    public function show(Client $client)
+    public function show(Client $client, VehicleRenewalOpportunityService $vehicleRenewalOpportunityService)
     {
         $this->authorizeClient($client);
 
@@ -371,14 +372,79 @@ class ClientController extends Controller
             'missing_items'       => $missingItems,
         ];
 
-        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory'));
+        $nextRetentionFollowUp = $vehicleRenewalOpportunityService->nextForClient($client, true) ?? [
+            'state' => 'empty',
+            'status_label' => 'No Data',
+            'segment_label' => null,
+            'follow_up_date' => null,
+            'channel' => null,
+            'message' => null,
+            'source_label' => null,
+            'safety_note' => 'No message is sent from this card.',
+        ];
+
+        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory', 'nextRetentionFollowUp'));
     }
 
     public function edit(Client $client)
     {
         $this->authorizeClient($client);
 
-        return view('admin.clients.edit', compact('client'));
+        $client->load([
+            'vehicles.make',
+            'vehicles.model',
+        ]);
+
+        $latestServiceHistory = null;
+        $profileMissingItems = $this->profileMissingItemsFor($client);
+
+        return view('admin.clients.edit', compact('client', 'latestServiceHistory', 'profileMissingItems'));
+    }
+
+    private function profileMissingItemsFor(Client $client): array
+    {
+        $primaryVehicle = $client->vehicles?->first();
+        $missingItems = [];
+
+        if (! filled($client->email)) {
+            $missingItems[] = 'Email address';
+        }
+
+        if (! filled($client->phone) && ! filled($client->whatsapp)) {
+            $missingItems[] = 'Phone or WhatsApp number';
+        }
+
+        if (! filled($client->city) && ! filled($client->country) && ! filled($client->address)) {
+            $missingItems[] = 'Address / location';
+        }
+
+        if (! $primaryVehicle) {
+            $missingItems[] = 'Vehicle details';
+
+            return $missingItems;
+        }
+
+        if (! filled($primaryVehicle->plate_number)) {
+            $missingItems[] = 'Plate number';
+        }
+
+        if (! filled($primaryVehicle->vin)) {
+            $missingItems[] = 'VIN';
+        }
+
+        if (! filled($primaryVehicle->registration_expiry_date)) {
+            $missingItems[] = 'Mulkia / registration expiry date';
+        }
+
+        if (! filled($primaryVehicle->insurance_expiry_date)) {
+            $missingItems[] = 'Insurance expiry date';
+        }
+
+        if (! filled($primaryVehicle->current_mileage)) {
+            $missingItems[] = 'Current mileage';
+        }
+
+        return $missingItems;
     }
 
     /**

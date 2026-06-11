@@ -6,6 +6,8 @@
 
     @include('admin.clients.show-partials.sections._service_history_section')
 
+    @include('admin.clients.show-partials.sections._next_retention_follow_up_section')
+
     @include('admin.clients.show-partials.sections._leads_section')
 
     @include('admin.clients.show-partials.sections._opportunities_section')

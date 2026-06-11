@@ -81,6 +81,42 @@
     </div>
 </div>
 
+{{-- Profile Completion Helper --}}
+<div class="sf-edit-panel rounded-2xl border shadow-sm">
+    <div class="border-b border-white/10 p-5">
+        <h2 class="sf-edit-title text-lg font-extrabold tracking-tight">
+            Profile Completion Helper
+        </h2>
+
+        <p class="sf-edit-muted mt-1 text-sm font-medium">
+            These items improve reminders, retention, invoices, and service history quality.
+        </p>
+    </div>
+
+    <div class="p-5">
+        @if(!empty($profileMissingItems))
+            <div class="space-y-2">
+                @foreach($profileMissingItems as $item)
+                    <div class="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-xs font-black">
+                            !
+                        </span>
+                        <span>{{ $item }}</span>
+                    </div>
+                @endforeach
+            </div>
+
+            <p class="sf-edit-muted mt-4 text-xs font-semibold leading-5">
+                Missing items do not block saving. They are shown so the profile can be completed over time.
+            </p>
+        @else
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                This profile has the key information needed for service and retention workflows.
+            </div>
+        @endif
+    </div>
+</div>
+
 {{-- Guidelines --}}
 <div class="sf-edit-panel rounded-2xl border shadow-sm">
     <div class="border-b border-white/10 p-5">
