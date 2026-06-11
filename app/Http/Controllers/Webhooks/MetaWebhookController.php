@@ -413,7 +413,7 @@ class MetaWebhookController extends Controller
         return LeadSource::query()
             ->where('company_id', $companyId)
             ->where('type', 'meta')
-            ->whereIn('status', ['active', 'connected'])
+            ->active()
             ->where('config->page_id', (string) $pageId)
             ->where('config->form_id', (string) $formId)
             ->first();

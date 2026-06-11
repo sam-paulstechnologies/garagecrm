@@ -10,6 +10,8 @@ class LeadSource extends Model
 {
     protected $table = 'lead_sources';
 
+    public const CAPTURE_ENABLED_STATUSES = ['active', 'connected'];
+
     protected $fillable = [
         'company_id',
         'name',
@@ -41,7 +43,7 @@ class LeadSource extends Model
 
     public function scopeActive(Builder $query): Builder
     {
-        return $query->whereIn('status', ['active', 'connected']);
+        return $query->whereIn('status', self::CAPTURE_ENABLED_STATUSES);
     }
 
     public function scopeType(Builder $query, string $type): Builder
@@ -56,6 +58,6 @@ class LeadSource extends Model
 
     public function isActive(): bool
     {
-        return in_array($this->status, ['active', 'connected'], true);
+        return in_array($this->status, self::CAPTURE_ENABLED_STATUSES, true);
     }
 }

@@ -135,6 +135,7 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
             'manager'  => redirect()->route('manager.dashboard'),
             'mechanic' => redirect()->route('mechanic.dashboard'),
             'tenant'   => redirect()->route('tenant.dashboard'),
+            'media_team' => redirect()->route('admin.lead-sources.meta'),
             default    => abort(403),
         };
     })->name('dashboard');
