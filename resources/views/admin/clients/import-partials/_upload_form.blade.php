@@ -16,15 +16,15 @@
     }
 
     .sf-import-subtitle {
-        color: #94a3b8;
+        color: #cbd5e1;
     }
 
     .sf-import-label {
-        color: #64748b;
+        color: #94a3b8;
     }
 
     .sf-import-help {
-        color: #64748b;
+        color: #cbd5e1;
     }
 
     .sf-import-input {
@@ -44,6 +44,10 @@
 
     .sf-import-sample-text {
         color: #dbeafe;
+    }
+
+    .sf-import-upload-icon {
+        color: #c2410c;
     }
 
     html[data-theme="light"] .sf-import-card {
@@ -84,6 +88,10 @@
     html[data-theme="light"] .sf-import-sample-text {
         color: #1e3a8a !important;
     }
+
+    html[data-theme="light"] .sf-import-upload-icon {
+        color: #9a3412 !important;
+    }
 </style>
 
 <div class="lg:col-span-2">
@@ -106,8 +114,11 @@
                 </p>
             </div>
 
-            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl text-orange-300 ring-1 ring-orange-400/20">
-                📤
+            <div class="sf-import-upload-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl ring-1 ring-orange-400/20">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 15V3m0 0 4 4m-4-4L8 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9A2.5 2.5 0 0 0 19 17.5V14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
             </div>
         </div>
 
@@ -124,13 +135,17 @@
                 </p>
 
                 <div class="mt-4 flex flex-wrap gap-2">
-                    @if (file_exists(public_path('samples/sample_client_import.csv')))
+                    @if (\Illuminate\Support\Facades\Route::has('admin.clients.import.sample'))
                         <a
-                            href="{{ asset('samples/sample_client_import.csv') }}"
+                            href="{{ route('admin.clients.import.sample') }}"
                             download
-                            class="inline-flex h-10 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 text-sm font-bold text-blue-300 transition hover:bg-blue-500/15"
+                            class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/15 px-4 text-sm font-extrabold text-blue-700 transition hover:bg-blue-500/25 hover:text-blue-800 dark:text-blue-200 dark:hover:text-blue-100"
                         >
-                            📥 Download Sample CSV
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M12 3v12m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            </svg>
+                            Download Sample Sheet
                         </a>
                     @endif
 
@@ -138,9 +153,13 @@
                         <a
                             href="{{ asset('samples/client_import_sample.xlsx') }}"
                             download
-                            class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
+                            class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
-                            📥 Download Sample Excel
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M12 3v12m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            </svg>
+                            Download Sample Excel
                         </a>
                     @endif
                 </div>
@@ -162,7 +181,7 @@
                 >
 
                 <p class="sf-import-help mt-2 text-xs font-medium">
-                    Upload CSV or Excel file with required columns: name, phone, email.
+                    Upload CSV or Excel file with required columns: name and phone or WhatsApp. This step previews retention suggestions only.
                 </p>
 
                 @error('file')
@@ -179,13 +198,13 @@
                     class="inline-flex h-10 items-center justify-center rounded-xl bg-orange-500 px-4 text-sm font-extrabold text-white shadow-lg shadow-orange-950/30 transition hover:bg-orange-600"
                     type="submit"
                 >
-                    Import Clients
+                    Preview Retention Opportunities
                 </button>
 
                 @if(\Illuminate\Support\Facades\Route::has('admin.clients.index'))
                     <a
                         href="{{ route('admin.clients.index') }}"
-                        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
+                        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                         Cancel
                     </a>

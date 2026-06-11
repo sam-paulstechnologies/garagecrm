@@ -70,16 +70,12 @@
         </h3>
 
         <div class="mt-3 flex flex-wrap gap-2">
-            <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-1 text-xs font-black text-orange-300 ring-1 ring-orange-400/20">
+            <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-400/20 dark:text-orange-200">
                 name
             </span>
 
-            <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-1 text-xs font-black text-orange-300 ring-1 ring-orange-400/20">
-                phone
-            </span>
-
-            <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-1 text-xs font-black text-orange-300 ring-1 ring-orange-400/20">
-                email
+            <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-400/20 dark:text-orange-200">
+                phone or whatsapp
             </span>
         </div>
     </div>
@@ -90,7 +86,7 @@
         </h3>
 
         <p class="sf-note-green-text mt-2 text-sm font-semibold leading-6">
-            whatsapp, dob, gender, address, city, state, postal_code, country, source, status, notes, is_vip, preferred_channel.
+            email, vehicle_make, vehicle_model, plate_number, vehicle_year, last_service_date, last_service_type, last_invoice_amount, last_mileage, insurance_expiry_date, mulkia_expiry_date, source, status, is_vip, preferred_channel, notes.
         </p>
     </div>
 
@@ -100,7 +96,7 @@
         </h3>
 
         <p class="sf-note-blue-text mt-2 text-sm font-semibold leading-6">
-            Dates should be MM/DD/YYYY. Phone and WhatsApp numbers should be digits only, without plus signs or spaces.
+            Dates can use YYYY-MM-DD or common spreadsheet date formats. Phone and WhatsApp numbers should be digits only, without plus signs or spaces.
         </p>
     </div>
 

@@ -4,13 +4,20 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
+use App\Models\Client\ClientImportBatch;
+use App\Models\Client\ClientImportRow;
 use App\Models\Client\Note;
 use App\Models\Job\Job;
+use App\Services\Clients\ClientImportApplyService;
+use App\Services\Clients\ClientImportRetentionActionService;
+use App\Services\Clients\ClientImportRetentionPreviewService;
+use App\Services\Clients\ClientImportServiceHistoryService;
 use App\Services\Retention\VehicleRenewalOpportunityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ClientController extends Controller
@@ -575,15 +582,417 @@ class ClientController extends Controller
     /**
      * 📥 Import clients
      */
-    public function import(Request $request)
+    public function importSample()
     {
-        $request->validate([
-            'file' => ['nullable', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
+        $headers = [
+            'name',
+            'phone',
+            'whatsapp',
+            'email',
+            'vehicle_make',
+            'vehicle_model',
+            'plate_number',
+            'vehicle_year',
+            'last_service_date',
+            'last_service_type',
+            'last_invoice_amount',
+            'last_mileage',
+            'insurance_expiry_date',
+            'mulkia_expiry_date',
+            'source',
+            'status',
+            'is_vip',
+            'preferred_channel',
+            'notes',
+        ];
+
+        $sampleRow = [
+            'Sam Abhishek',
+            '971586934377',
+            '971586934377',
+            'sam@example.com',
+            'Mercedes-Benz',
+            'GLE',
+            'D12345',
+            '2021',
+            now()->subMonths(7)->toDateString(),
+            'General Service',
+            '850.00',
+            '72000',
+            now()->addDays(24)->toDateString(),
+            now()->addDays(28)->toDateString(),
+            'import',
+            'active',
+            '1',
+            'whatsapp',
+            'Previous garage customer',
+        ];
+
+        return response()->streamDownload(function () use ($headers, $sampleRow) {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, $headers);
+            fputcsv($output, $sampleRow);
+            fclose($output);
+        }, 'sample_client_import.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Client import workflow
+     */
+    public function import(Request $request, ClientImportRetentionPreviewService $previewService)
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
         ]);
 
+        $companyId = (int) auth()->user()->company_id;
+        $preview = $previewService->buildPreview(
+            $data['file'],
+            $companyId,
+            ClientImportRetentionPreviewService::DEFAULT_LIMIT
+        );
+
+        $storedPath = $data['file']->storeAs(
+            'private/client-imports',
+            now()->format('YmdHis') . '_' . Str::random(8) . '_' . Str::slug(pathinfo($data['file']->getClientOriginalName(), PATHINFO_FILENAME)) . '.' . $data['file']->getClientOriginalExtension()
+        );
+
+        $batch = DB::transaction(function () use ($preview, $companyId, $data, $storedPath) {
+            $summary = $preview['summary'];
+
+            $batch = ClientImportBatch::create([
+                'company_id' => $companyId,
+                'uploaded_by' => auth()->id(),
+                'original_filename' => $data['file']->getClientOriginalName(),
+                'stored_path' => $storedPath,
+                'status' => 'parsed',
+                'total_rows' => $summary['rows_uploaded'] ?? 0,
+                'valid_rows' => $summary['valid_rows'] ?? 0,
+                'warning_rows' => $summary['warning_rows'] ?? 0,
+                'invalid_rows' => $summary['invalid_rows'] ?? 0,
+                'duplicate_rows' => $summary['duplicates'] ?? 0,
+                'suggested_retention_actions' => $summary['suggested_retention_actions'] ?? 0,
+                'meta' => [
+                    'rows_previewed' => $summary['rows_previewed'] ?? 0,
+                    'truncated' => $summary['truncated'] ?? false,
+                    'limit' => $summary['limit'] ?? ClientImportRetentionPreviewService::DEFAULT_LIMIT,
+                    'stored_disk' => config('filesystems.default'),
+                ],
+            ]);
+
+            foreach ($preview['rows'] as $row) {
+                ClientImportRow::create([
+                    'batch_id' => $batch->id,
+                    'company_id' => $companyId,
+                    'row_number' => $row['row_number'],
+                    'raw_payload' => $row['raw_payload'] ?? $row['data'],
+                    'normalized_payload' => $row['data'],
+                    'client_match_id' => $row['duplicate']['id'] ?? null,
+                    'vehicle_match_id' => null,
+                    'duplicate_status' => $row['duplicate_status'] ?? 'none',
+                    'validation_status' => $row['status'],
+                    'errors' => $row['errors'],
+                    'warnings' => $row['warnings'],
+                    'suggested_segment_code' => $row['suggestion']['segment_code'] ?? null,
+                    'suggested_segment_label' => $row['suggestion']['segment_label'] ?? null,
+                    'suggested_next_action_date' => $row['suggestion']['follow_up_date'] ?? null,
+                    'suggested_message' => $row['suggestion']['message'] ?? null,
+                    'review_status' => 'pending_review',
+                ]);
+            }
+
+            return $batch;
+        });
+
         return redirect()
-            ->route('admin.clients.index')
-            ->with('warning', 'Client import screen is available, but import processing is not configured yet.');
+            ->route('admin.clients.import.batches.show', $batch)
+            ->with('success', 'Import preview saved. No clients, vehicles, actions, or messages were created.');
+    }
+
+    public function importBatches()
+    {
+        $batches = ClientImportBatch::with('uploadedBy')
+            ->where('company_id', auth()->user()->company_id)
+            ->latest()
+            ->paginate(15);
+
+        return view('admin.clients.import-batches', compact('batches'));
+    }
+
+    public function importBatchShow(int $batch)
+    {
+        $batch = ClientImportBatch::with(['uploadedBy', 'rows.clientMatch'])
+            ->where('company_id', auth()->user()->company_id)
+            ->findOrFail($batch);
+
+        return view('admin.clients.import-preview', $this->previewPayloadFromBatch($batch));
+    }
+
+    public function reviewImportRow(Request $request, int $batch, int $row)
+    {
+        $data = $request->validate([
+            'review_status' => ['required', Rule::in(['approved', 'rejected', 'skipped', 'pending_review'])],
+        ]);
+
+        $batch = $this->findImportBatchForCurrentCompany($batch);
+        $row = $this->findImportRowForBatch($batch, $row);
+
+        if ($row->review_status === 'applied') {
+            return back()->with('warning', 'Applied rows cannot be changed from this review screen.');
+        }
+
+        if ($data['review_status'] === 'approved' && $row->validation_status === 'invalid') {
+            return back()->with('warning', "Row #{$row->row_number} cannot be approved because it has blocking validation errors.");
+        }
+
+        $row->update(['review_status' => $data['review_status']]);
+        $this->refreshImportBatchReviewStatus($batch);
+
+        return back()->with('success', "Row #{$row->row_number} marked as " . Str::headline($data['review_status']) . '.');
+    }
+
+    public function bulkReviewImportRows(Request $request, int $batch)
+    {
+        $data = $request->validate([
+            'action' => ['required', Rule::in(['approve', 'reject', 'skip', 'reset'])],
+            'row_ids' => ['required', 'array', 'min:1'],
+            'row_ids.*' => ['integer'],
+        ]);
+
+        $batch = $this->findImportBatchForCurrentCompany($batch);
+        $rows = ClientImportRow::query()
+            ->where('batch_id', $batch->id)
+            ->where('company_id', $batch->company_id)
+            ->whereIn('id', $data['row_ids'])
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return back()->with('warning', 'No matching rows were found for this import batch.');
+        }
+
+        $targetStatus = match ($data['action']) {
+            'approve' => 'approved',
+            'reject' => 'rejected',
+            'skip' => 'skipped',
+            'reset' => 'pending_review',
+        };
+
+        $updated = 0;
+        $skippedInvalid = 0;
+        $skippedApplied = 0;
+
+        DB::transaction(function () use ($rows, $targetStatus, &$updated, &$skippedInvalid, &$skippedApplied) {
+            foreach ($rows as $row) {
+                if ($row->review_status === 'applied') {
+                    $skippedApplied++;
+                    continue;
+                }
+
+                if ($targetStatus === 'approved' && $row->validation_status === 'invalid') {
+                    $skippedInvalid++;
+                    continue;
+                }
+
+                $row->update(['review_status' => $targetStatus]);
+                $updated++;
+            }
+        });
+
+        $this->refreshImportBatchReviewStatus($batch);
+
+        $message = "{$updated} row(s) marked as " . Str::headline($targetStatus) . '.';
+
+        if ($skippedInvalid > 0) {
+            $message .= " {$skippedInvalid} invalid row(s) were skipped.";
+        }
+
+        if ($skippedApplied > 0) {
+            $message .= " {$skippedApplied} applied row(s) were not changed.";
+        }
+
+        return back()->with($updated > 0 ? 'success' : 'warning', $message);
+    }
+
+    public function applyImportBatch(Request $request, int $batch, ClientImportApplyService $applyService)
+    {
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(['dry_run', 'apply'])],
+        ]);
+
+        $batch = ClientImportBatch::with(['uploadedBy', 'rows.clientMatch'])
+            ->where('company_id', auth()->user()->company_id)
+            ->findOrFail($batch);
+
+        if ($data['mode'] === 'dry_run') {
+            $payload = $this->previewPayloadFromBatch($batch);
+            $payload['applySummary'] = $applyService->dryRun($batch);
+
+            return view('admin.clients.import-preview', $payload);
+        }
+
+        $summary = $applyService->apply($batch, auth()->id());
+
+        $message = "Apply complete: {$summary['rows_applied']} approved row(s) applied. "
+            . "Clients created {$summary['clients_created']}, reused {$summary['clients_reused']}, updated {$summary['clients_updated']}. "
+            . "Vehicles created {$summary['vehicles_created']}, reused {$summary['vehicles_reused']}, updated {$summary['vehicles_updated']}.";
+
+        if ($summary['vehicles_skipped_missing_data'] > 0) {
+            $message .= " {$summary['vehicles_skipped_missing_data']} row(s) had no vehicle created due to missing make/model.";
+        }
+
+        return redirect()
+            ->route('admin.clients.import.batches.show', $batch)
+            ->with('success', $message);
+    }
+
+    public function importBatchServiceHistory(Request $request, int $batch, ClientImportServiceHistoryService $serviceHistoryService)
+    {
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(['dry_run', 'apply'])],
+        ]);
+
+        $batch = ClientImportBatch::with(['uploadedBy', 'rows.clientMatch'])
+            ->where('company_id', auth()->user()->company_id)
+            ->findOrFail($batch);
+
+        if ($data['mode'] === 'dry_run') {
+            $payload = $this->previewPayloadFromBatch($batch);
+            $payload['serviceHistorySummary'] = $serviceHistoryService->dryRun($batch);
+
+            return view('admin.clients.import-preview', $payload);
+        }
+
+        $summary = $serviceHistoryService->createFromAppliedRows($batch, auth()->id());
+
+        return redirect()
+            ->route('admin.clients.import.batches.show', $batch)
+            ->with('success', "Service history complete: {$summary['histories_created']} imported history record(s) created. {$summary['duplicate_existing_histories']} duplicate existing record(s), {$summary['skipped_rows']} skipped row(s).");
+    }
+
+    public function importBatchRetentionActions(Request $request, int $batch, ClientImportRetentionActionService $retentionActionService)
+    {
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(['dry_run', 'apply'])],
+        ]);
+
+        $batch = ClientImportBatch::with(['uploadedBy', 'rows.clientMatch'])
+            ->where('company_id', auth()->user()->company_id)
+            ->findOrFail($batch);
+
+        if ($data['mode'] === 'dry_run') {
+            $payload = $this->previewPayloadFromBatch($batch);
+            $payload['retentionActionSummary'] = $retentionActionService->dryRun($batch);
+
+            return view('admin.clients.import-preview', $payload);
+        }
+
+        $summary = $retentionActionService->createFromAppliedRows($batch, auth()->id());
+
+        return redirect()
+            ->route('admin.clients.import.batches.show', $batch)
+            ->with('success', "Retention action setup complete: {$summary['actions_created']} pending action(s) created. {$summary['duplicate_existing_actions']} duplicate existing action(s), {$summary['skipped_rows']} skipped row(s).");
+    }
+
+    private function previewPayloadFromBatch(ClientImportBatch $batch): array
+    {
+        $rows = $batch->rows->map(function (ClientImportRow $row) {
+            $payload = $row->normalized_payload ?? [];
+
+            return [
+                'row_number' => $row->row_number,
+                'row_id' => $row->id,
+                'status' => $row->validation_status,
+                'review_status' => $row->review_status,
+                'raw_payload' => $row->raw_payload ?? [],
+                'data' => $payload,
+                'duplicate' => $row->clientMatch ? [
+                    'id' => $row->clientMatch->id,
+                    'name' => $row->clientMatch->name,
+                    'phone' => $row->clientMatch->phone,
+                    'whatsapp' => $row->clientMatch->whatsapp,
+                    'email' => $row->clientMatch->email,
+                ] : null,
+                'duplicate_status' => $row->duplicate_status ?? 'none',
+                'suggestion' => [
+                    'segment_code' => $row->suggested_segment_code ?? 'unclassified',
+                    'segment_label' => $row->suggested_segment_label ?? 'Unclassified',
+                    'follow_up_date' => $row->suggested_next_action_date?->toDateString(),
+                    'message' => $row->suggested_message,
+                    'secondary_segments' => [],
+                ],
+                'errors' => $row->errors ?? [],
+                'warnings' => $row->warnings ?? [],
+            ];
+        })->values()->all();
+
+        return [
+            'batch' => $batch,
+            'reviewSummary' => [
+                'pending_review' => $batch->rows->where('review_status', 'pending_review')->count(),
+                'approved' => $batch->rows->where('review_status', 'approved')->count(),
+                'rejected' => $batch->rows->where('review_status', 'rejected')->count(),
+                'skipped' => $batch->rows->where('review_status', 'skipped')->count(),
+                'applied' => $batch->rows->where('review_status', 'applied')->count(),
+                'invalid' => $batch->rows->where('validation_status', 'invalid')->count(),
+                'warning' => $batch->rows->where('validation_status', 'warning')->count(),
+            ],
+            'headers' => array_keys($rows[0]['data'] ?? []),
+            'rows' => $rows,
+            'summary' => [
+                'rows_uploaded' => $batch->total_rows,
+                'rows_previewed' => $batch->meta['rows_previewed'] ?? $batch->rows->count(),
+                'valid_rows' => $batch->valid_rows,
+                'warning_rows' => $batch->warning_rows,
+                'invalid_rows' => $batch->invalid_rows,
+                'duplicates' => $batch->duplicate_rows,
+                'suggested_retention_actions' => $batch->suggested_retention_actions,
+                'truncated' => $batch->meta['truncated'] ?? false,
+                'limit' => $batch->meta['limit'] ?? ClientImportRetentionPreviewService::DEFAULT_LIMIT,
+            ],
+        ];
+    }
+
+    private function findImportBatchForCurrentCompany(int $batch): ClientImportBatch
+    {
+        return ClientImportBatch::query()
+            ->where('company_id', auth()->user()->company_id)
+            ->findOrFail($batch);
+    }
+
+    private function findImportRowForBatch(ClientImportBatch $batch, int $row): ClientImportRow
+    {
+        return ClientImportRow::query()
+            ->where('batch_id', $batch->id)
+            ->where('company_id', $batch->company_id)
+            ->findOrFail($row);
+    }
+
+    private function refreshImportBatchReviewStatus(ClientImportBatch $batch): void
+    {
+        $counts = ClientImportRow::query()
+            ->where('batch_id', $batch->id)
+            ->where('company_id', $batch->company_id)
+            ->select('review_status', DB::raw('count(*) as total'))
+            ->groupBy('review_status')
+            ->pluck('total', 'review_status');
+
+        $pending = (int) ($counts['pending_review'] ?? 0);
+        $reviewed = (int) ($counts['approved'] ?? 0)
+            + (int) ($counts['rejected'] ?? 0)
+            + (int) ($counts['skipped'] ?? 0)
+            + (int) ($counts['applied'] ?? 0);
+
+        if ($reviewed === 0) {
+            $status = 'parsed';
+        } elseif ($pending > 0) {
+            $status = 'pending_review';
+        } else {
+            $status = 'reviewed';
+        }
+
+        $batch->update(['status' => $status]);
     }
 
     /**

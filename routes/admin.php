@@ -360,8 +360,37 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::post('clients/{client}/documents/inbox-upload', [DocumentInboxController::class, 'uploadForClient'])
             ->name('documents.upload-for-client');
 
+        Route::get('clients/import/batches', [ClientController::class, 'importBatches'])
+            ->name('clients.import.batches.index');
+
+        Route::get('clients/import/batches/{batch}', [ClientController::class, 'importBatchShow'])
+            ->whereNumber('batch')
+            ->name('clients.import.batches.show');
+
+        Route::post('clients/import/batches/{batch}/bulk-review', [ClientController::class, 'bulkReviewImportRows'])
+            ->whereNumber('batch')
+            ->name('clients.import.batches.bulk-review');
+
+        Route::post('clients/import/batches/{batch}/apply', [ClientController::class, 'applyImportBatch'])
+            ->whereNumber('batch')
+            ->name('clients.import.batches.apply');
+
+        Route::post('clients/import/batches/{batch}/service-history', [ClientController::class, 'importBatchServiceHistory'])
+            ->whereNumber('batch')
+            ->name('clients.import.batches.service-history');
+
+        Route::post('clients/import/batches/{batch}/retention-actions', [ClientController::class, 'importBatchRetentionActions'])
+            ->whereNumber('batch')
+            ->name('clients.import.batches.retention-actions');
+
+        Route::post('clients/import/batches/{batch}/rows/{row}/review', [ClientController::class, 'reviewImportRow'])
+            ->whereNumber('batch')
+            ->whereNumber('row')
+            ->name('clients.import.rows.review');
         Route::get('clients/import', [ClientController::class, 'importForm'])
             ->name('clients.import.form');
+        Route::get('clients/import/sample', [ClientController::class, 'importSample'])
+            ->name('clients.import.sample');
 
         Route::post('clients/import', [ClientController::class, 'import'])
             ->name('clients.import');
