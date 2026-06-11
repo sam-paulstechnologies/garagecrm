@@ -13,7 +13,7 @@
   <label class="{{ $labelClass }}">{{ $label }}</label>
   <select name="{{ $name }}" class="{{ $selectClass }}" @if($required) required @endif>
     @foreach($roles as $key)
-      <option value="{{ $key }}" @selected(old($name, $value) === $key)>{{ ucfirst($key) }}</option>
+      <option value="{{ $key }}" @selected(old($name, $value) === $key)>{{ str($key)->headline() }}</option>
     @endforeach
   </select>
 </div>

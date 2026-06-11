@@ -32,6 +32,10 @@ class RouteServiceProvider extends ServiceProvider
             $router->aliasMiddleware('role', \App\Http\Middleware\RoleMiddleware::class);
         }
 
+        if (class_exists(\App\Http\Middleware\EnsureMediaTeamMetaOnly::class)) {
+            $router->aliasMiddleware('media_team.scope', \App\Http\Middleware\EnsureMediaTeamMetaOnly::class);
+        }
+
         $this->routes(function () {
 
             /*

@@ -70,7 +70,7 @@ Route::post('/manager/booking/{token}', [ManagerBookingController::class, 'store
 | ADMIN ROUTES
 |--------------------------------------------------------------------------
 */
-Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
+Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_team', 'media_team.scope'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
@@ -134,6 +134,8 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin'])
             Route::post('/meta/refresh', [MetaConnectController::class, 'refresh'])
                 ->name('meta.refresh');
 
+            Route::patch('/meta/forms/{leadSource}/capture', [LeadSourceController::class, 'updateMetaCapture'])
+                ->name('meta.forms.capture');
             Route::post('/meta/disconnect', [MetaConnectController::class, 'disconnect'])
                 ->name('meta.disconnect');
 

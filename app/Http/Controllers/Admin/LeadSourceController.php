@@ -259,6 +259,30 @@ class LeadSourceController extends Controller
         return view('admin.lead_sources.meta', compact('meta', 'sources'));
     }
 
+    public function updateMetaCapture(Request $request, LeadSource $leadSource)
+    {
+        abort_unless(
+            (int) $leadSource->company_id === $this->companyId()
+                && $leadSource->type === 'meta',
+            403
+        );
+
+        $data = $request->validate([
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        $leadSource->update([
+            'status' => $data['status'],
+        ]);
+
+        $formName = data_get($leadSource->config ?? [], 'form_name', $leadSource->name);
+        $message = $data['status'] === 'active'
+            ? "Capture enabled for {$formName}."
+            : "Capture disabled for {$formName}.";
+
+        return back()->with('success', $message);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Internal: Sync Meta Forms into Lead Sources
@@ -310,7 +334,6 @@ class LeadSourceController extends Controller
             if ($existing) {
                 $existing->update([
                     'name'   => "Meta - {$formName}",
-                    'status' => $existing->status ?: 'active',
                     'config' => array_merge($existing->config ?? [], $config),
                 ]);
 
@@ -321,7 +344,7 @@ class LeadSourceController extends Controller
                 'company_id' => $companyId,
                 'type'       => 'meta',
                 'name'       => "Meta - {$formName}",
-                'status'     => 'active',
+                'status'     => 'inactive',
                 'config'     => $config,
             ]);
         }

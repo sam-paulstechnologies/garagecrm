@@ -6,9 +6,11 @@ use Illuminate\Console\Command;
 use GuzzleHttp\Client;
 use App\Models\Company;
 use App\Models\Client\Lead;
+use App\Models\LeadSource;
 use App\Services\Settings\SettingsStore;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class ImportMetaLeads extends Command
 {
@@ -109,6 +111,18 @@ class ImportMetaLeads extends Command
         $importedTotal = 0;
 
         foreach ($formIds as $formId) {
+            $leadSource = $this->activeLeadSourceForForm($companyId, (string) $formId);
+
+            if (! $leadSource) {
+                $this->warn("Skipped form {$formId}: no active Meta lead source for company #{$companyId}.");
+                Log::info('[Meta Import] Skipped inactive or unknown Meta form.', [
+                    'company_id' => $companyId,
+                    'form_id' => (string) $formId,
+                ]);
+
+                continue;
+            }
+
             // Best-effort lock to avoid overlapping for the same form
             $lock = null;
             try {
@@ -122,14 +136,14 @@ class ImportMetaLeads extends Command
             }
 
             try {
-                $this->line("   → Fetching leads for form {$formId} …");
+                $this->line("   → Fetching leads for active form {$formId} …");
 
                 $importedTotal += $this->fetchAllLeadsForForm(
                     $client,
                     $token,
                     $formId,
                     $limit,
-                    function (array $lead) use ($companyId, $formId) {
+                    function (array $lead) use ($companyId, $formId, $leadSource) {
                         $externalId   = $lead['id'];
                         $fieldDataArr = $lead['field_data'] ?? [];
                         $fields = [];
@@ -152,6 +166,7 @@ class ImportMetaLeads extends Command
                                 'external_form_id'     => $formId,
                                 'external_payload'     => $lead,
                                 'external_received_at' => now(),
+                                'lead_source_id'       => $leadSource->id,
                             ]
                         );
 
@@ -166,6 +181,16 @@ class ImportMetaLeads extends Command
         }
 
         return $importedTotal;
+    }
+
+    private function activeLeadSourceForForm(int $companyId, string $formId): ?LeadSource
+    {
+        return LeadSource::query()
+            ->forCompany($companyId)
+            ->type('meta')
+            ->active()
+            ->where('config->form_id', $formId)
+            ->first();
     }
 
     /** Normalize meta.form_ids/meta.form_id into an array. */

@@ -5,11 +5,15 @@
 
     $isManagerArea = request()->routeIs('manager.*');
     $isAdminArea = request()->routeIs('admin.*') || ! $isManagerArea;
+    $isMediaTeam = auth()->check()
+        && strtolower(trim((string) auth()->user()->role)) === 'media_team';
 
     $brandUrl = url('/');
 
     if ($isManagerArea && Route::has('manager.dashboard')) {
         $brandUrl = route('manager.dashboard');
+    } elseif ($isMediaTeam && Route::has('admin.lead-sources.meta')) {
+        $brandUrl = route('admin.lead-sources.meta');
     } elseif (Route::has('admin.dashboard')) {
         $brandUrl = route('admin.dashboard');
     }
@@ -43,8 +47,8 @@
         }
     }
 
-    $primaryNavItems = $isManagerArea
-        ? [
+    if ($isManagerArea) {
+        $primaryNavItems = [
             ['label' => 'Dashboard', 'route' => 'manager.dashboard', 'active' => 'manager.dashboard'],
             ['label' => 'Clients', 'route' => 'manager.clients.index', 'active' => 'manager.clients.*'],
             ['label' => 'Leads', 'route' => 'manager.leads.index', 'active' => 'manager.leads.*'],
@@ -54,8 +58,13 @@
             ['label' => 'Invoices', 'route' => 'manager.invoices.index', 'active' => 'manager.invoices.*'],
             ['label' => 'Inbox', 'route' => 'manager.inbox.index', 'active' => 'manager.inbox.*'],
             ['label' => 'Team', 'route' => 'manager.team.index', 'active' => 'manager.team.*'],
-        ]
-        : [
+        ];
+    } elseif ($isMediaTeam) {
+        $primaryNavItems = [
+            ['label' => 'Meta Forms', 'route' => 'admin.lead-sources.meta', 'active' => 'admin.lead-sources.meta*'],
+        ];
+    } else {
+        $primaryNavItems = [
             ['label' => 'Dashboard', 'route' => 'admin.dashboard', 'active' => 'admin.dashboard'],
             ['label' => 'Clients', 'route' => 'admin.clients.index', 'active' => 'admin.clients.*'],
             ['label' => 'Leads', 'route' => 'admin.leads.index', 'active' => 'admin.leads.*'],
@@ -66,10 +75,12 @@
             ['label' => 'Calendar', 'route' => 'admin.calendar.index', 'active' => 'admin.calendar.*'],
             ['label' => 'Inbox', 'route' => 'admin.inbox.index', 'active' => 'admin.inbox.*'],
         ];
+    }
 
     $growthActive =
         request()->routeIs('admin.lead-sources.*') ||
         request()->routeIs('admin.audience-segmentations.*') ||
+        request()->routeIs('admin.retention-actions.index') ||
         request()->routeIs('admin.whatsapp.templates.*') ||
         request()->routeIs('admin.whatsapp.mappings.*');
 
@@ -87,6 +98,12 @@
             'active' => 'admin.audience-segmentations.*',
         ],
         [
+            'label' => 'Retention Actions',
+            'description' => 'Review imported follow-up suggestions',
+            'route' => 'admin.retention-actions.index',
+            'active' => 'admin.retention-actions.index',
+        ],
+        [
             'label' => 'WhatsApp Templates',
             'description' => 'Approved and internal WhatsApp templates',
             'route' => 'admin.whatsapp.templates.index',
@@ -97,6 +114,25 @@
             'description' => 'Map events to message templates',
             'route' => 'admin.whatsapp.mappings.index',
             'active' => 'admin.whatsapp.mappings.*',
+        ],
+    ];
+
+    $reportsActive =
+        request()->routeIs('admin.reports.*') ||
+        request()->routeIs('admin.retention-actions.report');
+
+    $reportsItems = [
+        [
+            'label' => 'Garage Summary',
+            'description' => 'EOD, EOW, and EOM operating summaries',
+            'route' => 'admin.reports.garage-summary',
+            'active' => 'admin.reports.garage-summary',
+        ],
+        [
+            'label' => 'Retention Report',
+            'description' => 'Retention follow-up and review performance',
+            'route' => 'admin.retention-actions.report',
+            'active' => 'admin.retention-actions.report',
         ],
     ];
 
@@ -322,24 +358,35 @@
         open: false,
         growthOpen: false,
         settingsOpen: false,
+        reportsOpen: false,
         userOpen: false,
 
         toggleMobile() {
             this.open = !this.open;
             this.growthOpen = false;
             this.settingsOpen = false;
+            this.reportsOpen = false;
             this.userOpen = false;
         },
 
         toggleGrowth() {
             this.growthOpen = !this.growthOpen;
             this.settingsOpen = false;
+            this.reportsOpen = false;
             this.userOpen = false;
         },
 
         toggleSettings() {
             this.settingsOpen = !this.settingsOpen;
             this.growthOpen = false;
+            this.reportsOpen = false;
+            this.userOpen = false;
+        },
+
+        toggleReports() {
+            this.reportsOpen = !this.reportsOpen;
+            this.growthOpen = false;
+            this.settingsOpen = false;
             this.userOpen = false;
         },
 
@@ -347,11 +394,13 @@
             this.userOpen = !this.userOpen;
             this.growthOpen = false;
             this.settingsOpen = false;
+            this.reportsOpen = false;
         },
 
         closeAll() {
             this.growthOpen = false;
             this.settingsOpen = false;
+            this.reportsOpen = false;
             this.userOpen = false;
         }
     }"
@@ -398,7 +447,58 @@
                     @endif
                 @endforeach
 
-                @if($isAdminArea)
+                @if($isAdminArea && ! $isMediaTeam)
+                    {{-- Reports Dropdown --}}
+                    <div class="relative" @click.outside="reportsOpen = false">
+                        <button
+                            type="button"
+                            @click="toggleReports()"
+                            class="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold transition
+                                {{ $reportsActive
+                                    ? 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-400/20'
+                                    : 'sf-nav-dropdown-button-idle' }}"
+                        >
+                            <span>Reports</span>
+
+                            <svg
+                                class="h-4 w-4 transition-transform"
+                                :class="{ 'rotate-180': reportsOpen }"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+
+                        <div
+                            x-cloak
+                            x-show="reportsOpen"
+                            x-transition
+                            class="sf-nav-menu absolute right-0 mt-3 w-80 rounded-2xl border p-2 shadow-2xl"
+                        >
+                            @foreach($reportsItems as $item)
+                                @if(Route::has($item['route']))
+                                    <a
+                                        href="{{ route($item['route']) }}"
+                                        class="sf-nav-menu-item block rounded-xl px-4 py-3 transition
+                                            {{ request()->routeIs($item['active'])
+                                                ? 'bg-orange-500/10 text-orange-400'
+                                                : '' }}"
+                                    >
+                                        <span class="sf-nav-menu-title block text-sm font-extrabold">
+                                            {{ $item['label'] }}
+                                        </span>
+
+                                        <span class="sf-nav-menu-desc mt-1 block text-xs leading-5">
+                                            {{ $item['description'] }}
+                                        </span>
+                                    </a>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+
                     {{-- Growth Dropdown --}}
                     <div class="relative" @click.outside="growthOpen = false">
                         <button
@@ -540,7 +640,7 @@
                             </div>
                         </div>
 
-                        @if($profileRoute)
+                        @if($profileRoute && ! $isMediaTeam)
                             <a
                                 href="{{ $profileRoute }}"
                                 class="sf-nav-menu-item mt-2 block rounded-xl px-4 py-3 text-sm font-bold transition"
@@ -548,6 +648,25 @@
                                 <span class="sf-nav-menu-title">Profile</span>
                             </a>
                         @endif
+
+                        <button
+                            type="button"
+                            data-sf-theme-toggle
+                            aria-pressed="false"
+                            class="sf-nav-menu-item mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left transition"
+                        >
+                            <span class="min-w-0">
+                                <span class="sf-nav-menu-title block text-sm font-bold">Theme</span>
+                                <span class="sf-nav-muted mt-1 block text-xs" data-sf-theme-label>Dark mode</span>
+                            </span>
+
+                            <span class="inline-flex items-center gap-2">
+                                <span class="text-sm" data-sf-theme-icon>🌙</span>
+                                <span class="sf-theme-switch" aria-hidden="true">
+                                    <span class="sf-theme-switch-knob"></span>
+                                </span>
+                            </span>
+                        </button>
 
                         <form method="POST" action="{{ $logoutRoute }}">
                             @csrf
@@ -629,7 +748,7 @@
                 </div>
 
                 <div class="mt-4 grid grid-cols-2 gap-2">
-                    @if($profileRoute)
+                    @if($profileRoute && ! $isMediaTeam)
                         <a
                             href="{{ $profileRoute }}"
                             class="rounded-xl bg-orange-500 px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-orange-600"
@@ -637,6 +756,18 @@
                             Profile
                         </a>
                     @endif
+
+                    <button
+                        type="button"
+                        data-sf-theme-toggle
+                        aria-pressed="false"
+                        class="rounded-xl border border-orange-400/30 bg-orange-500/10 px-3 py-2 text-xs font-bold text-orange-300 transition hover:bg-orange-500/20"
+                    >
+                        <span class="flex items-center justify-center gap-2">
+                            <span data-sf-theme-icon>🌙</span>
+                            <span data-sf-theme-label>Dark mode</span>
+                        </span>
+                    </button>
 
                     <form method="POST" action="{{ $logoutRoute }}">
                         @csrf
@@ -668,7 +799,36 @@
                 @endforeach
             </div>
 
-            @if($isAdminArea)
+            @if($isAdminArea && ! $isMediaTeam)
+                {{-- Mobile Reports --}}
+                <div class="pt-2">
+                    <div class="sf-nav-section-label px-2 pb-2 text-xs font-extrabold uppercase tracking-wide">
+                        Reports
+                    </div>
+
+                    <div class="space-y-2">
+                        @foreach($reportsItems as $item)
+                            @if(Route::has($item['route']))
+                                <a
+                                    href="{{ route($item['route']) }}"
+                                    class="block rounded-2xl px-4 py-3 transition
+                                        {{ request()->routeIs($item['active'])
+                                            ? 'bg-orange-500/15 text-orange-500 ring-1 ring-orange-400/20'
+                                            : 'sf-nav-mobile-link-idle' }}"
+                                >
+                                    <span class="block text-sm font-extrabold">
+                                        {{ $item['label'] }}
+                                    </span>
+
+                                    <span class="sf-nav-muted mt-1 block text-xs leading-5">
+                                        {{ $item['description'] }}
+                                    </span>
+                                </a>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+
                 {{-- Mobile Growth --}}
                 <div class="pt-2">
                     <div class="sf-nav-section-label px-2 pb-2 text-xs font-extrabold uppercase tracking-wide">

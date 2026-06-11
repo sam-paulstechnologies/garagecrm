@@ -460,13 +460,14 @@ class MetaConnectController extends Controller
                 $leadSource = new LeadSource();
                 $leadSource->company_id = $companyId;
                 $leadSource->type = 'meta';
+                $leadSource->status = 'inactive';
                 $leadSource->form_token = 'meta_' . Str::random(32);
             }
 
             $leadSource->name = 'Meta - ' . $formName;
-            $leadSource->status = 'active';
-            $leadSource->config = [
+            $leadSource->config = array_merge($leadSource->config ?? [], [
                 'provider'        => 'meta',
+                'platform'        => 'meta',
                 'page_id'         => $pageId,
                 'page_name'       => $pageName,
                 'form_id'         => (string) $formId,
@@ -474,7 +475,7 @@ class MetaConnectController extends Controller
                 'form_status'     => data_get($form, 'status'),
                 'form_created_at' => data_get($form, 'created_time'),
                 'questions'       => data_get($form, 'questions', []),
-            ];
+            ]);
 
             $leadSource->save();
 

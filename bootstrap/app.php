@@ -50,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
             'force_password' => \App\Http\Middleware\ForcePasswordChange::class,
+            'media_team.scope' => \App\Http\Middleware\EnsureMediaTeamMetaOnly::class,
         ]);
 
     })

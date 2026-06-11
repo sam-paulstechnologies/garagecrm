@@ -38,7 +38,11 @@ class AuthenticatedSessionController extends Controller
          * This prevents a manager from being redirected back to an old /admin URL
          * stored in url.intended, which would cause an immediate 403 after login.
          */
-        $target = route('dashboard', absolute: false);
+        $userRole = strtolower(trim((string) $request->user()->role));
+
+        $target = $userRole === 'media_team' && Route::has('admin.lead-sources.meta')
+            ? route('admin.lead-sources.meta', absolute: false)
+            : route('dashboard', absolute: false);
 
         if ($request->header('X-Inertia')) {
             return Inertia::location($target);

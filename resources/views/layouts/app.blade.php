@@ -101,6 +101,39 @@
             box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
         }
 
+        .sf-theme-switch {
+            position: relative;
+            display: inline-flex;
+            height: 24px;
+            width: 44px;
+            flex-shrink: 0;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background: rgba(15, 23, 42, 0.92);
+            transition: background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .sf-theme-switch-knob {
+            height: 17px;
+            width: 17px;
+            transform: translateX(3px);
+            border-radius: 999px;
+            background: #f8fafc;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.28);
+            transition: transform 0.18s ease, background 0.18s ease;
+        }
+
+        html[data-theme="light"] .sf-theme-switch {
+            border-color: rgba(249, 115, 22, 0.36);
+            background: #f97316;
+        }
+
+        html[data-theme="light"] .sf-theme-switch-knob {
+            transform: translateX(22px);
+            background: #fff7ed;
+        }
+
         html[data-theme="light"] .sf-dark-glow {
             display: none !important;
         }
@@ -251,10 +284,17 @@
             background-color: rgba(2, 44, 34, 0.96) !important;
             border-color: rgba(249, 115, 22, 0.24) !important;
             box-shadow: 0 18px 40px rgba(2, 44, 34, 0.26);
+            transform: translateX(calc(100% - 14px));
+            transition: transform 0.22s ease, box-shadow 0.22s ease;
         }
 
-        .sf-floating-quick-actions a,
-        .sf-floating-quick-actions svg {
+        .sf-floating-quick-action-shell:hover .sf-floating-quick-actions,
+        .sf-floating-quick-action-shell:focus-within .sf-floating-quick-actions {
+            transform: translateX(0);
+            box-shadow: 0 22px 48px rgba(2, 44, 34, 0.34);
+        }
+
+        .sf-floating-quick-actions a {
             color: #ffffff !important;
         }
 
@@ -321,8 +361,7 @@
             box-shadow: 0 18px 40px rgba(2, 44, 34, 0.18);
         }
 
-        html[data-theme="light"] .sf-floating-quick-actions a,
-        html[data-theme="light"] .sf-floating-quick-actions svg {
+        html[data-theme="light"] .sf-floating-quick-actions a {
             color: #ffffff !important;
         }
 
@@ -348,14 +387,6 @@
             <div class="absolute bottom-[-220px] left-[-120px] h-[420px] w-[420px] rounded-full bg-orange-600/10 blur-3xl"></div>
         </div>
 
-        {{-- Theme Toggle --}}
-        <div class="fixed right-4 top-4 z-50">
-            <button type="button" id="sfThemeToggle" class="sf-theme-toggle">
-                <span id="sfThemeIcon">🌙</span>
-                <span id="sfThemeLabel">Dark</span>
-            </button>
-        </div>
-
         {{-- Navigation --}}
         @if(View::exists('layouts.navigation'))
             @include('layouts.navigation')
@@ -379,9 +410,9 @@
 
     {{-- WhatsApp Floating Popup --}}
     @auth
-        @if(View::exists('partials.whatsapp-popup'))
+        @if(! request()->routeIs('admin.lead-sources.meta*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('partials.whatsapp-popup'))
             @include('partials.whatsapp-popup')
-        @elseif(View::exists('admin.partials.whatsapp-popup'))
+        @elseif(! request()->routeIs('admin.lead-sources.meta*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('admin.partials.whatsapp-popup'))
             @include('admin.partials.whatsapp-popup')
         @endif
     @endauth
@@ -428,22 +459,24 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            var toggle = document.getElementById('sfThemeToggle');
-            var icon = document.getElementById('sfThemeIcon');
-            var label = document.getElementById('sfThemeLabel');
+            var toggles = document.querySelectorAll('[data-sf-theme-toggle]');
+            var icons = document.querySelectorAll('[data-sf-theme-icon]');
+            var labels = document.querySelectorAll('[data-sf-theme-label]');
 
             function applyTheme(theme) {
                 document.documentElement.setAttribute('data-theme', theme);
 
-                if (icon && label) {
-                    if (theme === 'light') {
-                        icon.textContent = '☀️';
-                        label.textContent = 'Light';
-                    } else {
-                        icon.textContent = '🌙';
-                        label.textContent = 'Dark';
-                    }
-                }
+                icons.forEach(function (icon) {
+                    icon.textContent = theme === 'light' ? '☀️' : '🌙';
+                });
+
+                labels.forEach(function (label) {
+                    label.textContent = theme === 'light' ? 'Light mode' : 'Dark mode';
+                });
+
+                toggles.forEach(function (toggle) {
+                    toggle.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+                });
 
                 try {
                     localStorage.setItem('sayaraforce_theme', theme);
@@ -453,12 +486,14 @@
             var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
             applyTheme(currentTheme);
 
-            if (toggle) {
-                toggle.addEventListener('click', function () {
-                    var activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-                    var nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
+            if (toggles.length) {
+                toggles.forEach(function (toggle) {
+                    toggle.addEventListener('click', function () {
+                        var activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+                        var nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
 
-                    applyTheme(nextTheme);
+                        applyTheme(nextTheme);
+                    });
                 });
             }
         });
