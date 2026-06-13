@@ -273,6 +273,8 @@ class JobController extends Controller
                 ->findOrFail($data['booking_id']);
 
             abort_unless((int) $booking->client_id === (int) $data['client_id'], 422);
+
+            $data = $this->applyJourneyLinksFromBooking($data, $booking);
         }
 
         $data['company_id'] = $companyId;
@@ -366,6 +368,8 @@ class JobController extends Controller
                 ->findOrFail($validated['booking_id']);
 
             abort_unless((int) $booking->client_id === (int) $validated['client_id'], 422);
+
+            $validated = $this->applyJourneyLinksFromBooking($validated, $booking);
         }
 
         $oldStatus = $this->normalizeStatus((string) $job->status);
@@ -387,6 +391,7 @@ class JobController extends Controller
                 $invoice->company_id = $job->company_id;
                 $invoice->client_id = $job->client_id;
                 $invoice->job_id = $job->id;
+                $this->applyJourneyLinksToInvoice($invoice, $job);
                 $invoice->amount = $invoiceAmount ?? $invoice->amount ?? 0;
                 $invoice->status = 'paid';
                 $invoice->due_date = now();
@@ -757,6 +762,36 @@ class JobController extends Controller
         }
     }
 
+    protected function applyJourneyLinksFromBooking(array $data, Booking $booking): array
+    {
+        $booking->loadMissing('opportunity');
+
+        if (Schema::hasColumn('jobs', 'opportunity_id')) {
+            $data['opportunity_id'] = $booking->opportunity_id;
+        }
+
+        if (Schema::hasColumn('jobs', 'lead_id')) {
+            $data['lead_id'] = $booking->lead_id ?: $booking->opportunity?->lead_id;
+        }
+
+        return $data;
+    }
+
+    protected function applyJourneyLinksToInvoice(Invoice $invoice, Job $job): void
+    {
+        if (Schema::hasColumn('invoices', 'booking_id')) {
+            $invoice->booking_id = $job->booking_id;
+        }
+
+        if (Schema::hasColumn('invoices', 'opportunity_id')) {
+            $invoice->opportunity_id = $job->opportunity_id;
+        }
+
+        if (Schema::hasColumn('invoices', 'lead_id')) {
+            $invoice->lead_id = $job->lead_id;
+        }
+    }
+
     protected function ensureInvoice(Job $job): void
     {
         $companyId = (int) $job->company_id;
@@ -769,7 +804,7 @@ class JobController extends Controller
             return;
         }
 
-        Invoice::create([
+        $invoice = new Invoice([
             'company_id' => $companyId,
             'client_id' => $job->client_id,
             'job_id' => $job->id,
@@ -779,6 +814,10 @@ class JobController extends Controller
             'currency' => 'AED',
             'source' => 'generated',
         ]);
+
+        $this->applyJourneyLinksToInvoice($invoice, $job);
+
+        $invoice->save();
     }
 
     protected function dispatchJobCompleted(Job $job): void

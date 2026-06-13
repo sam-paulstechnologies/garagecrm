@@ -14,6 +14,8 @@ use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
 class OpportunityController extends Controller
@@ -124,6 +126,7 @@ class OpportunityController extends Controller
         $companyId = $this->companyId();
 
         $data = $this->validatedData($request, $companyId, true);
+        $data['service_type'] = $this->resolveOpportunityServiceType($data);
 
         $this->validateLinkedRecords($data, $companyId);
         $this->validateStageRequirements($data);
@@ -153,7 +156,11 @@ class OpportunityController extends Controller
                 $booking = $this->createOrUpdateBookingFromOpportunity($opportunity, $data);
 
                 DB::afterCommit(function () use ($booking) {
-                    event(new BookingStatusUpdated($booking->fresh(), Booking::STATUS_SCHEDULED));
+                    $freshBooking = $booking->fresh();
+
+                    if ($freshBooking) {
+                        event(new BookingStatusUpdated($freshBooking, (string) $freshBooking->status));
+                    }
                 });
             }
         });
@@ -228,6 +235,7 @@ class OpportunityController extends Controller
 
         $data = $this->validatedData($request, $companyId, false);
         $data['client_id'] = $opportunity->client_id;
+        $data['service_type'] = $this->resolveOpportunityServiceType($data, $opportunity);
 
         $this->validateLinkedRecords($data, $companyId);
         $this->validateStageRequirements($data);
@@ -260,7 +268,11 @@ class OpportunityController extends Controller
                 $booking = $this->createOrUpdateBookingFromOpportunity($opportunity->fresh(), $data);
 
                 DB::afterCommit(function () use ($booking) {
-                    event(new BookingStatusUpdated($booking->fresh(), Booking::STATUS_SCHEDULED));
+                    $freshBooking = $booking->fresh();
+
+                    if ($freshBooking) {
+                        event(new BookingStatusUpdated($freshBooking, (string) $freshBooking->status));
+                    }
                 });
             }
         });
@@ -302,7 +314,12 @@ class OpportunityController extends Controller
                 Rule::in(Opportunity::STAGES),
             ],
 
-            'service_type' => ['nullable', 'string', 'max:255'],
+            'service_type' => ['nullable'],
+            'service_type.*' => ['nullable', 'string', 'max:100'],
+            'services' => ['nullable', 'array'],
+            'services.*' => ['nullable', 'string', 'max:100'],
+            'custom_service_type' => ['nullable', 'string', 'max:100'],
+            'other_service_text' => ['nullable', 'string', 'max:100'],
             'value' => ['nullable', 'numeric'],
             'expected_close_date' => ['nullable', 'date'],
             'priority' => ['nullable', 'in:low,medium,high,urgent'],
@@ -316,13 +333,11 @@ class OpportunityController extends Controller
             ],
 
             'booking_date' => [
-                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_WON),
                 'nullable',
                 'date',
             ],
 
             'booking_slot' => [
-                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_WON),
                 'nullable',
                 Rule::in(['morning', 'afternoon', 'evening']),
             ],
@@ -368,6 +383,73 @@ class OpportunityController extends Controller
         return $request->validate($rules);
     }
 
+    protected function resolveOpportunityServiceType(array $data, ?Opportunity $opportunity = null): ?string
+    {
+        $services = collect();
+
+        if (! empty($data['service_type'])) {
+            $serviceType = $data['service_type'];
+
+            if (is_array($serviceType)) {
+                $services = $services->merge($serviceType);
+            } else {
+                $services = $services->merge(explode(',', (string) $serviceType));
+            }
+        }
+
+        foreach (['services', 'service_options', 'selected_services'] as $field) {
+            if (! empty($data[$field])) {
+                $services = $services->merge((array) $data[$field]);
+            }
+        }
+
+        $customService = trim((string) ($data['custom_service_type'] ?? $data['other_service_text'] ?? ''));
+
+        $cleanServices = $services
+            ->map(fn ($service) => trim((string) $service))
+            ->filter()
+            ->values();
+
+        $hasOther = $cleanServices
+            ->contains(fn ($service) => strcasecmp((string) $service, 'Other') === 0 || str_starts_with(strtolower((string) $service), 'other:'));
+
+        if ($hasOther && $customService !== '') {
+            $cleanServices = $cleanServices
+                ->reject(fn ($service) => strcasecmp((string) $service, $customService) === 0)
+                ->values();
+        }
+
+        $normalized = $cleanServices
+            ->map(function (string $service) use ($customService) {
+                if (str_starts_with(strtolower($service), 'other:')) {
+                    return $service;
+                }
+
+                if (strcasecmp($service, 'Other') === 0 && $customService !== '') {
+                    return 'Other: ' . $customService;
+                }
+
+                return $service;
+            })
+            ->unique(fn ($service) => strtolower($service))
+            ->values();
+
+        if ($normalized->isEmpty() && $customService !== '') {
+            $normalized->push($customService);
+        }
+
+        if ($normalized->isEmpty() && $opportunity?->service_type) {
+            $normalized = collect(explode(',', (string) $opportunity->service_type))
+                ->map(fn ($service) => trim((string) $service))
+                ->filter()
+                ->values();
+        }
+
+        $value = trim($normalized->implode(', '));
+
+        return $value !== '' ? $value : null;
+    }
+
     protected function opportunityPayload(array $data): array
     {
         return collect($data)
@@ -381,6 +463,9 @@ class OpportunityController extends Controller
                 'manual_current_mileage',
                 'manual_registration_expiry_date',
                 'manual_insurance_expiry_date',
+                'services',
+                'custom_service_type',
+                'other_service_text',
 
                 'booking_date',
                 'booking_slot',
@@ -630,38 +715,62 @@ class OpportunityController extends Controller
         $bookingSlot = $data['booking_slot'] ?? null;
         $bookingNotes = $data['booking_notes'] ?? null;
 
-        abort_if(! $bookingDate, 422, 'Please select booking date before confirming the booking.');
-        abort_if(! $bookingSlot, 422, 'Please select booking slot before confirming the booking.');
+        if (! $bookingDate) {
+            throw ValidationException::withMessages([
+                'booking_date' => 'Please select booking date before confirming the booking.',
+            ]);
+        }
+
+        if (! $bookingSlot) {
+            throw ValidationException::withMessages([
+                'booking_slot' => 'Please select booking slot before confirming the booking.',
+            ]);
+        }
 
         $notes = $bookingNotes
             ?: ($opportunity->notes ?: 'Auto created from opportunity');
+
+        $existingBooking = Booking::query()
+            ->where('company_id', $opportunity->company_id)
+            ->where('opportunity_id', $opportunity->id)
+            ->first();
+
+        $bookingStatus = $existingBooking?->status === Booking::STATUS_CONVERTED_TO_JOB
+            ? Booking::STATUS_CONVERTED_TO_JOB
+            : Booking::STATUS_SCHEDULED;
+
+        $bookingPayload = [
+            'client_id' => $opportunity->client_id,
+            'vehicle_id' => $opportunity->vehicle_id,
+
+            'name' => $opportunity->title,
+            'service_type' => $opportunity->service_type,
+            'priority' => $opportunity->priority ?? 'medium',
+
+            'expected_duration' => 1,
+            'expected_close_date' => $bookingDate,
+
+            'booking_date' => $bookingDate,
+            'slot' => $bookingSlot,
+
+            'status' => $bookingStatus,
+
+            'notes' => $notes,
+
+            'state_changed_at' => now(),
+            'state_changed_by' => auth()->id(),
+        ];
+
+        if (Schema::hasColumn('bookings', 'lead_id')) {
+            $bookingPayload['lead_id'] = $opportunity->lead_id;
+        }
 
         return Booking::updateOrCreate(
             [
                 'company_id' => $opportunity->company_id,
                 'opportunity_id' => $opportunity->id,
             ],
-            [
-                'client_id' => $opportunity->client_id,
-                'vehicle_id' => $opportunity->vehicle_id,
-
-                'name' => $opportunity->title,
-                'service_type' => $opportunity->service_type,
-                'priority' => $opportunity->priority ?? 'medium',
-
-                'expected_duration' => 1,
-                'expected_close_date' => $bookingDate,
-
-                'booking_date' => $bookingDate,
-                'slot' => $bookingSlot,
-
-                'status' => Booking::STATUS_SCHEDULED,
-
-                'notes' => $notes,
-
-                'state_changed_at' => now(),
-                'state_changed_by' => auth()->id(),
-            ]
+            $bookingPayload
         );
     }
 
@@ -676,19 +785,27 @@ class OpportunityController extends Controller
     protected function validateStageRequirements(array $data): void
     {
         if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['service_type'])) {
-            abort(422, 'Please add service type before confirming the booking.');
+            throw ValidationException::withMessages([
+                'service_type' => 'Please select at least one service type before confirming the booking.',
+            ]);
         }
 
         if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['booking_date'])) {
-            abort(422, 'Please select confirmed booking date before confirming the booking.');
+            throw ValidationException::withMessages([
+                'booking_date' => 'Please select booking date before confirming the booking.',
+            ]);
         }
 
         if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['booking_slot'])) {
-            abort(422, 'Please select confirmed booking slot before confirming the booking.');
+            throw ValidationException::withMessages([
+                'booking_slot' => 'Please select booking slot before confirming the booking.',
+            ]);
         }
 
         if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_LOST && empty($data['close_reason'])) {
-            abort(422, 'Please add close reason before marking this opportunity as closed lost.');
+            throw ValidationException::withMessages([
+                'close_reason' => 'Please add close reason before marking this opportunity as closed lost.',
+            ]);
         }
     }
 

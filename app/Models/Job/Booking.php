@@ -3,10 +3,12 @@
 namespace App\Models\Job;
 
 use App\Models\Client\Client;
+use App\Models\Client\Lead;
 use App\Models\Client\Opportunity;
 use App\Models\Traits\BelongsToCompany;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Job\Job;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -60,6 +62,7 @@ class Booking extends Model
         'client_id',
         'vehicle_id',
         'opportunity_id',
+        'lead_id',
 
         'name',
         'service_type',
@@ -147,6 +150,16 @@ class Booking extends Model
     public function opportunity(): BelongsTo
     {
         return $this->belongsTo(Opportunity::class);
+    }
+
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
+    public function job()
+    {
+        return $this->hasOne(Job::class, 'booking_id');
     }
 
     public function vehicleData(): BelongsTo

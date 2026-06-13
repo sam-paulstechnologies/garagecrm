@@ -3,6 +3,8 @@
 namespace App\Models\Job;
 
 use App\Models\Client\Client;
+use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +24,9 @@ class Invoice extends Model
         'company_id',
         'client_id',
         'job_id',
+        'booking_id',
+        'opportunity_id',
+        'lead_id',
 
         'source',        // enum: generated | upload
 
@@ -83,6 +88,21 @@ class Invoice extends Model
     public function job(): BelongsTo
     {
         return $this->belongsTo(Job::class, 'job_id');
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class, 'booking_id');
+    }
+
+    public function opportunity(): BelongsTo
+    {
+        return $this->belongsTo(Opportunity::class, 'opportunity_id');
+    }
+
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class, 'lead_id');
     }
 
     public function client(): BelongsTo

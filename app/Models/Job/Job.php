@@ -3,6 +3,8 @@
 namespace App\Models\Job;
 
 use App\Models\Client\Client;
+use App\Models\Client\Lead;
+use App\Models\Client\Opportunity;
 use App\Models\Job\Invoice;
 use App\Models\Job\JobCard;
 use App\Models\Job\JobDocument;
@@ -22,6 +24,8 @@ class Job extends Model
     protected $fillable = [
         'company_id',
         'booking_id',
+        'lead_id',
+        'opportunity_id',
         'client_id',
         'job_code',
         'start_time',
@@ -106,7 +110,17 @@ class Job extends Model
 
     public function booking()
     {
-        return $this->belongsTo(\App\Models\Job\Booking::class);
+        return $this->belongsTo(Booking::class);
+    }
+
+    public function lead()
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
+    public function opportunity()
+    {
+        return $this->belongsTo(Opportunity::class);
     }
 
     public function invoice()

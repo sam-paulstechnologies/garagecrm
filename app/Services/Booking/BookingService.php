@@ -8,6 +8,7 @@ use App\Models\System\Company;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\Journey\ServiceJourneyIntegrityService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -130,6 +131,9 @@ class BookingService
                 ->first();
 
             if ($existing) {
+                $existing = app(ServiceJourneyIntegrityService::class)
+                    ->ensureBookingHasUpstreamJourney($existing, ['source' => 'booking_service_existing']);
+
                 Log::info('[BookingService] Existing booking reused', [
                     'booking_id' => $existing->id,
                     'lead_id'    => $lead->id,
@@ -142,6 +146,8 @@ class BookingService
             }
 
             $booking = Booking::create($data);
+            $booking = app(ServiceJourneyIntegrityService::class)
+                ->ensureBookingHasUpstreamJourney($booking, ['source' => 'booking_service_create']);
 
             Log::info('[BookingService] Booking created', [
                 'booking_id' => $booking->id,
