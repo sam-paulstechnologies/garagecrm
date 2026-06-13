@@ -24,68 +24,81 @@
     ];
 @endphp
 
-<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-    <div class="border-b border-slate-200 p-5 dark:border-slate-800">
-        <h2 class="text-base font-extrabold tracking-tight text-slate-950 dark:text-white">
-            Client Import Format
-        </h2>
+<section
+    class="sf-client-import-panel overflow-hidden rounded-2xl border shadow-sm"
+    data-client-import-collapsible
+    data-storage-key="sayara.clientImport.formatGuideCollapsed"
+    data-default-collapsed="true"
+>
+    <div class="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+                <h2 class="sf-client-import-title text-base font-extrabold tracking-tight">
+                    File Format Guide
+                </h2>
 
-        <p class="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Use these columns to keep client profiles clean and ready for CRM use.
-        </p>
+                <span class="sf-client-import-filter-pill inline-flex rounded-full border px-3 py-1 text-xs font-bold">
+                    {{ count($rows) }} columns
+                </span>
+            </div>
+
+            <p class="sf-client-import-muted mt-1 text-xs font-semibold leading-5">
+                Keep this collapsed while uploading; open it when preparing a new sheet.
+            </p>
+        </div>
+
+        <button
+            type="button"
+            class="sf-btn-secondary"
+            data-client-import-collapsible-toggle
+            aria-expanded="false"
+        >
+            Show format guide
+        </button>
     </div>
 
-    <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-            <thead class="bg-slate-50 dark:bg-slate-950/70">
-                <tr>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Column
-                    </th>
-
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Required?
-                    </th>
-
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Example
-                    </th>
-
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Notes
-                    </th>
-                </tr>
-            </thead>
-
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                @foreach($rows as [$column, $required, $example, $notes])
-                    <tr class="transition hover:bg-slate-50 dark:hover:bg-slate-950/40">
-                        <td class="whitespace-nowrap px-5 py-3 text-sm font-extrabold text-slate-950 dark:text-white">
-                            {{ $column }}
-                        </td>
-
-                        <td class="whitespace-nowrap px-5 py-3">
-                            @if($required === 'Yes' || $required === 'Yes*')
-                                <span class="inline-flex rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-400/20 dark:text-emerald-200">
-                                    {{ $required }}
-                                </span>
-                            @else
-                                <span class="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-300 dark:bg-slate-500/10 dark:text-slate-200 dark:ring-slate-500/20">
-                                    No
-                                </span>
-                            @endif
-                        </td>
-
-                        <td class="whitespace-nowrap px-5 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                            {{ $example }}
-                        </td>
-
-                        <td class="px-5 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                            {{ $notes }}
-                        </td>
+    <div class="hidden" data-client-import-collapsible-body>
+        <div class="overflow-x-auto">
+            <table class="sf-client-import-table min-w-full divide-y divide-slate-800 text-sm">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Column</th>
+                        <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Required?</th>
+                        <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Example</th>
+                        <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Notes</th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
+                </thead>
+
+                <tbody class="divide-y divide-slate-800">
+                    @foreach($rows as [$column, $required, $example, $notes])
+                        <tr class="transition hover:bg-slate-800/30">
+                            <td class="whitespace-nowrap px-5 py-3 text-sm font-extrabold">
+                                {{ $column }}
+                            </td>
+
+                            <td class="whitespace-nowrap px-5 py-3">
+                                @if($required === 'Yes' || $required === 'Yes*')
+                                    <span class="inline-flex rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-black text-emerald-200 ring-1 ring-emerald-400/20">
+                                        {{ $required }}
+                                    </span>
+                                @else
+                                    <span class="inline-flex rounded-full bg-slate-500/10 px-2 py-1 text-xs font-black text-slate-300 ring-1 ring-slate-500/20">
+                                        No
+                                    </span>
+                                @endif
+                            </td>
+
+                            <td class="whitespace-nowrap px-5 py-3 text-sm font-semibold">
+                                {{ $example }}
+                            </td>
+
+                            <td class="min-w-[260px] px-5 py-3 text-sm font-semibold">
+                                {{ $notes }}
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     </div>
-</div>
+</section>

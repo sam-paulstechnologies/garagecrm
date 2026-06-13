@@ -46,10 +46,12 @@ class ClientImportRetentionPreviewService
         $summary = [
             'rows_uploaded' => 0,
             'rows_previewed' => 0,
+            'valid_contact_rows' => 0,
             'valid_rows' => 0,
             'warning_rows' => 0,
             'invalid_rows' => 0,
             'duplicates' => 0,
+            'service_history_rows' => 0,
             'suggested_retention_actions' => 0,
             'truncated' => false,
             'limit' => $limit,
@@ -75,13 +77,32 @@ class ClientImportRetentionPreviewService
 
         foreach ($rows as $row) {
             $summary['rows_previewed']++;
-            $summary[$row['status'] . '_rows']++;
+
+            if (($row['status'] ?? null) === 'valid' && ! $this->rowHasWarnings($row) && ! $this->rowHasErrors($row)) {
+                $summary['valid_rows']++;
+            }
+
+            if ($this->rowIsImportableContact($row)) {
+                $summary['valid_contact_rows']++;
+            }
+
+            if (($row['status'] ?? null) === 'warning' || $this->rowHasWarnings($row)) {
+                $summary['warning_rows']++;
+            }
+
+            if (($row['status'] ?? null) === 'invalid' || $this->rowHasErrors($row)) {
+                $summary['invalid_rows']++;
+            }
 
             if ($row['duplicate']) {
                 $summary['duplicates']++;
             }
 
-            if (($row['suggestion']['segment_code'] ?? 'unclassified') !== 'unclassified') {
+            if ($this->rowHasServiceHistory($row)) {
+                $summary['service_history_rows']++;
+            }
+
+            if ($this->rowHasRetentionAction($row)) {
                 $summary['suggested_retention_actions']++;
             }
         }
@@ -91,6 +112,51 @@ class ClientImportRetentionPreviewService
             'rows' => $rows,
             'summary' => $summary,
         ];
+    }
+
+    private function rowIsImportableContact(array $row): bool
+    {
+        if (($row['status'] ?? null) === 'invalid' || $this->rowHasErrors($row)) {
+            return false;
+        }
+
+        $payload = $row['data'] ?? [];
+
+        return filled($payload['name'] ?? null)
+            && (filled($payload['phone'] ?? null) || filled($payload['whatsapp'] ?? null));
+    }
+
+    private function rowHasWarnings(array $row): bool
+    {
+        return ! empty($row['warnings'] ?? []);
+    }
+
+    private function rowHasErrors(array $row): bool
+    {
+        return ! empty($row['errors'] ?? []);
+    }
+
+    private function rowHasServiceHistory(array $row): bool
+    {
+        if (! $this->rowIsImportableContact($row)) {
+            return false;
+        }
+
+        $payload = $row['data'] ?? [];
+
+        return filled($payload['last_service_date'] ?? null)
+            || filled($payload['last_service_type'] ?? null)
+            || filled($payload['last_mileage'] ?? null)
+            || filled($payload['last_invoice_amount'] ?? null);
+    }
+
+    private function rowHasRetentionAction(array $row): bool
+    {
+        if (! $this->rowIsImportableContact($row)) {
+            return false;
+        }
+
+        return ($row['suggestion']['segment_code'] ?? 'unclassified') !== 'unclassified';
     }
 
     private function readRows(UploadedFile $file): array
@@ -217,7 +283,7 @@ class ClientImportRetentionPreviewService
             $warnings[] = 'Last service date is missing.';
         }
 
-        $duplicate = $this->findDuplicate($companyId, $phone ?: $whatsapp, $email);
+        $duplicate = $this->findDuplicate($companyId, $phone, $whatsapp, $email);
 
         if ($duplicate) {
             $warnings[] = 'Possible duplicate client found.';
@@ -308,21 +374,29 @@ class ClientImportRetentionPreviewService
         return 'matched_phone';
     }
 
-    private function findDuplicate(int $companyId, ?string $phone, ?string $email): ?array
+    private function findDuplicate(int $companyId, ?string $phone, ?string $whatsapp, ?string $email): ?array
     {
         $normalizedPhone = Client::normalizePhone($phone);
+        $normalizedWhatsapp = Client::normalizePhone($whatsapp);
         $normalizedEmail = Client::normalizeEmail($email);
+        $numbers = array_values(array_unique(array_filter([
+            $normalizedPhone,
+            $normalizedWhatsapp,
+            trim((string) $phone) ?: null,
+            trim((string) $whatsapp) ?: null,
+        ])));
 
         $client = null;
 
-        if ($normalizedPhone) {
+        if ($numbers) {
             $client = Client::query()
                 ->where('company_id', $companyId)
-                ->where(function ($query) use ($normalizedPhone, $phone) {
-                    $query->where('phone_norm', $normalizedPhone)
-                        ->orWhere('phone', $phone)
-                        ->orWhere('whatsapp', $phone)
-                        ->orWhere('whatsapp', $normalizedPhone);
+                ->where(function ($query) use ($numbers) {
+                    foreach ($numbers as $number) {
+                        $query->orWhere('phone_norm', $number)
+                            ->orWhere('phone', $number)
+                            ->orWhere('whatsapp', $number);
+                    }
                 })
                 ->first(['id', 'name', 'phone', 'whatsapp', 'email']);
         }

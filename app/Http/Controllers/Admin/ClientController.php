@@ -817,7 +817,13 @@ class ClientController extends Controller
      */
     public function importForm()
     {
-        return view('admin.clients.import');
+        $recentImportBatches = ClientImportBatch::with('uploadedBy')
+            ->where('company_id', auth()->user()->company_id)
+            ->latest()
+            ->limit(6)
+            ->get();
+
+        return view('admin.clients.import', compact('recentImportBatches'));
     }
 
     public function importSample()
@@ -1137,43 +1143,41 @@ class ClientController extends Controller
     {
         $importRows = $batch->rows;
         $hasRowSnapshot = $importRows->isNotEmpty();
-        $validationCounts = $importRows->groupBy('validation_status')->map(fn ($rows) => $rows->count());
         $reviewCounts = $importRows->groupBy('review_status')->map(fn ($rows) => $rows->count());
-        $duplicateRows = $importRows
-            ->filter(fn (ClientImportRow $row) => $row->client_match_id || ! in_array((string) $row->duplicate_status, ['', 'none'], true))
+        $validRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowStatus($row) === 'valid'
+                && ! $this->clientImportRowHasWarnings($row)
+                && ! $this->clientImportRowIsInvalid($row))
             ->count();
-        $validContactRows = $importRows->filter(function (ClientImportRow $row) {
-            if ($row->validation_status === 'invalid') {
-                return false;
-            }
-
-            $payload = $row->normalized_payload ?? [];
-
-            return filled($payload['name'] ?? null)
-                && (filled($payload['phone'] ?? null) || filled($payload['whatsapp'] ?? null));
-        })->count();
-        $serviceHistoryRows = $importRows->filter(function (ClientImportRow $row) {
-            $payload = $row->normalized_payload ?? [];
-
-            return filled($payload['last_service_date'] ?? null)
-                || filled($payload['last_service_type'] ?? null)
-                || filled($payload['last_mileage'] ?? null)
-                || filled($payload['last_invoice_amount'] ?? null);
-        })->count();
+        $warningRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowStatus($row) === 'warning' || $this->clientImportRowHasWarnings($row))
+            ->count();
+        $invalidRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowIsInvalid($row))
+            ->count();
+        $duplicateRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowIsDuplicate($row))
+            ->count();
+        $validContactRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowIsImportableContact($row))
+            ->count();
+        $serviceHistoryRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowHasServiceHistory($row))
+            ->count();
         $retentionActionRows = $importRows
-            ->filter(fn (ClientImportRow $row) => filled($row->suggested_segment_code) && $row->suggested_segment_code !== 'unclassified')
+            ->filter(fn (ClientImportRow $row) => $this->clientImportRowHasRetentionAction($row))
             ->count();
         $shownRows = max((int) $batch->total_rows, $importRows->count());
 
         $rows = $importRows->map(function (ClientImportRow $row) {
-            $payload = $row->normalized_payload ?? [];
+            $payload = $this->clientImportRowPayload($row);
 
             return [
                 'row_number' => $row->row_number,
                 'row_id' => $row->id,
-                'status' => $row->validation_status,
+                'status' => $this->clientImportRowStatus($row),
                 'review_status' => $row->review_status,
-                'raw_payload' => $row->raw_payload ?? [],
+                'raw_payload' => $this->clientImportRowJson($row->raw_payload),
                 'data' => $payload,
                 'duplicate' => $row->clientMatch ? [
                     'id' => $row->clientMatch->id,
@@ -1190,8 +1194,8 @@ class ClientController extends Controller
                     'message' => $row->suggested_message,
                     'secondary_segments' => [],
                 ],
-                'errors' => $row->errors ?? [],
-                'warnings' => $row->warnings ?? [],
+                'errors' => $this->clientImportRowJson($row->errors),
+                'warnings' => $this->clientImportRowJson($row->warnings),
             ];
         })->values()->all();
 
@@ -1203,8 +1207,8 @@ class ClientController extends Controller
                 'rejected' => (int) ($reviewCounts['rejected'] ?? 0),
                 'skipped' => (int) ($reviewCounts['skipped'] ?? 0),
                 'applied' => (int) ($reviewCounts['applied'] ?? 0),
-                'invalid' => (int) ($validationCounts['invalid'] ?? 0),
-                'warning' => (int) ($validationCounts['warning'] ?? 0),
+                'invalid' => $invalidRows,
+                'warning' => $warningRows,
             ],
             'headers' => array_keys($rows[0]['data'] ?? []),
             'rows' => $rows,
@@ -1214,9 +1218,9 @@ class ClientController extends Controller
                 'valid_contact_rows' => $hasRowSnapshot
                     ? $validContactRows
                     : (int) ($batch->valid_rows ?? 0) + (int) ($batch->warning_rows ?? 0),
-                'valid_rows' => $this->summaryCount($batch->valid_rows, (int) ($validationCounts['valid'] ?? 0), $hasRowSnapshot),
-                'warning_rows' => $this->summaryCount($batch->warning_rows, (int) ($validationCounts['warning'] ?? 0), $hasRowSnapshot),
-                'invalid_rows' => $this->summaryCount($batch->invalid_rows, (int) ($validationCounts['invalid'] ?? 0), $hasRowSnapshot),
+                'valid_rows' => $this->summaryCount($batch->valid_rows, $validRows, $hasRowSnapshot),
+                'warning_rows' => $this->summaryCount($batch->warning_rows, $warningRows, $hasRowSnapshot),
+                'invalid_rows' => $this->summaryCount($batch->invalid_rows, $invalidRows, $hasRowSnapshot),
                 'duplicates' => $this->summaryCount($batch->duplicate_rows, $duplicateRows, $hasRowSnapshot),
                 'service_history_rows' => $serviceHistoryRows,
                 'suggested_retention_actions' => $this->summaryCount($batch->suggested_retention_actions, $retentionActionRows, $hasRowSnapshot),
@@ -1240,6 +1244,93 @@ class ClientController extends Controller
         $stored = (int) ($stored ?? 0);
 
         return $stored > 0 ? $stored : $derived;
+    }
+
+    private function clientImportRowIsImportableContact(ClientImportRow $row): bool
+    {
+        if ($this->clientImportRowIsInvalid($row)) {
+            return false;
+        }
+
+        $payload = $this->clientImportRowPayload($row);
+
+        return filled($payload['name'] ?? null)
+            && (filled($payload['phone'] ?? null) || filled($payload['whatsapp'] ?? null));
+    }
+
+    private function clientImportRowIsInvalid(ClientImportRow $row): bool
+    {
+        return $this->clientImportRowStatus($row) === 'invalid'
+            || ! empty($this->clientImportRowJson($row->errors));
+    }
+
+    private function clientImportRowHasWarnings(ClientImportRow $row): bool
+    {
+        return ! empty($this->clientImportRowJson($row->warnings));
+    }
+
+    private function clientImportRowIsDuplicate(ClientImportRow $row): bool
+    {
+        return filled($row->client_match_id)
+            || filled($row->vehicle_match_id)
+            || ! in_array((string) $row->duplicate_status, ['', 'none'], true);
+    }
+
+    private function clientImportRowHasServiceHistory(ClientImportRow $row): bool
+    {
+        if (! $this->clientImportRowIsImportableContact($row)) {
+            return false;
+        }
+
+        $payload = $this->clientImportRowPayload($row);
+
+        return filled($payload['last_service_date'] ?? null)
+            || filled($payload['last_service_type'] ?? null)
+            || filled($payload['last_mileage'] ?? null)
+            || filled($payload['last_invoice_amount'] ?? null);
+    }
+
+    private function clientImportRowHasRetentionAction(ClientImportRow $row): bool
+    {
+        if (! $this->clientImportRowIsImportableContact($row)) {
+            return false;
+        }
+
+        return filled($row->suggested_segment_code)
+            && $row->suggested_segment_code !== 'unclassified';
+    }
+
+    private function clientImportRowStatus(ClientImportRow $row): string
+    {
+        $status = Str::lower(trim((string) ($row->validation_status ?? '')));
+
+        return in_array($status, ['valid', 'warning', 'invalid'], true) ? $status : 'valid';
+    }
+
+    private function clientImportRowPayload(ClientImportRow $row): array
+    {
+        return $this->clientImportRowJson($row->normalized_payload);
+    }
+
+    private function clientImportRowJson(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if ($value instanceof \JsonSerializable) {
+            $value = $value->jsonSerialize();
+
+            return is_array($value) ? $value : [];
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
     }
 
     private function findImportBatchForCurrentCompany(int $batch): ClientImportBatch

@@ -31,23 +31,6 @@
             $validContactRows = max(0, (int) $summary['rows_uploaded'] - (int) $summary['invalid_rows']);
         }
 
-        $summaryCards = [
-            ['label' => 'Total Rows', 'value' => $summary['rows_uploaded'], 'class' => 'text-slate-100 bg-slate-800/70 border-slate-700', 'help' => 'Non-empty rows read from upload'],
-            ['label' => 'Valid Contacts', 'value' => $validContactRows, 'class' => 'text-emerald-700 bg-emerald-500/10 border-emerald-400/20 dark:text-emerald-200', 'help' => 'Rows with required contact data'],
-            ['label' => 'Warnings', 'value' => $summary['warning_rows'], 'class' => 'text-amber-700 bg-amber-500/10 border-amber-400/20 dark:text-amber-200', 'help' => 'Usable but needs review'],
-            ['label' => 'Invalid Rows', 'value' => $summary['invalid_rows'], 'class' => 'text-rose-700 bg-rose-500/10 border-rose-400/20 dark:text-rose-200', 'help' => 'Blocking data issues'],
-            ['label' => 'Existing Clients', 'value' => $summary['duplicates'], 'class' => 'text-orange-700 bg-orange-500/10 border-orange-400/20 dark:text-orange-200', 'help' => 'Matched duplicate clients'],
-            ['label' => 'Service History', 'value' => $summary['service_history_rows'], 'class' => 'text-cyan-700 bg-cyan-500/10 border-cyan-400/20 dark:text-cyan-200', 'help' => 'Rows with service activity'],
-            ['label' => 'Retention Actions', 'value' => $summary['suggested_retention_actions'], 'class' => 'text-purple-700 bg-purple-500/10 border-purple-400/20 dark:text-purple-200', 'help' => 'Actionable retention suggestions'],
-        ];
-
-        $workflowCards = [
-            ['label' => 'Pending', 'value' => $summary['pending_review'] ?? ($reviewSummary['pending_review'] ?? 0), 'class' => 'text-slate-700 bg-slate-100 border-slate-200 dark:text-slate-200 dark:bg-slate-800/70 dark:border-slate-700'],
-            ['label' => 'Approved', 'value' => $summary['approved'] ?? ($reviewSummary['approved'] ?? 0), 'class' => 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-400/20'],
-            ['label' => 'Rejected', 'value' => $summary['rejected'] ?? ($reviewSummary['rejected'] ?? 0), 'class' => 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-200 dark:bg-rose-500/10 dark:border-rose-400/20'],
-            ['label' => 'Skipped', 'value' => $summary['skipped'] ?? ($reviewSummary['skipped'] ?? 0), 'class' => 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-200 dark:bg-amber-500/10 dark:border-amber-400/20'],
-        ];
-
         $statusClasses = [
             'valid' => 'bg-emerald-500/10 text-emerald-700 ring-emerald-400/20 dark:text-emerald-200',
             'warning' => 'bg-amber-500/10 text-amber-700 ring-amber-400/20 dark:text-amber-200',
@@ -64,30 +47,173 @@
 
         $displayValue = fn ($value, $fallback = '-') => filled($value) ? $value : $fallback;
 
-        $reviewStatusFilters = [
-            'pending_review' => 'Pending Review',
-            'approved' => 'Approved',
-            'rejected' => 'Rejected',
-            'skipped' => 'Skipped',
-            'all' => 'All',
+        $allPreviewRows = collect($rows ?? []);
+
+        $rowStatus = fn (array $row): string => \Illuminate\Support\Str::lower((string) ($row['status'] ?? 'valid'));
+        $rowErrors = fn (array $row): array => is_array($row['errors'] ?? null) ? $row['errors'] : [];
+        $rowWarnings = fn (array $row): array => is_array($row['warnings'] ?? null) ? $row['warnings'] : [];
+        $rowPayload = fn (array $row): array => is_array($row['data'] ?? null) ? $row['data'] : [];
+        $rowIsBlocked = fn (array $row): bool => $rowStatus($row) === 'invalid' || ! empty($rowErrors($row));
+        $rowNeedsReview = fn (array $row): bool => $rowStatus($row) === 'warning' || ! empty($rowWarnings($row));
+        $rowIsImportable = function (array $row) use ($rowIsBlocked, $rowPayload): bool {
+            if ($rowIsBlocked($row)) {
+                return false;
+            }
+
+            $payload = $rowPayload($row);
+
+            return filled($payload['name'] ?? null)
+                && (filled($payload['phone'] ?? null) || filled($payload['whatsapp'] ?? null));
+        };
+        $rowHasExistingClient = fn (array $row): bool => ! empty($row['duplicate'])
+            || ! in_array((string) ($row['duplicate_status'] ?? 'none'), ['', 'none'], true);
+        $rowHasServiceHistory = function (array $row) use ($rowIsImportable, $rowPayload): bool {
+            if (! $rowIsImportable($row)) {
+                return false;
+            }
+
+            $payload = $rowPayload($row);
+
+            return filled($payload['last_service_date'] ?? null)
+                || filled($payload['last_service_type'] ?? null)
+                || filled($payload['last_mileage'] ?? null)
+                || filled($payload['last_invoice_amount'] ?? null);
+        };
+        $rowHasRetentionAction = fn (array $row): bool => $rowIsImportable($row)
+            && (($row['suggestion']['segment_code'] ?? 'unclassified') !== 'unclassified');
+
+        $rowFilterDefinitions = [
+            'all' => [
+                'label' => 'Total Rows',
+                'short_label' => 'All',
+                'help' => 'Every preview row',
+                'active_label' => 'Showing all rows',
+                'predicate' => fn (array $row): bool => true,
+                'tone' => 'slate',
+            ],
+            'importable' => [
+                'label' => 'Importable Rows',
+                'short_label' => 'Importable',
+                'help' => 'Contact-valid rows',
+                'active_label' => 'Showing importable rows',
+                'predicate' => $rowIsImportable,
+                'tone' => 'emerald',
+            ],
+            'warnings' => [
+                'label' => 'Needs Review',
+                'short_label' => 'Needs Review',
+                'help' => 'Warnings present',
+                'active_label' => 'Showing rows needing review',
+                'predicate' => $rowNeedsReview,
+                'tone' => 'amber',
+            ],
+            'blocked' => [
+                'label' => 'Blocked Rows',
+                'short_label' => 'Blocked',
+                'help' => 'Invalid or errored rows',
+                'active_label' => 'Showing blocked rows',
+                'predicate' => $rowIsBlocked,
+                'tone' => 'rose',
+            ],
+            'existing_clients' => [
+                'label' => 'Existing Clients',
+                'short_label' => 'Existing',
+                'help' => 'Matched clients',
+                'active_label' => 'Showing existing client matches',
+                'predicate' => $rowHasExistingClient,
+                'tone' => 'orange',
+            ],
+            'service_history' => [
+                'label' => 'Service History',
+                'short_label' => 'Service',
+                'help' => 'History detected',
+                'active_label' => 'Showing service history rows',
+                'predicate' => $rowHasServiceHistory,
+                'tone' => 'cyan',
+            ],
+            'retention_actions' => [
+                'label' => 'Retention Actions',
+                'short_label' => 'Retention',
+                'help' => 'Action suggestions',
+                'active_label' => 'Showing retention action rows',
+                'predicate' => $rowHasRetentionAction,
+                'tone' => 'purple',
+            ],
+            'pending_review' => [
+                'label' => 'Pending',
+                'short_label' => 'Pending',
+                'help' => 'Awaiting review',
+                'active_label' => 'Showing pending review rows',
+                'predicate' => fn (array $row): bool => ($row['review_status'] ?? 'pending_review') === 'pending_review',
+                'tone' => 'slate',
+                'workflow' => true,
+            ],
+            'approved' => [
+                'label' => 'Approved',
+                'short_label' => 'Approved',
+                'help' => 'Manager approved',
+                'active_label' => 'Showing approved rows',
+                'predicate' => fn (array $row): bool => ($row['review_status'] ?? 'pending_review') === 'approved',
+                'tone' => 'emerald',
+                'workflow' => true,
+            ],
+            'rejected' => [
+                'label' => 'Rejected',
+                'short_label' => 'Rejected',
+                'help' => 'Manager rejected',
+                'active_label' => 'Showing rejected rows',
+                'predicate' => fn (array $row): bool => ($row['review_status'] ?? 'pending_review') === 'rejected',
+                'tone' => 'rose',
+                'workflow' => true,
+            ],
+            'skipped' => [
+                'label' => 'Skipped',
+                'short_label' => 'Skipped',
+                'help' => 'Skipped for now',
+                'active_label' => 'Showing skipped rows',
+                'predicate' => fn (array $row): bool => ($row['review_status'] ?? 'pending_review') === 'skipped',
+                'tone' => 'amber',
+                'workflow' => true,
+            ],
         ];
 
-        $currentReviewStatus = request('review_status', 'pending_review');
+        $currentRowFilter = request('row_filter');
 
-        if ($currentReviewStatus === 'pending') {
-            $currentReviewStatus = 'pending_review';
+        if (! $currentRowFilter && request()->filled('review_status')) {
+            $legacyReviewStatus = request('review_status');
+            $currentRowFilter = $legacyReviewStatus === 'all' ? 'all' : $legacyReviewStatus;
         }
 
-        if (! array_key_exists($currentReviewStatus, $reviewStatusFilters)) {
-            $currentReviewStatus = 'pending_review';
+        if (! array_key_exists((string) $currentRowFilter, $rowFilterDefinitions)) {
+            $currentRowFilter = 'all';
         }
 
-        $allPreviewRows = collect($rows ?? []);
-        $visibleRows = $currentReviewStatus === 'all'
-            ? $allPreviewRows
-            : $allPreviewRows->filter(fn ($row) => ($row['review_status'] ?? 'pending_review') === $currentReviewStatus)->values();
+        $filterUrl = function (string $filterKey): string {
+            $query = request()->query();
+            unset($query['review_status']);
+            $query['row_filter'] = $filterKey;
 
-        $visibleRowsLabel = $reviewStatusFilters[$currentReviewStatus];
+            return url()->current() . ($query ? '?' . \Illuminate\Support\Arr::query($query) : '');
+        };
+
+        $rowFilterCounts = [];
+
+        foreach ($rowFilterDefinitions as $filterKey => $definition) {
+            $rowFilterCounts[$filterKey] = $allPreviewRows
+                ->filter(fn ($row) => $definition['predicate']($row))
+                ->count();
+        }
+
+        $activeRowFilter = $rowFilterDefinitions[$currentRowFilter];
+        $visibleRows = $allPreviewRows
+            ->filter(fn ($row) => $activeRowFilter['predicate']($row))
+            ->values();
+        $visibleRowsLabel = $activeRowFilter['short_label'];
+        $activeFilterLabel = $activeRowFilter['active_label'];
+        $hasActiveRowFilter = $currentRowFilter !== 'all';
+        $summaryExpandedByDefault = $hasActiveRowFilter || session()->has('success');
+        $summaryCards = array_filter($rowFilterDefinitions, fn ($definition) => empty($definition['workflow']));
+        $workflowCards = array_filter($rowFilterDefinitions, fn ($definition) => ! empty($definition['workflow']));
     @endphp
 
     <style>
@@ -170,6 +296,14 @@
             opacity: 1;
             transform: scale(1);
         }
+
+        .sf-client-import-filter-card {
+            transform: translateY(0);
+        }
+
+        .sf-client-import-filter-card:hover {
+            transform: translateY(-1px);
+        }
     </style>
 
     <div class="sf-page sf-import-preview mx-auto max-w-[1500px] px-4 py-6 space-y-5">
@@ -250,62 +384,156 @@
             </div>
         @endif
 
-        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/75">
-            <div class="flex flex-col gap-1">
-                <h2 class="text-base font-extrabold tracking-tight text-slate-950 dark:text-white">
-                    Client data validation summary
-                </h2>
+        <section
+            id="client-import-summary-panel"
+            class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/75"
+            data-client-import-summary
+            data-default-expanded="{{ $summaryExpandedByDefault ? 'true' : 'false' }}"
+        >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 class="text-base font-extrabold tracking-tight text-slate-950 dark:text-white">
+                            Client data validation summary
+                        </h2>
 
-                <p class="text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">
-                    These counts come from contact validation, duplicate matching, service-history detection, and retention classification.
-                </p>
-            </div>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                @foreach($summaryCards as $card)
-                    <div class="rounded-2xl border p-4 shadow-sm {{ $card['class'] }}">
-                        <div class="text-4xl font-black leading-none">
-                            {{ $card['value'] }}
-                        </div>
-
-                        <div class="mt-2 text-xs font-black uppercase tracking-wide opacity-90">
-                            {{ $card['label'] }}
-                        </div>
-
-                        <div class="mt-2 text-xs font-bold opacity-75">
-                            {{ $card['help'] }}
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-
-            @isset($reviewSummary)
-                <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
-                    <div class="flex flex-col gap-1">
-                        <h3 class="text-sm font-extrabold tracking-tight text-slate-950 dark:text-white">
-                            Review workflow
-                        </h3>
-
-                        <p class="text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-                            These counts are manager review states. They do not replace the validation/contact summary above.
-                        </p>
+                        @if($hasActiveRowFilter)
+                            <span class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-700 dark:text-orange-200">
+                                Active filter
+                            </span>
+                        @endif
                     </div>
 
-                    <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        @foreach($workflowCards as $card)
-                            <div class="rounded-2xl border p-4 {{ $card['class'] }}">
-                                <div class="text-2xl font-black leading-none">
-                                    {{ $card['value'] }}
-                                </div>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            {{ $activeFilterLabel }}
+                        </span>
 
-                                <div class="mt-2 text-xs font-black uppercase tracking-wide opacity-90">
-                                    {{ $card['label'] }}
-                                </div>
-                            </div>
-                        @endforeach
+                        <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {{ $visibleRows->count() }} of {{ $allPreviewRows->count() }} preview rows shown
+                        </span>
+
+                        @if($hasActiveRowFilter)
+                            <a
+                                href="{{ $filterUrl('all') }}"
+                                class="inline-flex rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 transition hover:bg-orange-100 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200 dark:hover:bg-orange-500/15"
+                            >
+                                Clear filter
+                            </a>
+                        @endif
                     </div>
                 </div>
-            @endisset
+
+                <button
+                    type="button"
+                    id="client-import-summary-toggle"
+                    class="inline-flex h-10 w-fit shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-orange-200 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-orange-400/30 dark:hover:text-orange-200"
+                    data-client-import-summary-toggle
+                    aria-controls="client-import-summary-body"
+                    aria-expanded="{{ $summaryExpandedByDefault ? 'true' : 'false' }}"
+                >
+                    {{ $summaryExpandedByDefault ? 'Collapse summary' : 'Expand summary' }}
+                </button>
+            </div>
+
+            <div
+                id="client-import-summary-body"
+                class="{{ $summaryExpandedByDefault ? '' : 'hidden' }} mt-5"
+                data-client-import-summary-body
+            >
+                <p class="text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">
+                    These filters use contact validation, warning/error payloads, duplicate matching, service-history detection, retention classification, and manager review state.
+                </p>
+
+                <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                    @foreach($summaryCards as $filterKey => $card)
+                        @php
+                            $isActiveFilter = $currentRowFilter === $filterKey;
+                            $count = $filterKey === 'all'
+                                ? (int) $summary['rows_uploaded']
+                                : ($rowFilterCounts[$filterKey] ?? 0);
+                            $tone = $card['tone'];
+                            $toneClasses = match ($tone) {
+                                'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
+                                'amber' => 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
+                                'rose' => 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
+                                'orange' => 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200',
+                                'cyan' => 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-300 dark:border-cyan-400/20 dark:bg-cyan-500/10 dark:text-cyan-200',
+                                'purple' => 'border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-300 dark:border-purple-400/20 dark:bg-purple-500/10 dark:text-purple-200',
+                                default => 'border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-200 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200',
+                            };
+                            $activeClasses = $isActiveFilter
+                                ? 'ring-2 ring-orange-400/60 shadow-md'
+                                : 'shadow-sm';
+                        @endphp
+
+                        <a
+                            href="{{ $filterUrl($filterKey) }}"
+                            class="sf-client-import-filter-card rounded-2xl border p-3 transition focus:outline-none focus:ring-2 focus:ring-orange-400/50 {{ $toneClasses }} {{ $activeClasses }}"
+                            aria-current="{{ $isActiveFilter ? 'true' : 'false' }}"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="text-3xl font-black leading-none">
+                                    {{ $count }}
+                                </div>
+
+                                <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide opacity-80 dark:bg-slate-950/30">
+                                    Filter
+                                </span>
+                            </div>
+
+                            <div class="mt-2 text-xs font-black uppercase tracking-wide">
+                                {{ $card['label'] }}
+                            </div>
+
+                            <div class="mt-1 text-xs font-bold opacity-75">
+                                {{ $card['help'] }}
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
+
+                @isset($reviewSummary)
+                    <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+                        <div class="flex flex-col gap-1">
+                            <h3 class="text-sm font-extrabold tracking-tight text-slate-950 dark:text-white">
+                                Review workflow
+                            </h3>
+
+                            <p class="text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                                These filters are manager review states. They are separate from validation readiness.
+                            </p>
+                        </div>
+
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            @foreach($workflowCards as $filterKey => $card)
+                                @php
+                                    $isActiveFilter = $currentRowFilter === $filterKey;
+                                    $count = $rowFilterCounts[$filterKey] ?? 0;
+                                    $tone = $card['tone'];
+                                    $workflowClasses = match ($tone) {
+                                        'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15',
+                                        'rose' => 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15',
+                                        'amber' => 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15',
+                                        default => 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-800',
+                                    };
+                                @endphp
+
+                                <a
+                                    href="{{ $filterUrl($filterKey) }}"
+                                    class="inline-flex h-10 items-center justify-center rounded-xl border px-3 text-xs font-extrabold transition focus:outline-none focus:ring-2 focus:ring-orange-400/50 {{ $workflowClasses }} {{ $isActiveFilter ? 'ring-2 ring-orange-400/60' : '' }}"
+                                    aria-current="{{ $isActiveFilter ? 'true' : 'false' }}"
+                                >
+                                    {{ $card['label'] }}
+                                    <span class="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black dark:bg-slate-950/30">
+                                        {{ $count }}
+                                    </span>
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endisset
+            </div>
         </section>
 
         @isset($batch)
@@ -621,25 +849,19 @@
                             {{ $visibleRows->count() }} {{ $visibleRowsLabel }} {{ \Illuminate\Support\Str::plural('row', $visibleRows->count()) }} shown
                         </div>
 
-                        <div class="flex flex-wrap gap-2">
-                            @foreach($reviewStatusFilters as $filterKey => $filterLabel)
-                                @php
-                                    $isActiveFilter = $currentReviewStatus === $filterKey;
-                                    $filterCount = $filterKey === 'all'
-                                        ? $allPreviewRows->count()
-                                        : $allPreviewRows->where('review_status', $filterKey)->count();
-                                @endphp
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <span class="inline-flex h-9 items-center rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-extrabold text-orange-700 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200">
+                                {{ $activeFilterLabel }}
+                            </span>
 
+                            @if($hasActiveRowFilter)
                                 <a
-                                    href="{{ request()->fullUrlWithQuery(['review_status' => $filterKey]) }}"
-                                    class="inline-flex h-9 items-center justify-center rounded-xl border px-3 text-xs font-extrabold transition {{ $isActiveFilter ? 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-200' : 'border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-orange-400/30 dark:hover:text-orange-200' }}"
+                                    href="{{ $filterUrl('all') }}"
+                                    class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 transition hover:border-orange-200 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-orange-400/30 dark:hover:text-orange-200"
                                 >
-                                    {{ $filterLabel }}
-                                    <span class="ml-2 rounded-full {{ $isActiveFilter ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-100' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' }} px-2 py-0.5 text-[10px] font-black">
-                                        {{ $filterCount }}
-                                    </span>
+                                    Clear filter
                                 </a>
-                            @endforeach
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -685,7 +907,7 @@
                                 id="select-valid-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
                             >
-                                Select valid
+                                Select importable
                             </button>
 
                             <button
@@ -693,7 +915,7 @@
                                 id="select-warning-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
                             >
-                                Select warnings
+                                Select needs review
                             </button>
 
                             <button type="submit" name="action" value="approve" class="inline-flex h-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15">
@@ -727,9 +949,11 @@
                         $status = $row['status'] ?? 'invalid';
                         $reviewStatus = $row['review_status'] ?? 'pending_review';
                         $canEdit = $reviewStatus !== 'applied';
-                        $canApprove = $canEdit && $status !== 'invalid';
+                        $canApprove = $canEdit && ! $rowIsBlocked($row);
+                        $isImportableRow = $rowIsImportable($row);
+                        $needsReviewRow = $rowNeedsReview($row);
                         $duplicateLabel = $row['duplicate']
-                            ? \Illuminate\Support\Str::headline($row['duplicate_status'] ?? 'matched')
+                            ? 'Existing Client - ' . \Illuminate\Support\Str::headline($row['duplicate_status'] ?? 'matched')
                             : 'No match';
                         $checkboxId = isset($row['row_id'])
                             ? 'client-import-row-checkbox-' . $row['row_id']
@@ -756,6 +980,8 @@
                                                         class="client-import-row-checkbox import-row-checkbox peer sr-only"
                                                         data-validation-status="{{ $status }}"
                                                         data-review-status="{{ $reviewStatus }}"
+                                                        data-importable="{{ $isImportableRow ? 'true' : 'false' }}"
+                                                        data-needs-review="{{ $needsReviewRow ? 'true' : 'false' }}"
                                                         aria-label="Select row {{ $row['row_number'] }}"
                                                     >
 
@@ -1025,6 +1251,35 @@
         </div>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const summaryPanel = document.querySelector('[data-client-import-summary]');
+            const summaryBody = summaryPanel ? summaryPanel.querySelector('[data-client-import-summary-body]') : null;
+            const summaryToggle = summaryPanel ? summaryPanel.querySelector('[data-client-import-summary-toggle]') : null;
+            const storageKey = 'sayara.clientImport.summaryCollapsed';
+
+            if (summaryPanel && summaryBody && summaryToggle) {
+                const defaultExpanded = summaryPanel.dataset.defaultExpanded === 'true';
+                const storedCollapsed = window.localStorage.getItem(storageKey);
+                let expanded = defaultExpanded ? true : (storedCollapsed === null ? false : storedCollapsed !== 'true');
+
+                const applySummaryState = function () {
+                    summaryBody.classList.toggle('hidden', !expanded);
+                    summaryToggle.textContent = expanded ? 'Collapse summary' : 'Expand summary';
+                    summaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    window.localStorage.setItem(storageKey, expanded ? 'false' : 'true');
+                };
+
+                summaryToggle.addEventListener('click', function () {
+                    expanded = !expanded;
+                    applySummaryState();
+                });
+
+                applySummaryState();
+            }
+        });
+    </script>
+
     @isset($batch)
         <script>
             document.addEventListener('DOMContentLoaded', function () {
@@ -1073,14 +1328,14 @@
                 if (selectValid) {
                     selectValid.addEventListener('click', function (event) {
                         event.preventDefault();
-                        setChecked((checkbox) => checkbox.dataset.validationStatus === 'valid');
+                        setChecked((checkbox) => checkbox.dataset.importable === 'true');
                     });
                 }
 
                 if (selectWarnings) {
                     selectWarnings.addEventListener('click', function (event) {
                         event.preventDefault();
-                        setChecked((checkbox) => checkbox.dataset.validationStatus === 'warning');
+                        setChecked((checkbox) => checkbox.dataset.needsReview === 'true');
                     });
                 }
 
