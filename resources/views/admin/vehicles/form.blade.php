@@ -105,6 +105,9 @@
 
         $selectedMakeId = (string) old('make_id', $veh->make_id ?? '');
         $selectedModelId = (string) old('model_id', $veh->model_id ?? '');
+        $selectedModels = $selectedMakeId
+            ? ($models ?? collect())->filter(fn ($m) => (string) ($m->make_id ?? $m->vehicle_make_id ?? '') === $selectedMakeId)
+            : collect();
 
         $fmtDate = function ($v) {
             if (! $v) {
@@ -197,8 +200,14 @@
                 <select id="model_id"
                         name="model_id"
                         class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold"
-                        disabled>
+                        {{ $selectedMakeId ? '' : 'disabled' }}>
                     <option value="">{{ $selectedMakeId ? 'Select Model' : 'Select make first' }}</option>
+
+                    @foreach($selectedModels as $model)
+                        <option value="{{ $model->id }}" @selected($selectedModelId === (string) $model->id)>
+                            {{ $model->name }}
+                        </option>
+                    @endforeach
                 </select>
 
                 @error('model_id')
@@ -337,6 +346,7 @@
                 <input type="date"
                        name="last_inspection_date"
                        value="{{ old('last_inspection_date', $fmtDate($veh->last_inspection_date ?? null)) }}"
+                       max="{{ today()->toDateString() }}"
                        class="sf-vehicle-form-input block w-full rounded-lg border px-3 py-2 text-sm font-semibold">
 
                 @error('last_inspection_date')
@@ -384,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const modelsByMake = @json(
         ($models ?? collect())
-            ->groupBy('make_id')
+            ->groupBy(fn($m) => $m->make_id ?? $m->vehicle_make_id ?? '')
             ->map(fn($g) => $g->map(fn($m) => ['id' => $m->id, 'name' => $m->name])->values())
             ->toArray()
     );
