@@ -37,8 +37,8 @@
             'count' => $leadCount,
             'route' => 'admin.leads.index',
             'width' => 78,
-            'bg' => 'bg-sky-400',
-            'dot' => 'bg-sky-400',
+            'bg' => 'bg-blue-500',
+            'dot' => 'bg-blue-500',
             'displayRate' => '100%',
         ],
         [
@@ -46,8 +46,8 @@
             'count' => $opportunityCount,
             'route' => 'admin.opportunities.index',
             'width' => 68,
-            'bg' => 'bg-blue-500',
-            'dot' => 'bg-blue-500',
+            'bg' => 'bg-purple-500',
+            'dot' => 'bg-purple-500',
             'displayRate' => $conversionRate($opportunityCount, $leadCount) . '%',
         ],
         [
@@ -64,8 +64,8 @@
             'count' => $jobCount,
             'route' => 'admin.jobs.index',
             'width' => 48,
-            'bg' => 'bg-violet-500',
-            'dot' => 'bg-violet-500',
+            'bg' => 'bg-emerald-500',
+            'dot' => 'bg-emerald-500',
             'displayRate' => $conversionRate($jobCount, $bookingCount) . '%',
         ],
         [
@@ -73,13 +73,13 @@
             'count' => $invoiceCount,
             'route' => 'admin.invoices.index',
             'width' => 40,
-            'bg' => 'bg-emerald-500',
-            'dot' => 'bg-emerald-500',
+            'bg' => 'bg-rose-500',
+            'dot' => 'bg-rose-500',
             'displayRate' => $conversionRate($invoiceCount, $jobCount) . '%',
         ],
     ];
 
-    $dashboardLeadFilters = collect($dashboardFilters ?? request()->only([
+    $dashboardFilterContext = collect($dashboardFilters ?? request()->only([
         'date_range',
         'from_date',
         'to_date',
@@ -88,10 +88,18 @@
         'service_type',
         'customer_type',
     ]))->filter(fn ($value) => filled($value) && $value !== 'all')->all();
+
+    $flowFilterParams = [
+        'admin.leads.index' => $dashboardFilterContext,
+        'admin.opportunities.index' => $dashboardFilterContext,
+        'admin.bookings.index' => $dashboardFilterContext,
+        'admin.jobs.index' => $dashboardFilterContext,
+        'admin.invoices.index' => $dashboardFilterContext,
+    ];
 @endphp
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-    <div class="mb-4 flex items-start justify-between gap-3">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+    <div class="mb-3 flex items-start justify-between gap-3">
         <div>
             <h2 class="text-base font-bold text-white">
                 Lead Flow Funnel
@@ -107,13 +115,13 @@
             </div>
         </div>
 
-        <span class="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-300">
+        <span class="rounded-full border border-blue-400/30 bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-300">
             Funnel
         </span>
     </div>
 
-    <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
-        <div class="mx-auto w-full max-w-3xl py-3">
+    <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-4">
+        <div class="mx-auto w-full max-w-3xl py-2">
             @foreach ($flowItems as $index => $item)
                 @php
                     $hasRoute = \Illuminate\Support\Facades\Route::has($item['route']);
@@ -128,13 +136,14 @@
                     $bottomInset = $topInset + 4.2;
 
                     $clipPath = "polygon({$topInset}% 0%, " . (100 - $topInset) . "% 0%, " . (100 - $bottomInset) . "% 100%, {$bottomInset}% 100%)";
+                    $params = $flowFilterParams[$item['route']] ?? [];
                 @endphp
 
                 <div class="mx-auto -mb-[1px]" style="width: {{ $item['width'] }}%;">
                     @if ($hasRoute)
-                        <a href="{{ route($item['route'], $item['route'] === 'admin.leads.index' ? $dashboardLeadFilters : []) }}" class="group block" title="{{ $item['label'] }}">
+                        <a href="{{ route($item['route'], $params) }}" class="group block cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" title="View filtered {{ $item['label'] }}" aria-label="View filtered {{ $item['label'] }}">
                             <div
-                                class="relative flex h-[60px] items-center justify-center overflow-hidden {{ $item['bg'] }} px-5 transition duration-200 group-hover:brightness-110"
+                                class="relative flex h-[60px] items-center justify-center overflow-hidden {{ $item['bg'] }} px-5 transition duration-200 group-hover:brightness-110 group-hover:saturate-110"
                                 style="clip-path: {{ $clipPath }};"
                             >
                                 <div class="relative z-10 flex items-center justify-center gap-3 text-center">

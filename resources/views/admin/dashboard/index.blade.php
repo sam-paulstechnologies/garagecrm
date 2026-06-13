@@ -4,6 +4,14 @@
 
 @section('title', 'Admin Dashboard')
 
+@push('styles')
+    <style>
+        .sf-dashboard-page {
+            max-width: 1600px !important;
+        }
+    </style>
+@endpush
+
 @section('content')
     @php
         /*
@@ -375,7 +383,7 @@
         );
     @endphp
 
-    <div class="sf-page mx-auto max-w-7xl px-4 py-6 space-y-6">
+    <div class="sf-page sf-dashboard-page mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8 space-y-3">
 
         {{-- Hero --}}
         @include('admin.dashboard.partials._hero')
@@ -387,7 +395,7 @@
         @include('admin.dashboard.partials._summary_cards')
 
         {{-- Funnel + Needs Attention --}}
-        <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
             @include('admin.dashboard.partials._lead_flow')
             @include('admin.dashboard.partials._needs_attention')
         </div>

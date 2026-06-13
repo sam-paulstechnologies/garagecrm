@@ -75,6 +75,13 @@
         color: #cbd5e1;
     }
 
+    .sf-invoice-filter-pill:hover,
+    .sf-invoice-filter-pill:focus {
+        border-color: rgba(251, 146, 60, 0.50);
+        background: rgba(249, 115, 22, 0.16);
+        color: #fed7aa;
+    }
+
     .sf-invoices-page .sf-table {
         background: transparent;
         border-collapse: separate;
@@ -232,6 +239,13 @@
         border-color: #cbd5e1 !important;
         background: #f1f5f9 !important;
         color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-invoice-filter-pill:hover,
+    html[data-theme="light"] .sf-invoice-filter-pill:focus {
+        border-color: #fdba74 !important;
+        background: #fff7ed !important;
+        color: #c2410c !important;
     }
 
     html[data-theme="light"] .sf-invoices-page .sf-table,

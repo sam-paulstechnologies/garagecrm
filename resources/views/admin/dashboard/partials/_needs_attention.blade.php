@@ -113,8 +113,8 @@
     }
 </style>
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-    <div class="mb-5 flex items-start justify-between gap-4">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+    <div class="mb-3 flex items-start justify-between gap-4">
         <div>
             <h2 class="sf-attention-title text-base font-bold text-white">
                 Needs Attention
@@ -130,7 +130,7 @@
         </span>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         @foreach ($items as $item)
             @php
                 $hasRoute = \Illuminate\Support\Facades\Route::has($item['route']);
@@ -155,31 +155,31 @@
             @if ($hasRoute)
                 <a
                     href="{{ route($item['route']) }}"
-                    class="sf-attention-card group rounded-2xl border {{ $cardTint }} p-4 transition hover:-translate-y-0.5 hover:border-orange-400/40 hover:shadow-lg"
+                    class="sf-attention-card group rounded-2xl border {{ $cardTint }} p-3 transition hover:-translate-y-0.5 hover:border-orange-400/40 hover:shadow-lg"
                 >
                     <p class="text-sm font-extrabold {{ $toneClass }}">
                         {{ $item['label'] }}
                     </p>
 
-                    <p class="sf-attention-value mt-3 text-3xl font-black text-white">
+                    <p class="sf-attention-value mt-2 text-3xl font-black text-white">
                         {{ $item['value'] }}
                     </p>
 
-                    <p class="sf-attention-muted mt-2 text-xs font-semibold leading-5 text-slate-400">
+                    <p class="sf-attention-muted mt-1.5 text-xs font-semibold leading-5 text-slate-400">
                         {{ $item['subtext'] }}
                     </p>
                 </a>
             @else
-                <div class="sf-attention-card rounded-2xl border {{ $cardTint }} p-4">
+                <div class="sf-attention-card rounded-2xl border {{ $cardTint }} p-3">
                     <p class="text-sm font-extrabold {{ $toneClass }}">
                         {{ $item['label'] }}
                     </p>
 
-                    <p class="sf-attention-value mt-3 text-3xl font-black text-white">
+                    <p class="sf-attention-value mt-2 text-3xl font-black text-white">
                         {{ $item['value'] }}
                     </p>
 
-                    <p class="sf-attention-muted mt-2 text-xs font-semibold leading-5 text-slate-400">
+                    <p class="sf-attention-muted mt-1.5 text-xs font-semibold leading-5 text-slate-400">
                         {{ $item['subtext'] }}
                     </p>
                 </div>

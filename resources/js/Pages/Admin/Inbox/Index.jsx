@@ -3,12 +3,17 @@ import axios from "axios";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 
 export default function Index() {
+    const initialSearch =
+        typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("search") || ""
+            : "";
+
     const [conversations, setConversations] = useState([]);
     const [messages, setMessages] = useState([]);
     const [selected, setSelected] = useState(null);
     const [context, setContext] = useState(null);
     const [message, setMessage] = useState("");
-    const [search, setSearch] = useState("");
+    const [search, setSearch] = useState(initialSearch);
     const [tone, setTone] = useState("professional");
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [sending, setSending] = useState(false);

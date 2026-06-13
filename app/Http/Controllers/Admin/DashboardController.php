@@ -227,11 +227,27 @@ class DashboardController extends Controller
             ->pluck('total', 'status')
             ->toArray();
 
+        $leadPipeline = collect([
+            Lead::STATUS_NEW,
+            Lead::STATUS_ATTEMPTING,
+            Lead::STATUS_QUALIFIED,
+            Lead::STATUS_CONVERTED,
+            Lead::STATUS_LOST,
+        ])->mapWithKeys(fn ($status) => [
+            $status => (int) ($leadPipeline[$status] ?? 0),
+        ])->all();
+
         $opportunityPipeline = (clone $opportunitiesQuery)
             ->select('stage', DB::raw('COUNT(*) as total'))
             ->groupBy('stage')
             ->pluck('total', 'stage')
             ->toArray();
+
+        $opportunityPipeline = collect(Opportunity::STAGES)
+            ->mapWithKeys(fn ($stage) => [
+                $stage => (int) ($opportunityPipeline[$stage] ?? 0),
+            ])
+            ->all();
 
         /*
         |--------------------------------------------------------------------------
@@ -243,9 +259,16 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
-        $recentBookings = (clone $bookingsQuery)
+        $recentBookings = $this->applyDashboardFilters(
+            Booking::where('company_id', $companyId)
+                ->where('is_archived', false)
+                ->whereNull('deleted_at'),
+            Booking::class,
+            $filters,
+            'created_at'
+        )
             ->with('client')
-            ->latest()
+            ->latest('created_at')
             ->take(5)
             ->get();
 

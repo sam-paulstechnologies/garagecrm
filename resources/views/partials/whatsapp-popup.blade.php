@@ -8,7 +8,7 @@
         type="button"
         @click="toggle()"
         aria-label="Open WhatsApp Inbox"
-        class="flex h-16 w-16 items-center justify-center rounded-full bg-[#16a34a] text-white shadow-xl shadow-green-900/30 transition duration-200 hover:scale-105 hover:bg-[#128c3c]"
+        class="flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl shadow-green-900/30 transition duration-200 hover:scale-105 hover:bg-[#1EBE5D]"
     >
         <svg
             class="h-8 w-8 text-white"

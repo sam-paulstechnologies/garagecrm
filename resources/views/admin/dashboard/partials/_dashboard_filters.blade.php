@@ -117,6 +117,13 @@
         color: #cbd5e1;
     }
 
+    .sf-dashboard-filter-summary-pill:hover,
+    .sf-dashboard-filter-summary-pill:focus {
+        border-color: rgba(251, 146, 60, 0.50);
+        background: rgba(249, 115, 22, 0.16);
+        color: #fed7aa;
+    }
+
     .sf-dashboard-filter-secondary-btn {
         border-color: rgba(255, 255, 255, 0.12);
         background: rgba(255, 255, 255, 0.08);
@@ -163,6 +170,13 @@
         color: #475569 !important;
     }
 
+    html[data-theme="light"] .sf-dashboard-filter-summary-pill:hover,
+    html[data-theme="light"] .sf-dashboard-filter-summary-pill:focus {
+        border-color: #fdba74 !important;
+        background: #fff7ed !important;
+        color: #c2410c !important;
+    }
+
     html[data-theme="light"] .sf-dashboard-filter-secondary-btn {
         border-color: #cbd5e1 !important;
         background: #ffffff !important;
@@ -176,7 +190,7 @@
 
 <div
     id="sfDashboardFilters"
-    class="sf-dashboard-filter-panel rounded-2xl border p-4 shadow-sm"
+    class="sf-dashboard-filter-panel rounded-2xl border p-3 shadow-sm sm:p-4"
     data-default-collapsed="{{ $serverDefaultCollapsed }}"
 >
     <form method="GET" action="{{ url()->current() }}">
@@ -196,10 +210,24 @@
                     @endif
 
                     <div id="sfDashboardFiltersSummary" class="flex min-w-0 flex-wrap items-center gap-2">
-                        @foreach($activeSummary as $summaryItem)
-                            <span class="sf-dashboard-filter-summary-pill inline-flex rounded-full border px-3 py-1 text-xs font-bold">
+                        @foreach($activeSummary as $summaryIndex => $summaryItem)
+                            @php
+                                $summaryTarget = [
+                                    0 => 'dashboardDateRange',
+                                    1 => 'dashboardLeadSource',
+                                    2 => 'dashboardAssignedUser',
+                                    3 => 'dashboardServiceType',
+                                    4 => 'dashboardCustomerType',
+                                ][$summaryIndex] ?? null;
+                            @endphp
+
+                            <button
+                                type="button"
+                                class="sf-dashboard-filter-summary-pill inline-flex rounded-full border px-3 py-1 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                data-dashboard-filter-focus="{{ $summaryTarget }}"
+                            >
                                 {{ $summaryItem }}
-                            </span>
+                            </button>
                         @endforeach
                     </div>
                 </div>
@@ -218,11 +246,11 @@
         </div>
 
         {{-- Expandable Body --}}
-        <div id="sfDashboardFiltersBody" class="mt-5 hidden">
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div id="sfDashboardFiltersBody" class="mt-4 hidden">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
 
                 {{-- Date Range --}}
-                <div class="sf-dashboard-filter-box rounded-2xl border p-4">
+                <div class="sf-dashboard-filter-box rounded-2xl border p-3">
                     <label class="sf-dashboard-filter-label mb-2 block text-xs font-extrabold uppercase tracking-wide">
                         Date Range
                     </label>
@@ -243,12 +271,13 @@
                 </div>
 
                 {{-- Lead Source --}}
-                <div class="sf-dashboard-filter-box rounded-2xl border p-4">
+                <div class="sf-dashboard-filter-box rounded-2xl border p-3">
                     <label class="sf-dashboard-filter-label mb-2 block text-xs font-extrabold uppercase tracking-wide">
                         Lead Source
                     </label>
 
                     <select
+                        id="dashboardLeadSource"
                         name="lead_source"
                         class="sf-dashboard-filter-control h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
                     >
@@ -267,12 +296,13 @@
                 </div>
 
                 {{-- Assigned User --}}
-                <div class="sf-dashboard-filter-box rounded-2xl border p-4">
+                <div class="sf-dashboard-filter-box rounded-2xl border p-3">
                     <label class="sf-dashboard-filter-label mb-2 block text-xs font-extrabold uppercase tracking-wide">
                         Assigned User
                     </label>
 
                     <select
+                        id="dashboardAssignedUser"
                         name="assigned_user"
                         class="sf-dashboard-filter-control h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
                     >
@@ -287,12 +317,13 @@
                 </div>
 
                 {{-- Service Type --}}
-                <div class="sf-dashboard-filter-box rounded-2xl border p-4">
+                <div class="sf-dashboard-filter-box rounded-2xl border p-3">
                     <label class="sf-dashboard-filter-label mb-2 block text-xs font-extrabold uppercase tracking-wide">
                         Service Type
                     </label>
 
                     <select
+                        id="dashboardServiceType"
                         name="service_type"
                         class="sf-dashboard-filter-control h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
                     >
@@ -308,12 +339,13 @@
                 </div>
 
                 {{-- Customer Type --}}
-                <div class="sf-dashboard-filter-box rounded-2xl border p-4">
+                <div class="sf-dashboard-filter-box rounded-2xl border p-3">
                     <label class="sf-dashboard-filter-label mb-2 block text-xs font-extrabold uppercase tracking-wide">
                         Customer Type
                     </label>
 
                     <select
+                        id="dashboardCustomerType"
                         name="customer_type"
                         class="sf-dashboard-filter-control h-11 w-full rounded-xl border px-3 text-sm font-bold outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
                     >
@@ -327,7 +359,7 @@
             {{-- Custom Date Range --}}
             <div
                 id="dashboardCustomDateFields"
-                class="mt-4 grid grid-cols-1 gap-4 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:grid-cols-2 lg:max-w-xl"
+                class="mt-3 grid grid-cols-1 gap-3 rounded-2xl border border-orange-500/20 bg-orange-500/10 p-3 md:grid-cols-2 lg:max-w-xl"
                 style="{{ $selectedRange === 'custom' ? '' : 'display: none;' }}"
             >
                 <div>
@@ -358,7 +390,7 @@
             </div>
 
             {{-- Expanded Actions --}}
-            <div class="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-4">
+            <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-3">
                 <a
                     href="{{ url()->current() }}"
                     class="sf-dashboard-filter-secondary-btn inline-flex h-11 items-center justify-center rounded-xl border px-5 text-sm font-bold transition"
@@ -389,6 +421,7 @@
         var toggle = document.getElementById('sfDashboardFiltersToggle');
         var dateRange = document.getElementById('dashboardDateRange');
         var customFields = document.getElementById('dashboardCustomDateFields');
+        var summaryButtons = root.querySelectorAll('[data-dashboard-filter-focus]');
 
         var storageKey = 'sayaraforce_dashboard_filters_collapsed';
         var defaultCollapsed = root.getAttribute('data-default-collapsed') === 'true';
@@ -441,6 +474,28 @@
             }
         }
 
+        function focusFilterControl(controlId) {
+            if (!controlId) {
+                return;
+            }
+
+            var control = document.getElementById(controlId);
+
+            if (!control) {
+                return;
+            }
+
+            window.setTimeout(function () {
+                control.focus({ preventScroll: true });
+
+                if (typeof control.showPicker === 'function') {
+                    try {
+                        control.showPicker();
+                    } catch (e) {}
+                }
+            }, 80);
+        }
+
         var collapsed = getInitialCollapsed();
         applyCollapsedState(collapsed);
         syncCustomDateFields();
@@ -451,6 +506,14 @@
                 applyCollapsedState(collapsed);
             });
         }
+
+        summaryButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                collapsed = false;
+                applyCollapsedState(false);
+                focusFilterControl(button.getAttribute('data-dashboard-filter-focus'));
+            });
+        });
 
         if (dateRange) {
             dateRange.addEventListener('change', function () {

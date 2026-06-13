@@ -3,11 +3,14 @@
 @section('title', 'Potential Duplicates')
 
 @section('content')
+@php
+    $duplicateCount = method_exists($dupes, 'total') ? $dupes->total() : $dupes->count();
+@endphp
+
 <div class="sf-page space-y-6">
 
-    {{-- Header --}}
     <div class="sf-page-header">
-        <div>
+        <div class="min-w-0">
             <div class="sf-kicker">
                 Lead Quality
             </div>
@@ -23,12 +26,11 @@
 
         <div class="flex flex-wrap items-center gap-2">
             <a href="{{ route('admin.leads.index') }}" class="sf-btn-secondary">
-                ← Back to Leads
+                Back to Leads
             </a>
         </div>
     </div>
 
-    {{-- Alerts --}}
     @if(session('success'))
         <div class="sf-alert-success">
             {{ session('success') }}
@@ -61,23 +63,28 @@
         </div>
     @endif
 
-    {{-- Window Settings --}}
     <form action="{{ route('admin.leads.duplicates.update-window') }}" method="POST" class="sf-card">
         @csrf
 
-        <div class="sf-card-header">
-            <h2 class="sf-section-title">
-                Duplicate Detection Window
-            </h2>
+        <div class="sf-card-header flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h2 class="sf-section-title">
+                    Duplicate Detection Window
+                </h2>
 
-            <p class="sf-section-subtitle">
-                Set how many days the system should look back when detecting possible duplicate leads.
-            </p>
+                <p class="sf-section-subtitle">
+                    Set how many days the system should look back when detecting possible duplicate leads.
+                </p>
+            </div>
+
+            <span class="inline-flex w-fit rounded-full border border-orange-300/40 bg-orange-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-700 dark:border-orange-400/30 dark:text-orange-200">
+                Lead capture quality
+            </span>
         </div>
 
         <div class="sf-card-body">
-            <div class="flex flex-col gap-3 md:flex-row md:items-end">
-                <div class="w-full md:w-64">
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,18rem)_auto_minmax(0,1fr)] lg:items-end">
+                <div>
                     <label class="sf-label">
                         Duplicate window days
                     </label>
@@ -94,22 +101,25 @@
                     </p>
                 </div>
 
-                <button type="submit" class="sf-btn-primary">
+                <button type="submit" class="sf-btn-primary w-full lg:w-auto">
                     Save Window
                 </button>
+
+                <p class="text-sm font-medium leading-6 text-slate-600 dark:text-slate-400">
+                    Shorter windows reduce noise. Longer windows help catch duplicate submissions from slower campaign follow-up.
+                </p>
             </div>
         </div>
     </form>
 
-    {{-- Summary Cards --}}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="sf-stat-card">
             <div class="sf-stat-label">
                 Potential Duplicates
             </div>
 
-            <div class="sf-stat-value text-orange-300">
-                {{ method_exists($dupes, 'total') ? $dupes->total() : $dupes->count() }}
+            <div class="sf-stat-value text-orange-700 dark:text-orange-200">
+                {{ $duplicateCount }}
             </div>
 
             <div class="sf-stat-note">
@@ -122,7 +132,7 @@
                 Detection Window
             </div>
 
-            <div class="sf-stat-value text-blue-300">
+            <div class="sf-stat-value text-blue-700 dark:text-blue-200">
                 {{ $windowDays }}
             </div>
 
@@ -137,8 +147,12 @@
             </div>
 
             <div class="mt-3 flex flex-wrap gap-2">
-                <span class="sf-badge-blue">Email</span>
-                <span class="sf-badge-orange">Phone</span>
+                <span class="rounded-full border border-blue-300/50 bg-blue-500/10 px-3 py-1 text-xs font-extrabold text-blue-700 dark:border-blue-400/30 dark:text-blue-200">
+                    Email
+                </span>
+                <span class="rounded-full border border-orange-300/50 bg-orange-500/10 px-3 py-1 text-xs font-extrabold text-orange-700 dark:border-orange-400/30 dark:text-orange-200">
+                    Phone
+                </span>
             </div>
 
             <div class="sf-stat-note">
@@ -151,7 +165,7 @@
                 Review Action
             </div>
 
-            <div class="mt-3 text-lg font-extrabold text-white">
+            <div class="mt-3 text-lg font-extrabold text-slate-900 dark:text-white">
                 Open Primary Lead
             </div>
 
@@ -161,115 +175,128 @@
         </div>
     </div>
 
-    {{-- Duplicates Table --}}
-    <div class="sf-table-wrap">
-        <div class="sf-table-scroll">
-            <table class="sf-table">
-                <thead>
-                    <tr>
-                        <th class="w-[18%]">Detected</th>
-                        <th class="w-[16%]">Matched On</th>
-                        <th class="w-[24%]">Duplicate Lead</th>
-                        <th class="w-[14%]">Window</th>
-                        <th class="w-[18%]">Reason</th>
-                        <th class="w-[10%] text-right">Primary</th>
-                    </tr>
-                </thead>
+    <div class="sf-card">
+        <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h2 class="sf-section-title">
+                    Duplicate Review List
+                </h2>
 
-                <tbody>
-                    @forelse($dupes as $d)
-                        <tr>
-                            {{-- Detected --}}
-                            <td>
-                                <div class="font-bold text-white">
-                                    {{ optional($d->detected_at)->format('d M Y') ?? '—' }}
-                                </div>
+                <p class="sf-section-subtitle">
+                    Review each captured duplicate against its primary lead before taking action.
+                </p>
+            </div>
 
-                                <div class="text-xs font-medium text-slate-500">
-                                    {{ optional($d->detected_at)->format('h:i A') ?? '' }}
-                                </div>
-                            </td>
+            <span class="inline-flex w-fit rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-extrabold text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                {{ $duplicateCount }} total
+            </span>
+        </div>
 
-                            {{-- Matched On --}}
-                            <td>
-                                @php
-                                    $matchedOn = strtolower((string) ($d->matched_on ?? ''));
+        <div class="sf-card-body">
+            <div class="space-y-4">
+                @forelse($dupes as $d)
+                    @php
+                        $matchedOn = strtolower((string) ($d->matched_on ?? ''));
+                        $matchedBadgeClass = match ($matchedOn) {
+                            'phone' => 'border-orange-300/50 bg-orange-500/10 text-orange-700 dark:border-orange-400/30 dark:text-orange-200',
+                            'email' => 'border-blue-300/50 bg-blue-500/10 text-blue-700 dark:border-blue-400/30 dark:text-blue-200',
+                            default => 'border-slate-300 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200',
+                        };
+                    @endphp
 
-                                    $matchedClass = match ($matchedOn) {
-                                        'phone' => 'sf-badge-orange',
-                                        'email' => 'sf-badge-blue',
-                                        default => 'sf-badge-slate',
-                                    };
-                                @endphp
+                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-orange-300/60 hover:shadow-md dark:border-white/10 dark:bg-slate-950/45 dark:hover:border-orange-400/30 sm:p-5">
+                        <div class="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.45fr)_minmax(14rem,0.75fr)] lg:items-center">
+                            <div class="min-w-0">
+                                <p class="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    Detected
+                                </p>
 
-                                <span class="{{ $matchedClass }}">
-                                    {{ ucfirst($d->matched_on ?? '—') }}
+                                <p class="mt-2 text-sm font-extrabold text-slate-900 dark:text-white">
+                                    {{ optional($d->detected_at)->format('d M Y') ?? '-' }}
+                                </p>
+
+                                <p class="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                    {{ optional($d->detected_at)->format('h:i A') ?? 'No time recorded' }}
+                                </p>
+
+                                <span class="mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-extrabold {{ $matchedBadgeClass }}">
+                                    Matched on {{ $d->matched_on ? ucfirst($d->matched_on) : 'Unknown' }}
                                 </span>
-                            </td>
+                            </div>
 
-                            {{-- Duplicate Lead --}}
-                            <td>
-                                <div class="font-extrabold text-white">
+                            <div class="min-w-0">
+                                <p class="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    Duplicate lead
+                                </p>
+
+                                <h3 class="mt-2 truncate text-lg font-black text-slate-950 dark:text-white">
                                     {{ $d->name ?? 'Unnamed Lead' }}
+                                </h3>
+
+                                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                    <span class="break-all">
+                                        {{ $d->phone ?: 'No phone' }}
+                                    </span>
+
+                                    <span class="break-all">
+                                        {{ $d->email ?: 'No email' }}
+                                    </span>
                                 </div>
 
-                                <div class="mt-1 text-xs font-medium text-slate-400">
-                                    {{ $d->email ?? 'No email' }}
+                                <p class="mt-3 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
+                                    {{ $d->reason ?: 'No reason recorded.' }}
+                                </p>
+                            </div>
+
+                            <div class="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-extrabold text-slate-700 dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200">
+                                        {{ $d->window_days }} days
+                                    </span>
+
+                                    <span class="rounded-full border border-orange-300/40 bg-orange-500/10 px-2.5 py-1 text-xs font-extrabold text-orange-700 dark:border-orange-400/30 dark:text-orange-200">
+                                        Primary lead
+                                    </span>
                                 </div>
 
-                                <div class="mt-1 text-sm font-bold text-slate-300">
-                                    {{ $d->phone ?? 'No phone' }}
-                                </div>
-                            </td>
-
-                            {{-- Window --}}
-                            <td>
-                                <span class="sf-badge-slate">
-                                    {{ $d->window_days }} days
-                                </span>
-                            </td>
-
-                            {{-- Reason --}}
-                            <td>
-                                <div class="text-sm font-medium leading-6 text-slate-300">
-                                    {{ $d->reason ?? '—' }}
-                                </div>
-                            </td>
-
-                            {{-- Primary Lead --}}
-                            <td class="text-right">
                                 @if($d->primary)
-                                    <a class="sf-link"
+                                    <a class="mt-3 block truncate text-sm font-extrabold text-orange-700 hover:text-orange-800 dark:text-orange-200 dark:hover:text-orange-100"
                                        href="{{ route('admin.leads.show', $d->primary->id) }}">
-                                        #{{ $d->primary->id }}
+                                        #{{ $d->primary->id }} {{ $d->primary->name }}
                                     </a>
-
-                                    <div class="mt-1 max-w-[160px] truncate text-xs font-medium text-slate-500">
-                                        {{ $d->primary->name }}
-                                    </div>
                                 @else
-                                    <span class="text-slate-600">—</span>
+                                    <p class="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                                        No primary lead linked
+                                    </p>
                                 @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="6">
-                                <div class="sf-empty">
-                                    No duplicates found.
-                                </div>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                            </div>
+                        </div>
+                    </article>
+                @empty
+                    <div class="sf-empty">
+                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-700 dark:text-orange-200">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+
+                        <p class="mt-4 text-base font-extrabold text-slate-900 dark:text-white">
+                            No potential duplicates found
+                        </p>
+
+                        <p class="mt-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+                            New duplicate submissions will appear here when they match the configured phone or email rules.
+                        </p>
+                    </div>
+                @endforelse
+            </div>
         </div>
     </div>
 
-    {{-- Pagination --}}
-    <div class="text-slate-300">
-        {{ $dupes->links() }}
-    </div>
-
+    @if(method_exists($dupes, 'links') && $dupes->hasPages())
+        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/45 dark:text-slate-200">
+            {{ $dupes->links() }}
+        </div>
+    @endif
 </div>
 @endsection

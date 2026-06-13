@@ -19,7 +19,7 @@
 
         @if($shouldRenderAnchor && $clientLetter !== 'OTHER')
             <div id="client-letter-{{ $clientLetter }}" class="scroll-mt-20 pt-1 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-                <div class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-black text-orange-300">
+                <div class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-black text-orange-600 dark:text-orange-200">
                     {{ $clientLetter }}
                 </div>
             </div>

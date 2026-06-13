@@ -10,7 +10,7 @@
     </div>
 
     <div class="sf-card-body space-y-6">
-        <div>
+        <div id="existing_vehicle_panel">
             <label for="vehicle_id" class="sf-label">
                 Existing Vehicle
             </label>
@@ -47,7 +47,7 @@
 
         <div class="sf-divider"></div>
 
-        <div class="space-y-5">
+        <div id="new_vehicle_panel" class="space-y-5">
             <div>
                 <h3 class="sf-section-title">
                     Add New Vehicle
@@ -61,7 +61,7 @@
             <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                     <label for="new_vehicle_make_id" class="sf-label">
-                        Make
+                        Make <span class="hidden text-red-300" data-new-client-required>*</span>
                     </label>
 
                     <select id="new_vehicle_make_id" name="new_vehicle_make_id" class="sf-select">
@@ -81,7 +81,7 @@
 
                 <div>
                     <label for="new_vehicle_model_id" class="sf-label">
-                        Model
+                        Model <span class="hidden text-red-300" data-new-client-required>*</span>
                     </label>
 
                     <select id="new_vehicle_model_id" name="new_vehicle_model_id" class="sf-select">

@@ -93,7 +93,13 @@
         request()->filled('to_date');
 @endphp
 
-<div id="sfInvoiceFilters" class="sf-invoices-panel rounded-2xl border p-4 shadow-sm">
+<div
+    id="sfInvoiceFilters"
+    class="sf-invoices-panel rounded-2xl border p-4 shadow-sm"
+    data-index-filter-panel
+    data-date-range-control="#invoiceDateRange"
+    data-custom-fields="#invoiceCustomDateFields"
+>
     <form method="GET" action="{{ route('admin.invoices.index') }}">
 
         {{-- Compact collapsed row --}}
@@ -111,10 +117,28 @@
                     @endif
 
                     <div class="flex min-w-0 flex-wrap items-center gap-2">
-                        @foreach($activeSummary as $summaryItem)
-                            <span class="sf-invoice-filter-pill inline-flex rounded-full border px-3 py-1 text-xs font-bold">
+                        @foreach($activeSummary as $summaryIndex => $summaryItem)
+                            @php
+                                $summaryTarget = [
+                                    0 => '[name="q"]',
+                                    1 => '[name="status"]',
+                                    2 => '#invoiceDateRange',
+                                    3 => '[name="lead_source"]',
+                                    4 => '[name="assigned_user"]',
+                                    5 => '[name="service_type"]',
+                                    6 => '[name="customer_type"]',
+                                ][$summaryIndex] ?? null;
+                            @endphp
+
+                            <button
+                                type="button"
+                                class="sf-invoice-filter-pill inline-flex cursor-pointer rounded-full border px-3 py-1 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                data-index-filter-chip
+                                data-filter-target="{{ $summaryTarget }}"
+                                aria-label="Open {{ $summaryItem }} filter"
+                            >
                                 {{ $summaryItem }}
-                            </span>
+                            </button>
                         @endforeach
                     </div>
                 </div>
@@ -125,13 +149,14 @@
                 id="sfInvoiceFiltersToggle"
                 class="sf-btn-secondary inline-flex h-10 w-fit shrink-0 items-center justify-center rounded-xl px-4 text-sm font-bold transition"
                 aria-expanded="false"
+                data-index-filter-toggle
             >
                 Show Filters
             </button>
         </div>
 
         {{-- Expandable body --}}
-        <div id="sfInvoiceFiltersBody" class="mt-5 hidden">
+        <div id="sfInvoiceFiltersBody" class="mt-5 hidden" data-index-filter-body>
 
             {{-- Search --}}
             <div class="sf-invoice-soft-panel rounded-2xl border p-4">
@@ -298,56 +323,4 @@
     </form>
 </div>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var body = document.getElementById('sfInvoiceFiltersBody');
-        var toggle = document.getElementById('sfInvoiceFiltersToggle');
-        var dateRange = document.getElementById('invoiceDateRange');
-        var customFields = document.getElementById('invoiceCustomDateFields');
-
-        if (!body || !toggle) {
-            return;
-        }
-
-        var collapsed = true;
-
-        function applyState() {
-            if (collapsed) {
-                body.classList.add('hidden');
-                toggle.textContent = 'Show Filters';
-                toggle.setAttribute('aria-expanded', 'false');
-            } else {
-                body.classList.remove('hidden');
-                toggle.textContent = 'Hide Filters';
-                toggle.setAttribute('aria-expanded', 'true');
-            }
-        }
-
-        function syncCustomDateFields() {
-            if (!dateRange || !customFields) {
-                return;
-            }
-
-            customFields.style.display = dateRange.value === 'custom' ? '' : 'none';
-        }
-
-        toggle.addEventListener('click', function () {
-            collapsed = !collapsed;
-            applyState();
-        });
-
-        if (dateRange) {
-            dateRange.addEventListener('change', function () {
-                syncCustomDateFields();
-
-                if (dateRange.value === 'custom') {
-                    collapsed = false;
-                    applyState();
-                }
-            });
-        }
-
-        applyState();
-        syncCustomDateFields();
-    });
-</script>
+@include('admin.partials._index_filter_chip_script')

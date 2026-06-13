@@ -109,7 +109,13 @@
         request()->filled('to_date');
 @endphp
 
-<div id="sfOpportunityFilters" class="sf-opportunity-panel rounded-2xl border p-4 shadow-sm">
+<div
+    id="sfOpportunityFilters"
+    class="sf-opportunity-panel rounded-2xl border p-4 shadow-sm"
+    data-index-filter-panel
+    data-date-range-control="#opportunityDateRange"
+    data-custom-fields="#opportunityCustomDateFields"
+>
     <form method="GET" action="{{ route('admin.opportunities.index') }}">
 
         @if($bucket)
@@ -131,10 +137,29 @@
                     @endif
 
                     <div class="flex min-w-0 flex-wrap items-center gap-2">
-                        @foreach($activeSummary as $summaryItem)
-                            <span class="sf-opportunity-filter-pill inline-flex rounded-full border px-3 py-1 text-xs font-bold">
+                        @foreach($activeSummary as $summaryIndex => $summaryItem)
+                            @php
+                                $summaryTarget = [
+                                    0 => '#opportunity-search',
+                                    1 => '[name="stage"]',
+                                    2 => '[name="priority"]',
+                                    3 => '#opportunityDateRange',
+                                    4 => '[name="lead_source"]',
+                                    5 => '[name="assigned_user"]',
+                                    6 => '[name="service_type"]',
+                                    7 => '[name="customer_type"]',
+                                ][$summaryIndex] ?? null;
+                            @endphp
+
+                            <button
+                                type="button"
+                                class="sf-opportunity-filter-pill inline-flex cursor-pointer rounded-full border px-3 py-1 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                data-index-filter-chip
+                                data-filter-target="{{ $summaryTarget }}"
+                                aria-label="Open {{ $summaryItem }} filter"
+                            >
                                 {{ $summaryItem }}
-                            </span>
+                            </button>
                         @endforeach
                     </div>
                 </div>
@@ -145,13 +170,14 @@
                 id="sfOpportunityFiltersToggle"
                 class="sf-btn-secondary inline-flex h-10 w-fit shrink-0 items-center justify-center rounded-xl px-4 text-sm font-bold transition"
                 aria-expanded="false"
+                data-index-filter-toggle
             >
                 Show Filters
             </button>
         </div>
 
         {{-- Expandable body --}}
-        <div id="sfOpportunityFiltersBody" class="mt-5 hidden">
+        <div id="sfOpportunityFiltersBody" class="mt-5 hidden" data-index-filter-body>
 
             {{-- Search --}}
             <div class="sf-opportunity-soft-panel rounded-2xl border p-4">
@@ -334,56 +360,4 @@
     </form>
 </div>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var body = document.getElementById('sfOpportunityFiltersBody');
-        var toggle = document.getElementById('sfOpportunityFiltersToggle');
-        var dateRange = document.getElementById('opportunityDateRange');
-        var customFields = document.getElementById('opportunityCustomDateFields');
-
-        if (!body || !toggle) {
-            return;
-        }
-
-        var collapsed = true;
-
-        function applyState() {
-            if (collapsed) {
-                body.classList.add('hidden');
-                toggle.textContent = 'Show Filters';
-                toggle.setAttribute('aria-expanded', 'false');
-            } else {
-                body.classList.remove('hidden');
-                toggle.textContent = 'Hide Filters';
-                toggle.setAttribute('aria-expanded', 'true');
-            }
-        }
-
-        function syncCustomDateFields() {
-            if (!dateRange || !customFields) {
-                return;
-            }
-
-            customFields.style.display = dateRange.value === 'custom' ? '' : 'none';
-        }
-
-        toggle.addEventListener('click', function () {
-            collapsed = !collapsed;
-            applyState();
-        });
-
-        if (dateRange) {
-            dateRange.addEventListener('change', function () {
-                syncCustomDateFields();
-
-                if (dateRange.value === 'custom') {
-                    collapsed = false;
-                    applyState();
-                }
-            });
-        }
-
-        applyState();
-        syncCustomDateFields();
-    });
-</script>
+@include('admin.partials._index_filter_chip_script')
