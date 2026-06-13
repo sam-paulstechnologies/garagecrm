@@ -1135,7 +1135,37 @@ class ClientController extends Controller
 
     private function previewPayloadFromBatch(ClientImportBatch $batch): array
     {
-        $rows = $batch->rows->map(function (ClientImportRow $row) {
+        $importRows = $batch->rows;
+        $hasRowSnapshot = $importRows->isNotEmpty();
+        $validationCounts = $importRows->groupBy('validation_status')->map(fn ($rows) => $rows->count());
+        $reviewCounts = $importRows->groupBy('review_status')->map(fn ($rows) => $rows->count());
+        $duplicateRows = $importRows
+            ->filter(fn (ClientImportRow $row) => $row->client_match_id || ! in_array((string) $row->duplicate_status, ['', 'none'], true))
+            ->count();
+        $validContactRows = $importRows->filter(function (ClientImportRow $row) {
+            if ($row->validation_status === 'invalid') {
+                return false;
+            }
+
+            $payload = $row->normalized_payload ?? [];
+
+            return filled($payload['name'] ?? null)
+                && (filled($payload['phone'] ?? null) || filled($payload['whatsapp'] ?? null));
+        })->count();
+        $serviceHistoryRows = $importRows->filter(function (ClientImportRow $row) {
+            $payload = $row->normalized_payload ?? [];
+
+            return filled($payload['last_service_date'] ?? null)
+                || filled($payload['last_service_type'] ?? null)
+                || filled($payload['last_mileage'] ?? null)
+                || filled($payload['last_invoice_amount'] ?? null);
+        })->count();
+        $retentionActionRows = $importRows
+            ->filter(fn (ClientImportRow $row) => filled($row->suggested_segment_code) && $row->suggested_segment_code !== 'unclassified')
+            ->count();
+        $shownRows = max((int) $batch->total_rows, $importRows->count());
+
+        $rows = $importRows->map(function (ClientImportRow $row) {
             $payload = $row->normalized_payload ?? [];
 
             return [
@@ -1168,28 +1198,48 @@ class ClientController extends Controller
         return [
             'batch' => $batch,
             'reviewSummary' => [
-                'pending_review' => $batch->rows->where('review_status', 'pending_review')->count(),
-                'approved' => $batch->rows->where('review_status', 'approved')->count(),
-                'rejected' => $batch->rows->where('review_status', 'rejected')->count(),
-                'skipped' => $batch->rows->where('review_status', 'skipped')->count(),
-                'applied' => $batch->rows->where('review_status', 'applied')->count(),
-                'invalid' => $batch->rows->where('validation_status', 'invalid')->count(),
-                'warning' => $batch->rows->where('validation_status', 'warning')->count(),
+                'pending_review' => (int) ($reviewCounts['pending_review'] ?? 0),
+                'approved' => (int) ($reviewCounts['approved'] ?? 0),
+                'rejected' => (int) ($reviewCounts['rejected'] ?? 0),
+                'skipped' => (int) ($reviewCounts['skipped'] ?? 0),
+                'applied' => (int) ($reviewCounts['applied'] ?? 0),
+                'invalid' => (int) ($validationCounts['invalid'] ?? 0),
+                'warning' => (int) ($validationCounts['warning'] ?? 0),
             ],
             'headers' => array_keys($rows[0]['data'] ?? []),
             'rows' => $rows,
             'summary' => [
-                'rows_uploaded' => $batch->total_rows,
-                'rows_previewed' => $batch->meta['rows_previewed'] ?? $batch->rows->count(),
-                'valid_rows' => $batch->valid_rows,
-                'warning_rows' => $batch->warning_rows,
-                'invalid_rows' => $batch->invalid_rows,
-                'duplicates' => $batch->duplicate_rows,
-                'suggested_retention_actions' => $batch->suggested_retention_actions,
+                'rows_uploaded' => $shownRows,
+                'rows_previewed' => $batch->meta['rows_previewed'] ?? $importRows->count(),
+                'valid_contact_rows' => $hasRowSnapshot
+                    ? $validContactRows
+                    : (int) ($batch->valid_rows ?? 0) + (int) ($batch->warning_rows ?? 0),
+                'valid_rows' => $this->summaryCount($batch->valid_rows, (int) ($validationCounts['valid'] ?? 0), $hasRowSnapshot),
+                'warning_rows' => $this->summaryCount($batch->warning_rows, (int) ($validationCounts['warning'] ?? 0), $hasRowSnapshot),
+                'invalid_rows' => $this->summaryCount($batch->invalid_rows, (int) ($validationCounts['invalid'] ?? 0), $hasRowSnapshot),
+                'duplicates' => $this->summaryCount($batch->duplicate_rows, $duplicateRows, $hasRowSnapshot),
+                'service_history_rows' => $serviceHistoryRows,
+                'suggested_retention_actions' => $this->summaryCount($batch->suggested_retention_actions, $retentionActionRows, $hasRowSnapshot),
+                'pending_review' => (int) ($reviewCounts['pending_review'] ?? 0),
+                'approved' => (int) ($reviewCounts['approved'] ?? 0),
+                'rejected' => (int) ($reviewCounts['rejected'] ?? 0),
+                'skipped' => (int) ($reviewCounts['skipped'] ?? 0),
+                'applied' => (int) ($reviewCounts['applied'] ?? 0),
                 'truncated' => $batch->meta['truncated'] ?? false,
                 'limit' => $batch->meta['limit'] ?? ClientImportRetentionPreviewService::DEFAULT_LIMIT,
             ],
         ];
+    }
+
+    private function summaryCount(mixed $stored, int $derived, bool $preferDerived): int
+    {
+        if ($preferDerived) {
+            return $derived;
+        }
+
+        $stored = (int) ($stored ?? 0);
+
+        return $stored > 0 ? $stored : $derived;
     }
 
     private function findImportBatchForCurrentCompany(int $batch): ClientImportBatch

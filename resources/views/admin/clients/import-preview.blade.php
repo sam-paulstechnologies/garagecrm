@@ -6,14 +6,46 @@
 
 @section('content')
     @php
+        $summary = array_merge([
+            'rows_uploaded' => 0,
+            'rows_previewed' => count($rows ?? []),
+            'valid_contact_rows' => null,
+            'valid_rows' => 0,
+            'warning_rows' => 0,
+            'invalid_rows' => 0,
+            'duplicates' => 0,
+            'service_history_rows' => 0,
+            'suggested_retention_actions' => 0,
+            'pending_review' => null,
+            'approved' => null,
+            'rejected' => null,
+            'skipped' => null,
+            'applied' => null,
+            'truncated' => false,
+            'limit' => 200,
+        ], $summary ?? []);
+
+        $validContactRows = $summary['valid_contact_rows'];
+
+        if ($validContactRows === null) {
+            $validContactRows = max(0, (int) $summary['rows_uploaded'] - (int) $summary['invalid_rows']);
+        }
+
         $summaryCards = [
-            ['label' => 'Rows Uploaded', 'value' => $summary['rows_uploaded'] ?? 0, 'class' => 'text-slate-100 bg-slate-800/70 border-slate-700'],
-            ['label' => 'Previewed', 'value' => $summary['rows_previewed'] ?? 0, 'class' => 'text-blue-200 bg-blue-500/10 border-blue-400/20'],
-            ['label' => 'Valid', 'value' => $summary['valid_rows'] ?? 0, 'class' => 'text-emerald-200 bg-emerald-500/10 border-emerald-400/20'],
-            ['label' => 'Warnings', 'value' => $summary['warning_rows'] ?? 0, 'class' => 'text-amber-200 bg-amber-500/10 border-amber-400/20'],
-            ['label' => 'Invalid', 'value' => $summary['invalid_rows'] ?? 0, 'class' => 'text-rose-200 bg-rose-500/10 border-rose-400/20'],
-            ['label' => 'Duplicates', 'value' => $summary['duplicates'] ?? 0, 'class' => 'text-orange-200 bg-orange-500/10 border-orange-400/20'],
-            ['label' => 'Suggested Actions', 'value' => $summary['suggested_retention_actions'] ?? 0, 'class' => 'text-purple-200 bg-purple-500/10 border-purple-400/20'],
+            ['label' => 'Total Rows', 'value' => $summary['rows_uploaded'], 'class' => 'text-slate-100 bg-slate-800/70 border-slate-700', 'help' => 'Non-empty rows read from upload'],
+            ['label' => 'Valid Contacts', 'value' => $validContactRows, 'class' => 'text-emerald-700 bg-emerald-500/10 border-emerald-400/20 dark:text-emerald-200', 'help' => 'Rows with required contact data'],
+            ['label' => 'Warnings', 'value' => $summary['warning_rows'], 'class' => 'text-amber-700 bg-amber-500/10 border-amber-400/20 dark:text-amber-200', 'help' => 'Usable but needs review'],
+            ['label' => 'Invalid Rows', 'value' => $summary['invalid_rows'], 'class' => 'text-rose-700 bg-rose-500/10 border-rose-400/20 dark:text-rose-200', 'help' => 'Blocking data issues'],
+            ['label' => 'Existing Clients', 'value' => $summary['duplicates'], 'class' => 'text-orange-700 bg-orange-500/10 border-orange-400/20 dark:text-orange-200', 'help' => 'Matched duplicate clients'],
+            ['label' => 'Service History', 'value' => $summary['service_history_rows'], 'class' => 'text-cyan-700 bg-cyan-500/10 border-cyan-400/20 dark:text-cyan-200', 'help' => 'Rows with service activity'],
+            ['label' => 'Retention Actions', 'value' => $summary['suggested_retention_actions'], 'class' => 'text-purple-700 bg-purple-500/10 border-purple-400/20 dark:text-purple-200', 'help' => 'Actionable retention suggestions'],
+        ];
+
+        $workflowCards = [
+            ['label' => 'Pending', 'value' => $summary['pending_review'] ?? ($reviewSummary['pending_review'] ?? 0), 'class' => 'text-slate-700 bg-slate-100 border-slate-200 dark:text-slate-200 dark:bg-slate-800/70 dark:border-slate-700'],
+            ['label' => 'Approved', 'value' => $summary['approved'] ?? ($reviewSummary['approved'] ?? 0), 'class' => 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-400/20'],
+            ['label' => 'Rejected', 'value' => $summary['rejected'] ?? ($reviewSummary['rejected'] ?? 0), 'class' => 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-200 dark:bg-rose-500/10 dark:border-rose-400/20'],
+            ['label' => 'Skipped', 'value' => $summary['skipped'] ?? ($reviewSummary['skipped'] ?? 0), 'class' => 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-200 dark:bg-amber-500/10 dark:border-amber-400/20'],
         ];
 
         $statusClasses = [
@@ -218,38 +250,63 @@
             </div>
         @endif
 
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-            @foreach($summaryCards as $card)
-                <div class="rounded-2xl border p-4 {{ $card['class'] }}">
-                    <div class="text-2xl font-black leading-none">
-                        {{ $card['value'] }}
-                    </div>
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/75">
+            <div class="flex flex-col gap-1">
+                <h2 class="text-base font-extrabold tracking-tight text-slate-950 dark:text-white">
+                    Client data validation summary
+                </h2>
 
-                    <div class="mt-2 text-xs font-black uppercase tracking-wide opacity-90">
-                        {{ $card['label'] }}
-                    </div>
-                </div>
-            @endforeach
-        </div>
+                <p class="text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">
+                    These counts come from contact validation, duplicate matching, service-history detection, and retention classification.
+                </p>
+            </div>
 
-        @isset($reviewSummary)
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
-                @foreach([
-                    'pending_review' => 'Pending Review',
-                    'approved' => 'Approved',
-                    'rejected' => 'Rejected',
-                    'skipped' => 'Skipped',
-                    'applied' => 'Applied',
-                    'invalid' => 'Invalid',
-                    'warning' => 'Warning',
-                ] as $key => $label)
-                    <div class="rounded-2xl border border-slate-800 bg-slate-900/75 p-4">
-                        <div class="text-2xl font-black text-white">{{ $reviewSummary[$key] ?? 0 }}</div>
-                        <div class="mt-2 text-xs font-black uppercase tracking-wide text-slate-400">{{ $label }}</div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                @foreach($summaryCards as $card)
+                    <div class="rounded-2xl border p-4 shadow-sm {{ $card['class'] }}">
+                        <div class="text-4xl font-black leading-none">
+                            {{ $card['value'] }}
+                        </div>
+
+                        <div class="mt-2 text-xs font-black uppercase tracking-wide opacity-90">
+                            {{ $card['label'] }}
+                        </div>
+
+                        <div class="mt-2 text-xs font-bold opacity-75">
+                            {{ $card['help'] }}
+                        </div>
                     </div>
                 @endforeach
             </div>
-        @endisset
+
+            @isset($reviewSummary)
+                <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+                    <div class="flex flex-col gap-1">
+                        <h3 class="text-sm font-extrabold tracking-tight text-slate-950 dark:text-white">
+                            Review workflow
+                        </h3>
+
+                        <p class="text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                            These counts are manager review states. They do not replace the validation/contact summary above.
+                        </p>
+                    </div>
+
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        @foreach($workflowCards as $card)
+                            <div class="rounded-2xl border p-4 {{ $card['class'] }}">
+                                <div class="text-2xl font-black leading-none">
+                                    {{ $card['value'] }}
+                                </div>
+
+                                <div class="mt-2 text-xs font-black uppercase tracking-wide opacity-90">
+                                    {{ $card['label'] }}
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endisset
+        </section>
 
         @isset($batch)
             <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-sm">
