@@ -24,6 +24,14 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.leads.import.preview') }}" class="sf-btn-soft-blue">
+                Preview Instant ACK
+            </a>
+
+            <a href="{{ route('admin.leads.import.preview.batches.index') }}" class="sf-btn-soft-blue">
+                Saved Previews
+            </a>
+
             <a href="{{ asset('samples/sample_lead_import.csv') }}" download class="sf-btn-soft-blue">
                 Download Sample CSV
             </a>

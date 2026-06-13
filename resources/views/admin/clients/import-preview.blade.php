@@ -679,10 +679,10 @@
                             : 'client-import-row-checkbox-' . $row['row_number'];
                     @endphp
 
-                    <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-orange-200 hover:bg-white dark:border-slate-800 dark:bg-slate-950/50 dark:hover:border-orange-400/30 dark:hover:bg-slate-950/70">
-                        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+                    <article class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-orange-200 hover:bg-white dark:border-slate-800 dark:bg-slate-950/50 dark:hover:border-orange-400/30 dark:hover:bg-slate-950/70">
+                        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr),auto] xl:items-start">
+                            <div class="min-w-0">
+                                <div class="grid gap-3 sm:grid-cols-[auto,minmax(0,1fr)] sm:items-start">
                                     @isset($batch)
                                         <div class="shrink-0 pt-1">
                                             @if($reviewStatus !== 'applied')
@@ -725,7 +725,7 @@
                                         </div>
                                     @endisset
 
-                                    <div class="min-w-0 flex-1">
+                                    <div class="min-w-0">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-300 dark:bg-slate-500/10 dark:text-slate-200 dark:ring-slate-400/20">
                                                 Row #{{ $row['row_number'] }}
@@ -751,11 +751,11 @@
                                         </div>
 
                                         <div class="mt-3 min-w-0">
-                                            <h3 class="break-words text-lg font-black leading-tight text-slate-950 dark:text-white">
+                                            <h3 class="whitespace-normal break-normal text-lg font-black leading-tight text-slate-950 [overflow-wrap:normal] dark:text-white">
                                                 {{ $displayValue($data['name']) }}
                                             </h3>
 
-                                            <div class="mt-1 break-words text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                            <div class="mt-1 break-all text-sm font-semibold leading-5 text-slate-600 sm:break-words dark:text-slate-300">
                                                 {{ $displayValue($data['email'], 'Email optional') }}
                                             </div>
 
@@ -770,7 +770,7 @@
                             </div>
 
                             @isset($batch)
-                                <div class="flex w-full flex-wrap gap-2 xl:w-auto xl:max-w-[340px] xl:justify-end">
+                                <div class="flex w-full flex-wrap gap-2 xl:w-auto xl:max-w-[360px] xl:shrink-0 xl:justify-end">
                                     @if($canEdit)
                                         <form action="{{ route('admin.clients.import.rows.review', [$batch, $row['row_id']]) }}" method="POST">
                                             @csrf

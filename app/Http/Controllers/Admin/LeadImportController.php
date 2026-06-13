@@ -5,15 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
+use App\Models\Client\LeadUploadBatch;
+use App\Models\Client\LeadUploadRow;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\Leads\LeadUploadApplyService;
 use App\Services\Leads\LeadFactory;
+use App\Services\Leads\LeadUploadPreviewService;
 use App\Services\Meta\MetaLeadService;
 use App\Services\Settings\SettingsStore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,6 +37,254 @@ class LeadImportController extends Controller
     public function showCsvForm(Request $request)
     {
         return view('admin.leads.import.index');
+    }
+
+    public function showPreviewForm(Request $request)
+    {
+        return view('admin.leads.import.preview', [
+            'preview' => null,
+        ]);
+    }
+
+    public function previewUpload(Request $request, LeadUploadPreviewService $previewService)
+    {
+        $request->validate([
+            'lead_file' => ['required', 'file', 'mimes:csv,txt,xls,xlsx', 'max:5120'],
+        ]);
+
+        $companyId = (int) $request->user()->company_id;
+
+        abort_if(! $companyId, 403);
+
+        try {
+            $preview = $previewService->preview($request->file('lead_file'), $companyId);
+        } catch (\Throwable $e) {
+            Log::warning('[LeadUploadPreview] Preview failed', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Lead upload preview could not be generated: ' . $e->getMessage());
+        }
+
+        $file = $request->file('lead_file');
+        $storedPath = $file->storeAs(
+            'lead-upload-previews',
+            now()->format('Ymd_His') . '_' . uniqid() . '_' . preg_replace('/[^A-Za-z0-9._-]+/', '_', $file->getClientOriginalName()),
+            'local'
+        );
+
+        $batch = DB::transaction(function () use ($request, $preview, $companyId, $storedPath, $file) {
+            $summary = $preview['summary'];
+
+            $batch = LeadUploadBatch::create([
+                'company_id' => $companyId,
+                'uploaded_by' => $request->user()?->id,
+                'original_filename' => $file->getClientOriginalName(),
+                'stored_path' => $storedPath,
+                'mode' => 'preview',
+                'status' => 'parsed',
+                'total_rows' => $summary['rows_shown'] ?? 0,
+                'valid_rows' => $summary['valid'] ?? 0,
+                'warning_rows' => $summary['warnings'] ?? 0,
+                'invalid_rows' => $summary['invalid'] ?? 0,
+                'duplicate_client_rows' => $summary['duplicate_clients'] ?? 0,
+                'duplicate_lead_rows' => $summary['duplicate_leads'] ?? 0,
+                'ready_ack_rows' => $summary['ready_for_ack'] ?? 0,
+                'blocked_ack_rows' => $summary['blocked_or_not_ready'] ?? 0,
+                'meta' => [
+                    'rows_read' => $summary['rows_read'] ?? 0,
+                    'rows_shown' => $summary['rows_shown'] ?? 0,
+                    'limit' => $summary['limit'] ?? LeadUploadPreviewService::DEFAULT_LIMIT,
+                    'truncated' => (bool) ($summary['truncated'] ?? false),
+                    'event_key' => $preview['event_key'] ?? null,
+                    'fallback_event_key' => $preview['fallback_event_key'] ?? null,
+                    'phase' => '9C',
+                    'preview_only' => true,
+                ],
+            ]);
+
+            foreach ($preview['rows'] as $row) {
+                $ack = $row['ack_readiness'] ?? [];
+
+                LeadUploadRow::create([
+                    'batch_id' => $batch->id,
+                    'company_id' => $companyId,
+                    'row_number' => $row['row_number'],
+                    'raw_payload' => $row['raw'] ?? [],
+                    'normalized_payload' => [
+                        'name' => $row['name'] ?? null,
+                        'phone' => $row['phone'] ?? null,
+                        'whatsapp' => $row['whatsapp'] ?? null,
+                        'contact_phone' => $row['contact_phone'] ?? null,
+                        'email' => $row['email'] ?? null,
+                        'source' => $row['source'] ?? null,
+                        'service' => $row['service'] ?? null,
+                        'campaign' => $row['campaign'] ?? null,
+                        'vehicle' => $row['vehicle'] ?? null,
+                    ],
+                    'client_match_id' => $row['client_match']['id'] ?? null,
+                    'lead_match_id' => $row['lead_match']['id'] ?? null,
+                    'vehicle_match_id' => null,
+                    'duplicate_client_status' => ! empty($row['client_match']) ? 'matched' : 'none',
+                    'duplicate_lead_status' => ! empty($row['lead_match']) ? 'recent_duplicate' : 'none',
+                    'validation_status' => $row['status'] ?? 'valid',
+                    'ack_readiness' => $ack['status'] ?? null,
+                    'suggested_ack_event_key' => $ack['event_key'] ?? ($preview['event_key'] ?? null),
+                    'suggested_ack_template_key' => $ack['template'] ?? null,
+                    'suggested_ack_message' => $row['suggested_message'] ?? null,
+                    'errors' => $row['errors'] ?? [],
+                    'warnings' => $row['warnings'] ?? [],
+                    'review_status' => 'pending_review',
+                ]);
+            }
+
+            return $batch;
+        });
+
+        return redirect()
+            ->route('admin.leads.import.preview.batches.show', $batch)
+            ->with('success', 'Lead upload preview parsed and saved for review. No CRM records or WhatsApp messages were created.');
+    }
+
+    public function previewBatches(Request $request)
+    {
+        $companyId = (int) $request->user()->company_id;
+
+        abort_if(! $companyId, 403);
+
+        $batches = LeadUploadBatch::with('uploadedBy')
+            ->where('company_id', $companyId)
+            ->latest()
+            ->paginate(20);
+
+        return view('admin.leads.import.batches', compact('batches'));
+    }
+
+    public function showPreviewBatch(Request $request, int $batch)
+    {
+        $leadUploadBatch = $this->findLeadUploadBatchForCurrentCompany($request, $batch);
+        $leadUploadBatch->load(['uploadedBy', 'rows.clientMatch', 'rows.leadMatch']);
+
+        return view('admin.leads.import.preview', [
+            'batch' => $leadUploadBatch,
+            'preview' => $this->previewPayloadFromBatch($leadUploadBatch),
+        ]);
+    }
+
+    public function reviewPreviewRow(Request $request, int $batch, int $row)
+    {
+        $leadUploadBatch = $this->findLeadUploadBatchForCurrentCompany($request, $batch);
+        $leadUploadRow = $this->findLeadUploadRowForBatch($leadUploadBatch, $row);
+
+        $data = $request->validate([
+            'review_status' => ['required', 'in:approved,rejected,skipped,pending_review'],
+        ]);
+
+        if ($leadUploadRow->review_status === 'applied') {
+            return back()->with('error', 'Applied rows are locked and cannot be changed.');
+        }
+
+        if (
+            $data['review_status'] === 'approved'
+            && $leadUploadRow->validation_status === 'invalid'
+        ) {
+            return back()->with('error', 'Invalid rows cannot be approved. Reject, skip, or reset the row instead.');
+        }
+
+        $leadUploadRow->update([
+            'review_status' => $data['review_status'],
+        ]);
+
+        $this->refreshLeadUploadBatchReviewStatus($leadUploadBatch);
+
+        return back()->with('success', 'Lead upload row review status updated.');
+    }
+
+    public function bulkReviewPreviewRows(Request $request, int $batch)
+    {
+        $leadUploadBatch = $this->findLeadUploadBatchForCurrentCompany($request, $batch);
+
+        $data = $request->validate([
+            'action' => ['required', 'in:approve,reject,skip,reset'],
+            'row_ids' => ['required', 'array', 'min:1'],
+            'row_ids.*' => ['integer'],
+        ]);
+
+        $targetStatus = match ($data['action']) {
+            'approve' => 'approved',
+            'reject' => 'rejected',
+            'skip' => 'skipped',
+            default => 'pending_review',
+        };
+
+        $rows = LeadUploadRow::query()
+            ->where('company_id', $leadUploadBatch->company_id)
+            ->where('batch_id', $leadUploadBatch->id)
+            ->whereIn('id', array_map('intval', $data['row_ids']))
+            ->get();
+
+        $updated = 0;
+        $skippedInvalid = 0;
+        $skippedApplied = 0;
+
+        foreach ($rows as $leadUploadRow) {
+            if ($leadUploadRow->review_status === 'applied') {
+                $skippedApplied++;
+                continue;
+            }
+
+            if (
+                $data['action'] === 'approve'
+                && $leadUploadRow->validation_status === 'invalid'
+            ) {
+                $skippedInvalid++;
+                continue;
+            }
+
+            $leadUploadRow->update([
+                'review_status' => $targetStatus,
+            ]);
+
+            $updated++;
+        }
+
+        $this->refreshLeadUploadBatchReviewStatus($leadUploadBatch);
+
+        $message = "Bulk review updated {$updated} row(s).";
+
+        if ($skippedInvalid > 0) {
+            $message .= " Skipped {$skippedInvalid} invalid row(s).";
+        }
+
+        if ($skippedApplied > 0) {
+            $message .= " Skipped {$skippedApplied} applied row(s).";
+        }
+
+        return back()->with($updated > 0 ? 'success' : 'warning', $message);
+    }
+
+    public function applyPreviewBatch(Request $request, int $batch, LeadUploadApplyService $applyService)
+    {
+        $leadUploadBatch = $this->findLeadUploadBatchForCurrentCompany($request, $batch);
+
+        $data = $request->validate([
+            'mode' => ['nullable', 'in:dry_run,apply'],
+        ]);
+
+        $mode = $data['mode'] ?? 'dry_run';
+        $result = $mode === 'apply'
+            ? $applyService->apply($leadUploadBatch, $request->user()?->id)
+            : $applyService->dryRun($leadUploadBatch, $request->user()?->id);
+
+        $message = $mode === 'apply'
+            ? "Apply completed: {$result['rows_applied']} row(s) applied. No WhatsApp messages were sent."
+            : "Dry-run completed: {$result['ready_to_apply']} row(s) ready to apply. No records were created.";
+
+        return redirect()
+            ->route('admin.leads.import.preview.batches.show', $leadUploadBatch)
+            ->with($mode === 'apply' ? 'success' : 'info', $message)
+            ->with('apply_readiness', $result);
     }
 
     /*
@@ -482,6 +735,170 @@ class LeadImportController extends Controller
     | Helpers
     |--------------------------------------------------------------------------
     */
+    private function findLeadUploadBatchForCurrentCompany(Request $request, int $batch): LeadUploadBatch
+    {
+        $companyId = (int) $request->user()->company_id;
+
+        abort_if(! $companyId, 403);
+
+        return LeadUploadBatch::query()
+            ->where('company_id', $companyId)
+            ->where('id', $batch)
+            ->firstOrFail();
+    }
+
+    private function findLeadUploadRowForBatch(LeadUploadBatch $batch, int $row): LeadUploadRow
+    {
+        return LeadUploadRow::query()
+            ->where('company_id', $batch->company_id)
+            ->where('batch_id', $batch->id)
+            ->where('id', $row)
+            ->firstOrFail();
+    }
+
+    private function refreshLeadUploadBatchReviewStatus(LeadUploadBatch $batch): void
+    {
+        $counts = LeadUploadRow::query()
+            ->where('batch_id', $batch->id)
+            ->select('review_status', DB::raw('count(*) as rows_count'))
+            ->groupBy('review_status')
+            ->pluck('rows_count', 'review_status');
+
+        $total = (int) $counts->sum();
+        $pending = (int) ($counts['pending_review'] ?? 0);
+        $reviewed = (int) ($counts['approved'] ?? 0)
+            + (int) ($counts['rejected'] ?? 0)
+            + (int) ($counts['skipped'] ?? 0)
+            + (int) ($counts['applied'] ?? 0);
+
+        $status = 'parsed';
+
+        if ($reviewed > 0 && $pending > 0) {
+            $status = 'pending_review';
+        }
+
+        if ($total > 0 && $pending === 0 && $reviewed >= $total) {
+            $status = 'reviewed';
+        }
+
+        $meta = $batch->meta ?? [];
+        $meta['review_counts'] = [
+            'pending_review' => $pending,
+            'approved' => (int) ($counts['approved'] ?? 0),
+            'rejected' => (int) ($counts['rejected'] ?? 0),
+            'skipped' => (int) ($counts['skipped'] ?? 0),
+            'applied' => (int) ($counts['applied'] ?? 0),
+            'total' => $total,
+        ];
+
+        $batch->update([
+            'status' => $status,
+            'meta' => $meta,
+        ]);
+    }
+
+    private function previewPayloadFromBatch(LeadUploadBatch $batch): array
+    {
+        $meta = $batch->meta ?? [];
+        $reviewCounts = $batch->rows
+            ->groupBy('review_status')
+            ->map(fn ($rows) => $rows->count());
+
+        return [
+            'summary' => [
+                'rows_read' => $meta['rows_read'] ?? $batch->total_rows,
+                'rows_shown' => $batch->total_rows,
+                'limit' => $meta['limit'] ?? LeadUploadPreviewService::DEFAULT_LIMIT,
+                'truncated' => (bool) ($meta['truncated'] ?? false),
+                'valid' => $batch->valid_rows,
+                'warnings' => $batch->warning_rows,
+                'invalid' => $batch->invalid_rows,
+                'duplicate_clients' => $batch->duplicate_client_rows,
+                'duplicate_leads' => $batch->duplicate_lead_rows,
+                'ready_for_ack' => $batch->ready_ack_rows,
+                'blocked_or_not_ready' => $batch->blocked_ack_rows,
+                'review_pending' => (int) ($reviewCounts['pending_review'] ?? 0),
+                'review_approved' => (int) ($reviewCounts['approved'] ?? 0),
+                'review_rejected' => (int) ($reviewCounts['rejected'] ?? 0),
+                'review_skipped' => (int) ($reviewCounts['skipped'] ?? 0),
+                'review_applied' => (int) ($reviewCounts['applied'] ?? 0),
+            ],
+            'headers' => [],
+            'rows' => $batch->rows->map(function (LeadUploadRow $row) {
+                $normalized = $row->normalized_payload ?? [];
+
+                return [
+                    'row_number' => $row->row_number,
+                    'status' => $row->validation_status,
+                    'name' => $normalized['name'] ?? null,
+                    'phone' => $normalized['phone'] ?? null,
+                    'whatsapp' => $normalized['whatsapp'] ?? null,
+                    'contact_phone' => $normalized['contact_phone'] ?? null,
+                    'email' => $normalized['email'] ?? null,
+                    'source' => $normalized['source'] ?? null,
+                    'service' => $normalized['service'] ?? null,
+                    'campaign' => $normalized['campaign'] ?? null,
+                    'vehicle' => $normalized['vehicle'] ?? null,
+                    'client_match' => $row->clientMatch ? [
+                        'id' => $row->clientMatch->id,
+                        'name' => $row->clientMatch->name,
+                    ] : null,
+                    'lead_match' => $row->leadMatch ? [
+                        'id' => $row->leadMatch->id,
+                        'name' => $row->leadMatch->name,
+                        'status' => $row->leadMatch->status,
+                        'source' => $row->leadMatch->source,
+                        'created_at' => optional($row->leadMatch->created_at)->format('d M Y'),
+                    ] : null,
+                    'ack_readiness' => [
+                        'status' => $row->ack_readiness,
+                        'label' => $this->ackReadinessLabel($row->ack_readiness),
+                        'reason' => $this->ackReadinessReason($row),
+                        'event_key' => $row->suggested_ack_event_key,
+                        'template' => $row->suggested_ack_template_key,
+                    ],
+                    'suggested_message' => $row->suggested_ack_message,
+                    'warnings' => $row->warnings ?? [],
+                    'errors' => $row->errors ?? [],
+                    'review_status' => $row->review_status,
+                    'row_id' => $row->id,
+                    'raw' => $row->raw_payload ?? [],
+                ];
+            })->all(),
+            'notice' => 'Review only. No leads, clients, vehicles, WhatsApp messages, campaigns, or journeys have been created yet.',
+            'event_key' => $meta['event_key'] ?? 'lead.upload.instant_ack',
+            'fallback_event_key' => $meta['fallback_event_key'] ?? 'lead.created',
+        ];
+    }
+
+    private function ackReadinessLabel(?string $status): string
+    {
+        return match ($status) {
+            'ready' => 'Ready',
+            'missing_template_mapping' => 'Missing mapping',
+            'template_pending' => 'Template pending',
+            'missing_phone' => 'Missing phone',
+            'opted_out' => 'Opted out',
+            'duplicate_recent_lead' => 'Duplicate lead',
+            'invalid_row' => 'Invalid row',
+            default => 'Needs review',
+        };
+    }
+
+    private function ackReadinessReason(LeadUploadRow $row): string
+    {
+        return match ($row->ack_readiness) {
+            'ready' => 'Upload ACK mapping and active template were available at preview time.',
+            'missing_template_mapping' => 'No active upload ACK template mapping was available at preview time.',
+            'template_pending' => 'Mapped template was not active/approved at preview time.',
+            'missing_phone' => 'Phone or WhatsApp is required.',
+            'opted_out' => 'Customer appeared opted out from WhatsApp automation.',
+            'duplicate_recent_lead' => 'A recent lead already existed for this phone/email.',
+            'invalid_row' => 'Fix row errors before instant response can be considered.',
+            default => 'Row requires manager review before future instant response.',
+        };
+    }
+
     private function cleanHeader(?string $header): string
     {
         $header = (string) $header;
