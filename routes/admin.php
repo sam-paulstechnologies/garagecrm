@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\{
     DemoController,
     FileController,
     GarageController,
+    GarageSummaryReportController,
     InvoiceController,
     JobController,
     LeadController,
@@ -45,7 +46,8 @@ use App\Http\Controllers\Admin\{
     DuplicateClientsController,
     MetaConnectController,
     DocumentInboxController,
-    CommunicationLogController
+    CommunicationLogController,
+    RetentionActionController
 };
 
 use App\Http\Controllers\Admin\Marketing\CampaignController as MarketingCampaignController;
@@ -136,6 +138,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
             Route::patch('/meta/forms/{leadSource}/capture', [LeadSourceController::class, 'updateMetaCapture'])
                 ->name('meta.forms.capture');
+
             Route::post('/meta/disconnect', [MetaConnectController::class, 'disconnect'])
                 ->name('meta.disconnect');
 
@@ -192,6 +195,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::pattern('doc', '[0-9]+');
         Route::pattern('campaign', '[0-9]+');
         Route::pattern('trigger', '[0-9]+');
+        Route::pattern('retentionAction', '[0-9]+');
 
         /*
         |--------------------------------------------------------------------------
@@ -203,6 +207,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         Route::get('sla-dashboard', [SlaDashboardController::class, 'index'])
             ->name('sla_dashboard');
+
+        Route::get('reports/garage-summary', [GarageSummaryReportController::class, 'index'])
+            ->name('reports.garage-summary');
 
         /*
         |--------------------------------------------------------------------------
@@ -308,6 +315,32 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         /*
         |--------------------------------------------------------------------------
+        | Retention Actions
+        |--------------------------------------------------------------------------
+        */
+        Route::get('retention-actions', [RetentionActionController::class, 'index'])
+            ->name('retention-actions.index');
+
+        Route::get('retention-actions/report', [RetentionActionController::class, 'report'])
+            ->name('retention-actions.report');
+
+        Route::post('retention-actions/bulk', [RetentionActionController::class, 'bulk'])
+            ->name('retention-actions.bulk');
+
+        Route::post('retention-actions/bulk-schedule-draft', [RetentionActionController::class, 'bulkScheduleDraft'])
+            ->name('retention-actions.bulk-schedule-draft');
+
+        Route::post('retention-actions/{retentionAction}/schedule-draft', [RetentionActionController::class, 'scheduleDraft'])
+            ->name('retention-actions.schedule-draft');
+
+        Route::post('retention-actions/{retentionAction}/unschedule-draft', [RetentionActionController::class, 'unscheduleDraft'])
+            ->name('retention-actions.unschedule-draft');
+
+        Route::patch('retention-actions/{retentionAction}', [RetentionActionController::class, 'update'])
+            ->name('retention-actions.update');
+
+        /*
+        |--------------------------------------------------------------------------
         | Launch Setup
         |--------------------------------------------------------------------------
         */
@@ -387,8 +420,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->whereNumber('batch')
             ->whereNumber('row')
             ->name('clients.import.rows.review');
+
         Route::get('clients/import', [ClientController::class, 'importForm'])
             ->name('clients.import.form');
+
         Route::get('clients/import/sample', [ClientController::class, 'importSample'])
             ->name('clients.import.sample');
 
@@ -419,6 +454,32 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         Route::get('leads/import/excel', [LeadImportController::class, 'showCsvForm'])
             ->name('leads.import.upload');
+
+        Route::get('leads/import/preview/batches', [LeadImportController::class, 'previewBatches'])
+            ->name('leads.import.preview.batches.index');
+
+        Route::get('leads/import/preview/batches/{batch}', [LeadImportController::class, 'showPreviewBatch'])
+            ->whereNumber('batch')
+            ->name('leads.import.preview.batches.show');
+
+        Route::post('leads/import/preview/batches/{batch}/bulk-review', [LeadImportController::class, 'bulkReviewPreviewRows'])
+            ->whereNumber('batch')
+            ->name('leads.import.preview.batches.bulk-review');
+
+        Route::post('leads/import/preview/batches/{batch}/apply', [LeadImportController::class, 'applyPreviewBatch'])
+            ->whereNumber('batch')
+            ->name('leads.import.preview.batches.apply');
+
+        Route::post('leads/import/preview/batches/{batch}/rows/{row}/review', [LeadImportController::class, 'reviewPreviewRow'])
+            ->whereNumber('batch')
+            ->whereNumber('row')
+            ->name('leads.import.preview.rows.review');
+
+        Route::get('leads/import/preview', [LeadImportController::class, 'showPreviewForm'])
+            ->name('leads.import.preview');
+
+        Route::post('leads/import/preview', [LeadImportController::class, 'previewUpload'])
+            ->name('leads.import.preview.process');
 
         Route::post('leads/import/excel', [LeadImportController::class, 'importFromCsv'])
             ->name('leads.import.process');

@@ -12,12 +12,14 @@ use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\Journey\ServiceJourneyIntegrityService;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BookingController extends Controller
 {
@@ -151,7 +153,8 @@ class BookingController extends Controller
 
             'opportunities' => Opportunity::where('company_id', $companyId)
                 ->where('is_archived', false)
-                ->with(['client:id,name,phone', 'vehicleMake:id,name', 'vehicleModel:id,name'])
+                ->whereIn('stage', Opportunity::ACTIVE_STAGES)
+                ->with(['client:id,name,phone,whatsapp,email', 'vehicle.make', 'vehicle.model', 'vehicleMake:id,name', 'vehicleModel:id,name'])
                 ->latest()
                 ->get(),
 
@@ -200,6 +203,16 @@ class BookingController extends Controller
 
                 $this->validateLinkedRecords($data, $companyId);
 
+                if (
+                    Schema::hasColumn('bookings', 'lead_id')
+                    && ! empty($data['opportunity_id'])
+                    && empty($data['lead_id'])
+                ) {
+                    $data['lead_id'] = Opportunity::where('company_id', $companyId)
+                        ->where('id', $data['opportunity_id'])
+                        ->value('lead_id');
+                }
+
                 $data['status'] = $data['status'] ?? self::STATUS_SCHEDULED;
 
                 $this->validateStatusRequirements($data);
@@ -231,6 +244,8 @@ class BookingController extends Controller
                 }
 
                 $booking = Booking::create($this->bookingPayload($data));
+                $booking = app(ServiceJourneyIntegrityService::class)
+                    ->ensureBookingHasUpstreamJourney($booking, ['source' => 'admin_booking_store']);
 
                 if (
                     $booking->status === self::STATUS_SCHEDULED
@@ -304,7 +319,8 @@ class BookingController extends Controller
 
             'opportunities' => Opportunity::where('company_id', $companyId)
                 ->where('is_archived', false)
-                ->with(['client:id,name,phone', 'vehicleMake:id,name', 'vehicleModel:id,name'])
+                ->whereIn('stage', Opportunity::ACTIVE_STAGES)
+                ->with(['client:id,name,phone,whatsapp,email', 'vehicle.make', 'vehicle.model', 'vehicleMake:id,name', 'vehicleModel:id,name'])
                 ->latest()
                 ->get(),
 
@@ -357,6 +373,17 @@ class BookingController extends Controller
                 }
 
                 $this->validateLinkedRecords($data, $booking->company_id);
+
+                if (
+                    Schema::hasColumn('bookings', 'lead_id')
+                    && ! empty($data['opportunity_id'])
+                    && empty($data['lead_id'])
+                ) {
+                    $data['lead_id'] = Opportunity::where('company_id', $booking->company_id)
+                        ->where('id', $data['opportunity_id'])
+                        ->value('lead_id');
+                }
+
                 $this->validateStatusRequirements($data);
 
                 $allowOverbooking = $request->boolean('allow_overbooking');
@@ -386,6 +413,8 @@ class BookingController extends Controller
                 }
 
                 $booking->update($this->bookingPayload($data));
+                $booking = app(ServiceJourneyIntegrityService::class)
+                    ->ensureBookingHasUpstreamJourney($booking, ['source' => 'admin_booking_update']);
 
                 $freshBooking = $booking->fresh([
                     'client',
@@ -487,17 +516,20 @@ class BookingController extends Controller
             ],
 
             'new_vehicle_make_id' => [
+                Rule::requiredIf(fn () => $isCreate && $request->input('client_id') === 'new_client' && ! $request->filled('opportunity_id')),
                 'nullable',
                 Rule::exists('vehicle_makes', 'id'),
             ],
 
             'new_vehicle_model_id' => [
+                Rule::requiredIf(fn () => $isCreate && $request->input('client_id') === 'new_client' && ! $request->filled('opportunity_id')),
                 'nullable',
                 Rule::exists('vehicle_models', 'id'),
             ],
 
             'new_vehicle_plate_number' => ['nullable', 'string', 'max:50'],
             'new_vehicle_year' => ['nullable', 'string', 'max:10'],
+            'new_vehicle_vin' => ['nullable', 'string', 'max:100'],
             'new_vehicle_color' => ['nullable', 'string', 'max:50'],
 
             'name' => [$isCreate ? 'required' : 'nullable', 'string', 'max:255'],
@@ -545,17 +577,36 @@ class BookingController extends Controller
         if ($isCreate) {
             $rules['client_id'] = [
                 'nullable',
-                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+                function (string $attribute, mixed $value, \Closure $fail) use ($companyId) {
+                    if ($value === null || $value === '' || $value === 'new_client') {
+                        return;
+                    }
+
+                    $exists = Client::query()
+                        ->where('company_id', $companyId)
+                        ->where('id', $value)
+                        ->exists();
+
+                    if (! $exists) {
+                        $fail('Selected client does not belong to this company.');
+                    }
+                },
             ];
 
             $rules['new_client_name'] = [
-                'required_without_all:client_id,opportunity_id',
+                Rule::requiredIf(fn () => $request->input('client_id') === 'new_client' && ! $request->filled('opportunity_id')),
                 'nullable',
                 'string',
                 'max:255',
             ];
 
             $rules['new_client_phone'] = [
+                'nullable',
+                'string',
+                'max:50',
+            ];
+
+            $rules['new_client_whatsapp'] = [
                 'nullable',
                 'string',
                 'max:50',
@@ -568,7 +619,11 @@ class BookingController extends Controller
             ];
         }
 
-        return $request->validate($rules);
+        return $request->validate($rules, [
+            'new_client_name.required' => 'Client name is required when creating a new client.',
+            'new_vehicle_make_id.required' => 'Vehicle make is required when creating a booking for a new client.',
+            'new_vehicle_model_id.required' => 'Vehicle model is required when creating a booking for a new client.',
+        ]);
     }
 
     protected function bookingPayload(array $data): array
@@ -577,11 +632,13 @@ class BookingController extends Controller
             ->except([
                 'new_client_name',
                 'new_client_phone',
+                'new_client_whatsapp',
                 'new_client_email',
                 'new_vehicle_make_id',
                 'new_vehicle_model_id',
                 'new_vehicle_plate_number',
                 'new_vehicle_year',
+                'new_vehicle_vin',
                 'new_vehicle_color',
                 'allow_overbooking',
                 'overbooking_reason',
@@ -591,10 +648,6 @@ class BookingController extends Controller
 
     protected function resolveClientId(array $data, int $companyId): int
     {
-        if (! empty($data['client_id'])) {
-            return (int) $data['client_id'];
-        }
-
         if (! empty($data['opportunity_id'])) {
             $opportunity = Opportunity::where('company_id', $companyId)
                 ->find($data['opportunity_id']);
@@ -604,15 +657,48 @@ class BookingController extends Controller
             return (int) $opportunity->client_id;
         }
 
-        $phone = trim((string) ($data['new_client_phone'] ?? ''));
-        $email = trim((string) ($data['new_client_email'] ?? ''));
+        if (! empty($data['client_id']) && $data['client_id'] !== 'new_client') {
+            $client = Client::query()
+                ->where('company_id', $companyId)
+                ->where('id', $data['client_id'])
+                ->first();
 
-        if ($phone !== '' || $email !== '') {
+            abort_if(! $client, 422, 'Selected client does not belong to this company.');
+
+            return (int) $client->id;
+        }
+
+        $phone = trim((string) ($data['new_client_phone'] ?? ''));
+        $whatsapp = trim((string) ($data['new_client_whatsapp'] ?? ''));
+        $email = trim((string) ($data['new_client_email'] ?? ''));
+        $contactNumber = $phone !== '' ? $phone : $whatsapp;
+        $normalizedContact = Client::normalizePhone($contactNumber);
+
+        if (empty($data['new_client_name']) || $normalizedContact === null) {
+            $messages = [
+                'client_id' => 'Please select or create a client before creating the booking.',
+            ];
+
+            if (empty($data['new_client_name'])) {
+                $messages['new_client_name'] = 'Client name is required when creating a new client.';
+            }
+
+            if ($normalizedContact === null) {
+                $messages['new_client_phone'] = 'Please enter a phone or WhatsApp number for the new client.';
+            }
+
+            throw ValidationException::withMessages($messages);
+        }
+
+        if ($normalizedContact !== null || $email !== '') {
             $existingClient = Client::where('company_id', $companyId)
-                ->where(function ($query) use ($phone, $email) {
-                    if ($phone !== '') {
-                        $query->where('phone', $phone)
-                            ->orWhere('whatsapp', $phone);
+                ->where(function ($query) use ($phone, $whatsapp, $email, $normalizedContact) {
+                    if ($normalizedContact !== null) {
+                        $query->where('phone_norm', $normalizedContact)
+                            ->orWhere('phone', $phone)
+                            ->orWhere('phone', $whatsapp)
+                            ->orWhere('whatsapp', $phone)
+                            ->orWhere('whatsapp', $whatsapp);
                     }
 
                     if ($email !== '') {
@@ -629,8 +715,8 @@ class BookingController extends Controller
         $client = Client::create([
             'company_id' => $companyId,
             'name' => $data['new_client_name'],
-            'phone' => $phone ?: null,
-            'whatsapp' => $phone ?: null,
+            'phone' => $contactNumber ?: null,
+            'whatsapp' => ($whatsapp !== '' ? $whatsapp : $contactNumber) ?: null,
             'email' => $email ?: null,
             'source' => 'walk-in booking',
             'status' => 'active',
@@ -659,6 +745,20 @@ class BookingController extends Controller
             abort_if(! $model, 422, 'Selected vehicle model does not belong to the selected make.');
         }
 
+        $existingVehicle = Vehicle::query()
+            ->where('company_id', $companyId)
+            ->where('client_id', $data['client_id'])
+            ->where('make_id', $data['new_vehicle_make_id'])
+            ->where('model_id', $data['new_vehicle_model_id'])
+            ->when(! empty($data['new_vehicle_plate_number']), function ($query) use ($data) {
+                $query->where('plate_number', $data['new_vehicle_plate_number']);
+            })
+            ->first();
+
+        if ($existingVehicle) {
+            return (int) $existingVehicle->id;
+        }
+
         $vehicle = Vehicle::create([
             'company_id' => $companyId,
             'client_id' => $data['client_id'],
@@ -666,6 +766,7 @@ class BookingController extends Controller
             'model_id' => $data['new_vehicle_model_id'] ?? null,
             'plate_number' => $data['new_vehicle_plate_number'] ?? null,
             'year' => $data['new_vehicle_year'] ?? null,
+            'vin' => $data['new_vehicle_vin'] ?? null,
             'color' => $data['new_vehicle_color'] ?? null,
         ]);
 
@@ -1202,7 +1303,7 @@ class BookingController extends Controller
 
     protected function createJobFromBooking(Booking $booking): Job
     {
-        $booking->loadMissing(['client', 'vehicleData.make', 'vehicleData.model']);
+        $booking->loadMissing(['client', 'opportunity', 'vehicleData.make', 'vehicleData.model']);
 
         $lookup = [
             'company_id' => $booking->company_id,
@@ -1216,6 +1317,14 @@ class BookingController extends Controller
             'assigned_to' => $booking->assigned_to,
             'start_time' => now(),
         ];
+
+        if (Schema::hasColumn('jobs', 'opportunity_id')) {
+            $payload['opportunity_id'] = $booking->opportunity_id;
+        }
+
+        if (Schema::hasColumn('jobs', 'lead_id')) {
+            $payload['lead_id'] = $booking->lead_id ?: $booking->opportunity?->lead_id;
+        }
 
         /*
         |--------------------------------------------------------------------------

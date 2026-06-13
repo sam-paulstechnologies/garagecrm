@@ -7,7 +7,9 @@ use App\Models\Client\Client;
 use App\Models\Client\ClientImportBatch;
 use App\Models\Client\ClientImportRow;
 use App\Models\Client\Note;
+use App\Models\Client\RetentionAction;
 use App\Models\Job\Job;
+use App\Models\Vehicle\VehicleServiceHistory;
 use App\Services\Clients\ClientImportApplyService;
 use App\Services\Clients\ClientImportRetentionActionService;
 use App\Services\Clients\ClientImportRetentionPreviewService;
@@ -30,6 +32,11 @@ class ClientController extends Controller
         $companyId = auth()->user()->company_id;
 
         $q = trim((string) $request->get('q', ''));
+        $currentLetter = strtoupper(substr(trim((string) $request->get('letter', '')), 0, 1));
+
+        if (! preg_match('/^[A-Z]$/', $currentLetter)) {
+            $currentLetter = null;
+        }
 
         $filters = [
             'q'               => $q,
@@ -166,6 +173,21 @@ class ClientController extends Controller
             $clientsQuery->where('source', $filters['source']);
         }
 
+        $availableLetters = (clone $clientsQuery)
+            ->pluck('name')
+            ->map(function ($name) {
+                return strtoupper(substr(trim((string) $name), 0, 1));
+            })
+            ->filter(fn ($letter) => preg_match('/^[A-Z]$/', $letter))
+            ->unique()
+            ->sort()
+            ->values()
+            ->toArray();
+
+        if ($currentLetter) {
+            $clientsQuery->where('name', 'like', $currentLetter . '%');
+        }
+
         $clients = $clientsQuery
             ->orderBy('name')
             ->paginate(20)
@@ -177,7 +199,9 @@ class ClientController extends Controller
             'clients',
             'q',
             'filters',
-            'vehicleMakes'
+            'vehicleMakes',
+            'availableLetters',
+            'currentLetter'
         ));
     }
 
@@ -379,7 +403,72 @@ class ClientController extends Controller
             'missing_items'       => $missingItems,
         ];
 
-        $nextRetentionFollowUp = $vehicleRenewalOpportunityService->nextForClient($client, true) ?? [
+        $nextRetentionFollowUp = $this->nextRetentionFollowUpFor($client, $serviceHistory, $vehicleRenewalOpportunityService);
+
+        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory', 'nextRetentionFollowUp'));
+    }
+
+    private function nextRetentionFollowUpFor(
+        Client $client,
+        $serviceHistory,
+        VehicleRenewalOpportunityService $vehicleRenewalOpportunityService
+    ): array
+    {
+        $companyId = (int) auth()->user()->company_id;
+
+        $action = RetentionAction::query()
+            ->with(['vehicle.make', 'vehicle.model', 'importRow.batch'])
+            ->where('company_id', $companyId)
+            ->where('client_id', $client->id)
+            ->whereNotIn('status', ['cancelled', 'skipped'])
+            ->orderByRaw("CASE WHEN status IN ('pending_review', 'approved', 'scheduled') THEN 0 ELSE 1 END")
+            ->orderByRaw('COALESCE(scheduled_at, suggested_follow_up_date, created_at) asc')
+            ->first();
+
+        if ($action) {
+            return $this->retentionCardFromAction($action, $client);
+        }
+
+        $importRow = ClientImportRow::query()
+            ->with('batch')
+            ->where('company_id', $companyId)
+            ->where('client_match_id', $client->id)
+            ->where('validation_status', '!=', 'invalid')
+            ->whereNotNull('suggested_segment_code')
+            ->where('suggested_segment_code', '!=', 'unclassified')
+            ->orderByRaw('suggested_next_action_date is null')
+            ->orderBy('suggested_next_action_date')
+            ->latest('id')
+            ->first();
+
+        if ($importRow) {
+            return $this->retentionCardFromImportRow($importRow, $client);
+        }
+
+        $history = VehicleServiceHistory::query()
+            ->with(['vehicle.make', 'vehicle.model'])
+            ->where('company_id', $companyId)
+            ->where('client_id', $client->id)
+            ->latest('service_date')
+            ->first();
+
+        if ($history) {
+            return $this->retentionCardFromServiceHistory($history, $client);
+        }
+
+        $lastCompletedJob = collect($serviceHistory)->first();
+
+        if ($lastCompletedJob) {
+            return $this->retentionCardFromCompletedJob($lastCompletedJob, $client);
+        }
+
+        $vehicleRenewal = $vehicleRenewalOpportunityService->nextForClient($client, true);
+
+        if ($vehicleRenewal) {
+            return $vehicleRenewal;
+        }
+
+        return [
             'state' => 'empty',
             'status_label' => 'No Data',
             'segment_label' => null,
@@ -389,8 +478,150 @@ class ClientController extends Controller
             'source_label' => null,
             'safety_note' => 'No message is sent from this card.',
         ];
+    }
 
-        return view('admin.clients.show', compact('client', 'kpis', 'serviceHistory', 'nextRetentionFollowUp'));
+    private function retentionCardFromAction(RetentionAction $action, Client $client): array
+    {
+        return [
+            'state' => 'action',
+            'status_label' => Str::headline((string) $action->status),
+            'status_code' => (string) $action->status,
+            'segment_label' => $action->segment_label ?: Str::headline((string) $action->segment_code),
+            'segment_code' => $action->segment_code,
+            'follow_up_date' => $action->scheduled_at?->toDateString()
+                ?: $action->suggested_follow_up_date?->toDateString(),
+            'channel' => $this->preferredRetentionChannel($client),
+            'message' => $action->suggested_message,
+            'source_label' => $this->retentionSourceLabel($action->source_type, $action->importRow?->batch),
+            'safety_note' => 'No message is sent from this card.',
+        ];
+    }
+
+    private function retentionCardFromImportRow(ClientImportRow $row, Client $client): array
+    {
+        return [
+            'state' => 'suggested',
+            'status_label' => 'Suggested',
+            'status_code' => 'suggested',
+            'segment_label' => $row->suggested_segment_label ?: Str::headline((string) $row->suggested_segment_code),
+            'segment_code' => $row->suggested_segment_code,
+            'follow_up_date' => $row->suggested_next_action_date?->toDateString(),
+            'channel' => $this->preferredRetentionChannel($client),
+            'message' => $row->suggested_message,
+            'source_label' => $this->retentionSourceLabel('client_import_row', $row->batch),
+            'safety_note' => 'Suggestion only. No message has been scheduled or sent.',
+        ];
+    }
+
+    private function retentionCardFromServiceHistory(VehicleServiceHistory $history, Client $client): array
+    {
+        $vehicleName = $this->retentionVehicleName($history->vehicle, $client);
+        $segment = $this->retentionSegmentFromServiceType($history->service_type);
+        $followUpDate = $history->service_date
+            ? $this->retentionFollowUpDate($history->service_date, $segment['months'])
+            : null;
+
+        return [
+            'state' => 'suggested',
+            'status_label' => 'Suggested',
+            'status_code' => 'suggested',
+            'segment_label' => $segment['label'],
+            'segment_code' => $segment['code'],
+            'follow_up_date' => $followUpDate,
+            'channel' => $this->preferredRetentionChannel($client),
+            'message' => $this->retentionMessage($client->name, $vehicleName, $segment['code']),
+            'source_label' => 'Service History',
+            'safety_note' => 'Suggestion only. No message has been scheduled or sent.',
+        ];
+    }
+
+    private function retentionCardFromCompletedJob(Job $job, Client $client): array
+    {
+        $serviceDate = $job->end_time ?? $job->completed_at ?? $job->created_at;
+        $segment = $this->retentionSegmentFromServiceType($job->description ?? $job->title ?? null);
+        $vehicleName = $this->retentionVehicleName($client->vehicles?->first(), $client);
+
+        return [
+            'state' => 'suggested',
+            'status_label' => 'Suggested',
+            'status_code' => 'suggested',
+            'segment_label' => $segment['label'],
+            'segment_code' => $segment['code'],
+            'follow_up_date' => $serviceDate ? $this->retentionFollowUpDate(Carbon::parse($serviceDate), $segment['months']) : null,
+            'channel' => $this->preferredRetentionChannel($client),
+            'message' => $this->retentionMessage($client->name, $vehicleName, $segment['code']),
+            'source_label' => 'Completed Job History',
+            'safety_note' => 'Suggestion only. No message has been scheduled or sent.',
+        ];
+    }
+
+    private function preferredRetentionChannel(Client $client): string
+    {
+        $channel = strtolower((string) ($client->preferred_channel ?? ''));
+
+        if (in_array($channel, ['whatsapp', 'phone', 'email'], true)) {
+            if ($channel === 'whatsapp') {
+                return 'WhatsApp';
+            }
+
+            return Str::headline($channel);
+        }
+
+        return filled($client->whatsapp) ? 'WhatsApp' : (filled($client->phone) ? 'Phone' : 'Email');
+    }
+
+    private function retentionSourceLabel(?string $sourceType, ?ClientImportBatch $batch = null): string
+    {
+        if ($sourceType === 'client_import_row') {
+            return $batch
+                ? 'Import Preview #' . $batch->id . ' - ' . $batch->original_filename
+                : 'Import Preview';
+        }
+
+        return $sourceType ? Str::headline($sourceType) : 'Retention Rule';
+    }
+
+    private function retentionSegmentFromServiceType(?string $serviceType): array
+    {
+        $value = Str::lower((string) $serviceType);
+
+        return match (true) {
+            Str::contains($value, 'oil') => ['code' => 'oil_change_due', 'label' => 'Oil Change Due', 'months' => 3],
+            Str::contains($value, ['tyre', 'tire']) => ['code' => 'tyre_check_due', 'label' => 'Tyre Check Due', 'months' => 6],
+            Str::contains($value, 'battery') => ['code' => 'battery_follow_up', 'label' => 'Battery Follow-up', 'months' => 12],
+            Str::contains($value, ['ac', 'a/c', 'air condition', 'air-conditioning', 'air conditioning']) => ['code' => 'ac_service_reminder', 'label' => 'AC Service Reminder', 'months' => 6],
+            Str::contains($value, 'brake') => ['code' => 'brake_check_reminder', 'label' => 'Brake Check Reminder', 'months' => 6],
+            default => ['code' => 'general_service_due', 'label' => 'General Service Due', 'months' => 6],
+        };
+    }
+
+    private function retentionFollowUpDate($date, int $months): string
+    {
+        $followUp = Carbon::parse($date)->copy()->addMonths($months)->startOfDay();
+
+        return $followUp->isPast() ? today()->toDateString() : $followUp->toDateString();
+    }
+
+    private function retentionVehicleName($vehicle, Client $client): string
+    {
+        $name = trim(implode(' ', array_filter([
+            $vehicle?->make?->name,
+            $vehicle?->model?->name,
+        ])));
+
+        return $name ?: 'your vehicle';
+    }
+
+    private function retentionMessage(string $clientName, string $vehicleName, string $segmentCode): string
+    {
+        return match ($segmentCode) {
+            'oil_change_due' => "Hi {$clientName}, your {$vehicleName} may be due for an oil change. Would you like us to help schedule a convenient time?",
+            'tyre_check_due' => "Hi {$clientName}, your {$vehicleName} may be due for a tyre check. Would you like us to help schedule a convenient time?",
+            'battery_follow_up' => "Hi {$clientName}, we can help check the battery health on your {$vehicleName}. Would you like to schedule a quick check?",
+            'ac_service_reminder' => "Hi {$clientName}, your {$vehicleName} may be due for an AC service check. Would you like us to help schedule it?",
+            'brake_check_reminder' => "Hi {$clientName}, your {$vehicleName} may be due for a brake check. Would you like us to help schedule a convenient time?",
+            default => "Hi {$clientName}, your {$vehicleName} may be due for a general service check. Would you like us to help schedule a convenient time?",
+        };
     }
 
     public function edit(Client $client)
@@ -403,6 +634,16 @@ class ClientController extends Controller
         ]);
 
         $latestServiceHistory = null;
+
+        if (Schema::hasTable('vehicle_service_histories')) {
+            $latestServiceHistory = VehicleServiceHistory::query()
+                ->with(['vehicle.make', 'vehicle.model'])
+                ->where('company_id', auth()->user()->company_id)
+                ->where('client_id', $client->id)
+                ->latest('service_date')
+                ->first();
+        }
+
         $profileMissingItems = $this->profileMissingItemsFor($client);
 
         return view('admin.clients.edit', compact('client', 'latestServiceHistory', 'profileMissingItems'));
@@ -579,9 +820,6 @@ class ClientController extends Controller
         return view('admin.clients.import');
     }
 
-    /**
-     * 📥 Import clients
-     */
     public function importSample()
     {
         $headers = [
@@ -639,7 +877,7 @@ class ClientController extends Controller
     }
 
     /**
-     * Client import workflow
+     * 📥 Import clients
      */
     public function import(Request $request, ClientImportRetentionPreviewService $previewService)
     {

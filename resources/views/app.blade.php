@@ -148,6 +148,31 @@
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
+
+        .sf-public-nav {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+            background: rgba(5, 9, 20, 0.88);
+            backdrop-filter: blur(18px);
+        }
+
+        .sf-public-nav a {
+            color: #cbd5e1;
+        }
+
+        .sf-public-nav a:hover {
+            color: #ffffff;
+        }
+
+        .sf-public-nav .sf-public-cta {
+            background: #f97316;
+            color: #ffffff;
+            box-shadow: 0 14px 30px rgba(249, 115, 22, 0.24);
+        }
+
+        .sf-public-nav .sf-public-cta:hover {
+            background: #ea580c;
+            color: #ffffff;
+        }
     </style>
 </head>
 
@@ -163,17 +188,53 @@
 
     <div class="min-h-screen relative overflow-x-hidden sf-app-shell">
         {{-- Theme Toggle --}}
+        @auth
         <div class="fixed right-4 top-4 z-50">
             <button type="button" id="sfThemeToggle" class="sf-theme-toggle">
                 <span id="sfThemeIcon">🌙</span>
                 <span id="sfThemeLabel">Dark</span>
             </button>
         </div>
+        @endauth
 
         {{-- Navigation --}}
-        @if(View::exists('layouts.navigation'))
-            @include('layouts.navigation')
-        @endif
+        @auth
+            @if(View::exists('layouts.navigation') && (request()->routeIs('admin.*') || request()->routeIs('manager.*')))
+                @include('layouts.navigation')
+            @endif
+        @else
+            <nav class="sf-public-nav sticky top-0 z-40">
+                <div class="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+                    <a href="{{ route('public.home') }}" class="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400">
+                        <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-sm font-extrabold text-white shadow-lg shadow-orange-950/30">
+                            SF
+                        </span>
+
+                        <span class="hidden text-sm font-extrabold tracking-tight text-white sm:block">
+                            SayaraForce
+                        </span>
+                    </a>
+
+                    <div class="hidden items-center gap-5 text-sm font-bold lg:flex">
+                        <a href="{{ route('public.home') }}#problem">Problem</a>
+                        <a href="{{ route('public.home') }}#solution">Solution</a>
+                        <a href="{{ route('public.home') }}#retention">Retention</a>
+                        <a href="{{ route('public.home') }}#pricing">Pricing</a>
+                        <a href="{{ route('public.home') }}#audit">Audit</a>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <a href="{{ route('login') }}" class="hidden rounded-xl px-3 py-2 text-sm font-extrabold text-white sm:inline-flex">
+                            Login
+                        </a>
+
+                        <a href="{{ route('public.home') }}#audit" class="sf-public-cta inline-flex h-10 items-center rounded-xl px-4 text-sm font-extrabold transition">
+                            Get Free Audit
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        @endauth
 
         @inertia
     </div>

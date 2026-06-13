@@ -56,9 +56,11 @@ class VehicleController extends Controller
             'color'                    => 'nullable|string|max:50',
             'registration_expiry_date' => 'nullable|date',
             'insurance_expiry_date'    => 'nullable|date',
-            'last_inspection_date'     => 'nullable|date',
+            'last_inspection_date'     => 'nullable|date|before_or_equal:today',
             'inspection_expiry_date'   => 'nullable|date',
             'current_mileage'          => 'nullable|integer|min:0'
+        ], [
+            'last_inspection_date.before_or_equal' => 'Last inspection date cannot be in the future.',
         ]);
 
         $client = Client::where('company_id', $companyId)
@@ -120,9 +122,11 @@ class VehicleController extends Controller
             'color'                    => 'nullable|string|max:50',
             'registration_expiry_date' => 'nullable|date',
             'insurance_expiry_date'    => 'nullable|date',
-            'last_inspection_date'     => 'nullable|date',
+            'last_inspection_date'     => 'nullable|date|before_or_equal:today',
             'inspection_expiry_date'   => 'nullable|date',
             'current_mileage'          => 'nullable|integer|min:0'
+        ], [
+            'last_inspection_date.before_or_equal' => 'Last inspection date cannot be in the future.',
         ]);
 
         Client::where('company_id', $companyId)

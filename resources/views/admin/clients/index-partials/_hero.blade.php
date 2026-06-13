@@ -39,7 +39,7 @@
             @if(\Illuminate\Support\Facades\Route::has('admin.clients.import.form'))
                 <a
                     href="{{ $importRoute }}"
-                    class="inline-flex h-9 items-center justify-center rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 text-xs font-bold text-blue-300 transition hover:bg-blue-500/15"
+                    class="inline-flex h-9 items-center justify-center rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 text-xs font-bold text-blue-700 transition hover:bg-blue-500/15 hover:text-blue-800 dark:text-blue-200"
                 >
                     Import Clients
                 </a>

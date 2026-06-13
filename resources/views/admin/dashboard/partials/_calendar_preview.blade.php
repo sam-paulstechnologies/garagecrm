@@ -60,8 +60,8 @@
         });
 @endphp
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-    <div class="mb-5 flex items-start justify-between gap-4">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+    <div class="mb-3 flex items-start justify-between gap-4">
         <div>
             <h2 class="text-base font-bold text-white">
                 Calendar
@@ -73,13 +73,13 @@
         </div>
 
         @if ($calendarRoute)
-            <a href="{{ $calendarRoute }}" class="text-xs font-bold text-orange-300 hover:text-orange-200">
+            <a href="{{ $calendarRoute }}" class="text-xs font-black text-orange-400 transition hover:text-orange-300">
                 Full Calendar View
             </a>
         @endif
     </div>
 
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-3 flex items-center justify-between">
         <div>
             <p class="text-lg font-extrabold text-white">
                 {{ $calendarView === 'month' ? $today->format('F Y') : 'This Week' }}
@@ -136,7 +136,7 @@
                             {{ !$isCurrentMonth ? 'opacity-45' : '' }}"
                     >
                         <div class="flex items-start justify-between gap-2">
-                            <span class="text-xs font-bold {{ $isToday ? 'text-orange-300' : ($isCurrentMonth ? 'text-slate-300' : 'text-slate-700') }}">
+                            <span class="text-xs font-bold {{ $isToday ? 'text-orange-400' : ($isCurrentMonth ? 'text-slate-300' : 'text-slate-700') }}">
                                 {{ $day->format('j') }}
                             </span>
 
@@ -163,7 +163,7 @@
             </div>
         </div>
     @else
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-7">
+        <div class="grid grid-cols-1 gap-2.5 md:grid-cols-7">
             @foreach ($weekDays as $day)
                 @php
                     $dateKey = $day->format('Y-m-d');
@@ -171,10 +171,10 @@
                     $isToday = $day->isSameDay($today);
                 @endphp
 
-                <div class="rounded-xl border {{ $isToday ? 'border-orange-400/50 bg-orange-500/10' : 'border-slate-800 bg-slate-950/50' }} p-4">
-                    <div class="mb-4 flex items-center justify-between">
+                <div class="rounded-xl border {{ $isToday ? 'border-orange-400/50 bg-orange-500/10' : 'border-slate-800 bg-slate-950/50' }} p-3">
+                    <div class="mb-3 flex items-center justify-between">
                         <div>
-                            <p class="text-xs font-bold {{ $isToday ? 'text-orange-200' : 'text-slate-300' }}">
+                            <p class="text-xs font-bold {{ $isToday ? 'text-orange-400' : 'text-slate-300' }}">
                                 {{ $day->format('D') }}
                             </p>
 
@@ -190,7 +190,7 @@
                         @endif
                     </div>
 
-                    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-center">
+                    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-center">
                         @if ($dayCount > 0)
                             <p class="text-3xl font-black text-white">
                                 {{ $dayCount }}

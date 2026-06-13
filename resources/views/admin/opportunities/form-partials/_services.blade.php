@@ -12,6 +12,7 @@
                 <label class="rounded-2xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-orange-400/30">
                     <div class="flex items-start gap-3">
                         <input type="checkbox"
+                               name="services[]"
                                value="{{ $service }}"
                                data-service-checkbox
                                @checked(in_array($service, $selectedServices, true))

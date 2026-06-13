@@ -40,13 +40,14 @@
             'label' => 'AI Replies 7d',
             'value' => $aiReplies7d,
             'note' => 'AI-assisted replies',
-            'valueClass' => 'text-blue-300',
+            'labelClass' => 'sf-tone-blue text-blue-300',
+            'valueClass' => 'sf-tone-blue text-blue-300',
         ],
     ];
 @endphp
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-    <div class="mb-5 flex items-start justify-between gap-4">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+    <div class="mb-3 flex items-start justify-between gap-4">
         <div>
             <h2 class="text-base font-bold text-white">
                 WhatsApp Health
@@ -59,7 +60,7 @@
         @if ($inboxRoute)
             <a
                 href="{{ $inboxRoute }}"
-                class="text-xs font-bold text-orange-300 hover:text-orange-200"
+                class="text-xs font-black text-orange-400 transition hover:text-orange-300"
             >
                 Open Inbox
             </a>
@@ -68,8 +69,8 @@
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         @foreach ($items as $item)
-            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <p class="text-xs font-bold uppercase tracking-wide text-slate-500">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <p class="text-xs font-bold uppercase tracking-wide {{ $item['labelClass'] ?? 'text-slate-500' }}">
                     {{ $item['label'] }}
                 </p>
 

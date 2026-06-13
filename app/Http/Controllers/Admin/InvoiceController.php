@@ -183,6 +183,14 @@ class InvoiceController extends Controller
         $invoice->version = 1;
         $invoice->is_primary = true;
 
+        if (! empty($invoice->job_id)) {
+            $linkedJob = Job::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($invoice->job_id);
+
+            $this->applyJourneyLinksFromJob($invoice, $linkedJob);
+        }
+
         if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
@@ -302,6 +310,16 @@ class InvoiceController extends Controller
         $invoice->currency = $data['currency'] ?? ($invoice->currency ?? 'AED');
         $invoice->source = $invoice->source ?: 'generated';
         $invoice->uploaded_by = $invoice->uploaded_by ?? auth()->id();
+
+        if (! empty($invoice->job_id)) {
+            $linkedJob = Job::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($invoice->job_id);
+
+            $this->applyJourneyLinksFromJob($invoice, $linkedJob);
+        } else {
+            $this->clearJourneyLinks($invoice);
+        }
 
         if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
@@ -453,6 +471,8 @@ class InvoiceController extends Controller
         $invoice->version = 1 + (int) $this->invoicesScope()->where('job_id', $job->id)->max('version');
         $invoice->is_primary = true;
 
+        $this->applyJourneyLinksFromJob($invoice, $job);
+
         if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
         }
@@ -471,6 +491,7 @@ class InvoiceController extends Controller
         $this->guardCompanyOrAbort($client->company_id);
 
         $companyId = $this->companyId();
+        $job = null;
 
         $data = $request->validate([
             'job_id' => [
@@ -512,6 +533,8 @@ class InvoiceController extends Controller
         $invoice->uploaded_by = auth()->id();
         $invoice->version = 1;
         $invoice->is_primary = ! empty($invoice->job_id);
+
+        $this->applyJourneyLinksFromJob($invoice, $job);
 
         if ($this->invoiceHasColumn('invoice_number')) {
             $invoice->invoice_number = $data['number'];
@@ -791,6 +814,40 @@ class InvoiceController extends Controller
             ->findOrFail($data['job_id']);
 
         abort_unless((int) $job->client_id === (int) $data['client_id'], 422);
+    }
+
+    protected function applyJourneyLinksFromJob(Invoice $invoice, ?Job $job): void
+    {
+        if (! $job) {
+            return;
+        }
+
+        if ($this->invoiceHasColumn('booking_id')) {
+            $invoice->booking_id = $job->booking_id;
+        }
+
+        if ($this->invoiceHasColumn('opportunity_id')) {
+            $invoice->opportunity_id = $job->opportunity_id;
+        }
+
+        if ($this->invoiceHasColumn('lead_id')) {
+            $invoice->lead_id = $job->lead_id;
+        }
+    }
+
+    protected function clearJourneyLinks(Invoice $invoice): void
+    {
+        if ($this->invoiceHasColumn('booking_id')) {
+            $invoice->booking_id = null;
+        }
+
+        if ($this->invoiceHasColumn('opportunity_id')) {
+            $invoice->opportunity_id = null;
+        }
+
+        if ($this->invoiceHasColumn('lead_id')) {
+            $invoice->lead_id = null;
+        }
     }
 
     protected function safeInvoiceFilePath(Invoice $invoice): ?string

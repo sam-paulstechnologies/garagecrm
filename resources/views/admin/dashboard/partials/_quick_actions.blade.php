@@ -1,7 +1,7 @@
 {{-- resources/views/admin/dashboard/partials/_quick_actions.blade.php --}}
 
-<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-    <div class="mb-5">
+<div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+    <div class="mb-3">
         <h3 class="text-base font-semibold text-white">Quick Actions</h3>
         <p class="mt-1 text-xs text-slate-400">
             Create records quickly without leaving the dashboard flow.
@@ -13,7 +13,7 @@
             [
                 'label' => 'Add Lead',
                 'route' => 'admin.leads.create',
-                'classes' => 'border-blue-500/30 bg-blue-600/15 text-blue-200 hover:bg-blue-600/25',
+                'classes' => 'sf-tone-blue border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20',
             ],
             [
                 'label' => 'Add Client',
@@ -38,7 +38,7 @@
             @if (\Illuminate\Support\Facades\Route::has($action['route']))
                 <a
                     href="{{ route($action['route']) }}"
-                    class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition {{ $action['classes'] }}"
+                    class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition {{ $action['classes'] }}"
                 >
                     <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/10">
                         +

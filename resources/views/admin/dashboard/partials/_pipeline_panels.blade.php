@@ -127,11 +127,11 @@
     }
 @endphp
 
-<div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
+<div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
 
     {{-- Lead Pipeline --}}
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-        <div class="mb-5 flex items-start justify-between gap-3">
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+        <div class="mb-3 flex items-start justify-between gap-3">
             <div>
                 <h2 class="text-base font-extrabold tracking-tight text-white">
                     Lead Pipeline
@@ -145,14 +145,14 @@
             @if (\Illuminate\Support\Facades\Route::has('admin.leads.index'))
                 <a
                     href="{{ $leadRoute }}"
-                    class="text-xs font-bold text-orange-300 transition hover:text-orange-200"
+                    class="text-xs font-black text-orange-400 transition hover:text-orange-300"
                 >
                     View
                 </a>
             @endif
         </div>
 
-        <div class="space-y-3">
+        <div class="space-y-2.5">
             @forelse ($leadPipeline as $status => $count)
                 @php
                     $count = $formatCount($count);
@@ -160,7 +160,7 @@
 
                 <a
                     href="{{ $leadRoute }}"
-                    class="block rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 transition hover:border-orange-400/40 hover:bg-slate-950"
+                    class="block rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5 transition hover:border-orange-400/40 hover:bg-slate-950"
                 >
                     <div class="flex items-center justify-between gap-3">
                         <div class="min-w-0">
@@ -169,7 +169,7 @@
                             </p>
                         </div>
 
-                        <span class="inline-flex min-w-8 items-center justify-center rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-black text-blue-300">
+                        <span class="sf-tone-blue inline-flex min-w-8 items-center justify-center rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-black text-blue-300">
                             {{ $count }}
                         </span>
                     </div>
@@ -185,8 +185,8 @@
     </div>
 
     {{-- Opportunity Pipeline --}}
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm">
-        <div class="mb-5 flex items-start justify-between gap-3">
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm">
+        <div class="mb-3 flex items-start justify-between gap-3">
             <div>
                 <h2 class="text-base font-extrabold tracking-tight text-white">
                     Opportunity Pipeline
@@ -200,14 +200,14 @@
             @if (\Illuminate\Support\Facades\Route::has('admin.opportunities.index'))
                 <a
                     href="{{ $opportunityRoute }}"
-                    class="text-xs font-bold text-orange-300 transition hover:text-orange-200"
+                    class="text-xs font-black text-orange-400 transition hover:text-orange-300"
                 >
                     View
                 </a>
             @endif
         </div>
 
-        <div class="space-y-3">
+        <div class="space-y-2.5">
             @forelse ($opportunityPipeline as $stage => $count)
                 @php
                     $count = $formatCount($count);
@@ -215,7 +215,7 @@
 
                 <a
                     href="{{ $opportunityRoute }}"
-                    class="block rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 transition hover:border-orange-400/40 hover:bg-slate-950"
+                    class="block rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5 transition hover:border-orange-400/40 hover:bg-slate-950"
                 >
                     <div class="flex items-center justify-between gap-3">
                         <div class="min-w-0">
@@ -224,7 +224,7 @@
                             </p>
                         </div>
 
-                        <span class="inline-flex min-w-8 items-center justify-center rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-black text-orange-300">
+                        <span class="sf-tone-orange inline-flex min-w-8 items-center justify-center rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-black text-orange-400">
                             {{ $count }}
                         </span>
                     </div>
@@ -240,8 +240,8 @@
     </div>
 
     {{-- Revenue Snapshot --}}
-    <div class="rounded-2xl border border-blue-400/30 bg-gradient-to-br from-blue-700 via-blue-600 to-orange-500 p-5 shadow-sm">
-        <div class="mb-5 flex items-start justify-between gap-3">
+    <div class="rounded-2xl border border-blue-400/30 bg-gradient-to-br from-blue-700 via-blue-600 to-orange-500 p-4 shadow-sm">
+        <div class="mb-3 flex items-start justify-between gap-3">
             <div>
                 <h2 class="text-base font-extrabold tracking-tight text-white">
                     Revenue Snapshot
@@ -262,8 +262,8 @@
             @endif
         </div>
 
-        <div class="space-y-3">
-            <div class="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3">
+        <div class="space-y-2.5">
+            <div class="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
                 <span class="text-sm font-extrabold text-white/90">
                     Paid - {{ $dashboardPeriodLabel }}
                 </span>
@@ -273,7 +273,7 @@
                 </span>
             </div>
 
-            <div class="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3">
+            <div class="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
                 <span class="text-sm font-extrabold text-white/90">
                     Pending amount
                 </span>
@@ -283,7 +283,7 @@
                 </span>
             </div>
 
-            <div class="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3">
+            <div class="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
                 <span class="text-sm font-extrabold text-white/90">
                     Unpaid invoices
                 </span>
@@ -293,7 +293,7 @@
                 </span>
             </div>
 
-            <div class="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3">
+            <div class="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
                 <span class="text-sm font-extrabold text-white/90">
                     Average invoice
                 </span>
