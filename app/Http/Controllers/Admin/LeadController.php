@@ -7,15 +7,20 @@ use App\Jobs\SendWhatsAppFromTemplate;
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Client\Opportunity;
+use App\Models\Conversation;
+use App\Models\LeadActivityLog;
 use App\Models\LeadDuplicate;
+use App\Models\LeadSource;
 use App\Models\MessageLog;
 use App\Models\Shared\Communication;
 use App\Models\User;
 use App\Services\Leads\LeadResolver;
+use App\Services\PhoneNumberService;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class LeadController extends Controller
@@ -41,7 +46,7 @@ class LeadController extends Controller
             ->whereIn('status', [
                 Lead::STATUS_NEW,
                 Lead::STATUS_ATTEMPTING,
-                'contact_on_hold',
+                Lead::STATUS_HOLD,
             ]);
 
         $this->applyBucketFilter($query, $bucket);
@@ -80,7 +85,7 @@ class LeadController extends Controller
         $leads = $this->baseLeadQuery($companyId, $q)
             ->whereIn('status', [
                 Lead::STATUS_QUALIFIED,
-                Lead::STATUS_CONVERTED,
+                'converted',
             ])
             ->latest()
             ->paginate(20)
@@ -93,8 +98,8 @@ class LeadController extends Controller
             'q' => $q,
             'bucket' => '',
             'pageMode' => 'qualified',
-            'pageTitle' => 'Qualified / Converted Leads',
-            'pageSubtitle' => 'Leads already qualified or converted into clients/opportunities.',
+            'pageTitle' => 'Qualified Leads',
+            'pageSubtitle' => 'Leads qualified into clients/opportunities.',
             'leadCounts' => $this->leadCounts($companyId),
             'bucketCounts' => $this->bucketCounts($companyId),
             'leadScores' => $leadScores,
@@ -109,8 +114,8 @@ class LeadController extends Controller
 
         $leads = $this->baseLeadQuery($companyId, $q)
             ->whereIn('status', [
-                'disqualified',
-                Lead::STATUS_LOST,
+                Lead::STATUS_DISQUALIFIED,
+                'lost',
             ])
             ->latest()
             ->paginate(20)
@@ -124,7 +129,7 @@ class LeadController extends Controller
             'bucket' => '',
             'pageMode' => 'disqualified',
             'pageTitle' => 'Disqualified Leads',
-            'pageSubtitle' => 'Invalid, lost, duplicate, or non-serviceable leads.',
+            'pageSubtitle' => 'Invalid, duplicate, or non-serviceable leads.',
             'leadCounts' => $this->leadCounts($companyId),
             'bucketCounts' => $this->bucketCounts($companyId),
             'leadScores' => $leadScores,
@@ -132,6 +137,47 @@ class LeadController extends Controller
         ]);
     }
 
+    public function archived(Request $request)
+    {
+        $companyId = $this->companyId();
+        $q = trim((string) $request->get('q', ''));
+        $leadFilters = $this->leadIndexFilters($request);
+
+        $query = $this->baseLeadQuery($companyId, $q)
+            ->where(function ($query) {
+                $query->where('is_active', 0)
+                    ->orWhereIn('status', [
+                        Lead::STATUS_DISQUALIFIED,
+                        'lost',
+                    ]);
+            });
+
+        $this->applyLeadIndexFilters($query, $leadFilters);
+
+        $leads = $query
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        [$leadScores, $whatsappByLead] = $this->leadPageMetrics($leads, $companyId);
+
+        return view('admin.leads.index', [
+            'leads' => $leads,
+            'q' => $q,
+            'bucket' => '',
+            'pageMode' => 'archived',
+            'pageTitle' => 'Archived Leads',
+            'pageSubtitle' => 'Inactive, archived, or disqualified leads excluded from the active lead bucket.',
+            'leadCounts' => $this->leadCounts($companyId),
+            'bucketCounts' => $this->bucketCounts($companyId),
+            'leadScores' => $leadScores,
+            'whatsappByLead' => $whatsappByLead,
+            'leadFilters' => $leadFilters,
+            'assignedUsers' => User::where('company_id', $companyId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
+        ]);
+    }
     public function create()
     {
         $companyId = $this->companyId();
@@ -157,7 +203,10 @@ class LeadController extends Controller
             'email' => 'nullable|email|max:150|required_without:phone',
             'phone' => 'nullable|string|max:20|required_without:email',
             'source' => 'nullable|string|max:100',
-            'status' => 'nullable|in:new,attempting_contact,contact_on_hold,qualified,disqualified,converted,lost',
+            'status' => ['nullable', Rule::in(array_keys($this->leadStatusOptions()))],
+            'status_sub_status' => 'nullable|string|max:100',
+            'status_reason' => 'nullable|string|max:1000',
+            'follow_up_at' => 'nullable|date',
             'notes' => 'nullable|string',
             'lead_score_reason' => 'nullable|string',
             'last_contacted_at' => 'nullable|date',
@@ -166,11 +215,6 @@ class LeadController extends Controller
             'assigned_to' => [
                 'nullable',
                 Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'client_id' => [
-                'nullable',
-                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
             ],
 
             'is_hot' => 'nullable|boolean',
@@ -192,10 +236,12 @@ class LeadController extends Controller
             'follow_up_date' => 'nullable|date',
             'campaign_name' => 'nullable|string|max:150',
             'retention_tag' => 'nullable|string|max:80',
+            'external_source' => 'nullable|string|max:100',
         ]);
 
         $data['company_id'] = $companyId;
-        $data['status'] = $data['status'] ?? Lead::STATUS_NEW;
+        $data['status'] = Lead::normalizeStatus($data['status'] ?? Lead::STATUS_NEW);
+        $data = array_merge($data, $this->validateStatusContext($request, $data['status']));
         $data['source'] = $data['source'] ?? 'Manual';
         $data['preferred_channel'] = $data['preferred_channel'] ?? 'whatsapp';
 
@@ -246,7 +292,10 @@ class LeadController extends Controller
                 'email' => $data['email'] ?? $lead->email,
                 'phone' => $data['phone'] ?? $lead->phone,
                 'source' => $data['source'],
-                'status' => Lead::normalizeStatus($data['status']),
+                'status' => $data['status'],
+                'status_sub_status' => $data['status_sub_status'] ?? null,
+                'status_reason' => $data['status_reason'] ?? null,
+                'follow_up_at' => $data['follow_up_at'] ?? null,
                 'assigned_to' => $data['assigned_to'] ?? $lead->assigned_to,
                 'notes' => $data['notes'] ?? $lead->notes,
                 'lead_score_reason' => $data['lead_score_reason'] ?? $lead->lead_score_reason,
@@ -276,7 +325,7 @@ class LeadController extends Controller
                 'conversation_data' => $memory,
             ]);
 
-            if (in_array($lead->fresh()->status, [Lead::STATUS_QUALIFIED, Lead::STATUS_CONVERTED], true)) {
+            if ($lead->fresh()->status === Lead::STATUS_QUALIFIED) {
                 $this->convertToOpportunity($lead->fresh());
             }
         });
@@ -316,20 +365,48 @@ class LeadController extends Controller
             'vehicleModel',
         ]);
 
+        $communications = Communication::where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->latest()
+            ->paginate(10);
+
+        $messageLogs = MessageLog::where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->latest()
+            ->paginate(10);
+
+        $latestLog = MessageLog::where('company_id', $companyId)
+            ->where('lead_id', $lead->id)
+            ->where('channel', 'whatsapp')
+            ->latest()
+            ->first();
+
+        $leadScore = $this->calculateLeadScore($lead, $companyId, $latestLog);
+        $phoneService = app(PhoneNumberService::class);
+        $phoneE164 = $phoneService->normalizeToE164($lead->phone_norm ?: $lead->phone);
+        $conversation = $this->conversationForLead($lead, $phoneE164);
+
         return view('admin.leads.show', [
             'lead' => $lead,
-
-            'communications' => Communication::where('company_id', $companyId)
-                ->where('lead_id', $lead->id)
-                ->latest()
-                ->paginate(10),
-
-            'messageLogs' => MessageLog::where('company_id', $companyId)
-                ->where('lead_id', $lead->id)
-                ->latest()
-                ->paginate(10),
-
-            'leadScore' => $this->calculateLeadScore($lead, $companyId),
+            'communications' => $communications,
+            'messageLogs' => $messageLogs,
+            'leadScore' => $leadScore,
+            'scoreInsights' => $this->leadScoreInsights($lead, $leadScore, $latestLog),
+            'statusPath' => $this->leadStatusPath(),
+            'activityTimeline' => $this->leadActivityTimeline($lead, $communications->getCollection(), $messageLogs->getCollection()),
+            'phoneE164' => $phoneE164,
+            'telUrl' => $phoneService->buildTelUrl($lead->phone_norm ?: $lead->phone),
+            'conversation' => $conversation,
+            'whatsappInboxUrl' => $this->whatsappInboxUrl($lead, $conversation, $phoneE164),
+            'leadStatusOptions' => $this->leadStatusOptions(),
+            'contactOnHoldSubStatuses' => $this->contactOnHoldSubStatuses(),
+            'disqualifiedSubStatuses' => $this->disqualifiedSubStatuses(),
+            'leadSources' => LeadSource::where('company_id', $companyId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'assignedUsers' => User::where('company_id', $companyId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -338,6 +415,7 @@ class LeadController extends Controller
         $this->authorizeCompany($lead);
 
         $companyId = $this->companyId();
+        $lead->loadMissing('opportunity');
 
         return view('admin.leads.edit', [
             'lead' => $lead,
@@ -353,6 +431,71 @@ class LeadController extends Controller
         ]);
     }
 
+    public function updateStatus(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+
+        $data = $request->validate([
+            'status' => ['required', Rule::in(array_keys($this->leadStatusOptions()))],
+        ]);
+
+        $status = Lead::normalizeStatus($data['status']);
+        $context = $this->validateStatusContext($request, $status);
+        try {
+            $result = $this->transitionLeadStatus($lead, $status, $context);
+        } catch (\Throwable $e) {
+            Log::warning('Lead status transition failed', [
+                'lead_id' => $lead->id,
+                'company_id' => $lead->company_id,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('admin.leads.show', $lead)
+                ->with('error', 'Lead status update failed: ' . $e->getMessage());
+        }
+
+        if (($result['redirect_route'] ?? null) && ($result['redirect_model'] ?? null)) {
+            return redirect()
+                ->route($result['redirect_route'], $result['redirect_model'])
+                ->with($result['type'], $result['message']);
+        }
+
+        return redirect()
+            ->route('admin.leads.show', $lead)
+            ->with($result['type'], $result['message']);
+    }
+
+    public function quickUpdate(Request $request, Lead $lead)
+    {
+        $this->authorizeCompany($lead);
+
+        $companyId = $this->companyId();
+        $field = (string) $request->input('field');
+        $allowedFields = array_keys($this->leadQuickEditableFields($companyId));
+
+        $request->validate([
+            'field' => ['required', Rule::in($allowedFields)],
+        ]);
+
+        $rules = $this->leadQuickEditableFields($companyId)[$field]['rules'];
+
+        $data = $request->validate([
+            'value' => $rules,
+        ]);
+
+        $before = $lead->replicate();
+        $updates = $this->leadQuickUpdatePayload($field, $data['value'] ?? null);
+
+        $lead->update($updates);
+
+        $this->logLeadFieldChanges($lead->fresh(), $before, array_keys($updates));
+
+        return redirect()
+            ->to(route('admin.leads.show', $lead) . '#lead-field-' . str_replace('_', '-', $field))
+            ->with('success', 'Lead field updated.');
+    }
     public function update(Request $request, Lead $lead)
     {
         $this->authorizeCompany($lead);
@@ -364,10 +507,11 @@ class LeadController extends Controller
             'email' => 'nullable|email|max:150|required_without:phone',
             'phone' => 'nullable|string|max:20|required_without:email',
             'source' => 'nullable|string|max:100',
-            'status' => 'nullable|in:new,attempting_contact,contact_on_hold,qualified,disqualified,converted,lost',
+            'status' => ['nullable', Rule::in(array_keys($this->leadStatusOptions()))],
+            'status_sub_status' => 'nullable|string|max:100',
+            'status_reason' => 'nullable|string|max:1000',
+            'follow_up_at' => 'nullable|date',
             'notes' => 'nullable|string',
-            'lead_score_reason' => 'nullable|string',
-            'last_contacted_at' => 'nullable|date',
             'preferred_channel' => 'nullable|in:email,phone,whatsapp',
 
             'assigned_to' => [
@@ -375,12 +519,6 @@ class LeadController extends Controller
                 Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
             ],
 
-            'client_id' => [
-                'nullable',
-                Rule::exists('clients', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
-            ],
-
-            'is_hot' => 'nullable|boolean',
             'other_make' => 'nullable|string|max:100',
             'other_model' => 'nullable|string|max:100',
             'tentative_service_type' => 'nullable|string|max:150',
@@ -393,11 +531,9 @@ class LeadController extends Controller
             'plate_number' => 'nullable|string|max:50',
             'lead_temperature' => 'nullable|in:hot,warm,cold',
             'lead_priority' => 'nullable|in:low,medium,high,urgent',
-            'customer_type' => 'nullable|in:new,existing,fleet,corporate',
-            'follow_up_required' => 'nullable|boolean',
-            'follow_up_date' => 'nullable|date',
             'campaign_name' => 'nullable|string|max:150',
             'retention_tag' => 'nullable|string|max:80',
+            'external_source' => 'nullable|string|max:100',
         ]);
 
         $memory = $lead->getConversationMemory();
@@ -413,18 +549,38 @@ class LeadController extends Controller
             'vehicle_model_text' => $data['vehicle_model'] ?? $data['other_model'] ?? ($memory['vehicle_model_text'] ?? null),
         ]);
 
-        $data['is_hot'] = (bool) ($data['is_hot'] ?? false);
-        $data['follow_up_required'] = (bool) ($data['follow_up_required'] ?? false);
         $data['conversation_data'] = $memory;
 
         if (! empty($data['status'])) {
             $data['status'] = Lead::normalizeStatus($data['status']);
+            $data = array_merge($data, $this->validateStatusContext($request, $data['status']));
         }
+
+        $before = $lead->replicate();
 
         $lead->update($data);
 
+        $this->logLeadFieldChanges($lead->fresh(), $before, array_keys($data));
+
         if (($data['status'] ?? null) === Lead::STATUS_QUALIFIED) {
-            $this->convertToOpportunity($lead->fresh());
+            try {
+                $opportunity = $this->convertToOpportunity($lead->fresh());
+
+                return redirect()
+                    ->route('admin.opportunities.show', $opportunity)
+                    ->with('success', 'Lead qualified and opportunity opened.');
+            } catch (\Throwable $e) {
+                Log::warning('Lead qualification from edit failed', [
+                    'lead_id' => $lead->id,
+                    'company_id' => $lead->company_id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return redirect()
+                    ->route('admin.leads.edit', $lead)
+                    ->withInput()
+                    ->with('error', 'Lead qualification failed: ' . $e->getMessage());
+            }
         }
 
         return redirect()
@@ -436,9 +592,13 @@ class LeadController extends Controller
     {
         $this->authorizeCompany($lead);
 
+        $oldValue = (bool) $lead->is_hot;
+
         $lead->update([
-            'is_hot' => ! (bool) $lead->is_hot,
+            'is_hot' => ! $oldValue,
         ]);
+
+        $this->logLeadActivity($lead->fresh(), 'updated', 'is_hot', $oldValue ? 'yes' : 'no', $lead->is_hot ? 'yes' : 'no');
 
         return back()->with('success', 'Lead hot status updated.');
     }
@@ -447,10 +607,14 @@ class LeadController extends Controller
     {
         $this->authorizeCompany($lead);
 
+        $oldStatus = $lead->status;
+
         $lead->update([
             'is_active' => 0,
-            'status' => Lead::STATUS_LOST,
+            'status' => Lead::STATUS_DISQUALIFIED,
         ]);
+
+        $this->logLeadActivity($lead->fresh(), 'archived', 'status', $oldStatus, Lead::STATUS_DISQUALIFIED);
 
         return redirect()
             ->route('admin.leads.index')
@@ -711,7 +875,7 @@ class LeadController extends Controller
             ->whereIn('status', [
                 Lead::STATUS_NEW,
                 Lead::STATUS_ATTEMPTING,
-                'contact_on_hold',
+                Lead::STATUS_HOLD,
             ]);
 
         return [
@@ -792,21 +956,21 @@ class LeadController extends Controller
                 ->whereIn('status', [
                     Lead::STATUS_NEW,
                     Lead::STATUS_ATTEMPTING,
-                    'contact_on_hold',
+                    Lead::STATUS_HOLD,
                 ])
                 ->count(),
 
             'qualified' => Lead::where('company_id', $companyId)
                 ->whereIn('status', [
                     Lead::STATUS_QUALIFIED,
-                    Lead::STATUS_CONVERTED,
+                    'converted',
                 ])
                 ->count(),
 
             'disqualified' => Lead::where('company_id', $companyId)
                 ->whereIn('status', [
-                    'disqualified',
-                    Lead::STATUS_LOST,
+                    Lead::STATUS_DISQUALIFIED,
+                    'lost',
                 ])
                 ->count(),
 
@@ -864,12 +1028,433 @@ class LeadController extends Controller
         return max(0, min(100, $score));
     }
 
+    protected function leadStatusPath(): array
+    {
+        return collect($this->leadStatusOptions())
+            ->map(fn (string $label, string $value) => [
+                'label' => $label,
+                'value' => $value,
+                'stored' => $value,
+            ])
+            ->values()
+            ->all();
+    }
+
+    protected function leadStatusOptions(): array
+    {
+        return [
+            Lead::STATUS_NEW => 'New',
+            Lead::STATUS_ATTEMPTING => 'Attempting Contact',
+            Lead::STATUS_HOLD => 'Contact On Hold',
+            Lead::STATUS_QUALIFIED => 'Qualified',
+            Lead::STATUS_DISQUALIFIED => 'Disqualified',
+        ];
+    }
+
+    protected function contactOnHoldSubStatuses(): array
+    {
+        return [
+            'call_back_requested' => 'Call back requested',
+            'customer_requested_later' => 'Customer requested later',
+            'waiting_for_customer_response' => 'Waiting for customer response',
+            'awaiting_vehicle_details' => 'Awaiting vehicle details',
+            'awaiting_service_confirmation' => 'Awaiting service confirmation',
+            'awaiting_estimate_approval' => 'Awaiting estimate approval',
+            'other' => 'Other',
+        ];
+    }
+
+    protected function disqualifiedSubStatuses(): array
+    {
+        return [
+            'not_interested' => 'Not interested',
+            'wrong_number' => 'Wrong number',
+            'duplicate' => 'Duplicate',
+            'unreachable_after_attempts' => 'Unreachable after multiple attempts',
+            'out_of_service_area' => 'Out of service area',
+            'service_not_offered' => 'Service not offered',
+            'price_not_accepted' => 'Price not accepted',
+            'already_serviced_elsewhere' => 'Already serviced elsewhere',
+            'spam_or_test' => 'Spam / test lead',
+            'other' => 'Other',
+        ];
+    }
+
+    protected function validateStatusContext(Request $request, string $status): array
+    {
+        if ($status === Lead::STATUS_HOLD) {
+            $data = $request->validate([
+                'status_sub_status' => ['required', Rule::in(array_keys($this->contactOnHoldSubStatuses()))],
+                'follow_up_at' => [
+                    Rule::requiredIf(fn () => in_array($request->input('status_sub_status'), ['call_back_requested', 'customer_requested_later'], true)),
+                    'nullable',
+                    'date',
+                ],
+                'status_reason' => [
+                    Rule::requiredIf(fn () => $request->input('status_sub_status') === 'other'),
+                    'nullable',
+                    'string',
+                    'max:1000',
+                ],
+            ]);
+
+            return [
+                'status_sub_status' => $data['status_sub_status'],
+                'status_reason' => $data['status_reason'] ?? null,
+                'follow_up_at' => $data['follow_up_at'] ?? null,
+                'follow_up_required' => filled($data['follow_up_at'] ?? null),
+            ];
+        }
+
+        if ($status === Lead::STATUS_DISQUALIFIED) {
+            $data = $request->validate([
+                'status_sub_status' => ['required', Rule::in(array_keys($this->disqualifiedSubStatuses()))],
+                'status_reason' => [
+                    Rule::requiredIf(fn () => $request->input('status_sub_status') === 'other'),
+                    'nullable',
+                    'string',
+                    'max:1000',
+                ],
+            ]);
+
+            return [
+                'status_sub_status' => $data['status_sub_status'],
+                'status_reason' => $data['status_reason'] ?? null,
+                'follow_up_at' => null,
+                'follow_up_required' => false,
+            ];
+        }
+
+        return [
+            'status_sub_status' => null,
+            'status_reason' => null,
+            'follow_up_at' => null,
+        ];
+    }
+
+    protected function transitionLeadStatus(Lead $lead, string $requestedStatus, array $context = []): array
+    {
+        $oldStatus = (string) $lead->status;
+        $newStatus = Lead::normalizeStatus($requestedStatus);
+
+        if ($newStatus === Lead::STATUS_QUALIFIED) {
+            $hadOpportunity = Opportunity::where('company_id', $lead->company_id)
+                ->where('lead_id', $lead->id)
+                ->exists();
+
+            $opportunity = DB::transaction(fn () => $this->convertToOpportunity($lead->fresh()));
+
+            $freshLead = $lead->fresh();
+            $this->logLeadActivity($freshLead, 'status_changed', 'status', $oldStatus, $freshLead->status, [
+                'requested_status' => $requestedStatus,
+                'conversion_flow' => 'convert_to_opportunity',
+                'opportunity' => $hadOpportunity ? 'already_exists' : 'created',
+            ]);
+
+            return [
+                'type' => 'success',
+                'message' => $hadOpportunity
+                    ? 'Lead is already qualified. Existing opportunity opened.'
+                    : 'Lead qualified and opportunity created.',
+                'redirect_route' => 'admin.opportunities.show',
+                'redirect_model' => $opportunity,
+            ];
+        }
+
+        $lead->update(array_merge([
+            'status' => $newStatus,
+        ], $context));
+
+        $this->logLeadActivity($lead->fresh(), 'status_changed', 'status', $oldStatus, $newStatus, [
+            'requested_status' => $requestedStatus,
+            'status_sub_status' => $context['status_sub_status'] ?? null,
+            'status_reason' => $context['status_reason'] ?? null,
+            'follow_up_at' => $context['follow_up_at'] ?? null,
+        ]);
+
+        return [
+            'type' => 'success',
+            'message' => $oldStatus === $newStatus ? 'Lead status is already up to date.' : 'Lead status updated.',
+        ];
+    }
+
+    protected function leadQuickEditableFields(int $companyId): array
+    {
+        return [
+            'name' => ['rules' => ['required', 'string', 'max:255']],
+            'phone' => ['rules' => ['nullable', 'string', 'max:20']],
+            'source' => ['rules' => ['nullable', 'string', 'max:100']],
+            'service_type' => ['rules' => ['nullable', 'string', 'max:100']],
+            'service_category' => ['rules' => ['nullable', 'string', 'max:50']],
+            'vehicle_make' => ['rules' => ['nullable', 'string', 'max:100']],
+            'vehicle_model' => ['rules' => ['nullable', 'string', 'max:100']],
+            'vehicle_year' => ['rules' => ['nullable', 'integer', 'min:1900', 'max:2100']],
+            'plate_number' => ['rules' => ['nullable', 'string', 'max:50']],
+            'lead_source_id' => [
+                'rules' => [
+                    'nullable',
+                    Rule::exists('lead_sources', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+                ],
+            ],
+            'assigned_to' => [
+                'rules' => [
+                    'nullable',
+                    Rule::exists('users', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+                ],
+            ],
+            'notes' => ['rules' => ['nullable', 'string']],
+            'campaign_name' => ['rules' => ['nullable', 'string', 'max:150']],
+            'external_source' => ['rules' => ['nullable', 'string', 'max:100']],
+            'preferred_channel' => ['rules' => ['nullable', Rule::in(['email', 'phone', 'whatsapp'])]],
+        ];
+    }
+
+    protected function leadQuickUpdatePayload(string $field, mixed $value): array
+    {
+        if (in_array($field, ['lead_source_id', 'assigned_to', 'vehicle_year'], true)) {
+            return [$field => filled($value) ? (int) $value : null];
+        }
+
+        return [$field => filled($value) ? $value : null];
+    }
+
+    protected function leadScoreInsights(Lead $lead, int $score, ?MessageLog $latestLog = null): array
+    {
+        $reasons = [];
+
+        if ($lead->lead_score_reason) {
+            $reasons[] = $lead->lead_score_reason;
+        }
+
+        if ($lead->is_hot || $lead->lead_temperature === 'hot') {
+            $reasons[] = 'Marked as hot or high-intent.';
+        }
+
+        if (in_array($lead->lead_priority, ['high', 'urgent'], true)) {
+            $reasons[] = 'Priority is ' . str_replace('_', ' ', $lead->lead_priority) . '.';
+        }
+
+        if ($lead->follow_up_required) {
+            $reasons[] = $lead->follow_up_date && $lead->follow_up_date->isPast()
+                ? 'Follow-up is due or overdue.'
+                : 'Follow-up is required.';
+        }
+
+        if ($lead->service_type || $lead->service_category) {
+            $reasons[] = 'Service request details are available.';
+        }
+
+        if ($lead->vehicle_label || $lead->vehicle_make || $lead->vehicle_model) {
+            $reasons[] = 'Vehicle context is available.';
+        }
+
+        if ($latestLog?->direction === 'in') {
+            $reasons[] = 'Recent inbound WhatsApp activity was found.';
+        }
+
+        if ($latestLog && in_array($latestLog->provider_status, ['failed', 'undelivered', 'error'], true)) {
+            $reasons[] = 'Latest WhatsApp delivery status needs attention.';
+        }
+
+        if (! $reasons) {
+            $reasons[] = 'Score justification based on available lead fields.';
+        }
+
+        $label = $score >= 75 ? 'Hot' : ($score >= 45 ? 'Warm' : 'Cold');
+        $nextAction = match (true) {
+            $lead->status === Lead::STATUS_NEW => 'Start contact attempt and confirm the service request.',
+            $lead->follow_up_required => 'Complete the scheduled follow-up.',
+            $latestLog?->direction === 'in' => 'Reply in the WhatsApp inbox.',
+            $score >= 75 => 'Prioritize this lead for immediate qualification.',
+            default => 'Review details and choose the next contact step.',
+        };
+
+        return [
+            'label' => $label,
+            'reasons' => array_values(array_unique($reasons)),
+            'next_action' => $nextAction,
+            'source_label' => 'Score justification based on available lead fields',
+        ];
+    }
+
+    protected function leadActivityTimeline(Lead $lead, $communications, $messageLogs): array
+    {
+        $items = [];
+
+        $logs = LeadActivityLog::query()
+            ->with('user:id,name')
+            ->where('company_id', $lead->company_id)
+            ->where('lead_id', $lead->id)
+            ->latest()
+            ->limit(30)
+            ->get();
+
+        foreach ($logs as $log) {
+            $items[] = [
+                'timestamp' => $log->created_at,
+                'actor' => $log->user?->name ?? 'System',
+                'action' => Str::headline($log->action),
+                'field' => $log->field ? Str::headline($log->field) : null,
+                'old' => $log->old_value,
+                'new' => $log->new_value,
+                'source' => strtoupper((string) ($log->source ?? 'ui')),
+            ];
+        }
+
+        $items[] = [
+            'timestamp' => $lead->created_at,
+            'actor' => 'System',
+            'action' => 'Lead Created',
+            'field' => null,
+            'old' => null,
+            'new' => $lead->name,
+            'source' => $lead->source ?: 'CRM',
+        ];
+
+        if ($lead->updated_at && $lead->created_at && $lead->updated_at->gt($lead->created_at)) {
+            $items[] = [
+                'timestamp' => $lead->updated_at,
+                'actor' => 'System',
+                'action' => 'Lead Updated',
+                'field' => null,
+                'old' => null,
+                'new' => 'Latest saved snapshot',
+                'source' => 'CRM',
+            ];
+        }
+
+        foreach ($communications as $communication) {
+            $items[] = [
+                'timestamp' => $communication->communication_date ?? $communication->created_at,
+                'actor' => 'CRM',
+                'action' => 'Communication Logged',
+                'field' => $communication->communication_type ?? 'Communication',
+                'old' => null,
+                'new' => Str::limit((string) ($communication->content ?? ''), 90),
+                'source' => 'UI',
+            ];
+        }
+
+        foreach ($messageLogs as $messageLog) {
+            $items[] = [
+                'timestamp' => $messageLog->created_at,
+                'actor' => $messageLog->is_ai ? 'AI Assistant' : 'WhatsApp',
+                'action' => $messageLog->direction === 'in' ? 'WhatsApp Received' : 'WhatsApp Sent',
+                'field' => $messageLog->provider_status,
+                'old' => null,
+                'new' => Str::limit((string) ($messageLog->body ?? ''), 90),
+                'source' => strtoupper((string) ($messageLog->source ?? 'whatsapp')),
+            ];
+        }
+
+        foreach ($items as &$item) {
+            if ($item['timestamp'] && ! $item['timestamp'] instanceof \DateTimeInterface) {
+                try {
+                    $item['timestamp'] = \Illuminate\Support\Carbon::parse($item['timestamp']);
+                } catch (\Throwable) {
+                    $item['timestamp'] = null;
+                }
+            }
+        }
+        unset($item);
+
+        usort($items, fn ($a, $b) => optional($b['timestamp'])->timestamp <=> optional($a['timestamp'])->timestamp);
+
+        return array_slice($items, 0, 40);
+    }
+
+    protected function conversationForLead(Lead $lead, ?string $phoneE164): ?Conversation
+    {
+        return Conversation::query()
+            ->where('company_id', $lead->company_id)
+            ->where(function ($query) use ($lead, $phoneE164) {
+                $query->where('lead_id', $lead->id);
+
+                if ($phoneE164) {
+                    $query->orWhere('customer_phone', $phoneE164);
+                }
+            })
+            ->orderByDesc('last_message_at')
+            ->first();
+    }
+
+    protected function whatsappInboxUrl(Lead $lead, ?Conversation $conversation, ?string $phoneE164): string
+    {
+        $params = array_filter([
+            'conversation' => $conversation?->id,
+            'lead_id' => $lead->id,
+            'phone' => $phoneE164,
+        ]);
+
+        return route('admin.inbox.index') . ($params ? '?' . http_build_query($params) : '');
+    }
+
+    protected function logLeadFieldChanges(Lead $lead, Lead $before, array $fields): void
+    {
+        $ignored = ['conversation_data', 'conversation_state'];
+
+        foreach ($fields as $field) {
+            if (in_array($field, $ignored, true)) {
+                continue;
+            }
+
+            $old = $before->{$field} ?? null;
+            $new = $lead->{$field} ?? null;
+
+            if ((string) $old === (string) $new) {
+                continue;
+            }
+
+            $this->logLeadActivity($lead, $field === 'status' ? 'status_changed' : 'updated', $field, $old, $new);
+        }
+    }
+
+    protected function logLeadActivity(Lead $lead, string $action, ?string $field = null, mixed $oldValue = null, mixed $newValue = null, array $metadata = []): void
+    {
+        LeadActivityLog::create([
+            'company_id' => $lead->company_id,
+            'lead_id' => $lead->id,
+            'user_id' => auth()->id(),
+            'action' => $action,
+            'field' => $field,
+            'old_value' => $this->activityValue($field, $oldValue),
+            'new_value' => $this->activityValue($field, $newValue),
+            'source' => 'ui',
+            'metadata' => $metadata ?: null,
+        ]);
+    }
+
+    protected function activityValue(?string $field, mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (in_array($field, ['phone', 'phone_norm', 'email', 'email_norm'], true)) {
+            $value = (string) $value;
+            return strlen($value) <= 4 ? 'masked' : str_repeat('*', max(0, strlen($value) - 4)) . substr($value, -4);
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'yes' : 'no';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+
+        return Str::limit((string) $value, 180, '...');
+    }
     protected function authorizeCompany(Lead $lead): void
     {
         abort_if((int) $lead->company_id !== $this->companyId(), 403);
     }
 
-    protected function convertToOpportunity(Lead $lead): void
+    protected function convertToOpportunity(Lead $lead): Opportunity
     {
         $client = null;
 
@@ -905,7 +1490,7 @@ class LeadController extends Controller
             'client_id' => $client->id,
         ]);
 
-        Opportunity::firstOrCreate(
+        $opportunity = Opportunity::firstOrCreate(
             [
                 'lead_id' => $lead->id,
                 'company_id' => $lead->company_id,
@@ -918,6 +1503,10 @@ class LeadController extends Controller
             ]
         );
 
+        $this->logLeadActivity($lead->fresh(), $opportunity->wasRecentlyCreated ? 'opportunity_created' : 'opportunity_reused', 'opportunity_id', null, (string) $opportunity->id, [
+            'source' => 'Lead qualification',
+        ]);
+
         if ($lead->phone_norm) {
             Lead::where('company_id', $lead->company_id)
                 ->where('phone_norm', $lead->phone_norm)
@@ -928,7 +1517,12 @@ class LeadController extends Controller
 
         $lead->update([
             'is_active' => 0,
-            'status' => Lead::STATUS_CONVERTED,
+            'status' => Lead::STATUS_QUALIFIED,
+            'status_sub_status' => null,
+            'status_reason' => null,
+            'follow_up_at' => null,
         ]);
+
+        return $opportunity->fresh();
     }
 }

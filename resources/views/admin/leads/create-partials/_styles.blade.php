@@ -49,6 +49,54 @@
         box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.18);
     }
 
+    .sf-lead-create-page .sf-crm-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .sf-lead-create-page .sf-crm-section + .sf-crm-section {
+        border-top: 1px solid rgba(30, 41, 59, 0.9);
+        padding-top: 1.25rem;
+    }
+
+    .sf-lead-create-page .sf-crm-section-head {
+        margin-bottom: 0.9rem;
+    }
+
+    .sf-lead-create-page .sf-crm-section-head h3 {
+        color: #f8fafc;
+        font-size: 0.95rem;
+        font-weight: 900;
+    }
+
+    .sf-lead-create-page .sf-crm-section-head p {
+        margin-top: 0.25rem;
+        color: #94a3b8;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .sf-lead-create-page .sf-crm-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .sf-lead-create-page .sf-crm-field {
+        min-width: 0;
+    }
+
+    .sf-lead-create-page .sf-crm-status-hint {
+        color: #fdba74;
+    }
+
+    @media (max-width: 767px) {
+        .sf-lead-create-page .sf-crm-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
     .sf-lead-create-page .sf-divider {
         border-color: rgba(30, 41, 59, 0.9);
     }
@@ -147,6 +195,22 @@
     html[data-theme="light"] .sf-lead-create-page .sf-input::placeholder,
     html[data-theme="light"] .sf-lead-create-page .sf-textarea::placeholder {
         color: #94a3b8 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-create-page .sf-crm-section + .sf-crm-section {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-lead-create-page .sf-crm-section-head h3 {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-lead-create-page .sf-crm-section-head p {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-lead-create-page .sf-crm-status-hint {
+        color: #9a3412 !important;
     }
 
     html[data-theme="light"] .sf-lead-create-page .sf-divider {

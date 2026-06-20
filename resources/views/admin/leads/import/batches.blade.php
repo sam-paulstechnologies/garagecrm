@@ -5,7 +5,7 @@
 @section('content')
 @include('admin.leads.import.partials._styles')
 
-<div class="sf-page sf-import-page space-y-6">
+<div class="sf-page sf-import-page w-full px-4 py-6 space-y-6 sm:px-6 lg:px-8">
     <div class="sf-page-header">
         <div>
             <div class="sf-kicker">Lead Upload Preview</div>
@@ -23,7 +23,7 @@
             </a>
 
             <a href="{{ route('admin.leads.import.upload') }}" class="sf-btn-secondary">
-                Direct Import
+                Import Leads
             </a>
         </div>
     </div>
@@ -39,34 +39,45 @@
         </div>
 
         <div class="sf-table-scroll overflow-x-auto">
-            <table class="sf-table sf-import-table min-w-[980px]">
+            <table class="sf-table sf-import-table min-w-[1220px]">
                 <thead>
                     <tr>
                         <th>File</th>
-                        <th>Uploaded</th>
+                        <th>Uploaded By</th>
+                        <th>Uploaded At</th>
                         <th>Status</th>
                         <th>Rows</th>
                         <th>Valid / Warning / Invalid</th>
                         <th>Duplicates</th>
                         <th>ACK Ready</th>
+                        <th>Campaign Groups</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($batches as $batch)
+                        @php
+                            $campaignGroupCount = $batch->rows
+                                ->map(fn ($row) => data_get($row, 'normalized_payload.campaign_type'))
+                                ->filter()
+                                ->unique()
+                                ->count();
+
+                            if ($campaignGroupCount === 0) {
+                                $campaignGroupCount = count($batch->meta['campaign_group_mappings'] ?? []);
+                            }
+                        @endphp
                         <tr>
                             <td>
                                 <div class="font-extrabold text-white">{{ $batch->original_filename }}</div>
-                                <div class="text-xs text-slate-400">
-                                    {{ $batch->uploadedBy?->name ?? 'Unknown user' }}
-                                </div>
                             </td>
+                            <td>{{ $batch->uploadedBy?->name ?? 'Unknown user' }}</td>
                             <td>
                                 <div class="font-semibold text-slate-200">{{ optional($batch->created_at)->format('d M Y') }}</div>
                                 <div class="text-xs text-slate-400">{{ optional($batch->created_at)->diffForHumans() }}</div>
                             </td>
                             <td>
-                                <span class="inline-flex rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-extrabold text-blue-200 ring-1 ring-blue-400/20">
+                                <span class="sf-badge-blue">
                                     {{ \Illuminate\Support\Str::headline($batch->status) }}
                                 </span>
                             </td>
@@ -78,6 +89,7 @@
                                 Leads {{ $batch->duplicate_lead_rows }}
                             </td>
                             <td>{{ $batch->ready_ack_rows }}</td>
+                            <td>{{ $campaignGroupCount }}</td>
                             <td class="text-right">
                                 <a href="{{ route('admin.leads.import.preview.batches.show', $batch) }}"
                                    class="inline-flex rounded-lg border border-orange-400/25 bg-orange-500/10 px-3 py-2 text-xs font-extrabold text-orange-200 hover:text-orange-100">
@@ -87,7 +99,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="py-10 text-center text-slate-400">
+                            <td colspan="10" class="py-10 text-center text-slate-400">
                                 No lead upload preview batches yet.
                             </td>
                         </tr>

@@ -14,6 +14,19 @@
         max-width: none;
     }
 
+    .sf-leads-page .sf-index-sticky-panel {
+        position: sticky;
+        top: 5rem;
+        z-index: 30;
+        margin-left: -0.25rem;
+        margin-right: -0.25rem;
+        padding: 0.25rem;
+        border-radius: 1.5rem;
+        background: rgba(2, 6, 23, 0.88);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(16px);
+    }
+
     .sf-leads-panel {
         border-color: #1e293b;
         background: rgba(11, 18, 32, 0.86);
@@ -124,6 +137,58 @@
         color: #ff7a1a;
     }
 
+    .sf-leads-action-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.375rem;
+    }
+
+    .sf-leads-action-pill {
+        min-height: 1.875rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 9999px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        padding: 0.375rem 0.625rem;
+        background: rgba(15, 23, 42, 0.82);
+        color: #e2e8f0;
+        font-size: 0.75rem;
+        font-weight: 900;
+        line-height: 1;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+    .sf-leads-action-pill:hover {
+        border-color: rgba(251, 146, 60, 0.55);
+        background: rgba(249, 115, 22, 0.16);
+        color: #fed7aa;
+    }
+
+    .sf-leads-action-pill-danger {
+        color: #fecaca;
+    }
+
+    .sf-leads-action-pill-danger:hover {
+        border-color: rgba(248, 113, 113, 0.52);
+        background: rgba(239, 68, 68, 0.14);
+        color: #fee2e2;
+    }
+
+    @media (max-width: 1023px) {
+        .sf-leads-page .sf-index-sticky-panel {
+            position: static;
+            margin-left: 0;
+            margin-right: 0;
+            padding: 0;
+            background: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+        }
+    }
+
     .sf-leads-accent-title,
     .sf-leads-accent-value {
         color: #f8fafc;
@@ -153,6 +218,11 @@
     html[data-theme="light"] .sf-leads-soft-panel {
         border-color: #dbe3ef !important;
         background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-leads-page .sf-index-sticky-panel {
+        background: rgba(248, 250, 252, 0.92) !important;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10) !important;
     }
 
     html[data-theme="light"] .sf-leads-title,
@@ -231,6 +301,28 @@
 
     html[data-theme="light"] .sf-leads-page .sf-link:hover {
         color: #9a3412 !important;
+    }
+
+    html[data-theme="light"] .sf-leads-action-pill {
+        border-color: #cbd5e1 !important;
+        background: #ffffff !important;
+        color: #334155 !important;
+    }
+
+    html[data-theme="light"] .sf-leads-action-pill:hover {
+        border-color: #fdba74 !important;
+        background: #fff7ed !important;
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-leads-action-pill-danger {
+        color: #b91c1c !important;
+    }
+
+    html[data-theme="light"] .sf-leads-action-pill-danger:hover {
+        border-color: #fca5a5 !important;
+        background: #fef2f2 !important;
+        color: #991b1b !important;
     }
 
     html[data-theme="light"] .sf-leads-page [class*="text-slate-300"] {

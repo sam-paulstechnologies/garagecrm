@@ -8,6 +8,22 @@
 @php
     $summary = $preview['summary'] ?? null;
     $rows = $preview['rows'] ?? [];
+    $campaignGroups = $preview['campaign_groups'] ?? [];
+    $sendReadyGroups = collect($campaignGroups)->where('mapping_status', 'Ready to Send');
+    $sendReadyContacts = $sendReadyGroups->sum('valid_rows');
+    $sendReadyGroupCount = $sendReadyGroups->count();
+    $campaignTypes = $campaignTypes ?? [
+        'New Lead Campaign',
+        'Service Offer Campaign',
+        'Retention Campaign',
+        'Lost Lead Revival Campaign',
+        'WhatsApp Campaign',
+        'Meta Lead Form Campaign',
+        'Website Form Campaign',
+        'Walk-in / Manual Entry',
+        'Referral Campaign',
+        'Fleet Campaign',
+    ];
 
     $statusClasses = [
         'valid' => 'bg-emerald-500/10 text-emerald-200 ring-emerald-400/20',
@@ -33,9 +49,40 @@
         'skipped' => 'bg-slate-500/10 text-slate-200 ring-slate-400/20',
         'applied' => 'bg-purple-500/10 text-purple-200 ring-purple-400/20',
     ];
+
+    $mappingBadge = function ($status) {
+        return match ((string) $status) {
+            'Mapped' => 'sf-badge-green',
+            'Preview Only' => 'sf-badge-orange',
+            'Inactive' => 'sf-badge-slate',
+            'Missing' => 'sf-badge-red',
+            default => 'sf-badge-slate',
+        };
+    };
+
+    $whatsappBadge = function ($status) {
+        return match ((string) $status) {
+            'Enabled' => 'sf-badge-green',
+            'Preview Only' => 'sf-badge-orange',
+            'Template Missing' => 'sf-badge-yellow',
+            'Disabled' => 'sf-badge-slate',
+            default => 'sf-badge-slate',
+        };
+    };
+
+    $groupStatusBadge = function ($status) {
+        return match ((string) $status) {
+            'Ready to Send', 'Queued' => 'sf-badge-green',
+            'Preview Only', 'Skipped' => 'sf-badge-orange',
+            'Template Missing' => 'sf-badge-yellow',
+            'Missing Mapping', 'Failed' => 'sf-badge-red',
+            'Mapping Inactive' => 'sf-badge-slate',
+            default => 'sf-badge-slate',
+        };
+    };
 @endphp
 
-<div class="sf-page sf-import-page space-y-6">
+<div class="sf-page sf-import-page w-full px-4 py-6 space-y-6 sm:px-6 lg:px-8">
     <div class="sf-page-header">
         <div>
             <div class="sf-kicker">Lead Upload Preview</div>
@@ -75,7 +122,7 @@
     @endif
 
     @if(session('info'))
-        <div class="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4 text-sm font-semibold text-blue-100">
+        <div class="sf-alert-info">
             {{ session('info') }}
         </div>
     @endif
@@ -105,7 +152,7 @@
             <form method="POST"
                   action="{{ route('admin.leads.import.preview.process') }}"
                   enctype="multipart/form-data"
-                  class="flex flex-col gap-4 md:flex-row md:items-end">
+                  class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem_auto] lg:items-end">
                 @csrf
 
                 <div class="min-w-0 flex-1">
@@ -116,8 +163,23 @@
                            required
                            class="sf-import-field block file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600">
                     <p class="sf-help mt-2">
-                        Required: name, source, and either phone or whatsapp.
+                        Required: customer_name, phone, lead_source, and campaign_type. Backward aliases name/source are still accepted.
                     </p>
+                </div>
+
+                <div>
+                    <label for="preview_campaign_type" class="sf-label">Default Campaign Type</label>
+                    <select id="preview_campaign_type"
+                            name="campaign_type"
+                            required
+                            class="sf-import-select">
+                        @foreach($campaignTypes as $campaignType)
+                            <option value="{{ $campaignType }}" @selected(old('campaign_type', 'New Lead Campaign') === $campaignType)>
+                                {{ $campaignType }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="sf-help mt-2">Used only when a CSV row does not contain campaign_type. If campaign_type is present in the file, the row value wins.</p>
                 </div>
 
                 <button type="submit" class="sf-btn-primary">
@@ -135,6 +197,182 @@
         @if(isset($batch) && $batch)
             <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4 text-sm font-semibold text-orange-100">
                 Approval only marks rows for future application. It does not create leads or send messages.
+            </div>
+        @endif
+
+        @if(! empty($campaignGroups))
+            <div class="sf-card">
+                <div class="sf-card-header flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h2 class="sf-section-title">Campaign Groups Found</h2>
+                        <p class="sf-section-subtitle">
+                            Review campaign_type groups from the uploaded file and override journey/template mapping for this upload if needed.
+                        </p>
+                    </div>
+
+                    @if(isset($batch) && $batch)
+                        <button type="submit" form="campaign-group-mapping-form" class="sf-btn-primary">
+                            Save Preview
+                        </button>
+                    @endif
+                </div>
+
+                @if(isset($batch) && $batch)
+                    <form id="campaign-group-mapping-form"
+                          method="POST"
+                          action="{{ route('admin.leads.import.preview.batches.mappings.save', $batch) }}">
+                        @csrf
+                    </form>
+                @endif
+
+                <div class="sf-table-scroll overflow-x-auto">
+                    <table class="sf-table sf-import-table min-w-[1480px]">
+                        <thead>
+                            <tr>
+                                <th>Campaign Type</th>
+                                <th>Rows</th>
+                                <th>Mapped Journey</th>
+                                <th>Journey Key</th>
+                                <th>Trigger Key</th>
+                                <th>WhatsApp Template</th>
+                                <th>Follow-up Template</th>
+                                <th>Mode</th>
+                                <th>Status</th>
+                                @if(isset($batch) && $batch)
+                                    <th>Default</th>
+                                @endif
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($campaignGroups as $group)
+                                @php($groupKey = $group['key'])
+                                <tr>
+                                    <td>
+                                        <div class="font-extrabold text-white">{{ $group['campaign_type'] }}</div>
+                                        @if(isset($batch) && $batch)
+                                            <input type="hidden"
+                                                   name="campaign_groups[{{ $groupKey }}][campaign_type]"
+                                                   value="{{ $group['campaign_type'] }}"
+                                                   form="campaign-group-mapping-form">
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="text-sm font-semibold text-white">{{ $group['total'] }} leads</div>
+                                        <div class="mt-1 text-xs text-slate-400">
+                                            Valid {{ $group['valid_rows'] }} | Duplicates {{ $group['duplicate_rows'] }} | Invalid {{ $group['invalid_rows'] }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <input class="sf-import-field"
+                                                   name="campaign_groups[{{ $groupKey }}][journey_label]"
+                                                   value="{{ $group['journey_label'] }}"
+                                                   placeholder="Journey label"
+                                                   form="campaign-group-mapping-form">
+                                        @else
+                                            {{ $group['journey_label'] ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <input class="sf-import-field"
+                                                   name="campaign_groups[{{ $groupKey }}][journey_key]"
+                                                   value="{{ $group['journey_key'] }}"
+                                                   placeholder="journey_key"
+                                                   form="campaign-group-mapping-form">
+                                        @else
+                                            {{ $group['journey_key'] ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <input class="sf-import-field"
+                                                   name="campaign_groups[{{ $groupKey }}][journey_trigger_key]"
+                                                   value="{{ $group['journey_trigger_key'] }}"
+                                                   placeholder="lead.imported.example"
+                                                   form="campaign-group-mapping-form">
+                                        @else
+                                            {{ $group['journey_trigger_key'] ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <input class="sf-import-field"
+                                                   name="campaign_groups[{{ $groupKey }}][whatsapp_template_name]"
+                                                   value="{{ $group['whatsapp_template_name'] }}"
+                                                   placeholder="approved_template_name"
+                                                   form="campaign-group-mapping-form">
+                                        @else
+                                            {{ $group['whatsapp_template_name'] ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <input class="sf-import-field"
+                                                   name="campaign_groups[{{ $groupKey }}][followup_template_name]"
+                                                   value="{{ $group['followup_template_name'] }}"
+                                                   placeholder="optional_followup_template"
+                                                   form="campaign-group-mapping-form">
+                                        @else
+                                            {{ $group['followup_template_name'] ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if(isset($batch) && $batch)
+                                            <div class="space-y-2 text-xs font-extrabold text-slate-300">
+                                                <input type="hidden" name="campaign_groups[{{ $groupKey }}][preview_only]" value="0" form="campaign-group-mapping-form">
+                                                <label class="flex items-center gap-2">
+                                                    <input type="checkbox"
+                                                           name="campaign_groups[{{ $groupKey }}][preview_only]"
+                                                           value="1"
+                                                           @checked($group['preview_only'])
+                                                           class="rounded border-slate-600 bg-slate-950 text-orange-500"
+                                                           form="campaign-group-mapping-form">
+                                                    Preview only
+                                                </label>
+                                                <input type="hidden" name="campaign_groups[{{ $groupKey }}][whatsapp_enabled]" value="0" form="campaign-group-mapping-form">
+                                                <label class="flex items-center gap-2">
+                                                    <input type="checkbox"
+                                                           name="campaign_groups[{{ $groupKey }}][whatsapp_enabled]"
+                                                           value="1"
+                                                           @checked($group['whatsapp_enabled'])
+                                                           class="rounded border-slate-600 bg-slate-950 text-orange-500"
+                                                           form="campaign-group-mapping-form">
+                                                    WhatsApp enabled
+                                                </label>
+                                            </div>
+                                        @else
+                                            <div class="flex flex-wrap gap-1.5">
+                                                <span class="{{ $group['preview_only'] ? 'sf-badge-orange' : 'sf-badge-green' }}">{{ $group['preview_only'] ? 'Preview Only' : 'Live Ready' }}</span>
+                                                <span class="{{ $group['whatsapp_enabled'] ? 'sf-badge-green' : 'sf-badge-slate' }}">{{ $group['whatsapp_enabled'] ? 'WhatsApp On' : 'WhatsApp Off' }}</span>
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <span class="{{ $groupStatusBadge($group['mapping_status']) }}">{{ $group['mapping_status'] }}</span>
+                                            <span class="{{ $whatsappBadge($group['whatsapp_status']) }}">{{ $group['whatsapp_status'] }}</span>
+                                            <span class="{{ $groupStatusBadge($group['send_status']) }}">{{ $group['send_status'] }}</span>
+                                        </div>
+                                    </td>
+                                    @if(isset($batch) && $batch)
+                                        <td>
+                                            <input type="hidden" name="campaign_groups[{{ $groupKey }}][save_as_default]" value="0" form="campaign-group-mapping-form">
+                                            <label class="flex items-center gap-2 text-xs font-extrabold text-slate-300">
+                                                <input type="checkbox"
+                                                       name="campaign_groups[{{ $groupKey }}][save_as_default]"
+                                                       value="1"
+                                                       class="rounded border-slate-600 bg-slate-950 text-orange-500"
+                                                       form="campaign-group-mapping-form">
+                                                Save as default
+                                            </label>
+                                        </td>
+                                    @endif
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             </div>
         @endif
 
@@ -168,9 +406,9 @@
             <div class="sf-card">
                 <div class="sf-card-header flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h2 class="sf-section-title">Apply approved rows</h2>
+                        <h2 class="sf-section-title">Import approved rows</h2>
                         <p class="sf-section-subtitle">
-                            This creates clients, leads, and vehicles only. It will not send WhatsApp messages.
+                            Choose import-only, or explicitly queue template-based instant ACK messages for send-ready campaign groups.
                         </p>
                     </div>
 
@@ -186,8 +424,20 @@
                         <form method="POST" action="{{ route('admin.leads.import.preview.batches.apply', $batch) }}">
                             @csrf
                             <input type="hidden" name="mode" value="apply">
+                            <input type="hidden" name="ack_mode" value="import_only">
                             <button type="submit" class="sf-btn-primary">
-                                Apply Approved Rows
+                                Import Leads Only
+                            </button>
+                        </form>
+
+                        <form method="POST"
+                              action="{{ route('admin.leads.import.preview.batches.apply', $batch) }}"
+                              onsubmit="return confirm('You are about to send WhatsApp ACK messages to {{ $sendReadyContacts }} contacts across {{ $sendReadyGroupCount }} campaign groups. This action cannot be undone. Continue?')">
+                            @csrf
+                            <input type="hidden" name="mode" value="apply">
+                            <input type="hidden" name="ack_mode" value="send_ack">
+                            <button type="submit" class="sf-btn-secondary">
+                                Import + Send Instant ACK
                             </button>
                         </form>
                     </div>
@@ -195,7 +445,7 @@
 
                 <div class="border-t border-slate-800 p-5">
                     <p class="text-sm font-semibold text-orange-100">
-                        Phase 9F does not send instant ACK messages, create campaigns, create journeys, or write WhatsApp logs.
+                        ACK sending is explicit: it queues approved WhatsApp templates only for eligible rows. Broad LeadCreated journeys are still bypassed.
                     </p>
                 </div>
             </div>
@@ -223,6 +473,8 @@
                         'Clients Reuse' => $applyReadiness['clients_to_reuse'] ?? 0,
                         'Leads Create' => $applyReadiness['leads_to_create'] ?? 0,
                         'Vehicles Create' => $applyReadiness['vehicles_to_create'] ?? 0,
+                        'ACK Queued' => $applyReadiness['ack_queued'] ?? 0,
+                        'ACK Failed' => $applyReadiness['ack_failed'] ?? 0,
                     ] as $label => $value)
                         <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                             <div class="text-xs font-extrabold uppercase tracking-wide text-slate-400">{{ $label }}</div>
@@ -364,7 +616,7 @@
             @endif
 
             <div class="sf-table-scroll overflow-x-auto">
-                <table class="sf-table sf-import-table min-w-[1480px]">
+                <table class="sf-table sf-import-table min-w-[1740px]">
                     <thead>
                         <tr>
                             @if(isset($batch) && $batch)
@@ -383,6 +635,9 @@
                             <th>Customer</th>
                             <th>Phone / WA</th>
                             <th>Source</th>
+                            <th>Campaign Type</th>
+                            <th>Mapped Journey</th>
+                            <th>Mapping / WhatsApp</th>
                             <th>Service</th>
                             <th>Campaign</th>
                             <th>Duplicate Client</th>
@@ -459,6 +714,26 @@
                                 </td>
                                 <td>{{ $row['contact_phone'] ?: '-' }}</td>
                                 <td>{{ $row['source'] ?: '-' }}</td>
+                                <td>
+                                    <div class="font-semibold text-white">{{ $row['campaign_type'] ?: '-' }}</div>
+                                </td>
+                                <td>
+                                    <div class="font-semibold text-white">{{ $row['journey_label'] ?? 'No journey label' }}</div>
+                                    <div class="mt-1 text-xs text-slate-400">{{ $row['journey_key'] ?? 'No journey key' }}</div>
+                                    @if(! empty($row['journey_trigger_key']))
+                                        <div class="text-xs text-slate-400">{{ $row['journey_trigger_key'] }}</div>
+                                    @endif
+                                </td>
+                                <td>
+                                    @php
+                                        $mappingStatus = $row['mapping_status'] ?? 'Missing';
+                                        $whatsappStatus = $row['whatsapp_status'] ?? 'Disabled';
+                                    @endphp
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <span class="{{ $mappingBadge($mappingStatus) }}">{{ $mappingStatus }}</span>
+                                        <span class="{{ $whatsappBadge($whatsappStatus) }}">{{ $whatsappStatus }}</span>
+                                    </div>
+                                </td>
                                 <td>{{ $row['service'] ?: '-' }}</td>
                                 <td>{{ $row['campaign'] ?: '-' }}</td>
                                 <td>
@@ -504,7 +779,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ isset($batch) && $batch ? 14 : 12 }}" class="py-8 text-center text-slate-400">
+                                <td colspan="{{ isset($batch) && $batch ? 17 : 15 }}" class="py-8 text-center text-slate-400">
                                     No preview rows found.
                                 </td>
                             </tr>

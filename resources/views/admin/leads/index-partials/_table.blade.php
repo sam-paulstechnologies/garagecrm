@@ -18,8 +18,7 @@
             'new' => 'bg-blue-500/10 text-blue-300 ring-blue-400/20',
             'attempting_contact' => 'bg-yellow-500/10 text-yellow-300 ring-yellow-400/20',
             'contact_on_hold' => 'bg-orange-500/10 text-orange-300 ring-orange-400/20',
-            'qualified' => 'bg-green-500/10 text-green-300 ring-green-400/20',
-            'converted' => 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20',
+            'qualified', 'converted' => 'bg-green-500/10 text-green-300 ring-green-400/20',
             'disqualified', 'lost' => 'bg-red-500/10 text-red-300 ring-red-400/20',
             default => 'bg-slate-500/10 text-slate-300 ring-slate-400/20',
         };
@@ -82,6 +81,7 @@
     };
 
     $badgeBase = 'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1';
+    $phoneService = app(\App\Services\PhoneNumberService::class);
 @endphp
 
 <div class="sf-leads-panel overflow-hidden rounded-2xl border shadow-sm">
@@ -106,6 +106,13 @@
                         $log = $whatsappByLead[$lead->id] ?? null;
                         $wa = $whatsappStatus($lead, $log);
                         $vehicleText = trim(($lead->vehicle_make ?? $lead->other_make ?? '') . ' ' . ($lead->vehicle_model ?? $lead->other_model ?? ''));
+                        $leadPhone = $lead->phone ?? $lead->phone_norm;
+                        $leadPhoneDisplay = $leadPhone ? $phoneService->formatForDisplay($leadPhone) : null;
+                        $leadTelUrl = $leadPhone ? $phoneService->buildTelUrl($leadPhone) : null;
+                        $leadWhatsappKey = $leadPhone ? $phoneService->buildWhatsappLookupKey($leadPhone) : null;
+                        $leadWhatsappUrl = $leadWhatsappKey && \Illuminate\Support\Facades\Route::has('admin.inbox.index')
+                            ? route('admin.inbox.index', ['search' => $leadWhatsappKey])
+                            : null;
 
                         if ($vehicleText === '') {
                             $vehicleText = $lead->vehicle_label ?? '';
@@ -125,8 +132,15 @@
                                     @endif
                                 </div>
 
-                                <div class="sf-leads-muted mt-1 truncate text-xs font-medium">{{ $lead->email ?? 'No email' }}</div>
-                                <div class="sf-leads-value mt-1 text-sm font-bold">{{ $lead->phone ?? $lead->phone_norm ?? 'No phone' }}</div>
+                                <div class="sf-leads-value mt-1 text-sm font-bold">
+                                    @if($leadTelUrl)
+                                        <a href="{{ $leadTelUrl }}" class="sf-link break-all">
+                                            {{ $leadPhoneDisplay }}
+                                        </a>
+                                    @else
+                                        <span class="sf-leads-muted">No phone</span>
+                                    @endif
+                                </div>
                             </div>
                         </td>
 
@@ -203,11 +217,17 @@
                         </td>
 
                         <td class="px-5 py-4 align-top">
-                            <span class="{{ $badgeBase }} {{ $wa['class'] }}">{{ $wa['label'] }}</span>
+                            @if($leadWhatsappUrl)
+                                <a href="{{ $leadWhatsappUrl }}" class="{{ $badgeBase }} {{ $wa['class'] }}" title="Open WhatsApp conversation in Inbox">
+                                    {{ $wa['label'] }}
+                                </a>
+                            @else
+                                <span class="{{ $badgeBase }} {{ $wa['class'] }}">{{ $wa['label'] }}</span>
+                            @endif
 
                             <div class="mt-2">
                                 <span class="{{ $badgeBase }} {{ $statusBadge($lead->status) }}">
-                                    {{ ucfirst(str_replace('_',' ', $lead->status)) }}
+                                    {{ $lead->status_label ?? ucfirst(str_replace('_',' ', $lead->status)) }}
                                 </span>
                             </div>
 
@@ -215,7 +235,20 @@
                         </td>
 
                         <td class="px-5 py-4 text-right align-top">
-                            <a href="{{ route('admin.leads.show', $lead) }}" class="sf-link">View</a>
+                            <div class="sf-leads-action-group">
+                                <a href="{{ route('admin.leads.show', $lead) }}" class="sf-leads-action-pill">View</a>
+                                <a href="{{ route('admin.leads.edit', $lead) }}" class="sf-leads-action-pill">Edit</a>
+
+                                @if(($pageMode ?? 'open') !== 'archived')
+                                    <form method="POST" action="{{ route('admin.leads.destroy', $lead) }}" class="inline">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="sf-leads-action-pill sf-leads-action-pill-danger">
+                                            Archive
+                                        </button>
+                                    </form>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                 @empty
@@ -228,7 +261,7 @@
                                     @elseif(($pageMode ?? 'open') === 'open' && ! blank($bucket ?? ''))
                                         No leads found in this bucket.
                                     @elseif(($pageMode ?? 'open') === 'qualified')
-                                        No qualified or converted leads found.
+                                        No qualified leads found.
                                     @elseif(($pageMode ?? 'open') === 'disqualified')
                                         No disqualified leads found.
                                     @else

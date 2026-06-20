@@ -18,7 +18,7 @@ class LeadUploadPreviewService
     private const UPLOAD_ACK_EVENT_KEY = 'lead.upload.instant_ack';
     private const FALLBACK_ACK_EVENT_KEY = 'lead.created';
 
-    public function preview(UploadedFile $file, int $companyId, int $limit = self::DEFAULT_LIMIT): array
+    public function preview(UploadedFile $file, int $companyId, int $limit = self::DEFAULT_LIMIT, ?string $defaultCampaignType = null): array
     {
         $limit = max(1, min($limit, self::DEFAULT_LIMIT));
         $rawRows = $this->parseFile($file, $limit + 1);
@@ -35,7 +35,7 @@ class LeadUploadPreviewService
                 continue;
             }
 
-            $previewRows[] = $this->previewRow($data, $rowNumber, $companyId);
+            $previewRows[] = $this->previewRow($data, $rowNumber, $companyId, $defaultCampaignType);
         }
 
         $previewRows = array_slice($previewRows, 0, $limit);
@@ -50,16 +50,20 @@ class LeadUploadPreviewService
         ];
     }
 
-    private function previewRow(array $data, int $rowNumber, int $companyId): array
+    private function previewRow(array $data, int $rowNumber, int $companyId, ?string $defaultCampaignType): array
     {
-        $name = trim((string) ($data['name'] ?? ''));
+        $name = trim((string) ($data['customer_name'] ?? $data['name'] ?? ''));
         $phone = $this->normalizePhone($data['phone'] ?? null);
         $whatsapp = $this->normalizePhone($data['whatsapp'] ?? null);
         $contactPhone = $whatsapp ?: $phone;
         $email = $this->normalizeEmail($data['email'] ?? null);
-        $source = $this->normalizeSource($data['source'] ?? null);
+        $source = $this->normalizeSource($data['lead_source'] ?? $data['source'] ?? null);
+        $rowCampaignType = trim((string) ($data['campaign_type'] ?? ''));
+        $campaignType = LeadCampaignTypeJourneyMap::normalize($rowCampaignType !== '' ? $rowCampaignType : $defaultCampaignType);
+        $journeyMapping = LeadCampaignTypeJourneyMap::resolve($companyId, $campaignType);
         $service = $this->serviceLabel($data);
         $campaign = trim((string) ($data['campaign_name'] ?? ''));
+        $preferredDate = $data['preferred_date'] ?? $data['follow_up_date'] ?? null;
 
         $errors = [];
         $warnings = [];
@@ -76,14 +80,16 @@ class LeadUploadPreviewService
             $errors[] = 'Source is required.';
         }
 
+        if (! $campaignType) {
+            $errors[] = 'Campaign type is required.';
+        }
+
         if (($data['email'] ?? null) && ! $email) {
             $warnings[] = 'Email format looks invalid and will need review.';
         }
 
-        foreach (['follow_up_date'] as $dateField) {
-            if (! empty($data[$dateField]) && ! $this->parseDate($data[$dateField])) {
-                $errors[] = str_replace('_', ' ', ucfirst($dateField)) . ' has an invalid date format.';
-            }
+        if (! empty($preferredDate) && ! $this->parseDate($preferredDate)) {
+            $errors[] = 'Preferred date has an invalid date format.';
         }
 
         $clientMatch = $this->findClientMatch($companyId, $contactPhone, $email);
@@ -118,8 +124,18 @@ class LeadUploadPreviewService
             'contact_phone' => $contactPhone,
             'email' => $email,
             'source' => $source,
+            'campaign_type' => $campaignType,
+            'journey_key' => $journeyMapping['journey_key'] ?? null,
+            'journey_label' => $journeyMapping['journey_label'] ?? null,
+            'journey_trigger_key' => $journeyMapping['journey_trigger_key'] ?? null,
+            'mapping_status' => $journeyMapping['mapping_status'] ?? 'Missing',
+            'whatsapp_status' => $journeyMapping['whatsapp_status'] ?? 'Disabled',
+            'journey_mapping' => $journeyMapping,
             'service' => $service,
             'campaign' => $campaign,
+            'city' => trim((string) ($data['city'] ?? '')),
+            'preferred_date' => $preferredDate,
+            'preferred_time' => trim((string) ($data['preferred_time'] ?? '')),
             'vehicle' => $this->vehicleLabel($data),
             'client_match' => $clientMatch ? [
                 'id' => $clientMatch->id,

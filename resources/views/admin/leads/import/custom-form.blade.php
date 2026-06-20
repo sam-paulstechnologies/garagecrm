@@ -2,8 +2,120 @@
 
 @section('title', 'Custom Website Lead Form')
 
+@push('styles')
+<style>
+    .sf-lead-custom-form-page .sf-card,
+    .sf-lead-custom-form-page .sf-lead-code-panel {
+        border-color: rgba(255, 255, 255, 0.10);
+        background: rgba(15, 23, 42, 0.86);
+        color: #e2e8f0;
+    }
+
+    .sf-lead-custom-form-page .sf-card-header,
+    .sf-lead-custom-form-page .sf-lead-code-header {
+        border-color: rgba(255, 255, 255, 0.10);
+    }
+
+    .sf-lead-custom-form-page .sf-btn-secondary {
+        min-height: 2.5rem;
+        white-space: nowrap;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page {
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-card,
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-code-panel {
+        border-color: #dbe3ef !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-card-header,
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-code-header {
+        border-color: #e2e8f0 !important;
+        background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-section-title,
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-panel-title,
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-code-panel code {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-section-subtitle,
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-muted {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-lead-code-panel pre {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .text-green-300 {
+        color: #047857 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .text-yellow-300 {
+        color: #a16207 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .text-orange-100\/80,
+    html[data-theme="light"] .sf-lead-custom-form-page .text-blue-100\/80,
+    html[data-theme="light"] .sf-lead-custom-form-page .text-green-100\/80,
+    html[data-theme="light"] .sf-lead-custom-form-page .text-yellow-100\/80 {
+        color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .bg-orange-500\/10 {
+        background: #fff7ed !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .bg-blue-500\/10 {
+        background: #eff6ff !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .bg-green-500\/10 {
+        background: #ecfdf5 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .bg-yellow-500\/10 {
+        background: #fefce8 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .border-white\/10,
+    html[data-theme="light"] .sf-lead-custom-form-page .border-orange-400\/20,
+    html[data-theme="light"] .sf-lead-custom-form-page .border-blue-400\/20,
+    html[data-theme="light"] .sf-lead-custom-form-page .border-green-400\/20,
+    html[data-theme="light"] .sf-lead-custom-form-page .border-yellow-400\/20 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-btn-secondary {
+        border-color: #cbd5e1 !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-custom-form-page .sf-btn-secondary:hover {
+        background: #f8fafc !important;
+    }
+</style>
+@endpush
+
 @section('content')
-<div class="sf-page space-y-6">
+<div class="sf-page sf-lead-custom-form-page space-y-6">
 
     {{-- Header --}}
     <div class="sf-page-header">
@@ -56,13 +168,13 @@
                         </p>
                     </div>
 
-                    <div class="overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-xl shadow-black/20">
-                        <div class="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                    <div class="sf-lead-code-panel overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-xl shadow-black/20">
+                        <div class="sf-lead-code-header flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
                             <div>
-                                <div class="text-sm font-extrabold text-white">
+                                <div class="sf-lead-panel-title text-sm font-extrabold text-white">
                                     HTML Snippet
                                 </div>
-                                <div class="text-xs font-medium text-slate-500">
+                                <div class="sf-lead-muted text-xs font-medium text-slate-500">
                                     Paste before closing body tag or inside your page content.
                                 </div>
                             </div>
@@ -117,7 +229,7 @@
                 </div>
 
                 <div class="sf-card-body">
-                    <ul class="space-y-3 text-sm text-slate-300">
+                    <ul class="sf-lead-muted space-y-3 text-sm text-slate-300">
                         <li class="flex gap-3">
                             <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">
                                 1

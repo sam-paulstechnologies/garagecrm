@@ -2,6 +2,7 @@
 
 namespace App\Services\Leads;
 
+use App\Jobs\SendWhatsAppTemplateJob;
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Client\LeadUploadBatch;
@@ -15,19 +16,20 @@ use Illuminate\Support\Facades\Schema;
 
 class LeadUploadApplyService
 {
-    public function dryRun(LeadUploadBatch $batch, ?int $userId = null): array
+    public function dryRun(LeadUploadBatch $batch, ?int $userId = null, string $ackMode = 'import_only'): array
     {
-        return $this->process($batch, false, $userId);
+        return $this->process($batch, false, $userId, $ackMode);
     }
 
-    public function apply(LeadUploadBatch $batch, ?int $userId = null): array
+    public function apply(LeadUploadBatch $batch, ?int $userId = null, string $ackMode = 'import_only'): array
     {
-        return $this->process($batch, true, $userId);
+        return $this->process($batch, true, $userId, $ackMode);
     }
 
-    private function process(LeadUploadBatch $batch, bool $apply, ?int $userId): array
+    private function process(LeadUploadBatch $batch, bool $apply, ?int $userId, string $ackMode): array
     {
         $summary = $this->emptySummary($apply ? 'apply' : 'dry_run');
+        $summary['ack_mode'] = $ackMode === 'send_ack' ? 'send_ack' : 'import_only';
         $records = [];
 
         $rows = LeadUploadRow::query()
@@ -75,9 +77,11 @@ class LeadUploadApplyService
             }
 
             try {
-                $applied = DB::transaction(fn () => $this->applyRow($batch, $row, $record, $userId));
+                $applied = DB::transaction(fn () => $this->applyRow($batch, $row, $record, $userId, $summary['ack_mode']));
                 $summary['rows_applied']++;
                 $record = array_merge($record, $applied);
+                $ackStatus = $record['ack_status'] ?? 'not_requested';
+                $summary['ack_' . $ackStatus] = ($summary['ack_' . $ackStatus] ?? 0) + 1;
             } catch (\Throwable $e) {
                 $summary['errors']++;
                 $record['overall_status'] = 'error';
@@ -142,11 +146,11 @@ class LeadUploadApplyService
             ]);
         }
 
-        if ($name === '' || (! $phone && ! $email)) {
+        if ($name === '' || ! $phone) {
             return array_merge($record, [
                 'eligible' => true,
                 'overall_status' => 'blocked_missing_required_data',
-                'reason' => 'Name and phone/WhatsApp or email are required.',
+                'reason' => 'Name and phone/WhatsApp are required.',
             ]);
         }
 
@@ -174,12 +178,23 @@ class LeadUploadApplyService
         ]);
     }
 
-    private function applyRow(LeadUploadBatch $batch, LeadUploadRow $row, array $record, ?int $userId): array
+    private function applyRow(LeadUploadBatch $batch, LeadUploadRow $row, array $record, ?int $userId, string $ackMode): array
     {
         $payload = array_merge($row->raw_payload ?? [], $row->normalized_payload ?? []);
         $clientResult = $this->resolveOrCreateClient($batch->company_id, $payload);
-        $lead = $this->createLeadWithoutEvents($batch->company_id, $clientResult['client'], $payload, $row);
+        $journeyMapping = $this->resolveCampaignMapping($batch, $payload['campaign_type'] ?? null);
+        $ackStatus = $ackMode === 'send_ack'
+            ? $this->ackEligibilityStatus($row, $payload, $journeyMapping)
+            : 'not_requested';
+        $lead = $this->createLeadWithoutEvents($batch->company_id, $clientResult['client'], $payload, $row, $journeyMapping, $ackMode === 'send_ack', $ackStatus);
         $vehicleResult = $this->resolveOrCreateVehicle($batch->company_id, $clientResult['client'], $payload);
+
+        if ($ackMode === 'send_ack' && $ackStatus === 'queued') {
+            $ackStatus = $this->queueInstantAck($batch, $row, $lead, $payload, $journeyMapping);
+            $leadPayload = $lead->external_payload ?? [];
+            $leadPayload['ack_send_status'] = $ackStatus;
+            $lead->forceFill(['external_payload' => $leadPayload])->saveQuietly();
+        }
 
         $meta = $row->raw_payload ?? [];
         $meta['_phase_9f_apply'] = [
@@ -188,7 +203,8 @@ class LeadUploadApplyService
             'client_action' => $clientResult['action'],
             'lead_action' => 'created',
             'vehicle_action' => $vehicleResult['action'],
-            'ack_status' => 'not_sent_phase_9f',
+            'ack_mode' => $ackMode,
+            'ack_status' => $ackStatus,
         ];
 
         $row->update([
@@ -206,6 +222,7 @@ class LeadUploadApplyService
             'client_action' => $clientResult['action'],
             'lead_action' => 'created',
             'vehicle_action' => $vehicleResult['action'],
+            'ack_status' => $ackStatus,
         ];
     }
 
@@ -268,10 +285,11 @@ class LeadUploadApplyService
         return ['client' => Client::create($data), 'action' => 'created_client'];
     }
 
-    private function createLeadWithoutEvents(int $companyId, Client $client, array $payload, LeadUploadRow $row): Lead
+    private function createLeadWithoutEvents(int $companyId, Client $client, array $payload, LeadUploadRow $row, array $journeyMapping, bool $ackRequested, string $ackStatus): Lead
     {
         $phone = $this->normalizePhone($payload['contact_phone'] ?? $payload['whatsapp'] ?? $payload['phone'] ?? null);
         $email = $this->normalizeEmail($payload['email'] ?? null);
+        $campaignType = LeadCampaignTypeJourneyMap::normalize($payload['campaign_type'] ?? null);
         $data = [
             'company_id' => $companyId,
             'client_id' => $client->id,
@@ -285,6 +303,22 @@ class LeadUploadApplyService
             'external_payload' => [
                 'lead_upload_batch_id' => $row->batch_id,
                 'lead_upload_row_id' => $row->id,
+                'upload_batch_id' => $row->batch_id,
+                'upload_row_id' => $row->id,
+                'campaign_type' => $campaignType,
+                'campaign_group_key' => $campaignType ? LeadCampaignTypeJourneyMap::lookupKey($campaignType) : null,
+                'mapped_journey_key' => $journeyMapping['journey_key'] ?? null,
+                'mapped_journey_label' => $journeyMapping['journey_label'] ?? null,
+                'mapped_journey_trigger_key' => $journeyMapping['journey_trigger_key'] ?? null,
+                'journey_mapping_active' => (bool) ($journeyMapping['is_active'] ?? false),
+                'journey_preview_only' => (bool) ($journeyMapping['preview_only'] ?? true),
+                'whatsapp_enabled' => (bool) ($journeyMapping['whatsapp_enabled'] ?? false),
+                'whatsapp_template_name' => $journeyMapping['whatsapp_template_name'] ?? null,
+                'ack_send_requested' => $ackRequested,
+                'ack_send_status' => $ackStatus,
+                'city' => $payload['city'] ?? null,
+                'preferred_date' => $payload['preferred_date'] ?? $payload['follow_up_date'] ?? null,
+                'preferred_time' => $payload['preferred_time'] ?? null,
                 'raw' => $row->raw_payload,
             ],
             'external_received_at' => now(),
@@ -304,8 +338,9 @@ class LeadUploadApplyService
             'lead_priority' => $payload['lead_priority'] ?? null,
             'customer_type' => $payload['customer_type'] ?? null,
             'follow_up_required' => $this->truthy($payload['follow_up_required'] ?? null),
-            'follow_up_date' => $payload['follow_up_date'] ?? null,
+            'follow_up_date' => $payload['preferred_date'] ?? $payload['follow_up_date'] ?? null,
             'campaign_name' => $payload['campaign_name'] ?? ($payload['campaign'] ?? null),
+            'campaign_type' => $campaignType,
             'assigned_to' => $this->resolveAssignedUserId($companyId, $payload['assigned_to'] ?? null),
             'is_active' => 1,
         ] as $field => $value) {
@@ -324,7 +359,7 @@ class LeadUploadApplyService
         $year = trim((string) ($payload['vehicle_year'] ?? ''));
         $plate = trim((string) ($payload['plate_number'] ?? ''));
 
-        if ($makeName === '' && $modelName === '' && $plate === '') {
+        if ($plate === '' && ($makeName === '' || $modelName === '')) {
             return ['action' => 'vehicle_optional_missing', 'vehicle' => null];
         }
 
@@ -344,7 +379,7 @@ class LeadUploadApplyService
         $year = trim((string) ($payload['vehicle_year'] ?? ''));
         $plate = trim((string) ($payload['plate_number'] ?? ''));
 
-        if ($makeName === '' && $modelName === '' && $plate === '') {
+        if ($plate === '' && ($makeName === '' || $modelName === '')) {
             return ['action' => 'skipped_missing_data', 'vehicle' => null];
         }
 
@@ -400,7 +435,9 @@ class LeadUploadApplyService
                             $query->orWhere($field, $phone);
                         }
                     }
-                } elseif ($email) {
+                }
+
+                if ($email) {
                     $query->orWhere('email', $email);
                     if (Schema::hasColumn('clients', 'email_norm')) {
                         $query->orWhere('email_norm', $email);
@@ -425,7 +462,9 @@ class LeadUploadApplyService
                     if (Schema::hasColumn('leads', 'phone_norm')) {
                         $query->orWhere('phone_norm', $phone);
                     }
-                } elseif ($email) {
+                }
+
+                if ($email) {
                     $query->orWhere('email', $email);
                     if (Schema::hasColumn('leads', 'email_norm')) {
                         $query->orWhere('email_norm', $email);
@@ -466,6 +505,120 @@ class LeadUploadApplyService
         return $query->first();
     }
 
+    private function resolveCampaignMapping(LeadUploadBatch $batch, ?string $campaignType): array
+    {
+        $campaignType = LeadCampaignTypeJourneyMap::normalize($campaignType);
+        $key = $campaignType ? LeadCampaignTypeJourneyMap::lookupKey($campaignType) : null;
+        $meta = $batch->meta ?? [];
+        $overrides = $meta['campaign_group_mappings'] ?? [];
+
+        if ($key && isset($overrides[$key]) && is_array($overrides[$key])) {
+            return $this->mappingFromArray($overrides[$key]);
+        }
+
+        return LeadCampaignTypeJourneyMap::resolve((int) $batch->company_id, $campaignType);
+    }
+
+    private function mappingFromArray(array $mapping): array
+    {
+        $journeyKey = $this->nullableString($mapping['journey_key'] ?? null);
+        $isActive = (bool) ($mapping['is_active'] ?? true);
+        $previewOnly = (bool) ($mapping['preview_only'] ?? true);
+        $whatsappEnabled = (bool) ($mapping['whatsapp_enabled'] ?? false);
+        $template = $this->nullableString($mapping['whatsapp_template_name'] ?? null);
+
+        return [
+            'campaign_type' => $mapping['campaign_type'] ?? null,
+            'journey_key' => $journeyKey,
+            'journey_label' => $this->nullableString($mapping['journey_label'] ?? null),
+            'journey_trigger_key' => $this->nullableString($mapping['journey_trigger_key'] ?? null),
+            'is_active' => $isActive,
+            'preview_only' => $previewOnly,
+            'whatsapp_enabled' => $whatsappEnabled,
+            'whatsapp_template_name' => $template,
+            'followup_template_name' => $this->nullableString($mapping['followup_template_name'] ?? null),
+            'mapping_status' => ! $journeyKey ? 'Missing' : (! $isActive ? 'Inactive' : ($previewOnly ? 'Preview Only' : 'Mapped')),
+            'whatsapp_status' => ! $whatsappEnabled ? 'Disabled' : ($template ? ($previewOnly ? 'Preview Only' : 'Enabled') : 'Template Missing'),
+        ];
+    }
+
+    private function ackEligibilityStatus(LeadUploadRow $row, array $payload, array $journeyMapping): string
+    {
+        if ($row->validation_status === 'invalid') {
+            return 'not_eligible';
+        }
+
+        if ($row->duplicate_lead_status === 'recent_duplicate') {
+            return 'skipped_duplicate';
+        }
+
+        if (! $this->normalizePhone($payload['contact_phone'] ?? $payload['whatsapp'] ?? $payload['phone'] ?? null)) {
+            return 'not_eligible';
+        }
+
+        if (empty($payload['campaign_type']) || empty($journeyMapping['journey_key'])) {
+            return 'not_eligible';
+        }
+
+        if (! (bool) ($journeyMapping['is_active'] ?? false)) {
+            return 'skipped_mapping_inactive';
+        }
+
+        if ((bool) ($journeyMapping['preview_only'] ?? true)) {
+            return 'skipped_preview_only';
+        }
+
+        if (! (bool) ($journeyMapping['whatsapp_enabled'] ?? false)) {
+            return 'not_eligible';
+        }
+
+        if (empty($journeyMapping['whatsapp_template_name'])) {
+            return 'skipped_missing_template';
+        }
+
+        return 'queued';
+    }
+
+    private function queueInstantAck(LeadUploadBatch $batch, LeadUploadRow $row, Lead $lead, array $payload, array $journeyMapping): string
+    {
+        try {
+            SendWhatsAppTemplateJob::dispatch(
+                $this->normalizePhone($payload['contact_phone'] ?? $payload['whatsapp'] ?? $payload['phone'] ?? null),
+                (string) $journeyMapping['whatsapp_template_name'],
+                $this->ackTemplateParams($payload),
+                [],
+                [
+                    'company_id' => (int) $batch->company_id,
+                    'lead_id' => $lead->id,
+                    'source' => 'lead_import_preview',
+                    'upload_batch_id' => $batch->id,
+                    'upload_row_id' => $row->id,
+                    'campaign_type' => $payload['campaign_type'] ?? null,
+                    'journey_key' => $journeyMapping['journey_key'] ?? null,
+                ]
+            );
+
+            return 'queued';
+        } catch (\Throwable) {
+            return 'failed';
+        }
+    }
+
+    private function ackTemplateParams(array $payload): array
+    {
+        $vehicle = trim(implode(' ', array_filter([
+            $payload['vehicle_year'] ?? null,
+            $payload['vehicle_make'] ?? null,
+            $payload['vehicle_model'] ?? null,
+        ])));
+
+        return [
+            trim((string) ($payload['name'] ?? 'there')) ?: 'there',
+            trim((string) ($payload['service_type'] ?? $payload['service'] ?? 'your enquiry')) ?: 'your enquiry',
+            $vehicle ?: 'your vehicle',
+        ];
+    }
+
     private function refreshBatchAfterApply(LeadUploadBatch $batch, array $summary, ?int $userId): void
     {
         $rowCounts = LeadUploadRow::query()
@@ -483,6 +636,7 @@ class LeadUploadApplyService
         $meta = $batch->meta ?? [];
         $meta['phase_9f_apply'] = [
             'mode' => $summary['mode'],
+            'ack_mode' => $summary['ack_mode'] ?? 'import_only',
             'applied_by' => $userId,
             'applied_at' => now()->toIso8601String(),
             'rows_applied' => $summary['rows_applied'],
@@ -494,7 +648,15 @@ class LeadUploadApplyService
             'vehicles_to_reuse' => $summary['vehicles_to_reuse'],
             'vehicles_missing' => $summary['vehicles_missing'],
             'errors' => $summary['errors'],
+            'ack_queued' => $summary['ack_queued'],
+            'ack_failed' => $summary['ack_failed'],
+            'ack_not_eligible' => $summary['ack_not_eligible'],
+            'ack_skipped_duplicate' => $summary['ack_skipped_duplicate'],
+            'ack_skipped_missing_template' => $summary['ack_skipped_missing_template'],
+            'ack_skipped_preview_only' => $summary['ack_skipped_preview_only'],
+            'ack_skipped_mapping_inactive' => $summary['ack_skipped_mapping_inactive'],
         ];
+        $meta['ack_send_groups'] = $this->ackSendGroups($batch);
 
         $status = $batch->status;
         if ($pendingApproved === 0 && (int) ($rowCounts['applied'] ?? 0) > 0) {
@@ -528,7 +690,68 @@ class LeadUploadApplyService
             'vehicles_to_reuse' => 0,
             'vehicles_missing' => 0,
             'errors' => 0,
+            'ack_queued' => 0,
+            'ack_sent' => 0,
+            'ack_failed' => 0,
+            'ack_not_eligible' => 0,
+            'ack_skipped_duplicate' => 0,
+            'ack_skipped_missing_template' => 0,
+            'ack_skipped_preview_only' => 0,
+            'ack_skipped_mapping_inactive' => 0,
+            'ack_not_requested' => 0,
         ];
+    }
+
+    private function ackSendGroups(LeadUploadBatch $batch): array
+    {
+        $groups = [];
+
+        LeadUploadRow::query()
+            ->where('company_id', $batch->company_id)
+            ->where('batch_id', $batch->id)
+            ->get()
+            ->each(function (LeadUploadRow $row) use (&$groups) {
+                $payload = array_merge($row->raw_payload ?? [], $row->normalized_payload ?? []);
+                $campaignType = LeadCampaignTypeJourneyMap::normalize($payload['campaign_type'] ?? null);
+
+                if (! $campaignType) {
+                    return;
+                }
+
+                $key = LeadCampaignTypeJourneyMap::lookupKey($campaignType);
+                $ackStatus = $payload['_phase_9f_apply']['ack_status'] ?? 'not_requested';
+
+                $groups[$key] ??= [
+                    'campaign_type' => $campaignType,
+                    'send_status' => 'Not requested',
+                    'queued' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                ];
+
+                if ($ackStatus === 'queued') {
+                    $groups[$key]['queued']++;
+                    $groups[$key]['send_status'] = 'Queued';
+                } elseif ($ackStatus === 'failed') {
+                    $groups[$key]['failed']++;
+                    $groups[$key]['send_status'] = 'Failed';
+                } elseif ($ackStatus !== 'not_requested') {
+                    $groups[$key]['skipped']++;
+
+                    if ($groups[$key]['send_status'] === 'Not requested') {
+                        $groups[$key]['send_status'] = 'Skipped';
+                    }
+                }
+            });
+
+        return $groups;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     private function resolveAssignedUserId(int $companyId, mixed $assignedTo): ?int

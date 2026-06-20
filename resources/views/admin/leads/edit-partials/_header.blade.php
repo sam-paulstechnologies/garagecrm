@@ -3,9 +3,7 @@
 <div class="sf-leads-edit-panel rounded-2xl border p-5 shadow-sm">
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-            <div class="sf-kicker">Lead Management</div>
-
-            <h1 class="sf-leads-edit-title mt-3 text-3xl font-extrabold tracking-tight">
+            <h1 class="sf-leads-edit-title text-3xl font-extrabold tracking-tight">
                 Edit Lead
             </h1>
 

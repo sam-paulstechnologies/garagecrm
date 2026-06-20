@@ -13,6 +13,11 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            @if(\Illuminate\Support\Facades\Route::has('admin.leads.archived'))
+                <a href="{{ route('admin.leads.archived') }}" class="sf-btn-secondary">
+                    Archived
+                </a>
+            @endif
             @if(\Illuminate\Support\Facades\Route::has('admin.leads.import.options'))
                 <a href="{{ route('admin.leads.import.options') }}" class="sf-btn-secondary">
                     Import

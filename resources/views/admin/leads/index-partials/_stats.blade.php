@@ -21,16 +21,16 @@
 
     <a href="{{ route('admin.leads.qualified') }}"
        class="rounded-2xl border p-5 shadow-sm transition {{ $cardClass($pageMode === 'qualified') }}">
-        <div class="sf-leads-muted text-sm font-bold">Qualified / Converted</div>
+        <div class="sf-leads-muted text-sm font-bold">Qualified</div>
         <div class="sf-leads-value mt-2 text-3xl font-extrabold">{{ $leadCounts['qualified'] ?? 0 }}</div>
-        <div class="sf-leads-muted mt-1 text-xs font-medium">Won or moved ahead</div>
+        <div class="sf-leads-muted mt-1 text-xs font-medium">Opportunity created</div>
     </a>
 
     <a href="{{ route('admin.leads.disqualified') }}"
        class="rounded-2xl border p-5 shadow-sm transition {{ $cardClass($pageMode === 'disqualified') }}">
         <div class="sf-leads-muted text-sm font-bold">Disqualified</div>
         <div class="sf-leads-value mt-2 text-3xl font-extrabold">{{ $leadCounts['disqualified'] ?? 0 }}</div>
-        <div class="sf-leads-muted mt-1 text-xs font-medium">Invalid / lost leads</div>
+        <div class="sf-leads-muted mt-1 text-xs font-medium">Invalid leads</div>
     </a>
 
     <a href="{{ route('admin.leads.duplicates.index') }}"

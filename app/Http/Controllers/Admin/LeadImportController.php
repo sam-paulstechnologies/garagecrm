@@ -7,11 +7,13 @@ use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Client\LeadUploadBatch;
 use App\Models\Client\LeadUploadRow;
+use App\Models\LeadCampaignJourneyMapping;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use App\Services\Leads\LeadUploadApplyService;
+use App\Services\Leads\LeadCampaignTypeJourneyMap;
 use App\Services\Leads\LeadFactory;
 use App\Services\Leads\LeadUploadPreviewService;
 use App\Services\Meta\MetaLeadService;
@@ -36,13 +38,16 @@ class LeadImportController extends Controller
     */
     public function showCsvForm(Request $request)
     {
-        return view('admin.leads.import.index');
+        return view('admin.leads.import.index', [
+            'campaignTypes' => LeadCampaignTypeJourneyMap::labels(),
+        ]);
     }
 
     public function showPreviewForm(Request $request)
     {
         return view('admin.leads.import.preview', [
             'preview' => null,
+            'campaignTypes' => LeadCampaignTypeJourneyMap::labels(),
         ]);
     }
 
@@ -50,14 +55,27 @@ class LeadImportController extends Controller
     {
         $request->validate([
             'lead_file' => ['required', 'file', 'mimes:csv,txt,xls,xlsx', 'max:5120'],
+            'campaign_type' => ['required', 'string', 'max:100'],
         ]);
 
         $companyId = (int) $request->user()->company_id;
+        $defaultCampaignType = LeadCampaignTypeJourneyMap::normalize($request->input('campaign_type'));
 
         abort_if(! $companyId, 403);
 
+        if (! $defaultCampaignType) {
+            return back()
+                ->withInput()
+                ->with('error', 'Please choose a valid campaign type before previewing leads.');
+        }
+
         try {
-            $preview = $previewService->preview($request->file('lead_file'), $companyId);
+            $preview = $previewService->preview(
+                $request->file('lead_file'),
+                $companyId,
+                LeadUploadPreviewService::DEFAULT_LIMIT,
+                $defaultCampaignType
+            );
         } catch (\Throwable $e) {
             Log::warning('[LeadUploadPreview] Preview failed', [
                 'company_id' => $companyId,
@@ -119,9 +137,19 @@ class LeadImportController extends Controller
                         'contact_phone' => $row['contact_phone'] ?? null,
                         'email' => $row['email'] ?? null,
                         'source' => $row['source'] ?? null,
+                        'campaign_type' => $row['campaign_type'] ?? null,
+                        'journey_key' => $row['journey_key'] ?? null,
+                        'journey_label' => $row['journey_label'] ?? null,
+                        'journey_trigger_key' => $row['journey_trigger_key'] ?? null,
+                        'mapping_status' => $row['mapping_status'] ?? null,
+                        'whatsapp_status' => $row['whatsapp_status'] ?? null,
+                        'journey_mapping' => $row['journey_mapping'] ?? null,
                         'service' => $row['service'] ?? null,
                         'campaign' => $row['campaign'] ?? null,
                         'vehicle' => $row['vehicle'] ?? null,
+                        'city' => $row['city'] ?? null,
+                        'preferred_date' => $row['preferred_date'] ?? null,
+                        'preferred_time' => $row['preferred_time'] ?? null,
                     ],
                     'client_match_id' => $row['client_match']['id'] ?? null,
                     'lead_match_id' => $row['lead_match']['id'] ?? null,
@@ -153,7 +181,10 @@ class LeadImportController extends Controller
 
         abort_if(! $companyId, 403);
 
-        $batches = LeadUploadBatch::with('uploadedBy')
+        $batches = LeadUploadBatch::with([
+                'uploadedBy',
+                'rows:id,batch_id,row_number,normalized_payload',
+            ])
             ->where('company_id', $companyId)
             ->latest()
             ->paginate(20);
@@ -169,6 +200,7 @@ class LeadImportController extends Controller
         return view('admin.leads.import.preview', [
             'batch' => $leadUploadBatch,
             'preview' => $this->previewPayloadFromBatch($leadUploadBatch),
+            'campaignTypes' => LeadCampaignTypeJourneyMap::labels(),
         ]);
     }
 
@@ -270,21 +302,104 @@ class LeadImportController extends Controller
 
         $data = $request->validate([
             'mode' => ['nullable', 'in:dry_run,apply'],
+            'ack_mode' => ['nullable', 'in:import_only,send_ack'],
         ]);
 
         $mode = $data['mode'] ?? 'dry_run';
+        $ackMode = $data['ack_mode'] ?? 'import_only';
         $result = $mode === 'apply'
-            ? $applyService->apply($leadUploadBatch, $request->user()?->id)
-            : $applyService->dryRun($leadUploadBatch, $request->user()?->id);
+            ? $applyService->apply($leadUploadBatch, $request->user()?->id, $ackMode)
+            : $applyService->dryRun($leadUploadBatch, $request->user()?->id, $ackMode);
 
-        $message = $mode === 'apply'
-            ? "Apply completed: {$result['rows_applied']} row(s) applied. No WhatsApp messages were sent."
-            : "Dry-run completed: {$result['ready_to_apply']} row(s) ready to apply. No records were created.";
+        $batchLabel = "#{$leadUploadBatch->id} {$leadUploadBatch->original_filename}";
+        $message = match (true) {
+            $mode === 'apply' && $ackMode === 'send_ack' => "Import completed for batch {$batchLabel}: {$result['rows_applied']} lead(s) created, {$result['clients_to_create']} client(s) created, {$result['vehicles_to_create']} vehicle(s) created, {$result['duplicate_leads_blocked']} duplicate lead(s) skipped, and {$result['ack_queued']} WhatsApp ACK message(s) queued. You are still on the preview batch detail page.",
+            $mode === 'apply' => "Import completed for batch {$batchLabel}: {$result['rows_applied']} lead(s) created, {$result['clients_to_create']} client(s) created, {$result['vehicles_to_create']} vehicle(s) created, and {$result['duplicate_leads_blocked']} duplicate lead(s) skipped. No WhatsApp messages were sent. You are still on the preview batch detail page.",
+            default => "Dry-run completed: {$result['ready_to_apply']} row(s) ready to apply. No records were created.",
+        };
 
         return redirect()
             ->route('admin.leads.import.preview.batches.show', $leadUploadBatch)
             ->with($mode === 'apply' ? 'success' : 'info', $message)
             ->with('apply_readiness', $result);
+    }
+
+    public function savePreviewMappings(Request $request, int $batch)
+    {
+        $leadUploadBatch = $this->findLeadUploadBatchForCurrentCompany($request, $batch);
+
+        $data = $request->validate([
+            'campaign_groups' => ['nullable', 'array'],
+            'campaign_groups.*.campaign_type' => ['required', 'string', 'max:100'],
+            'campaign_groups.*.journey_label' => ['nullable', 'string', 'max:191'],
+            'campaign_groups.*.journey_key' => ['nullable', 'string', 'max:191'],
+            'campaign_groups.*.journey_trigger_key' => ['nullable', 'string', 'max:191'],
+            'campaign_groups.*.whatsapp_template_name' => ['nullable', 'string', 'max:191'],
+            'campaign_groups.*.followup_template_name' => ['nullable', 'string', 'max:191'],
+            'campaign_groups.*.preview_only' => ['nullable', 'boolean'],
+            'campaign_groups.*.whatsapp_enabled' => ['nullable', 'boolean'],
+            'campaign_groups.*.save_as_default' => ['nullable', 'boolean'],
+        ]);
+
+        $meta = $leadUploadBatch->meta ?? [];
+        $mappings = $meta['campaign_group_mappings'] ?? [];
+        $savedDefaults = 0;
+
+        foreach ($data['campaign_groups'] ?? [] as $group) {
+            $campaignType = LeadCampaignTypeJourneyMap::normalize($group['campaign_type'] ?? null);
+
+            if (! $campaignType) {
+                continue;
+            }
+
+            $key = LeadCampaignTypeJourneyMap::lookupKey($campaignType);
+            $mapping = [
+                'campaign_type' => $campaignType,
+                'journey_label' => $this->nullableString($group['journey_label'] ?? null),
+                'journey_key' => $this->nullableString($group['journey_key'] ?? null),
+                'journey_trigger_key' => $this->nullableString($group['journey_trigger_key'] ?? null),
+                'whatsapp_template_name' => $this->nullableString($group['whatsapp_template_name'] ?? null),
+                'followup_template_name' => $this->nullableString($group['followup_template_name'] ?? null),
+                'is_active' => true,
+                'preview_only' => $request->boolean("campaign_groups.{$key}.preview_only"),
+                'whatsapp_enabled' => $request->boolean("campaign_groups.{$key}.whatsapp_enabled"),
+                'updated_by' => $request->user()?->id,
+                'updated_at' => now()->toIso8601String(),
+            ];
+
+            $mappings[$key] = $mapping;
+
+            if ($request->boolean("campaign_groups.{$key}.save_as_default")) {
+                LeadCampaignJourneyMapping::query()->updateOrCreate(
+                    [
+                        'company_id' => $leadUploadBatch->company_id,
+                        'campaign_type' => $campaignType,
+                    ],
+                    array_merge($mapping, [
+                        'company_id' => $leadUploadBatch->company_id,
+                        'garage_id' => null,
+                        'created_by' => $request->user()?->id,
+                        'updated_by' => $request->user()?->id,
+                    ])
+                );
+
+                $savedDefaults++;
+            }
+        }
+
+        $meta['campaign_group_mappings'] = $mappings;
+        $meta['campaign_group_mappings_updated_at'] = now()->toIso8601String();
+        $meta['campaign_group_mappings_updated_by'] = $request->user()?->id;
+
+        $leadUploadBatch->update(['meta' => $meta]);
+
+        $message = 'Campaign group mappings saved for this upload.';
+
+        if ($savedDefaults > 0) {
+            $message .= " {$savedDefaults} default mapping(s) updated.";
+        }
+
+        return back()->with('success', $message);
     }
 
     /*
@@ -296,11 +411,17 @@ class LeadImportController extends Controller
     {
         $request->validate([
             'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
-            'import_type' => ['nullable', 'in:standard,historic,recent'],
+            'campaign_type' => ['required', 'string', 'max:100'],
         ]);
 
         $companyId = (int) $request->user()->company_id;
-        $importType = $request->input('import_type', 'standard') ?: 'standard';
+        $defaultCampaignType = LeadCampaignTypeJourneyMap::normalize($request->input('campaign_type'));
+
+        if (! $defaultCampaignType) {
+            return back()
+                ->withInput()
+                ->with('error', 'Please choose a valid campaign type before uploading leads.');
+        }
 
         abort_if(! $companyId, 403);
 
@@ -327,13 +448,18 @@ class LeadImportController extends Controller
         $header = array_map(fn ($h) => $this->cleanHeader($h), $header);
 
         $requiredHeaders = [
-            'name',
-            'phone',
-            'source',
-            'service_category',
+            'customer_name' => ['customer_name', 'name'],
+            'phone' => ['phone'],
+            'lead_source' => ['lead_source', 'source'],
         ];
 
-        $missingHeaders = array_diff($requiredHeaders, $header);
+        $missingHeaders = [];
+
+        foreach ($requiredHeaders as $label => $aliases) {
+            if (empty(array_intersect($aliases, $header))) {
+                $missingHeaders[] = $label;
+            }
+        }
 
         if (! empty($missingHeaders)) {
             fclose($handle);
@@ -373,18 +499,21 @@ class LeadImportController extends Controller
             $data = $this->cleanRow($data);
 
             try {
+                $data = $this->canonicalizeLeadImportRow($data, $defaultCampaignType);
+
                 $name = $data['name'] ?? null;
                 $phone = $this->normalizePhone($data['phone'] ?? null);
                 $email = $this->normalizeEmail($data['email'] ?? null);
+                $campaignType = LeadCampaignTypeJourneyMap::normalize($data['campaign_type'] ?? null);
+                $journeyMapping = LeadCampaignTypeJourneyMap::resolve($companyId, $campaignType);
 
-                if (! $name || ! $phone) {
+                if (! $name || ! $phone || ! $campaignType || empty($data['source'])) {
                     $skipped++;
-                    $errors[] = "Row {$rowNumber}: Name and phone are required.";
+                    $errors[] = "Row {$rowNumber}: Customer name, phone, lead source, and campaign type are required.";
                     continue;
                 }
 
-                $originalSource = $this->normalizeImportSource($data['source'] ?? 'csv');
-                $leadSource = $this->sourceForImportType($importType, $originalSource);
+                $leadSource = $this->normalizeImportSource($data['source'] ?? 'lead_import');
 
                 /*
                 |--------------------------------------------------------------------------
@@ -392,8 +521,9 @@ class LeadImportController extends Controller
                 |--------------------------------------------------------------------------
                 |
                 | Import should always create/reuse client, then attach the lead.
-                | Imported leads are still skipped from instant WhatsApp ACK by
-                | HandleLeadCreatedOutbound, because external_source stays import.
+                | New lead imports are deliberately created without LeadCreated
+                | side effects below. Journey/ACK routing will use campaign_type
+                | later when explicitly enabled.
                 */
 
                 [$client, $clientWasCreated] = $this->resolveOrCreateClient(
@@ -418,7 +548,7 @@ class LeadImportController extends Controller
                     'source'            => $leadSource,
                     'external_source'   => 'import',
                     'status'            => Lead::STATUS_NEW,
-                    'notes'             => $this->notesForImportType($data['notes'] ?? null, $importType, $originalSource),
+                    'notes'             => $data['notes'] ?? null,
                     'preferred_channel' => $data['preferred_channel'] ?? 'whatsapp',
                     'window_days'       => 30,
                 ];
@@ -435,13 +565,22 @@ class LeadImportController extends Controller
                     $leadPayload['external_payload'] = [
                         'source' => 'csv_import',
                         'row_number' => $rowNumber,
+                        'campaign_type' => $campaignType,
+                        'campaign_group_key' => $campaignType ? LeadCampaignTypeJourneyMap::lookupKey($campaignType) : null,
+                        'mapped_journey_key' => $journeyMapping['journey_key'] ?? null,
+                        'mapped_journey_label' => $journeyMapping['journey_label'] ?? null,
+                        'mapped_journey_trigger_key' => $journeyMapping['journey_trigger_key'] ?? null,
+                        'journey_mapping_active' => (bool) ($journeyMapping['is_active'] ?? false),
+                        'journey_preview_only' => (bool) ($journeyMapping['preview_only'] ?? true),
+                        'whatsapp_enabled' => (bool) ($journeyMapping['whatsapp_enabled'] ?? false),
+                        'whatsapp_template_name' => $journeyMapping['whatsapp_template_name'] ?? null,
+                        'ack_send_requested' => false,
+                        'ack_send_status' => 'not_requested',
+                        'city' => $data['city'] ?? null,
+                        'preferred_date' => $data['preferred_date'] ?? null,
+                        'preferred_time' => $data['preferred_time'] ?? null,
                         'raw' => $data,
                     ];
-
-                    if ($importType !== 'standard') {
-                        $leadPayload['external_payload']['import_type'] = $importType;
-                        $leadPayload['external_payload']['original_source'] = $originalSource;
-                    }
                 }
 
                 if (Schema::hasColumn('leads', 'external_received_at')) {
@@ -461,6 +600,7 @@ class LeadImportController extends Controller
                     'follow_up_required',
                     'follow_up_date',
                     'campaign_name',
+                    'campaign_type',
                     'retention_tag',
                 ];
 
@@ -470,7 +610,16 @@ class LeadImportController extends Controller
                     }
                 }
 
-                $this->applyImportModeOverrides($leadPayload, $importType, $data);
+                if (Schema::hasColumn('leads', 'is_active')) {
+                    $leadPayload['is_active'] = true;
+                }
+
+                if (
+                    Schema::hasColumn('leads', 'follow_up_required')
+                    && ! $this->isExplicitFalse($data['follow_up_required'] ?? null)
+                ) {
+                    $leadPayload['follow_up_required'] = true;
+                }
 
                 if (
                     Schema::hasColumn('leads', 'assigned_to')
@@ -483,9 +632,7 @@ class LeadImportController extends Controller
                     }
                 }
 
-                $result = $importType === 'standard'
-                    ? $this->factory->createOrDetectDuplicate($leadPayload)
-                    : Lead::withoutEvents(fn () => $this->factory->createOrDetectDuplicate($leadPayload));
+                $result = Lead::withoutEvents(fn () => $this->factory->createOrDetectDuplicate($leadPayload));
 
                 if ($result instanceof Lead) {
                     $lead = $result;
@@ -526,7 +673,7 @@ class LeadImportController extends Controller
 
         fclose($handle);
 
-        $message = $this->importTypeLabel($importType) . " completed: +{$inserted} new, ~{$updated} updated, {$dupes} duplicates, {$skipped} skipped. "
+        $message = "Recent lead import completed: +{$inserted} new, ~{$updated} updated, {$dupes} duplicates, {$skipped} skipped. "
             . "Clients created: {$clientsCreated}. Vehicles created: {$vehiclesCreated}. Segments applied: {$segmentsApplied}.";
 
         return back()
@@ -803,6 +950,59 @@ class LeadImportController extends Controller
         $reviewCounts = $batch->rows
             ->groupBy('review_status')
             ->map(fn ($rows) => $rows->count());
+        $rows = $batch->rows->map(function (LeadUploadRow $row) use ($batch) {
+            $normalized = $row->normalized_payload ?? [];
+            $campaignType = $normalized['campaign_type'] ?? null;
+            $journeyMapping = $this->resolveCampaignGroupMapping($batch, $campaignType);
+
+            return [
+                'row_number' => $row->row_number,
+                'status' => $row->validation_status,
+                'name' => $normalized['name'] ?? null,
+                'phone' => $normalized['phone'] ?? null,
+                'whatsapp' => $normalized['whatsapp'] ?? null,
+                'contact_phone' => $normalized['contact_phone'] ?? null,
+                'email' => $normalized['email'] ?? null,
+                'source' => $normalized['source'] ?? null,
+                'campaign_type' => $campaignType,
+                'journey_key' => $journeyMapping['journey_key'] ?? null,
+                'journey_label' => $journeyMapping['journey_label'] ?? null,
+                'journey_trigger_key' => $journeyMapping['journey_trigger_key'] ?? null,
+                'mapping_status' => $journeyMapping['mapping_status'] ?? 'Missing',
+                'whatsapp_status' => $journeyMapping['whatsapp_status'] ?? 'Disabled',
+                'journey_mapping' => $journeyMapping,
+                'service' => $normalized['service'] ?? null,
+                'campaign' => $normalized['campaign'] ?? null,
+                'vehicle' => $normalized['vehicle'] ?? null,
+                'city' => $normalized['city'] ?? null,
+                'preferred_date' => $normalized['preferred_date'] ?? null,
+                'preferred_time' => $normalized['preferred_time'] ?? null,
+                'client_match' => $row->clientMatch ? [
+                    'id' => $row->clientMatch->id,
+                    'name' => $row->clientMatch->name,
+                ] : null,
+                'lead_match' => $row->leadMatch ? [
+                    'id' => $row->leadMatch->id,
+                    'name' => $row->leadMatch->name,
+                    'status' => $row->leadMatch->status,
+                    'source' => $row->leadMatch->source,
+                    'created_at' => optional($row->leadMatch->created_at)->format('d M Y'),
+                ] : null,
+                'ack_readiness' => [
+                    'status' => $row->ack_readiness,
+                    'label' => $this->ackReadinessLabel($row->ack_readiness),
+                    'reason' => $this->ackReadinessReason($row),
+                    'event_key' => $row->suggested_ack_event_key,
+                    'template' => $row->suggested_ack_template_key,
+                ],
+                'suggested_message' => $row->suggested_ack_message,
+                'warnings' => $row->warnings ?? [],
+                'errors' => $row->errors ?? [],
+                'review_status' => $row->review_status,
+                'row_id' => $row->id,
+                'raw' => $row->raw_payload ?? [],
+            ];
+        })->all();
 
         return [
             'summary' => [
@@ -824,51 +1024,125 @@ class LeadImportController extends Controller
                 'review_applied' => (int) ($reviewCounts['applied'] ?? 0),
             ],
             'headers' => [],
-            'rows' => $batch->rows->map(function (LeadUploadRow $row) {
-                $normalized = $row->normalized_payload ?? [];
-
-                return [
-                    'row_number' => $row->row_number,
-                    'status' => $row->validation_status,
-                    'name' => $normalized['name'] ?? null,
-                    'phone' => $normalized['phone'] ?? null,
-                    'whatsapp' => $normalized['whatsapp'] ?? null,
-                    'contact_phone' => $normalized['contact_phone'] ?? null,
-                    'email' => $normalized['email'] ?? null,
-                    'source' => $normalized['source'] ?? null,
-                    'service' => $normalized['service'] ?? null,
-                    'campaign' => $normalized['campaign'] ?? null,
-                    'vehicle' => $normalized['vehicle'] ?? null,
-                    'client_match' => $row->clientMatch ? [
-                        'id' => $row->clientMatch->id,
-                        'name' => $row->clientMatch->name,
-                    ] : null,
-                    'lead_match' => $row->leadMatch ? [
-                        'id' => $row->leadMatch->id,
-                        'name' => $row->leadMatch->name,
-                        'status' => $row->leadMatch->status,
-                        'source' => $row->leadMatch->source,
-                        'created_at' => optional($row->leadMatch->created_at)->format('d M Y'),
-                    ] : null,
-                    'ack_readiness' => [
-                        'status' => $row->ack_readiness,
-                        'label' => $this->ackReadinessLabel($row->ack_readiness),
-                        'reason' => $this->ackReadinessReason($row),
-                        'event_key' => $row->suggested_ack_event_key,
-                        'template' => $row->suggested_ack_template_key,
-                    ],
-                    'suggested_message' => $row->suggested_ack_message,
-                    'warnings' => $row->warnings ?? [],
-                    'errors' => $row->errors ?? [],
-                    'review_status' => $row->review_status,
-                    'row_id' => $row->id,
-                    'raw' => $row->raw_payload ?? [],
-                ];
-            })->all(),
+            'rows' => $rows,
+            'campaign_groups' => $this->campaignGroupsForPreview($rows, $batch),
             'notice' => 'Review only. No leads, clients, vehicles, WhatsApp messages, campaigns, or journeys have been created yet.',
             'event_key' => $meta['event_key'] ?? 'lead.upload.instant_ack',
             'fallback_event_key' => $meta['fallback_event_key'] ?? 'lead.created',
         ];
+    }
+
+    private function campaignGroupsForPreview(array $rows, LeadUploadBatch $batch): array
+    {
+        $groups = [];
+        $meta = $batch->meta ?? [];
+        $ackGroups = $meta['ack_send_groups'] ?? [];
+
+        foreach ($rows as $row) {
+            $campaignType = LeadCampaignTypeJourneyMap::normalize($row['campaign_type'] ?? null) ?: 'Missing Campaign Type';
+            $key = LeadCampaignTypeJourneyMap::lookupKey($campaignType);
+
+            if (! isset($groups[$key])) {
+                $mapping = $this->resolveCampaignGroupMapping($batch, $campaignType);
+
+                $groups[$key] = [
+                    'key' => $key,
+                    'campaign_type' => $campaignType,
+                    'total' => 0,
+                    'valid_rows' => 0,
+                    'duplicate_rows' => 0,
+                    'invalid_rows' => 0,
+                    'journey_label' => $mapping['journey_label'] ?? null,
+                    'journey_key' => $mapping['journey_key'] ?? null,
+                    'journey_trigger_key' => $mapping['journey_trigger_key'] ?? null,
+                    'whatsapp_template_name' => $mapping['whatsapp_template_name'] ?? null,
+                    'followup_template_name' => $mapping['followup_template_name'] ?? null,
+                    'preview_only' => (bool) ($mapping['preview_only'] ?? true),
+                    'whatsapp_enabled' => (bool) ($mapping['whatsapp_enabled'] ?? false),
+                    'mapping_status' => $this->campaignGroupMappingStatus($mapping),
+                    'whatsapp_status' => $mapping['whatsapp_status'] ?? 'Disabled',
+                    'send_status' => $ackGroups[$key]['send_status'] ?? 'Not requested',
+                ];
+            }
+
+            $groups[$key]['total']++;
+
+            if (($row['status'] ?? null) === 'valid') {
+                $groups[$key]['valid_rows']++;
+            }
+
+            if (($row['status'] ?? null) === 'invalid') {
+                $groups[$key]['invalid_rows']++;
+            }
+
+            if (! empty($row['client_match']) || ! empty($row['lead_match'])) {
+                $groups[$key]['duplicate_rows']++;
+            }
+        }
+
+        return array_values($groups);
+    }
+
+    private function resolveCampaignGroupMapping(LeadUploadBatch $batch, ?string $campaignType): array
+    {
+        $campaignType = LeadCampaignTypeJourneyMap::normalize($campaignType);
+        $key = $campaignType ? LeadCampaignTypeJourneyMap::lookupKey($campaignType) : null;
+        $meta = $batch->meta ?? [];
+        $overrides = $meta['campaign_group_mappings'] ?? [];
+
+        if ($key && isset($overrides[$key]) && is_array($overrides[$key])) {
+            return $this->campaignGroupMappingFromArray($overrides[$key]);
+        }
+
+        return LeadCampaignTypeJourneyMap::resolve((int) $batch->company_id, $campaignType);
+    }
+
+    private function campaignGroupMappingFromArray(array $mapping): array
+    {
+        $hasJourneyKey = $this->nullableString($mapping['journey_key'] ?? null) !== null;
+        $isActive = (bool) ($mapping['is_active'] ?? true);
+        $previewOnly = (bool) ($mapping['preview_only'] ?? true);
+        $whatsappEnabled = (bool) ($mapping['whatsapp_enabled'] ?? false);
+        $template = $this->nullableString($mapping['whatsapp_template_name'] ?? null);
+
+        return [
+            'campaign_type' => $mapping['campaign_type'] ?? null,
+            'journey_key' => $this->nullableString($mapping['journey_key'] ?? null),
+            'journey_label' => $this->nullableString($mapping['journey_label'] ?? null),
+            'journey_trigger_key' => $this->nullableString($mapping['journey_trigger_key'] ?? null),
+            'is_active' => $isActive,
+            'preview_only' => $previewOnly,
+            'whatsapp_enabled' => $whatsappEnabled,
+            'whatsapp_template_name' => $template,
+            'followup_template_name' => $this->nullableString($mapping['followup_template_name'] ?? null),
+            'mapping_status' => ! $hasJourneyKey ? 'Missing' : (! $isActive ? 'Inactive' : ($previewOnly ? 'Preview Only' : 'Mapped')),
+            'whatsapp_status' => ! $whatsappEnabled ? 'Disabled' : ($template ? ($previewOnly ? 'Preview Only' : 'Enabled') : 'Template Missing'),
+        ];
+    }
+
+    private function campaignGroupMappingStatus(array $mapping): string
+    {
+        if (empty($mapping['journey_key']) || ($mapping['mapping_status'] ?? null) === 'Missing') {
+            return 'Missing Mapping';
+        }
+
+        if (! (bool) ($mapping['is_active'] ?? false)) {
+            return 'Mapping Inactive';
+        }
+
+        if ((bool) ($mapping['preview_only'] ?? true)) {
+            return 'Preview Only';
+        }
+
+        if ((bool) ($mapping['whatsapp_enabled'] ?? false) && empty($mapping['whatsapp_template_name'])) {
+            return 'Template Missing';
+        }
+
+        if ((bool) ($mapping['whatsapp_enabled'] ?? false)) {
+            return 'Ready to Send';
+        }
+
+        return 'Preview Only';
     }
 
     private function ackReadinessLabel(?string $status): string
@@ -899,6 +1173,13 @@ class LeadImportController extends Controller
         };
     }
 
+    private function nullableString(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
     private function cleanHeader(?string $header): string
     {
         $header = (string) $header;
@@ -924,6 +1205,34 @@ class LeadImportController extends Controller
         }
 
         return $clean;
+    }
+
+    private function canonicalizeLeadImportRow(array $data, string $defaultCampaignType): array
+    {
+        $rowCampaignType = trim((string) ($data['campaign_type'] ?? ''));
+        $campaignType = LeadCampaignTypeJourneyMap::normalize($rowCampaignType !== '' ? $rowCampaignType : $defaultCampaignType);
+
+        $canonical = array_merge($data, [
+            'name' => $data['customer_name'] ?? $data['name'] ?? null,
+            'source' => $data['lead_source'] ?? $data['source'] ?? null,
+            'campaign_type' => $campaignType,
+            'service_type' => $data['service_type'] ?? $data['service_category'] ?? null,
+            'follow_up_date' => $data['preferred_date'] ?? $data['follow_up_date'] ?? null,
+            'follow_up_required' => $data['follow_up_required'] ?? 'yes',
+            'preferred_channel' => $data['preferred_channel'] ?? 'whatsapp',
+        ]);
+
+        if (! isset($canonical['customer_name'])) {
+            $canonical['customer_name'] = $canonical['name'];
+        }
+
+        if (! isset($canonical['lead_source'])) {
+            $canonical['lead_source'] = $canonical['source'];
+        }
+
+        $canonical['journey_key'] = LeadCampaignTypeJourneyMap::journeyKeyFor($campaignType);
+
+        return $canonical;
     }
 
     private function isEmptyRow(array $row): bool
@@ -988,77 +1297,6 @@ class LeadImportController extends Controller
         return $source;
     }
 
-    private function sourceForImportType(string $importType, string $originalSource): string
-    {
-        return match ($importType) {
-            'historic' => 'imported_historic',
-            'recent' => 'imported_recent',
-            default => $originalSource,
-        };
-    }
-
-    private function importTypeLabel(string $importType): string
-    {
-        return match ($importType) {
-            'historic' => 'Historic Data Import',
-            'recent' => 'Recent Leads Import',
-            default => 'Standard Import',
-        };
-    }
-
-    private function notesForImportType(?string $notes, string $importType, string $originalSource): ?string
-    {
-        $lines = [];
-
-        if ($notes) {
-            $lines[] = trim($notes);
-        }
-
-        if ($importType === 'historic') {
-            $lines[] = 'Historic data import - customer/vehicle history record.';
-        }
-
-        if ($importType === 'recent') {
-            $lines[] = 'Recent imported lead - conversation required.';
-        }
-
-        if (in_array($importType, ['historic', 'recent'], true)) {
-            $lines[] = "Original CSV source: {$originalSource}";
-        }
-
-        return $lines ? implode(PHP_EOL, $lines) : null;
-    }
-
-    private function applyImportModeOverrides(array &$leadPayload, string $importType, array $data): void
-    {
-        if ($importType === 'historic') {
-            if (Schema::hasColumn('leads', 'is_active')) {
-                $leadPayload['is_active'] = false;
-            }
-
-            if (Schema::hasColumn('leads', 'follow_up_required')) {
-                $leadPayload['follow_up_required'] = false;
-            }
-
-            return;
-        }
-
-        if ($importType !== 'recent') {
-            return;
-        }
-
-        if (Schema::hasColumn('leads', 'is_active')) {
-            $leadPayload['is_active'] = true;
-        }
-
-        if (
-            Schema::hasColumn('leads', 'follow_up_required')
-            && ! $this->isExplicitFalse($data['follow_up_required'] ?? null)
-        ) {
-            $leadPayload['follow_up_required'] = true;
-        }
-    }
-
     private function isExplicitFalse(mixed $value): bool
     {
         if ($value === null || $value === '') {
@@ -1084,6 +1322,10 @@ class LeadImportController extends Controller
 
         if ($field === 'follow_up_date') {
             return $value;
+        }
+
+        if ($field === 'campaign_type') {
+            return LeadCampaignTypeJourneyMap::normalize((string) $value);
         }
 
         return is_string($value) ? strtolower(trim($value)) : $value;
@@ -1252,7 +1494,7 @@ class LeadImportController extends Controller
         $year = $data['vehicle_year'] ?? null;
         $plate = $data['plate_number'] ?? null;
 
-        if (! $makeName && ! $modelName && ! $plate) {
+        if (! $plate && (! $makeName || ! $modelName)) {
             return false;
         }
 

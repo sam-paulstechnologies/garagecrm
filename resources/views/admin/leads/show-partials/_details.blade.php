@@ -27,9 +27,7 @@
                     {{ $lead->status_label ?? ucfirst(str_replace('_', ' ', (string) $lead->status)) }}
                 </span>
 
-                @if($lead->status === 'converted')
-                    <span class="{{ $badgeBase }} bg-green-500/10 text-green-300 ring-green-400/20">Converted</span>
-                @elseif($lead->status === 'attempting_contact')
+                @if($lead->status === 'attempting_contact')
                     <span class="{{ $badgeBase }} bg-yellow-500/10 text-yellow-300 ring-yellow-400/20">In Progress</span>
                 @endif
             </div>

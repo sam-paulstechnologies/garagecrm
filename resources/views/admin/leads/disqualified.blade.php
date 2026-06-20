@@ -13,11 +13,11 @@
             </div>
 
             <h1 class="sf-page-title mt-3">
-                Disqualified / Closed Lost Leads
+                Disqualified Leads
             </h1>
 
             <p class="sf-page-subtitle">
-                Review leads that were marked as disqualified, closed lost, invalid, or no longer active.
+                Review leads that were marked as disqualified, invalid, or no longer active.
             </p>
         </div>
 
@@ -73,7 +73,7 @@
             </div>
 
             <div class="sf-stat-note">
-                Understand why leads were lost
+                Understand why leads were disqualified
             </div>
         </div>
 

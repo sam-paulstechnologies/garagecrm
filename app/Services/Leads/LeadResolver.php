@@ -70,7 +70,7 @@ class LeadResolver
                 |--------------------------------------------------------------------------
                 | 2. Check Last Lead For Awareness Only
                 |--------------------------------------------------------------------------
-                | If last lead is inactive/converted/lost, create a new lead.
+                | If last lead is inactive/qualified/disqualified, create a new lead.
                 */
 
                 $oldLead = $this->findLastLead($companyId, $phoneNorm, $emailNorm);
@@ -113,7 +113,7 @@ class LeadResolver
                 |--------------------------------------------------------------------------
                 | IMPORTANT:
                 | Only use values supported by leads.status enum:
-                | new, attempting_contact, qualified, converted, lost
+                | new, attempting_contact, contact_on_hold, qualified, disqualified
                 */
 
                 try {

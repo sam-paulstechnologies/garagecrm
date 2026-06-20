@@ -4,12 +4,14 @@ namespace App\Models\Client;
 
 use App\Events\LeadCreated;
 use App\Models\LeadSource;
+use App\Models\LeadActivityLog;
 use App\Models\MessageLog;
 use App\Models\Shared\Communication;
 use App\Models\Traits\BelongsToCompany;
 use App\Models\User;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\PhoneNumberService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{
@@ -22,14 +24,22 @@ class Lead extends Model
 
     public const STATUS_NEW = 'new';
     public const STATUS_ATTEMPTING = 'attempting_contact';
+    public const STATUS_HOLD = 'contact_on_hold';
     public const STATUS_QUALIFIED = 'qualified';
-    public const STATUS_CONVERTED = 'converted';
-    public const STATUS_LOST = 'lost';
+    public const STATUS_DISQUALIFIED = 'disqualified';
 
-    public const STATUS_HOLD = self::STATUS_ATTEMPTING;
-    public const STATUS_DISQUALIFIED = self::STATUS_LOST;
+    public const STATUS_CONVERTED = self::STATUS_QUALIFIED;
+    public const STATUS_LOST = self::STATUS_DISQUALIFIED;
     public const STATUS_MANAGER_REVIEW = self::STATUS_ATTEMPTING;
     public const STATUS_MANAGER_CONFIRM = self::STATUS_ATTEMPTING;
+
+    public const STATUSES = [
+        self::STATUS_NEW,
+        self::STATUS_ATTEMPTING,
+        self::STATUS_HOLD,
+        self::STATUS_QUALIFIED,
+        self::STATUS_DISQUALIFIED,
+    ];
 
     public const CONVERSATION_AWAITING_INTENT = 'awaiting_intent';
     public const CONVERSATION_AWAITING_VEHICLE = 'awaiting_vehicle';
@@ -40,6 +50,7 @@ class Lead extends Model
     public const ACTIVE_STATUSES = [
         self::STATUS_NEW,
         self::STATUS_ATTEMPTING,
+        self::STATUS_HOLD,
         self::STATUS_QUALIFIED,
     ];
 
@@ -54,6 +65,9 @@ class Lead extends Model
         'phone_norm',
 
         'status',
+        'status_sub_status',
+        'status_reason',
+        'follow_up_at',
         'source',
         'lead_source_id',
         'notes',
@@ -84,6 +98,7 @@ class Lead extends Model
         'follow_up_required',
         'follow_up_date',
         'campaign_name',
+        'campaign_type',
         'retention_tag',
 
         /*
@@ -121,6 +136,7 @@ class Lead extends Model
         'lead_source_id' => 'integer',
 
         'last_contacted_at' => 'datetime',
+        'follow_up_at' => 'datetime',
 
         'vehicle_year' => 'integer',
         'follow_up_required' => 'boolean',
@@ -179,6 +195,7 @@ class Lead extends Model
                 'customer_type',
                 'follow_up_required',
                 'follow_up_date',
+                'campaign_type',
                 'retention_tag',
                 'conversation_data',
             ])) {
@@ -224,6 +241,11 @@ class Lead extends Model
     public function messageLogs(): HasMany
     {
         return $this->hasMany(MessageLog::class);
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(LeadActivityLog::class);
     }
 
     public function vehicleMake(): BelongsTo
@@ -363,9 +385,11 @@ class Lead extends Model
         return match ((string) $this->status) {
             self::STATUS_NEW => 'New',
             self::STATUS_ATTEMPTING => 'Attempting Contact',
+            self::STATUS_HOLD => 'Contact On Hold',
             self::STATUS_QUALIFIED => 'Qualified',
-            self::STATUS_CONVERTED => 'Converted',
-            self::STATUS_LOST => 'Lost',
+            self::STATUS_DISQUALIFIED => 'Disqualified',
+            'converted' => 'Qualified',
+            'lost' => 'Disqualified',
             default => ucfirst(str_replace('_', ' ', (string) $this->status)),
         };
     }
@@ -398,27 +422,7 @@ class Lead extends Model
 
     public static function normalizePhone(?string $phone): ?string
     {
-        if (! $phone) {
-            return null;
-        }
-
-        $phone = trim((string) $phone);
-
-        if (stripos($phone, 'E+') !== false || stripos($phone, 'E-') !== false) {
-            $phone = number_format((float) $phone, 0, '', '');
-        }
-
-        $phone = preg_replace('/\D+/', '', $phone);
-
-        if (str_starts_with($phone, '05')) {
-            $phone = '971' . substr($phone, 1);
-        }
-
-        if (str_starts_with($phone, '9710')) {
-            $phone = '971' . substr($phone, 3);
-        }
-
-        return $phone ?: null;
+        return app(PhoneNumberService::class)->buildWhatsappLookupKey($phone);
     }
 
     public static function normalizeStatus(?string $status): string
@@ -428,20 +432,20 @@ class Lead extends Model
         return match ($status) {
             self::STATUS_NEW,
             self::STATUS_ATTEMPTING,
+            self::STATUS_HOLD,
             self::STATUS_QUALIFIED,
-            self::STATUS_CONVERTED,
-            self::STATUS_LOST => $status,
+            self::STATUS_DISQUALIFIED => $status,
 
-            'contact_on_hold',
             'manager_review',
             'manager_confirmation_pending',
             'collecting_details' => self::STATUS_ATTEMPTING,
 
+            'converted',
+            'closed_won' => self::STATUS_QUALIFIED,
+
             'disqualified',
             'closed_lost',
-            'lost' => self::STATUS_LOST,
-
-            'closed_won' => self::STATUS_CONVERTED,
+            'lost' => self::STATUS_DISQUALIFIED,
 
             default => self::STATUS_NEW,
         };
@@ -536,11 +540,11 @@ class Lead extends Model
             $score += 5;
         }
 
-        if (in_array($this->status, [self::STATUS_QUALIFIED, self::STATUS_CONVERTED], true)) {
+        if ($this->status === self::STATUS_QUALIFIED) {
             $score += 20;
         }
 
-        if ($this->status === self::STATUS_LOST) {
+        if ($this->status === self::STATUS_DISQUALIFIED) {
             $score -= 40;
         }
 
@@ -566,12 +570,12 @@ class Lead extends Model
 
     public function isConverted(): bool
     {
-        return (string) $this->status === self::STATUS_CONVERTED;
+        return (string) $this->status === self::STATUS_QUALIFIED && $this->opportunity()->exists();
     }
 
     public function isLost(): bool
     {
-        return (string) $this->status === self::STATUS_LOST;
+        return (string) $this->status === self::STATUS_DISQUALIFIED;
     }
 
     private function labelize(?string $value): string

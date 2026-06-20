@@ -5,7 +5,22 @@
 @section('content')
 @include('admin.leads.import.partials._styles')
 
-<div class="sf-page sf-import-page space-y-6">
+@php
+    $campaignTypes = $campaignTypes ?? [
+        'New Lead Campaign',
+        'Service Offer Campaign',
+        'Retention Campaign',
+        'Lost Lead Revival Campaign',
+        'WhatsApp Campaign',
+        'Meta Lead Form Campaign',
+        'Website Form Campaign',
+        'Walk-in / Manual Entry',
+        'Referral Campaign',
+        'Fleet Campaign',
+    ];
+@endphp
+
+<div class="sf-page sf-import-page w-full px-4 py-6 space-y-6 sm:px-6 lg:px-8">
 
     {{-- Header --}}
     <div class="sf-page-header">
@@ -19,7 +34,7 @@
             </h1>
 
             <p class="sf-page-subtitle">
-                Upload leads using the CSV sample format. This import supports categorization, vehicle details, retention tags, and follow-up fields.
+                Upload recent or new leads only. Historic customer and vehicle data belongs under Client Import.
             </p>
         </div>
 
@@ -113,35 +128,31 @@
 
                 <div class="sf-card-body">
                     <form method="POST"
-                          action="{{ route('admin.leads.import.process') }}"
+                          action="{{ route('admin.leads.import.preview.process') }}"
                           enctype="multipart/form-data"
                           class="space-y-5">
                         @csrf
 
                         <div>
-                            <label for="import_type" class="sf-label">
-                                Import Type
+                            <label for="campaign_type" class="sf-label">
+                                Default Campaign Type
                             </label>
 
-                            <select id="import_type"
-                                    name="import_type"
+                            <select id="campaign_type"
+                                    name="campaign_type"
                                     class="sf-import-select focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                                <option value="standard" @selected(old('import_type', 'standard') === 'standard')>
-                                    Standard Import - use source values from CSV
-                                </option>
-                                <option value="historic" @selected(old('import_type') === 'historic')>
-                                    Historic Data Import - customer and vehicle history only
-                                </option>
-                                <option value="recent" @selected(old('import_type') === 'recent')>
-                                    Recent Leads Import - needs manual follow-up
-                                </option>
+                                @foreach($campaignTypes as $campaignType)
+                                    <option value="{{ $campaignType }}" @selected(old('campaign_type', 'New Lead Campaign') === $campaignType)>
+                                        {{ $campaignType }}
+                                    </option>
+                                @endforeach
                             </select>
 
                             <p class="sf-help">
-                                Historic imports are inactive history records. Recent imports become active follow-up leads without sending WhatsApp messages.
+                                Used only when a CSV row does not contain campaign_type. If campaign_type is present in the file, the row value wins.
                             </p>
 
-                            @error('import_type')
+                            @error('campaign_type')
                                 <div class="sf-error">{{ $message }}</div>
                             @enderror
                         </div>
@@ -152,16 +163,16 @@
                             </label>
 
                             <input type="file"
-                                   name="csv_file"
-                                   accept=".csv,text/csv"
+                                   name="lead_file"
+                                   accept=".csv,.txt,.xls,.xlsx,text/csv"
                                    required
                                    class="sf-import-field block file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
 
                             <p class="sf-help">
-                                Use the sample CSV exactly. Do not rename the column headers.
+                                The upload creates a preview batch first. Phone numbers should stay plain text, for example 971587000000.
                             </p>
 
-                            @error('csv_file')
+                            @error('lead_file')
                                 <div class="sf-error">{{ $message }}</div>
                             @enderror
 
@@ -172,7 +183,7 @@
 
                         <div class="flex flex-wrap gap-2">
                             <button type="submit" class="sf-btn-primary">
-                                Upload Leads
+                                Preview Upload
                             </button>
 
                             <a href="{{ asset('samples/sample_lead_import.csv') }}" download class="sf-btn-secondary">
@@ -207,7 +218,7 @@
 
                         <li class="flex gap-3">
                             <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">2</span>
-                            <span>Fill lead, service, vehicle, follow-up, and retention fields.</span>
+                            <span>Fill customer, source, campaign type, service, vehicle, and preferred timing fields.</span>
                         </li>
 
                         <li class="flex gap-3">
@@ -222,7 +233,7 @@
 
                         <li class="flex gap-3">
                             <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">5</span>
-                            <span>The system will create leads, link clients, create vehicles, and check duplicates.</span>
+                            <span>The system will create recent leads, link clients, create useful vehicles, and check duplicates without sending WhatsApp.</span>
                         </li>
                     </ol>
                 </div>
@@ -244,7 +255,7 @@
                 </h3>
 
                 <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">
-                    Existing phone numbers or emails may be flagged as potential duplicates after import.
+                    Existing phone numbers or emails may be flagged as potential duplicates. This page is for new/recent lead capture only.
                 </p>
             </div>
 
@@ -276,7 +287,7 @@
 
                 <tbody>
                     <tr>
-                        <td class="font-extrabold text-white">name</td>
+                        <td class="font-extrabold text-white">customer_name</td>
                         <td><span class="sf-badge-green">Yes</span></td>
                         <td>Sam Abhishek</td>
                         <td>Customer or lead name.</td>
@@ -297,31 +308,24 @@
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">source</td>
+                        <td class="font-extrabold text-white">lead_source</td>
                         <td><span class="sf-badge-green">Yes</span></td>
                         <td>website</td>
                         <td>website, walk-in, whatsapp, meta, google.</td>
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">notes</td>
-                        <td><span class="sf-badge-slate">No</span></td>
-                        <td>Interested in service booking</td>
-                        <td>Any extra lead information.</td>
-                    </tr>
-
-                    <tr>
-                        <td class="font-extrabold text-white">preferred_channel</td>
-                        <td><span class="sf-badge-slate">No</span></td>
-                        <td>whatsapp</td>
-                        <td>whatsapp, phone, email.</td>
-                    </tr>
-
-                    <tr>
-                        <td class="font-extrabold text-white">service_category</td>
+                        <td class="font-extrabold text-white">campaign_type</td>
                         <td><span class="sf-badge-green">Yes</span></td>
-                        <td>service</td>
-                        <td>service, repair, quote, complaint, emergency, enquiry.</td>
+                        <td>New Lead Campaign</td>
+                        <td>CSV row value wins. If blank, the form campaign type is used.</td>
+                    </tr>
+
+                    <tr>
+                        <td class="font-extrabold text-white">campaign_name</td>
+                        <td><span class="sf-badge-slate">No</span></td>
+                        <td>June Service Offer</td>
+                        <td>Campaign or source reference.</td>
                     </tr>
 
                     <tr>
@@ -360,45 +364,31 @@
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">lead_temperature</td>
+                        <td class="font-extrabold text-white">city</td>
                         <td><span class="sf-badge-slate">No</span></td>
-                        <td>hot</td>
-                        <td>hot, warm, cold.</td>
+                        <td>Dubai</td>
+                        <td>Stored in upload context for reporting/journey use.</td>
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">lead_priority</td>
+                        <td class="font-extrabold text-white">preferred_date</td>
                         <td><span class="sf-badge-slate">No</span></td>
-                        <td>high</td>
-                        <td>urgent, high, medium, low.</td>
+                        <td>2026-06-20</td>
+                        <td>Used as follow-up date when available.</td>
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">follow_up_required</td>
+                        <td class="font-extrabold text-white">preferred_time</td>
                         <td><span class="sf-badge-slate">No</span></td>
-                        <td>1</td>
-                        <td>Use 1/yes/true if follow-up is required.</td>
+                        <td>morning</td>
+                        <td>Stored in upload context for future journey/booking use.</td>
                     </tr>
 
                     <tr>
-                        <td class="font-extrabold text-white">follow_up_date</td>
+                        <td class="font-extrabold text-white">notes</td>
                         <td><span class="sf-badge-slate">No</span></td>
-                        <td>2026-05-20</td>
-                        <td>Recommended format: YYYY-MM-DD.</td>
-                    </tr>
-
-                    <tr>
-                        <td class="font-extrabold text-white">campaign_name</td>
-                        <td><span class="sf-badge-slate">No</span></td>
-                        <td>vehicle import test</td>
-                        <td>Campaign or source reference.</td>
-                    </tr>
-
-                    <tr>
-                        <td class="font-extrabold text-white">retention_tag</td>
-                        <td><span class="sf-badge-slate">No</span></td>
-                        <td>service due</td>
-                        <td>Used for segmentation and retention buckets.</td>
+                        <td>Interested in service booking</td>
+                        <td>Any extra lead information.</td>
                     </tr>
                 </tbody>
             </table>

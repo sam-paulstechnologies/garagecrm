@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\{
     InvoiceController,
     JobController,
     LeadController,
+    LeadCampaignJourneyMappingController,
     LeadImportController,
     LeadDuplicateController,
     LeadSourceController,
@@ -444,6 +445,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::get('leads/disqualified', [LeadController::class, 'disqualified'])
             ->name('leads.disqualified');
 
+        Route::get('leads/archived', [LeadController::class, 'archived'])
+            ->name('leads.archived');
+
         /*
         |--------------------------------------------------------------------------
         | Lead Import
@@ -465,6 +469,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::post('leads/import/preview/batches/{batch}/bulk-review', [LeadImportController::class, 'bulkReviewPreviewRows'])
             ->whereNumber('batch')
             ->name('leads.import.preview.batches.bulk-review');
+
+        Route::post('leads/import/preview/batches/{batch}/mappings', [LeadImportController::class, 'savePreviewMappings'])
+            ->whereNumber('batch')
+            ->name('leads.import.preview.batches.mappings.save');
 
         Route::post('leads/import/preview/batches/{batch}/apply', [LeadImportController::class, 'applyPreviewBatch'])
             ->whereNumber('batch')
@@ -498,6 +506,12 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         */
         Route::patch('leads/{lead}/toggle-hot', [LeadController::class, 'toggleHot'])
             ->name('leads.toggleHot');
+
+        Route::patch('leads/{lead}/status', [LeadController::class, 'updateStatus'])
+            ->name('leads.status');
+
+        Route::patch('leads/{lead}/quick-update', [LeadController::class, 'quickUpdate'])
+            ->name('leads.quick-update');
 
         /*
         |--------------------------------------------------------------------------
@@ -633,6 +647,26 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
             Route::delete('triggers/{trigger}', [MarketingTriggerController::class, 'destroy'])
                 ->name('triggers.destroy');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Growth
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('growth')->name('growth.')->group(function () {
+            Route::get('journey-mapping', [LeadCampaignJourneyMappingController::class, 'index'])
+                ->name('journey-mapping.index');
+
+            Route::put('journey-mapping/{mapping}', [LeadCampaignJourneyMappingController::class, 'update'])
+                ->whereNumber('mapping')
+                ->name('journey-mapping.update');
+
+            Route::post('journey-mapping/bulk-update', [LeadCampaignJourneyMappingController::class, 'bulkUpdate'])
+                ->name('journey-mapping.bulk-update');
+
+            Route::post('journey-mapping/reset-missing-defaults', [LeadCampaignJourneyMappingController::class, 'resetMissingDefaults'])
+                ->name('journey-mapping.reset-missing-defaults');
         });
 
         /*

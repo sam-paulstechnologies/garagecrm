@@ -139,6 +139,64 @@
         transform: translateY(-1px);
     }
 
+    .sf-import-page .sf-alert-success,
+    .sf-import-page .sf-alert-warning,
+    .sf-import-page .sf-alert-danger,
+    .sf-import-page .sf-alert-info {
+        border-radius: 1rem;
+        border-width: 1px;
+        padding: 1rem;
+        font-size: 0.875rem;
+        font-weight: 700;
+        line-height: 1.6;
+    }
+
+    .sf-import-page .sf-alert-success {
+        border-color: #86efac;
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .sf-import-page .sf-alert-warning {
+        border-color: #fdba74;
+        background: #ffedd5;
+        color: #9a3412;
+    }
+
+    .sf-import-page .sf-alert-danger {
+        border-color: #fca5a5;
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .sf-import-page .sf-alert-info {
+        border-color: #93c5fd;
+        background: #dbeafe;
+        color: #1e3a8a;
+    }
+
+    .sf-import-page .sf-badge-blue,
+    .sf-import-page .sf-badge-orange,
+    .sf-import-page .sf-badge-yellow,
+    .sf-import-page .sf-badge-green,
+    .sf-import-page .sf-badge-red,
+    .sf-import-page .sf-badge-slate {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.75rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .sf-import-page .sf-badge-blue { background: #dbeafe; color: #1e3a8a; }
+    .sf-import-page .sf-badge-orange { background: #ffedd5; color: #9a3412; }
+    .sf-import-page .sf-badge-yellow { background: #fef3c7; color: #92400e; }
+    .sf-import-page .sf-badge-green { background: #dcfce7; color: #166534; }
+    .sf-import-page .sf-badge-red { background: #fee2e2; color: #991b1b; }
+    .sf-import-page .sf-badge-slate { background: #e2e8f0; color: #334155; }
+
     /*
     |--------------------------------------------------------------------------
     | Light Mode
@@ -176,7 +234,7 @@
     html[data-theme="light"] .sf-import-page .sf-help,
     html[data-theme="light"] .sf-import-muted,
     html[data-theme="light"] .sf-import-table th {
-        color: #64748b !important;
+        color: #475569 !important;
     }
 
     html[data-theme="light"] .sf-import-field,

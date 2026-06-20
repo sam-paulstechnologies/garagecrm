@@ -2,12 +2,193 @@
 
 @section('title', 'Potential Duplicates')
 
+@push('styles')
+<style>
+    .sf-lead-duplicates-page .sf-card,
+    .sf-lead-duplicates-page .sf-stat-card {
+        border-color: rgba(255, 255, 255, 0.10);
+        background: rgba(15, 23, 42, 0.86);
+        color: #e2e8f0;
+    }
+
+    .sf-lead-duplicates-page .sf-card-header {
+        border-color: rgba(255, 255, 255, 0.10);
+    }
+
+    .sf-lead-duplicates-page .sf-btn-primary,
+    .sf-lead-duplicates-page .sf-btn-secondary {
+        min-height: 2.5rem;
+        white-space: nowrap;
+    }
+
+    .sf-lead-duplicates-page .sf-duplicate-row {
+        border-color: rgba(255, 255, 255, 0.10);
+        background: rgba(2, 6, 23, 0.45);
+    }
+
+    .sf-lead-duplicates-page .sf-duplicate-match-panel {
+        border-color: rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page {
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-card,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-stat-card,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-pagination {
+        border-color: #dbe3ef !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-card-header {
+        border-color: #e2e8f0 !important;
+        background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-section-title,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-stat-value,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-title {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-section-subtitle,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-stat-label,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-stat-note,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-help,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-muted {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-label {
+        color: #334155 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-input {
+        border-color: #cbd5e1 !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-input:focus {
+        border-color: #f97316 !important;
+        box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-row {
+        border-color: #dbe3ef !important;
+        background: #ffffff !important;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-row:hover {
+        border-color: #fdba74 !important;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-duplicate-match-panel,
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-empty {
+        border-color: #dbe3ef !important;
+        background: #f8fafc !important;
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-btn-secondary {
+        border-color: #cbd5e1 !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-btn-secondary:hover {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-btn-primary {
+        background: #f97316 !important;
+        border-color: #f97316 !important;
+        color: #ffffff !important;
+        box-shadow: 0 12px 24px rgba(249, 115, 22, 0.20) !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-btn-primary:hover {
+        background: #ea580c !important;
+        border-color: #ea580c !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .text-orange-200,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-orange-300 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .text-blue-200,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-blue-300 {
+        color: #1d4ed8 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-900,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-950,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-white {
+        color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-200,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-300,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-400,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-500,
+    html[data-theme="light"] .sf-lead-duplicates-page .text-slate-600 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .bg-orange-500\/10 {
+        background: #fff7ed !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .bg-blue-500\/10 {
+        background: #eff6ff !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .bg-slate-50,
+    html[data-theme="light"] .sf-lead-duplicates-page .bg-white {
+        background: #ffffff !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .border-white\/10,
+    html[data-theme="light"] .sf-lead-duplicates-page .border-slate-200,
+    html[data-theme="light"] .sf-lead-duplicates-page .border-slate-300 {
+        border-color: #dbe3ef !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-alert-success {
+        border-color: #a7f3d0 !important;
+        background: #ecfdf5 !important;
+        color: #065f46 !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-alert-warning {
+        border-color: #fde68a !important;
+        background: #fffbeb !important;
+        color: #92400e !important;
+    }
+
+    html[data-theme="light"] .sf-lead-duplicates-page .sf-alert-danger {
+        border-color: #fecaca !important;
+        background: #fef2f2 !important;
+        color: #991b1b !important;
+    }
+</style>
+@endpush
+
 @section('content')
 @php
     $duplicateCount = method_exists($dupes, 'total') ? $dupes->total() : $dupes->count();
 @endphp
 
-<div class="sf-page space-y-6">
+<div class="sf-page sf-lead-duplicates-page space-y-6">
 
     <div class="sf-page-header">
         <div class="min-w-0">
@@ -105,7 +286,7 @@
                     Save Window
                 </button>
 
-                <p class="text-sm font-medium leading-6 text-slate-600 dark:text-slate-400">
+                <p class="sf-duplicate-muted text-sm font-medium leading-6 text-slate-600 dark:text-slate-400">
                     Shorter windows reduce noise. Longer windows help catch duplicate submissions from slower campaign follow-up.
                 </p>
             </div>
@@ -204,18 +385,18 @@
                         };
                     @endphp
 
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-orange-300/60 hover:shadow-md dark:border-white/10 dark:bg-slate-950/45 dark:hover:border-orange-400/30 sm:p-5">
+                    <article class="sf-duplicate-row rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-orange-300/60 hover:shadow-md dark:border-white/10 dark:bg-slate-950/45 dark:hover:border-orange-400/30 sm:p-5">
                         <div class="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.45fr)_minmax(14rem,0.75fr)] lg:items-center">
                             <div class="min-w-0">
-                                <p class="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <p class="sf-duplicate-muted text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                     Detected
                                 </p>
 
-                                <p class="mt-2 text-sm font-extrabold text-slate-900 dark:text-white">
+                                <p class="sf-duplicate-title mt-2 text-sm font-extrabold text-slate-900 dark:text-white">
                                     {{ optional($d->detected_at)->format('d M Y') ?? '-' }}
                                 </p>
 
-                                <p class="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                <p class="sf-duplicate-muted mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
                                     {{ optional($d->detected_at)->format('h:i A') ?? 'No time recorded' }}
                                 </p>
 
@@ -225,15 +406,15 @@
                             </div>
 
                             <div class="min-w-0">
-                                <p class="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <p class="sf-duplicate-muted text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                     Duplicate lead
                                 </p>
 
-                                <h3 class="mt-2 truncate text-lg font-black text-slate-950 dark:text-white">
+                                <h3 class="sf-duplicate-title mt-2 truncate text-lg font-black text-slate-950 dark:text-white">
                                     {{ $d->name ?? 'Unnamed Lead' }}
                                 </h3>
 
-                                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                <div class="sf-duplicate-muted mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
                                     <span class="break-all">
                                         {{ $d->phone ?: 'No phone' }}
                                     </span>
@@ -243,12 +424,12 @@
                                     </span>
                                 </div>
 
-                                <p class="mt-3 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
+                                <p class="sf-duplicate-muted mt-3 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
                                     {{ $d->reason ?: 'No reason recorded.' }}
                                 </p>
                             </div>
 
-                            <div class="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
+                            <div class="sf-duplicate-match-panel min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <span class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-extrabold text-slate-700 dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200">
                                         {{ $d->window_days }} days
@@ -265,7 +446,7 @@
                                         #{{ $d->primary->id }} {{ $d->primary->name }}
                                     </a>
                                 @else
-                                    <p class="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                                    <p class="sf-duplicate-muted mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
                                         No primary lead linked
                                     </p>
                                 @endif
@@ -294,7 +475,7 @@
     </div>
 
     @if(method_exists($dupes, 'links') && $dupes->hasPages())
-        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/45 dark:text-slate-200">
+        <div class="sf-duplicate-pagination rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/45 dark:text-slate-200">
             {{ $dupes->links() }}
         </div>
     @endif
