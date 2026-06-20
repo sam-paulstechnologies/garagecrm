@@ -164,7 +164,7 @@ class DashboardSeeder extends Seeder
         | Demo Opportunities
         |--------------------------------------------------------------------------
         */
-        $stages = ['new', 'attempting_contact', 'appointment', 'offer', 'closed_won', 'closed_lost'];
+        $stages = ['new', 'attempting_contact', 'appointment', 'offer', 'booking_confirmed', 'closed_lost'];
         $priorities = ['low', 'medium', 'high'];
 
         for ($i = 0; $i < 12; $i++) {

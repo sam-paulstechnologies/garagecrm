@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Events\BookingStatusUpdated;
+use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
 use App\Models\Job\Job;
 use Illuminate\Support\Facades\DB;
@@ -122,6 +123,12 @@ class BookingActionService
                 throw new \RuntimeException('Booking cannot be converted because client is missing.');
             }
 
+            if (empty($booking->vehicle_id)) {
+                throw new \RuntimeException('Booking cannot be converted because vehicle is missing.');
+            }
+
+            $booking->loadMissing(['opportunity']);
+
             $lookup = [
                 'company_id' => $booking->company_id,
                 'booking_id' => $booking->id,
@@ -134,6 +141,14 @@ class BookingActionService
                 'description' => $booking->service_type ?: $booking->name ?: 'Service job',
                 'start_time' => now(),
             ];
+
+            if (Schema::hasColumn('jobs', 'lead_id')) {
+                $payload['lead_id'] = $booking->lead_id ?: $booking->opportunity?->lead_id;
+            }
+
+            if (Schema::hasColumn('jobs', 'opportunity_id')) {
+                $payload['opportunity_id'] = $booking->opportunity_id;
+            }
 
             if (Schema::hasColumn('jobs', 'job_code')) {
                 $payload['job_code'] = $this->nextJobCode((int) $booking->company_id);
@@ -160,7 +175,7 @@ class BookingActionService
                     ->where('id', $booking->opportunity_id)
                     ->where('company_id', $booking->company_id)
                     ->update([
-                        'stage' => 'closed_won',
+                        'stage' => Opportunity::STAGE_BOOKING_CONFIRMED,
                         'is_converted' => 1,
                         'close_reason' => null,
                         'expected_close_date' => $booking->expected_close_date ?: $booking->booking_date,

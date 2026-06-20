@@ -6,12 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
-use App\Models\Job\Job;
 use App\Models\Shared\Communication;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\Booking\BookingActionService;
 use App\Services\Journey\ServiceJourneyIntegrityService;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Http\Request;
@@ -181,9 +181,10 @@ class BookingController extends Controller
         $companyId = $this->companyId();
 
         $data = $this->validatedData($request, $companyId, true);
+        $convertedJob = null;
 
         try {
-            DB::transaction(function () use (&$data, $companyId, $request) {
+            DB::transaction(function () use (&$data, &$convertedJob, $companyId, $request) {
                 $data['client_id'] = $this->resolveClientId($data, $companyId);
 
                 $this->preventDuplicateOpportunityBooking($data, $companyId);
@@ -255,8 +256,8 @@ class BookingController extends Controller
                 }
 
                 if ($booking->status === self::STATUS_CONVERTED_TO_JOB) {
-                    $this->createJobFromBooking($booking);
-                    $this->markOpportunityConvertedToJob($booking);
+                    $convertedJob = app(BookingActionService::class)
+                        ->convertToJob($booking, (int) auth()->id());
                 }
 
                 if ($booking->status === self::STATUS_LOST) {
@@ -271,6 +272,14 @@ class BookingController extends Controller
             return back()
                 ->withErrors(['slot' => $e->getMessage() ?: 'Unable to create booking.'])
                 ->withInput();
+        }
+
+        if ($convertedJob) {
+            return redirect()
+                ->route('admin.jobs.show', $convertedJob)
+                ->with('success', $convertedJob->wasRecentlyCreated
+                    ? 'Booking converted and job created.'
+                    : 'Booking already converted. Opening existing job.');
         }
 
         return redirect()
@@ -349,9 +358,10 @@ class BookingController extends Controller
         $companyId = $this->companyId();
 
         $data = $this->validatedData($request, $companyId, false);
+        $convertedJob = null;
 
         try {
-            DB::transaction(function () use (&$data, $booking, $request) {
+            DB::transaction(function () use (&$data, &$convertedJob, $booking, $request) {
                 $data['client_id'] = $booking->client_id;
                 $data['opportunity_id'] = $booking->opportunity_id;
 
@@ -445,12 +455,12 @@ class BookingController extends Controller
                 }
 
                 if ($freshBooking->status === self::STATUS_CONVERTED_TO_JOB) {
-                    $job = $this->createJobFromBooking($freshBooking);
-                    $this->markOpportunityConvertedToJob($freshBooking);
+                    $convertedJob = app(BookingActionService::class)
+                        ->convertToJob($freshBooking, (int) auth()->id());
 
                     Log::info('[BookingController] Booking converted to job', [
                         'booking_id' => $freshBooking->id,
-                        'job_id' => $job->id,
+                        'job_id' => $convertedJob->id,
                         'client_id' => $freshBooking->client_id,
                     ]);
                 }
@@ -468,6 +478,14 @@ class BookingController extends Controller
             return back()
                 ->withErrors(['slot' => $e->getMessage() ?: 'Unable to update booking.'])
                 ->withInput();
+        }
+
+        if ($convertedJob) {
+            return redirect()
+                ->route('admin.jobs.show', $convertedJob)
+                ->with('success', $convertedJob->wasRecentlyCreated
+                    ? 'Booking converted and job created.'
+                    : 'Booking already converted. Opening existing job.');
         }
 
         return redirect()
@@ -547,7 +565,7 @@ class BookingController extends Controller
             'pickup_address' => ['nullable', 'string', 'max:255'],
             'pickup_contact_number' => ['nullable', 'string', 'max:20'],
 
-            'priority' => ['nullable', Rule::in(['low', 'medium', 'high', 'urgent'])],
+            'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
             'expected_duration' => ['nullable', 'integer', 'min:1'],
             'expected_close_date' => ['nullable', 'date'],
 
@@ -1051,7 +1069,7 @@ class BookingController extends Controller
                 ->count(),
 
             'high_priority' => (clone $base)
-                ->whereIn('priority', ['high', 'urgent'])
+                ->where('priority', 'high')
                 ->count(),
         ];
     }
@@ -1071,7 +1089,7 @@ class BookingController extends Controller
                 ->whereDate('booking_date', '<', now()->toDateString()),
 
             'no_vehicle' => $query->whereNull('vehicle_id'),
-            'high_priority' => $query->whereIn('priority', ['high', 'urgent']),
+            'high_priority' => $query->where('priority', 'high'),
 
             default => null,
         };
@@ -1264,25 +1282,6 @@ class BookingController extends Controller
             ->exists();
     }
 
-    protected function markOpportunityConvertedToJob(Booking $booking): void
-    {
-        if (! $booking->opportunity) {
-            return;
-        }
-
-        abort_if(
-            (int) $booking->opportunity->company_id !== (int) $booking->company_id,
-            403
-        );
-
-        $booking->opportunity->update([
-            'stage' => 'closed_won',
-            'is_converted' => true,
-            'close_reason' => null,
-            'expected_close_date' => $booking->expected_close_date ?: $booking->booking_date,
-        ]);
-    }
-
     protected function markOpportunityLostFromBooking(Booking $booking): void
     {
         if (! $booking->opportunity) {
@@ -1299,66 +1298,6 @@ class BookingController extends Controller
             'is_converted' => false,
             'close_reason' => $booking->lost_reason ?? 'Booking lost',
         ]);
-    }
-
-    protected function createJobFromBooking(Booking $booking): Job
-    {
-        $booking->loadMissing(['client', 'opportunity', 'vehicleData.make', 'vehicleData.model']);
-
-        $lookup = [
-            'company_id' => $booking->company_id,
-            'booking_id' => $booking->id,
-        ];
-
-        $payload = [
-            'client_id' => $booking->client_id,
-            'description' => $booking->service_type ?: $booking->name ?: 'Service job',
-            'status' => 'pending',
-            'assigned_to' => $booking->assigned_to,
-            'start_time' => now(),
-        ];
-
-        if (Schema::hasColumn('jobs', 'opportunity_id')) {
-            $payload['opportunity_id'] = $booking->opportunity_id;
-        }
-
-        if (Schema::hasColumn('jobs', 'lead_id')) {
-            $payload['lead_id'] = $booking->lead_id ?: $booking->opportunity?->lead_id;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Column-safe job payload
-        |--------------------------------------------------------------------------
-        | Azure DB currently has no jobs.vehicle_id column.
-        | Keep this safe for older/newer DBs.
-        */
-
-        if (Schema::hasColumn('jobs', 'vehicle_id')) {
-            $payload['vehicle_id'] = $booking->vehicle_id;
-        }
-
-        if (Schema::hasColumn('jobs', 'job_code')) {
-            $payload['job_code'] = $this->nextJobCode($booking);
-        }
-
-        Log::info('[BookingController] Creating job from booking', [
-            'booking_id' => $booking->id,
-            'company_id' => $booking->company_id,
-            'client_id' => $booking->client_id,
-            'payload' => $payload,
-        ]);
-
-        return Job::firstOrCreate($lookup, $payload);
-    }
-
-    protected function nextJobCode(Booking $booking): string
-    {
-        $prefix = 'JOB-' . now()->format('Ymd') . '-';
-
-        $latestId = (int) Job::where('company_id', $booking->company_id)->max('id');
-
-        return $prefix . str_pad((string) ($latestId + 1), 4, '0', STR_PAD_LEFT);
     }
 
     protected function bookingVehicleLabel(Booking $booking): string

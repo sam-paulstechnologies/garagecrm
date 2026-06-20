@@ -17,32 +17,15 @@ class BookingStateService
      */
     private const MAP = [
         Booking::STATUS_PENDING => [
-            Booking::STATUS_CONFIRMED,
             Booking::STATUS_SCHEDULED,
-            Booking::STATUS_VEHICLE_RECEIVED,
-            Booking::STATUS_CANCELED,
         ],
 
         Booking::STATUS_SCHEDULED => [
-            Booking::STATUS_CONFIRMED,
-            Booking::STATUS_VEHICLE_RECEIVED,
-            Booking::STATUS_CANCELED,
+            Booking::STATUS_PENDING,
         ],
 
-        Booking::STATUS_CONFIRMED => [
-            Booking::STATUS_VEHICLE_RECEIVED,
-            Booking::STATUS_COMPLETED,
-            Booking::STATUS_CANCELED,
-        ],
-
-        Booking::STATUS_VEHICLE_RECEIVED => [
-            Booking::STATUS_COMPLETED,
-            Booking::STATUS_CANCELED,
-        ],
-
-        Booking::STATUS_COMPLETED => [],
-
-        Booking::STATUS_CANCELED => [],
+        Booking::STATUS_CONVERTED_TO_JOB => [],
+        Booking::STATUS_LOST => [],
     ];
 
     public function transition(Booking $booking, string $to): Booking
@@ -86,14 +69,6 @@ class BookingStateService
 
             if ($to === Booking::STATUS_CONFIRMED && Schema::hasColumn('bookings', 'confirmed_at')) {
                 $lockedBooking->confirmed_at = $now;
-            }
-
-            if ($to === Booking::STATUS_COMPLETED && Schema::hasColumn('bookings', 'completed_at')) {
-                $lockedBooking->completed_at = $now;
-            }
-
-            if ($to === Booking::STATUS_CANCELED && Schema::hasColumn('bookings', 'cancelled_at')) {
-                $lockedBooking->cancelled_at = $now;
             }
 
             $lockedBooking->save();

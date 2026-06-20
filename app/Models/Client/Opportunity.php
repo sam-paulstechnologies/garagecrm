@@ -24,31 +24,33 @@ class Opportunity extends Model
 
     public const STAGE_NEW = 'new';
     public const STAGE_ATTEMPTING_CONTACT = 'attempting_contact';
-    public const STAGE_COLLECTING_DETAILS = 'collecting_details';
-    public const STAGE_MANAGER_CONFIRMATION_PENDING = 'manager_confirmation_pending';
     public const STAGE_APPOINTMENT = 'appointment';
     public const STAGE_OFFER = 'offer';
-    public const STAGE_CLOSED_WON = 'closed_won';
+    public const STAGE_MANAGER_CONFIRMATION_PENDING = 'manager_confirmation_pending';
+    public const STAGE_BOOKING_CONFIRMED = 'booking_confirmed';
     public const STAGE_CLOSED_LOST = 'closed_lost';
+
+    public const LEGACY_STAGE_COLLECTING_DETAILS = 'collecting_details';
+    public const LEGACY_STAGE_CLOSED_WON = 'closed_won';
+    public const STAGE_COLLECTING_DETAILS = self::STAGE_ATTEMPTING_CONTACT;
+    public const STAGE_CLOSED_WON = self::STAGE_BOOKING_CONFIRMED;
 
     public const STAGES = [
         self::STAGE_NEW,
         self::STAGE_ATTEMPTING_CONTACT,
-        self::STAGE_COLLECTING_DETAILS,
-        self::STAGE_MANAGER_CONFIRMATION_PENDING,
         self::STAGE_APPOINTMENT,
         self::STAGE_OFFER,
-        self::STAGE_CLOSED_WON,
+        self::STAGE_MANAGER_CONFIRMATION_PENDING,
+        self::STAGE_BOOKING_CONFIRMED,
         self::STAGE_CLOSED_LOST,
     ];
 
     public const ACTIVE_STAGES = [
         self::STAGE_NEW,
         self::STAGE_ATTEMPTING_CONTACT,
-        self::STAGE_COLLECTING_DETAILS,
-        self::STAGE_MANAGER_CONFIRMATION_PENDING,
         self::STAGE_APPOINTMENT,
         self::STAGE_OFFER,
+        self::STAGE_MANAGER_CONFIRMATION_PENDING,
     ];
 
     protected $fillable = [
@@ -203,23 +205,45 @@ class Opportunity extends Model
 
     public function getStageLabelAttribute(): string
     {
-        return match ((string) $this->stage) {
+        return self::stageLabel($this->stage);
+    }
+
+    public static function normalizeStage(?string $stage): string
+    {
+        $stage = trim((string) $stage);
+
+        return match ($stage) {
+            self::LEGACY_STAGE_CLOSED_WON => self::STAGE_BOOKING_CONFIRMED,
+            self::LEGACY_STAGE_COLLECTING_DETAILS => self::STAGE_ATTEMPTING_CONTACT,
+            self::STAGE_NEW,
+            self::STAGE_ATTEMPTING_CONTACT,
+            self::STAGE_APPOINTMENT,
+            self::STAGE_OFFER,
+            self::STAGE_MANAGER_CONFIRMATION_PENDING,
+            self::STAGE_BOOKING_CONFIRMED,
+            self::STAGE_CLOSED_LOST => $stage,
+            default => self::STAGE_NEW,
+        };
+    }
+
+    public static function stageLabel(?string $stage): string
+    {
+        return match (self::normalizeStage($stage)) {
             self::STAGE_NEW => 'New',
             self::STAGE_ATTEMPTING_CONTACT => 'Attempting Contact',
-            self::STAGE_COLLECTING_DETAILS => 'Collecting Details',
-            self::STAGE_MANAGER_CONFIRMATION_PENDING => 'Manager Confirmation Pending',
             self::STAGE_APPOINTMENT => 'Appointment',
             self::STAGE_OFFER => 'Offer',
-            self::STAGE_CLOSED_WON => 'Closed Won',
+            self::STAGE_MANAGER_CONFIRMATION_PENDING => 'Manager Confirmation Pending',
+            self::STAGE_BOOKING_CONFIRMED => 'Booking Confirmed',
             self::STAGE_CLOSED_LOST => 'Closed Lost',
-            default => ucfirst(str_replace('_', ' ', (string) $this->stage)),
+            default => ucfirst(str_replace('_', ' ', (string) $stage)),
         };
     }
 
     public function markCollectingDetails(): void
     {
         $this->update([
-            'stage' => self::STAGE_COLLECTING_DETAILS,
+            'stage' => self::STAGE_ATTEMPTING_CONTACT,
         ]);
     }
 
@@ -240,7 +264,7 @@ class Opportunity extends Model
     public function markClosedWon(): void
     {
         $this->update([
-            'stage' => self::STAGE_CLOSED_WON,
+            'stage' => self::STAGE_BOOKING_CONFIRMED,
             'is_converted' => true,
         ]);
     }

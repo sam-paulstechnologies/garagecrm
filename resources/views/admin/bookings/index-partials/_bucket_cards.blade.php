@@ -64,7 +64,7 @@
             'key' => 'high_priority',
             'title' => 'High Priority',
             'count' => $bucketCounts['high_priority'] ?? 0,
-            'note' => 'High / urgent',
+            'note' => 'High priority',
         ],
     ];
 

@@ -156,7 +156,9 @@ class BookingController extends Controller
 
             return redirect()
                 ->route('manager.jobs.show', $job)
-                ->with('success', 'Booking converted to job successfully.');
+                ->with('success', $job->wasRecentlyCreated
+                    ? 'Booking converted and job created.'
+                    : 'Booking already converted. Opening existing job.');
         } catch (\Throwable $e) {
             return back()->withErrors([
                 'booking' => $e->getMessage() ?: 'Unable to convert booking to job.',

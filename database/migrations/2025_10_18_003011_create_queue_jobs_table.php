@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('queue_jobs')) {
+            return;
+        }
+
         Schema::create('queue_jobs', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('queue')->index();

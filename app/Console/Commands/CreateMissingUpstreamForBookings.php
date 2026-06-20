@@ -572,7 +572,7 @@ class CreateMissingUpstreamForBookings extends Command
             'assigned_to' => $booking->assigned_to,
             'priority' => $this->opportunityPriority($booking->priority),
             'value' => 0,
-            'is_converted' => $stage === 'closed_won' ? 1 : 0,
+            'is_converted' => $stage === 'booking_confirmed' ? 1 : 0,
             'expected_close_date' => $booking->booking_date,
             'notes' => trim(($booking->notes ? $booking->notes . "\n\n" : '') . 'Auto-created to preserve service journey integrity for booking #' . $booking->id . '.'),
             'created_at' => $createdAt,
@@ -606,7 +606,7 @@ class CreateMissingUpstreamForBookings extends Command
     protected function opportunityStageForBooking(object $booking): string
     {
         return match ((string) $booking->status) {
-            'converted_to_job' => 'closed_won',
+            'converted_to_job' => 'booking_confirmed',
             'lost' => 'closed_lost',
             default => 'appointment',
         };
