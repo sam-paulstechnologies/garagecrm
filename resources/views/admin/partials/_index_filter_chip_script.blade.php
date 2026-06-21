@@ -5,6 +5,7 @@
             document.querySelectorAll('[data-index-filter-panel]').forEach(function (root) {
                 var body = root.querySelector('[data-index-filter-body]');
                 var toggle = root.querySelector('[data-index-filter-toggle]');
+                var summary = root.querySelector('[data-index-filter-summary]');
                 var chips = root.querySelectorAll('[data-index-filter-chip]');
                 var dateRangeSelector = root.getAttribute('data-date-range-control');
                 var customFieldsSelector = root.getAttribute('data-custom-fields');
@@ -63,6 +64,17 @@
                     collapsed = !collapsed;
                     applyState();
                 });
+
+                if (summary) {
+                    summary.addEventListener('click', function (event) {
+                        if (event.target.closest('button, a, input, select, textarea, label')) {
+                            return;
+                        }
+
+                        collapsed = !collapsed;
+                        applyState();
+                    });
+                }
 
                 chips.forEach(function (chip) {
                     chip.addEventListener('click', function () {

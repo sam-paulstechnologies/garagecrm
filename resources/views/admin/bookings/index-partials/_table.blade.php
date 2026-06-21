@@ -96,6 +96,8 @@
             ?? $booking->opportunity?->lead?->phone
             ?? null;
     };
+
+    $phoneService = app(\App\Services\PhoneNumberService::class);
 @endphp
 
 <div class="sf-booking-panel overflow-hidden rounded-2xl border shadow-sm">
@@ -123,6 +125,8 @@
 
                         $vehicle = $vehicleLabel($booking);
                         $phone = $phoneForBooking($booking);
+                        $phoneDisplay = $phone ? $phoneService->formatForDisplay($phone) : null;
+                        $phoneTelUrl = $phone ? $phoneService->buildTelUrl($phone) : null;
                     @endphp
 
                     <tr class="transition hover:bg-slate-800/30">
@@ -137,9 +141,15 @@
                                 </div>
                             @endif
 
-                            <div class="mt-1 text-xs font-extrabold text-orange-300">
-                                {{ $phone ?: 'No phone' }}
-                            </div>
+                            @if($phoneDisplay && $phoneTelUrl)
+                                <a href="{{ $phoneTelUrl }}" class="mt-1 inline-flex text-xs font-extrabold text-orange-300 underline decoration-orange-300/40 underline-offset-2">
+                                    {{ $phoneDisplay }}
+                                </a>
+                            @else
+                                <div class="mt-1 text-xs font-extrabold text-slate-400">
+                                    No phone
+                                </div>
+                            @endif
 
                             <div class="sf-booking-muted mt-1 text-xs font-medium">
                                 Booking ID: #{{ $booking->id }}

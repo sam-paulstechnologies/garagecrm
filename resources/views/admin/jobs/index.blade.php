@@ -85,16 +85,18 @@
 @endphp
 
 <div class="sf-page sf-jobs-page mx-auto max-w-7xl px-4 py-6 space-y-6">
-    @include('admin.jobs.index-partials._hero')
+    <div class="sf-index-sticky-panel space-y-6">
+        @include('admin.jobs.index-partials._hero')
 
-    {{-- Search and filter first --}}
-    @include('admin.jobs.index-partials._filters')
+        {{-- Search and filter first --}}
+        @include('admin.jobs.index-partials._filters')
 
-    {{-- Service buckets second --}}
-    @include('admin.jobs.index-partials._service_buckets')
+        {{-- Service buckets second --}}
+        @include('admin.jobs.index-partials._service_buckets')
 
-    {{-- KPI tiles third --}}
-    @include('admin.jobs.index-partials._stats')
+        {{-- KPI tiles third --}}
+        @include('admin.jobs.index-partials._stats')
+    </div>
 
     {{-- Guidance note --}}
     @include('admin.jobs.index-partials._note')

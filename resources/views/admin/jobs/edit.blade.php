@@ -55,9 +55,8 @@
     $invoiceAmount = $invoice?->amount ?? '';
 @endphp
 
-<div class="sf-page sf-jobs-page space-y-6">
+<div class="sf-page sf-jobs-page sf-jobs-edit mx-auto max-w-7xl px-4 py-6 space-y-6">
     @include('admin.jobs.edit-partials._hero')
-    @include('admin.jobs.edit-partials._notice')
     @include('admin.jobs.edit-partials._errors')
     @include('admin.jobs.edit-partials._form')
 </div>

@@ -10,12 +10,22 @@
     </div>
 
     <div class="sf-card-body">
-        <span class="{{ $serviceBadge }}">
-            {{ $serviceBucket }}
-        </span>
+        <div class="sf-job-field-grid">
+            <div class="sf-job-field-card">
+                <div class="sf-job-field-label">Service Bucket</div>
+                <div class="mt-2">
+                    <span class="{{ $serviceBadge }}" title="Detected from job description, work summary, issues found, and parts used.">
+                        {{ $serviceBucket }}
+                    </span>
+                </div>
+            </div>
 
-        <p class="mt-4 text-xs font-medium leading-5 text-slate-500">
-            This helps SayaraForce prepare the correct WhatsApp follow-up once the job is closed.
-        </p>
+            <div class="sf-job-field-card">
+                <div class="sf-job-field-label">Explanation</div>
+                <div class="sf-job-field-value">
+                    Used for the correct WhatsApp follow-up once the job is closed.
+                </div>
+            </div>
+        </div>
     </div>
 </div>

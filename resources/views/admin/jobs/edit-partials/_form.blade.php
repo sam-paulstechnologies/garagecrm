@@ -1,15 +1,5 @@
-<form id="jobEditForm"
-      method="POST"
-      action="{{ route('admin.jobs.update', $job->id) }}"
-      class="space-y-6">
-
-    @csrf
-    @method('PUT')
-
-    <input type="hidden" name="invoice_number" id="hidden_invoice_number" value="{{ old('invoice_number', $invoiceNumber) }}">
-    <input type="hidden" name="invoice_amount" id="hidden_invoice_amount" value="{{ old('invoice_amount', $invoiceAmount) }}">
-
-    <div class="sf-card">
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div class="sf-card sf-crm-edit-card">
         <div class="sf-card-header">
             <h2 class="sf-section-title">
                 Job Information
@@ -21,7 +11,23 @@
         </div>
 
         <div class="sf-card-body">
-            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <form id="jobEditForm"
+                  method="POST"
+                  action="{{ route('admin.jobs.update', $job->id) }}"
+                  class="space-y-6">
+
+                @csrf
+                @method('PUT')
+
+                <input type="hidden" name="invoice_number" id="hidden_invoice_number" value="{{ old('invoice_number', $invoiceNumber) }}">
+                <input type="hidden" name="invoice_amount" id="hidden_invoice_amount" value="{{ old('invoice_amount', $invoiceAmount) }}">
+
+                <div class="sf-crm-section">
+                    <div class="sf-crm-section-head">
+                        <h3>Basic Job Details</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                     <label class="sf-label">
                         Client <span class="text-red-300">*</span>
@@ -107,7 +113,15 @@
                         <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
+                    </div>
+                </div>
 
+                <div class="sf-crm-section">
+                    <div class="sf-crm-section-head">
+                        <h3>Service Notes</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div class="md:col-span-2">
                     <label class="sf-label">
                         Service / Job Description <span class="text-red-300">*</span>
@@ -164,20 +178,53 @@
                         <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
-            </div>
+                    </div>
+                </div>
+
+                @include('admin.jobs.edit-partials._service_signal')
+                @include('admin.jobs.edit-partials._invoice_notice')
+
+                <div class="sf-crm-action-bar flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-4">
+                    <a href="{{ route('admin.jobs.show', $job->id) }}" class="sf-btn-secondary">
+                        Cancel
+                    </a>
+
+                    <button type="submit" class="sf-btn-primary">
+                        Update Job
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
-    @include('admin.jobs.edit-partials._service_signal')
-    @include('admin.jobs.edit-partials._invoice_notice')
+    <aside class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+        <div class="sf-card sf-job-edit-side-card">
+            <div class="sf-card-header">
+                <h2 class="sf-section-title">Job Snapshot</h2>
+            </div>
 
-    <div class="flex flex-wrap items-center gap-3">
-        <button type="submit" class="sf-btn-primary">
-            Update Job
-        </button>
+            <div class="divide-y divide-white/10 text-sm">
+                @foreach([
+                    'Job' => $job->job_code ?? 'Job #' . $job->id,
+                    'Client' => $job->client?->name ?? 'No client linked',
+                    'Stage' => ucwords(str_replace('_', ' ', $status)),
+                    'Service Bucket' => $serviceBucket,
+                    'Invoice' => $invoiceNumber ?: 'Not captured',
+                    'Created' => $job->created_at?->format('d M Y, h:i A') ?? 'Not set',
+                ] as $label => $value)
+                    <div class="px-5 py-3">
+                        <div class="sf-job-field-label">{{ $label }}</div>
+                        <div class="sf-job-field-value">{{ $value }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
 
-        <a href="{{ route('admin.jobs.show', $job->id) }}" class="sf-btn-secondary">
-            Cancel
-        </a>
-    </div>
-</form>
+        <div class="sf-job-note rounded-2xl border p-5 shadow-sm">
+            <div class="sf-job-note-title font-extrabold">Completion Rule</div>
+            <p class="sf-job-note-text mt-2 text-sm font-semibold leading-6">
+                Completed requires invoice number and amount. The existing validation and invoice creation flow are still used.
+            </p>
+        </div>
+    </aside>
+</div>

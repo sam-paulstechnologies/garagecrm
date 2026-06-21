@@ -1,5 +1,9 @@
 {{-- resources/views/admin/invoices/index-partials/_table.blade.php --}}
 
+@php
+    $phoneService = app(\App\Services\PhoneNumberService::class);
+@endphp
+
 <div class="sf-table-wrap">
     <div class="sf-table-scroll">
         <table class="sf-table">
@@ -28,6 +32,15 @@
                         $hasJob = !empty($invoice->job_id);
 
                         $roiReady = $statusValue === 'paid' && $hasRevenue && $hasJob;
+                        $phone = $invoice->client?->phone
+                            ?? $invoice->client?->phone_norm
+                            ?? $invoice->client?->whatsapp
+                            ?? $invoice->job?->client?->phone
+                            ?? $invoice->job?->booking?->client?->phone
+                            ?? $invoice->job?->booking?->lead?->phone
+                            ?? null;
+                        $phoneDisplay = $phone ? $phoneService->formatForDisplay($phone) : null;
+                        $phoneTelUrl = $phone ? $phoneService->buildTelUrl($phone) : null;
                     @endphp
 
                     <tr>
@@ -39,6 +52,16 @@
                             <div class="sf-invoice-muted mt-1 text-xs font-medium">
                                 {{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('Y-m-d') : 'No invoice date' }}
                             </div>
+
+                            @if($phoneDisplay && $phoneTelUrl)
+                                <a href="{{ $phoneTelUrl }}" class="mt-1 inline-flex text-xs font-extrabold text-orange-300 underline decoration-orange-300/40 underline-offset-2">
+                                    {{ $phoneDisplay }}
+                                </a>
+                            @else
+                                <div class="mt-1 text-xs font-extrabold text-slate-400">
+                                    No phone
+                                </div>
+                            @endif
                         </td>
 
                         <td>
@@ -46,9 +69,6 @@
                                 {{ $invoice->client?->name ?? 'N/A' }}
                             </div>
 
-                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
-                                {{ $invoice->client?->phone ?? $invoice->client?->phone_norm ?? 'No phone' }}
-                            </div>
                         </td>
 
                         <td>

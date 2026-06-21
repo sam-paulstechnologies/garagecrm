@@ -122,6 +122,7 @@ class JobController extends Controller
         ];
 
         $bucketCounts = $this->buildJobBucketCounts((clone $base)->get());
+        [$jobPageTitle, $jobPageSubtitle] = $this->jobIndexHeading($status, $bucket, $q);
 
         return view('admin.jobs.index', compact(
             'jobs',
@@ -131,8 +132,36 @@ class JobController extends Controller
             'stats',
             'bucketCounts',
             'jobFilters',
-            'assignedUsers'
+            'assignedUsers',
+            'jobPageTitle',
+            'jobPageSubtitle'
         ));
+    }
+
+    protected function jobIndexHeading(string $status, string $bucket, string $q = ''): array
+    {
+        $title = 'Open Jobs';
+        $subtitle = 'Track active service jobs, customer updates, service buckets, and closure readiness.';
+
+        if ($bucket !== '') {
+            $bucketTitle = ucwords(str_replace('_', ' ', $bucket));
+            $title = "{$bucketTitle} Jobs";
+            $subtitle = 'Open jobs filtered by the selected service bucket.';
+        }
+
+        if ($status !== '') {
+            [$title, $subtitle] = match ($status) {
+                'pending' => ['Pending Jobs', 'Jobs waiting to start or awaiting technician action.'],
+                'in_progress' => ['In Progress Jobs', 'Jobs currently being worked on by the service team.'],
+                default => [ucwords(str_replace('_', ' ', $status)) . ' Jobs', 'Jobs filtered by the selected status.'],
+            };
+        }
+
+        if ($q !== '') {
+            $subtitle .= ' Search: "' . str($q)->limit(40) . '".';
+        }
+
+        return [$title, $subtitle];
     }
 
     /*

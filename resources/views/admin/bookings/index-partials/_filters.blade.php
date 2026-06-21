@@ -119,7 +119,7 @@
         @endif
 
         {{-- Compact collapsed row --}}
-        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div class="flex cursor-pointer flex-col gap-3 xl:flex-row xl:items-center xl:justify-between" data-index-filter-summary>
             <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-3">
                     <h2 class="sf-booking-title text-base font-extrabold tracking-tight">

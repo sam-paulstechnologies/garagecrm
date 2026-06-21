@@ -4,11 +4,11 @@
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h1 class="sf-job-title text-3xl font-extrabold tracking-tight">
-                Open Jobs
+                {{ $jobPageTitle ?? 'Open Jobs' }}
             </h1>
 
             <p class="sf-job-muted mt-2 max-w-3xl text-sm font-medium">
-                Track active service jobs, customer updates, service buckets, and closure readiness.
+                {{ $jobPageSubtitle ?? 'Track active service jobs, customer updates, service buckets, and closure readiness.' }}
             </p>
         </div>
 

@@ -1,4 +1,4 @@
-<div class="sf-card">
+<div class="sf-card sf-job-detail-section">
     <div class="sf-card-header">
         <h2 class="sf-section-title">
             Job Details
@@ -10,46 +10,20 @@
     </div>
 
     <div class="sf-card-body">
-        <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-            <div class="sm:col-span-2">
-                <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                    Service / Job Description
-                </dt>
-
-                <dd class="mt-1 font-bold leading-6 text-slate-200">
-                    {{ $job->description ?: '-' }}
-                </dd>
-            </div>
-
-            <div class="sm:col-span-2">
-                <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                    Work Summary
-                </dt>
-
-                <dd class="mt-1 font-bold leading-6 text-slate-200">
-                    {{ $job->work_summary ?: '-' }}
-                </dd>
-            </div>
-
-            <div>
-                <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                    Issues Found
-                </dt>
-
-                <dd class="mt-1 font-bold leading-6 text-slate-200">
-                    {{ $job->issues_found ?: '-' }}
-                </dd>
-            </div>
-
-            <div>
-                <dt class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                    Parts Used
-                </dt>
-
-                <dd class="mt-1 font-bold leading-6 text-slate-200">
-                    {{ $job->parts_used ?: '-' }}
-                </dd>
-            </div>
-        </dl>
+        <div class="sf-job-field-grid">
+            @foreach([
+                'Service / Job Description' => $job->description ?: 'Not set',
+                'Work Summary' => $job->work_summary ?: 'Not set',
+                'Issues Found' => $job->issues_found ?: 'Not set',
+                'Parts Used' => $job->parts_used ?: 'Not set',
+                'Start Time' => $job->start_time?->format('d M Y, h:i A') ?? 'Not set',
+                'Assigned Owner' => $job->assignedUser?->name ?? 'Unassigned',
+            ] as $label => $value)
+                <div class="sf-job-field-card {{ in_array($label, ['Service / Job Description', 'Work Summary'], true) ? 'md:col-span-2' : '' }}">
+                    <div class="sf-job-field-label">{{ $label }}</div>
+                    <div class="sf-job-field-value whitespace-pre-line">{{ $value }}</div>
+                </div>
+            @endforeach
+        </div>
     </div>
 </div>
