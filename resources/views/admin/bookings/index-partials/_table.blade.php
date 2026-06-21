@@ -130,7 +130,8 @@
                     @endphp
 
                     <tr class="transition hover:bg-slate-800/30">
-                        <td class="px-5 py-4 align-top">
+                        <td class="px-5 py-4 align-top" data-label="Booking">
+                            <div class="min-w-0">
                             @if(Route::has('admin.bookings.show'))
                                 <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-booking-name-link">
                                     {{ $booking->name ?? 'Booking #' . $booking->id }}
@@ -141,21 +142,22 @@
                                 </div>
                             @endif
 
-                            @if($phoneDisplay && $phoneTelUrl)
-                                <a href="{{ $phoneTelUrl }}" class="mt-1 inline-flex text-xs font-extrabold text-orange-300 underline decoration-orange-300/40 underline-offset-2">
-                                    {{ $phoneDisplay }}
-                                </a>
-                            @else
-                                <div class="mt-1 text-xs font-extrabold text-slate-400">
-                                    No phone
+                                <div class="mt-1 text-sm font-bold sf-booking-value">
+                                    @if($phoneDisplay && $phoneTelUrl)
+                                        <a href="{{ $phoneTelUrl }}" class="sf-link break-all">
+                                            {{ $phoneDisplay }}
+                                        </a>
+                                    @else
+                                        <span class="sf-booking-muted">No phone</span>
+                                    @endif
                                 </div>
-                            @endif
 
-                            <div class="sf-booking-muted mt-1 text-xs font-medium">
-                                Booking ID: #{{ $booking->id }}
-                                @if(!empty($booking->source))
-                                    · {{ $booking->source }}
-                                @endif
+                                <div class="sf-booking-muted mt-1 text-xs font-medium">
+                                    Booking ID: #{{ $booking->id }}
+                                    @if(!empty($booking->source))
+                                        &middot; {{ $booking->source }}
+                                    @endif
+                                </div>
                             </div>
                         </td>
 
