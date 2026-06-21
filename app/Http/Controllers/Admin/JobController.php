@@ -267,6 +267,11 @@ class JobController extends Controller
 
         $this->validateClientAndAssignee($data, $companyId);
 
+        $invoiceNumber = $data['invoice_number'] ?? null;
+        $invoiceAmount = $data['invoice_amount'] ?? null;
+
+        unset($data['invoice_number'], $data['invoice_amount']);
+
         if (! empty($data['booking_id'])) {
             $booking = Booking::query()
                 ->where('company_id', $companyId)
@@ -285,7 +290,7 @@ class JobController extends Controller
         $job = Job::create($data);
 
         if ($this->normalizeStatus((string) $job->status) === 'completed') {
-            $this->ensureInvoice($job);
+            $this->createOrUpdateCompletionInvoice($job, $invoiceNumber, $invoiceAmount, 'paid');
             $this->dispatchJobCompleted($job);
         }
 
@@ -384,29 +389,7 @@ class JobController extends Controller
             $job->update($validated);
 
             if ($newStatus === 'completed') {
-                $invoice = $job->invoice()
-                    ->where('company_id', $companyId)
-                    ->first() ?: new Invoice();
-
-                $invoice->company_id = $job->company_id;
-                $invoice->client_id = $job->client_id;
-                $invoice->job_id = $job->id;
-                $this->applyJourneyLinksToInvoice($invoice, $job);
-                $invoice->amount = $invoiceAmount ?? $invoice->amount ?? 0;
-                $invoice->status = 'paid';
-                $invoice->due_date = now();
-                $invoice->currency = 'AED';
-                $invoice->source = 'generated';
-
-                if (Schema::hasColumn('invoices', 'invoice_number')) {
-                    $invoice->invoice_number = $invoiceNumber;
-                }
-
-                if (Schema::hasColumn('invoices', 'number')) {
-                    $invoice->number = $invoiceNumber;
-                }
-
-                $invoice->save();
+                $this->createOrUpdateCompletionInvoice($job, $invoiceNumber, $invoiceAmount, 'paid');
             }
         });
 
@@ -818,6 +801,41 @@ class JobController extends Controller
         $this->applyJourneyLinksToInvoice($invoice, $job);
 
         $invoice->save();
+    }
+
+    protected function createOrUpdateCompletionInvoice(
+        Job $job,
+        ?string $invoiceNumber,
+        mixed $invoiceAmount,
+        string $status = 'paid'
+    ): Invoice {
+        $companyId = (int) $job->company_id;
+
+        $invoice = $job->invoice()
+            ->where('company_id', $companyId)
+            ->first() ?: new Invoice();
+
+        $invoice->company_id = $job->company_id;
+        $invoice->client_id = $job->client_id;
+        $invoice->job_id = $job->id;
+        $this->applyJourneyLinksToInvoice($invoice, $job);
+        $invoice->amount = $invoiceAmount ?? $invoice->amount ?? 0;
+        $invoice->status = $status;
+        $invoice->due_date = now();
+        $invoice->currency = 'AED';
+        $invoice->source = 'generated';
+
+        if (Schema::hasColumn('invoices', 'invoice_number')) {
+            $invoice->invoice_number = $invoiceNumber;
+        }
+
+        if (Schema::hasColumn('invoices', 'number')) {
+            $invoice->number = $invoiceNumber;
+        }
+
+        $invoice->save();
+
+        return $invoice;
     }
 
     protected function dispatchJobCompleted(Job $job): void

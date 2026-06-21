@@ -55,7 +55,7 @@ class JobController extends Controller
                         });
                 });
             })
-            ->orderByRaw("FIELD(status, 'pending', 'in_progress', 'completed', 'cancelled')")
+            ->orderByRaw("FIELD(status, 'pending', 'in_progress', 'completed')")
             ->latest()
             ->paginate(20)
             ->withQueryString();
@@ -64,7 +64,6 @@ class JobController extends Controller
             'pending' => $this->countByStatus($companyId, 'pending'),
             'in_progress' => $this->countByStatus($companyId, 'in_progress'),
             'completed' => $this->countByStatus($companyId, 'completed'),
-            'cancelled' => $this->countByStatus($companyId, 'cancelled'),
         ];
 
         return view('manager.jobs.index', [
@@ -109,7 +108,7 @@ class JobController extends Controller
         $this->authorizeJob($job);
 
         $data = $request->validate([
-            'status' => ['required', 'string', 'in:pending,in_progress,completed,cancelled'],
+            'status' => ['required', 'string', 'in:pending,in_progress'],
         ]);
 
         try {
@@ -132,6 +131,8 @@ class JobController extends Controller
         $this->authorizeJob($job);
 
         $data = $request->validate([
+            'invoice_number' => ['required', 'string', 'max:100'],
+            'invoice_amount' => ['required', 'numeric', 'min:1'],
             'labour_amount' => ['nullable', 'numeric', 'min:0'],
             'parts_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
@@ -274,10 +275,13 @@ class JobController extends Controller
         $discountAmount = (float) ($data['discount_amount'] ?? 0);
         $vatRate = (float) ($data['vat_rate'] ?? 5);
 
-        $subTotal = max(0, $labourAmount + $partsAmount);
+        $explicitInvoiceAmount = (float) ($data['invoice_amount'] ?? 0);
+        $subTotal = max(0, $explicitInvoiceAmount > 0 ? $explicitInvoiceAmount : ($labourAmount + $partsAmount));
         $taxableAmount = max(0, $subTotal - $discountAmount);
         $vatAmount = round($taxableAmount * ($vatRate / 100), 2);
-        $totalAmount = round($taxableAmount + $vatAmount, 2);
+        $totalAmount = $explicitInvoiceAmount > 0
+            ? round($explicitInvoiceAmount, 2)
+            : round($taxableAmount + $vatAmount, 2);
 
         $existingInvoice = $this->findInvoiceForJob($job);
 
@@ -288,7 +292,8 @@ class JobController extends Controller
         $this->setIfColumnExists($payload, 'booking_id', $job->booking_id ?? null);
         $this->setIfColumnExists($payload, 'client_id', $job->client_id ?? $job->booking?->client_id ?? null);
 
-        $invoiceNumber = $existingInvoice->number
+        $invoiceNumber = $data['invoice_number']
+            ?? $existingInvoice->number
             ?? $existingInvoice->invoice_number
             ?? $existingInvoice->reference_number
             ?? $this->nextInvoiceNumber($job->company_id);

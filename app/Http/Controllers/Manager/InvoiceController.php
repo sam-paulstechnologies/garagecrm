@@ -222,11 +222,11 @@ class InvoiceController extends Controller
         $payload = [];
 
         if (Schema::hasColumn('invoices', 'payment_status')) {
-            $payload['payment_status'] = 'unpaid';
+            $payload['payment_status'] = 'pending';
         }
 
         if (Schema::hasColumn('invoices', 'status')) {
-            $payload['status'] = 'issued';
+            $payload['status'] = 'pending';
         }
 
         if (Schema::hasColumn('invoices', 'paid_at')) {
@@ -260,24 +260,24 @@ class InvoiceController extends Controller
 
         $total = (clone $base)->count();
 
-        $issued = 0;
+        $pending = 0;
         $paid = 0;
         $unpaid = 0;
         $totalAmount = 0;
 
         if (Schema::hasColumn('invoices', 'status')) {
-            $issued = (clone $base)
-                ->whereIn('status', ['issued', 'open', 'unpaid'])
+            $pending = (clone $base)
+                ->where('status', 'pending')
                 ->count();
         }
 
         if (Schema::hasColumn('invoices', 'payment_status')) {
             $paid = (clone $base)->where('payment_status', 'paid')->count();
-            $unpaid = (clone $base)->where('payment_status', 'unpaid')->count();
+            $unpaid = (clone $base)->whereIn('payment_status', ['pending', 'overdue'])->count();
         } elseif (Schema::hasColumn('invoices', 'status')) {
             $paid = (clone $base)->where('status', 'paid')->count();
             $unpaid = (clone $base)
-                ->whereIn('status', ['issued', 'open', 'unpaid'])
+                ->whereIn('status', ['pending', 'overdue'])
                 ->count();
         }
 
@@ -290,7 +290,8 @@ class InvoiceController extends Controller
 
         return [
             'total' => $total,
-            'issued' => $issued,
+            'issued' => $pending,
+            'pending' => $pending,
             'paid' => $paid,
             'unpaid' => $unpaid,
             'total_amount' => $totalAmount,

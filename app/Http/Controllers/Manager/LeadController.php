@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Manager;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Lead;
 use App\Models\User;
+use App\Services\Leads\LeadConversionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class LeadController extends Controller
 {
@@ -20,20 +22,24 @@ class LeadController extends Controller
     |--------------------------------------------------------------------------
     */
     protected array $leadStatuses = [
-        'new',
-        'attempting_contact',
-        'qualified',
-        'converted',
-        'lost',
+        Lead::STATUS_NEW,
+        Lead::STATUS_ATTEMPTING,
+        Lead::STATUS_HOLD,
+        Lead::STATUS_QUALIFIED,
+        Lead::STATUS_DISQUALIFIED,
     ];
 
     protected array $statusLabels = [
-        'new' => 'New',
-        'attempting_contact' => 'Attempting Contact',
-        'qualified' => 'Qualified',
-        'converted' => 'Converted',
-        'lost' => 'Lost',
+        Lead::STATUS_NEW => 'New',
+        Lead::STATUS_ATTEMPTING => 'Attempting Contact',
+        Lead::STATUS_HOLD => 'Contact On Hold',
+        Lead::STATUS_QUALIFIED => 'Qualified',
+        Lead::STATUS_DISQUALIFIED => 'Disqualified',
     ];
+
+    public function __construct(
+        protected LeadConversionService $leadConversionService
+    ) {}
 
     protected function companyId(): int
     {
@@ -151,9 +157,18 @@ class LeadController extends Controller
         $this->authorizeLead($lead);
 
         $validated = $request->validate([
-            'status' => ['required', 'string'],
+            'status' => ['required', 'string', Rule::notIn(['converted', 'lost', 'closed_won', 'closed_lost'])],
+            'status_sub_status' => ['nullable', 'string', 'max:100'],
+            'status_reason' => ['nullable', 'string', 'max:1000'],
+            'follow_up_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        if ($this->isLegacyLeadStatusInput($validated['status'])) {
+            return back()->withErrors([
+                'status' => 'Converted and Lost are legacy statuses. Use Qualified or Disqualified.',
+            ]);
+        }
 
         $status = $this->normalizeLeadStatus($validated['status']);
 
@@ -163,9 +178,48 @@ class LeadController extends Controller
             ]);
         }
 
+        $this->validateStatusContext($status, $validated);
+
+        if ($status === Lead::STATUS_QUALIFIED) {
+            if (! empty($validated['notes'])) {
+                $this->appendNotes($lead, $validated['notes']);
+                $lead->save();
+            }
+
+            $this->leadConversionService->ensureClientAndOpportunity((int) $lead->id, $this->companyId());
+
+            $opportunity = $lead->fresh()?->opportunity()
+                ->where('company_id', $this->companyId())
+                ->first();
+
+            if ($opportunity && route('manager.opportunities.show', $opportunity, false)) {
+                return redirect()
+                    ->route('manager.opportunities.show', $opportunity)
+                    ->with('success', 'Lead qualified and opportunity opened.');
+            }
+
+            return back()->with('success', 'Lead qualified and opportunity created or reused.');
+        }
+
         DB::transaction(function () use ($lead, $validated, $status) {
             if (Schema::hasColumn('leads', 'status')) {
                 $lead->status = $status;
+            }
+
+            if (Schema::hasColumn('leads', 'status_sub_status')) {
+                $lead->status_sub_status = $this->statusSubStatusForSave($status, $validated['status_sub_status'] ?? null);
+            }
+
+            if (Schema::hasColumn('leads', 'status_reason')) {
+                $lead->status_reason = in_array($status, [Lead::STATUS_HOLD, Lead::STATUS_DISQUALIFIED], true)
+                    ? ($validated['status_reason'] ?? null)
+                    : null;
+            }
+
+            if (Schema::hasColumn('leads', 'follow_up_at')) {
+                $lead->follow_up_at = $status === Lead::STATUS_HOLD
+                    ? ($validated['follow_up_at'] ?? null)
+                    : null;
             }
 
             if (! empty($validated['notes'])) {
@@ -180,15 +234,8 @@ class LeadController extends Controller
             }
 
             if (
-                Schema::hasColumn('leads', 'qualified_at')
-                && $status === 'qualified'
-            ) {
-                $lead->qualified_at = now();
-            }
-
-            if (
                 Schema::hasColumn('leads', 'disqualified_at')
-                && $status === 'lost'
+                && $status === Lead::STATUS_DISQUALIFIED
             ) {
                 $lead->disqualified_at = now();
             }
@@ -365,12 +412,95 @@ class LeadController extends Controller
         $normalized = str_replace(['-', ' '], '_', $normalized);
 
         return match ($normalized) {
-            'new' => 'new',
-            'attempting_contact', 'attempting', 'contacting', 'contacted', 'assigned', 'on_hold', 'contact_on_hold' => 'attempting_contact',
-            'qualified' => 'qualified',
-            'converted', 'converted_to_opportunity' => 'converted',
-            'lost', 'disqualified', 'closed_lost', 'closed' => 'lost',
+            'new' => Lead::STATUS_NEW,
+            'attempting_contact', 'attempting', 'contacting', 'contacted', 'assigned' => Lead::STATUS_ATTEMPTING,
+            'contact_on_hold', 'on_hold', 'hold' => Lead::STATUS_HOLD,
+            'qualified', 'converted', 'converted_to_opportunity', 'closed_won' => Lead::STATUS_QUALIFIED,
+            'disqualified', 'lost', 'closed_lost', 'closed' => Lead::STATUS_DISQUALIFIED,
             default => $normalized,
         };
+    }
+
+    protected function isLegacyLeadStatusInput(string $status): bool
+    {
+        $normalized = strtolower(trim($status));
+        $normalized = str_replace(['-', ' '], '_', $normalized);
+
+        return in_array($normalized, ['converted', 'converted_to_opportunity', 'lost'], true);
+    }
+
+    protected function validateStatusContext(string $status, array $data): void
+    {
+        if ($status === Lead::STATUS_HOLD) {
+            $subStatus = (string) ($data['status_sub_status'] ?? '');
+
+            validator($data, [
+                'status_sub_status' => ['required', Rule::in(array_keys($this->contactOnHoldSubStatuses()))],
+                'follow_up_at' => [
+                    Rule::requiredIf(fn () => in_array($subStatus, [
+                        'call_back_requested',
+                        'customer_requested_later',
+                    ], true)),
+                    'nullable',
+                    'date',
+                ],
+                'status_reason' => [
+                    Rule::requiredIf(fn () => $subStatus === 'other'),
+                    'nullable',
+                    'string',
+                    'max:1000',
+                ],
+            ])->validate();
+        }
+
+        if ($status === Lead::STATUS_DISQUALIFIED) {
+            $subStatus = (string) ($data['status_sub_status'] ?? '');
+
+            validator($data, [
+                'status_sub_status' => ['required', Rule::in(array_keys($this->disqualifiedSubStatuses()))],
+                'status_reason' => [
+                    Rule::requiredIf(fn () => $subStatus === 'other'),
+                    'nullable',
+                    'string',
+                    'max:1000',
+                ],
+            ])->validate();
+        }
+    }
+
+    protected function statusSubStatusForSave(string $status, ?string $subStatus): ?string
+    {
+        return in_array($status, [Lead::STATUS_HOLD, Lead::STATUS_DISQUALIFIED], true)
+            ? $subStatus
+            : null;
+    }
+
+    protected function contactOnHoldSubStatuses(): array
+    {
+        return [
+            'call_back_requested' => 'Call back requested',
+            'customer_requested_later' => 'Customer requested later',
+            'waiting_for_customer_response' => 'Waiting for customer response',
+            'awaiting_vehicle_details' => 'Awaiting vehicle details',
+            'awaiting_service_confirmation' => 'Awaiting service confirmation',
+            'awaiting_estimate_approval' => 'Awaiting estimate approval',
+            'other' => 'Other',
+        ];
+    }
+
+    protected function disqualifiedSubStatuses(): array
+    {
+        return [
+            'not_interested' => 'Not interested',
+            'wrong_number' => 'Wrong number',
+            'duplicate' => 'Duplicate',
+            'unreachable_after_attempts' => 'Unreachable after multiple attempts',
+            'out_of_service_area' => 'Out of service area',
+            'service_not_offered' => 'Service not offered',
+            'price_not_accepted' => 'Price not accepted',
+            'already_serviced_elsewhere' => 'Already serviced elsewhere',
+            'spam_or_test' => 'Spam / test lead',
+            'other' => 'Other',
+        ];
     }
 }

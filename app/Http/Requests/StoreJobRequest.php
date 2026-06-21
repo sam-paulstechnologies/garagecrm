@@ -38,6 +38,27 @@ class StoreJobRequest extends FormRequest
                 'nullable',
                 Rule::exists('users', 'id')->where('company_id', $companyId),
             ],
+            'invoice_number' => [
+                Rule::requiredIf(fn () => $this->input('status') === 'completed'),
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'invoice_amount' => [
+                Rule::requiredIf(fn () => $this->input('status') === 'completed'),
+                'nullable',
+                'numeric',
+                'min:1',
+            ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'invoice_number.required' => 'Invoice number is required to create a completed job.',
+            'invoice_amount.required' => 'Invoice amount is required to create a completed job.',
+            'invoice_amount.min' => 'Invoice amount must be greater than 0.',
         ];
     }
 }

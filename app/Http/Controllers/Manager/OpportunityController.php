@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\Manager;
 
+use App\Events\BookingStatusUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking as JobBooking;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class OpportunityController extends Controller
 {
@@ -23,25 +26,23 @@ class OpportunityController extends Controller
     |--------------------------------------------------------------------------
     */
     protected array $opportunityStages = [
-        'new',
-        'attempting_contact',
-        'collecting_details',
-        'manager_confirmation_pending',
-        'appointment',
-        'offer',
-        'closed_won',
-        'closed_lost',
+        Opportunity::STAGE_NEW,
+        Opportunity::STAGE_ATTEMPTING_CONTACT,
+        Opportunity::STAGE_APPOINTMENT,
+        Opportunity::STAGE_OFFER,
+        Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING,
+        Opportunity::STAGE_BOOKING_CONFIRMED,
+        Opportunity::STAGE_CLOSED_LOST,
     ];
 
     protected array $stageLabels = [
-        'new' => 'New',
-        'attempting_contact' => 'Attempting Contact',
-        'collecting_details' => 'Collecting Details',
-        'manager_confirmation_pending' => 'Manager Confirmation Pending',
-        'appointment' => 'Appointment',
-        'offer' => 'Offer',
-        'closed_won' => 'Closed Won',
-        'closed_lost' => 'Closed Lost',
+        Opportunity::STAGE_NEW => 'New',
+        Opportunity::STAGE_ATTEMPTING_CONTACT => 'Attempting Contact',
+        Opportunity::STAGE_APPOINTMENT => 'Appointment',
+        Opportunity::STAGE_OFFER => 'Offer',
+        Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING => 'Manager Confirmation Pending',
+        Opportunity::STAGE_BOOKING_CONFIRMED => 'Booking Confirmed',
+        Opportunity::STAGE_CLOSED_LOST => 'Closed Lost',
     ];
 
     protected function companyId(): int
@@ -157,9 +158,22 @@ class OpportunityController extends Controller
         $this->authorizeOpportunity($opportunity);
 
         $validated = $request->validate([
-            'stage' => ['required', 'string'],
+            'stage' => ['required', 'string', Rule::notIn(['collecting_details', 'closed_won'])],
+            'booking_date' => ['nullable', 'date'],
+            'booking_slot' => ['nullable', Rule::in(['morning', 'afternoon', 'evening', 'full_day'])],
+            'booking_notes' => ['nullable', 'string', 'max:2000'],
+            'service_type' => ['nullable', 'string', 'max:255'],
+            'stage_sub_status' => ['nullable', 'string', 'max:100'],
+            'stage_reason' => ['nullable', 'string', 'max:1000'],
+            'close_reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        if ($this->isLegacyOpportunityStageInput($validated['stage'])) {
+            return back()->withErrors([
+                'stage' => 'Collecting Details and Closed Won are legacy stages. Use Attempting Contact or Booking Confirmed.',
+            ]);
+        }
 
         $stage = $this->normalizeOpportunityStage($validated['stage']);
 
@@ -169,7 +183,12 @@ class OpportunityController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($opportunity, $validated, $stage) {
+        $this->validateStageContext($stage, $validated);
+
+        $booking = null;
+        $bookingExisted = false;
+
+        DB::transaction(function () use ($opportunity, $validated, $stage, &$booking, &$bookingExisted) {
             if (Schema::hasColumn('opportunities', 'stage')) {
                 $opportunity->stage = $stage;
             }
@@ -178,12 +197,26 @@ class OpportunityController extends Controller
                 $opportunity->status = $this->statusFromStage($stage);
             }
 
-            if ($stage === 'closed_won' && Schema::hasColumn('opportunities', 'won_at')) {
+            if ($stage === Opportunity::STAGE_BOOKING_CONFIRMED && Schema::hasColumn('opportunities', 'won_at')) {
                 $opportunity->won_at = now();
             }
 
-            if ($stage === 'closed_lost' && Schema::hasColumn('opportunities', 'lost_at')) {
+            if ($stage === Opportunity::STAGE_CLOSED_LOST && Schema::hasColumn('opportunities', 'lost_at')) {
                 $opportunity->lost_at = now();
+            }
+
+            if (Schema::hasColumn('opportunities', 'close_reason')) {
+                $opportunity->close_reason = $stage === Opportunity::STAGE_CLOSED_LOST
+                    ? $this->closedLostReasonFromRequest($validated, $opportunity->close_reason)
+                    : null;
+            }
+
+            if (Schema::hasColumn('opportunities', 'is_converted')) {
+                $opportunity->is_converted = $stage === Opportunity::STAGE_BOOKING_CONFIRMED;
+            }
+
+            if ($stage === Opportunity::STAGE_BOOKING_CONFIRMED && ! empty($validated['service_type']) && Schema::hasColumn('opportunities', 'service_type')) {
+                $opportunity->service_type = $validated['service_type'];
             }
 
             if (! empty($validated['notes'])) {
@@ -191,7 +224,24 @@ class OpportunityController extends Controller
             }
 
             $opportunity->save();
+
+            if ($stage === Opportunity::STAGE_BOOKING_CONFIRMED) {
+                $bookingExisted = $this->opportunityHasBooking($opportunity);
+                $booking = $this->createOrUpdateBookingFromOpportunity($opportunity->fresh(), $validated);
+
+                DB::afterCommit(function () use ($booking) {
+                    $freshBooking = $booking?->fresh();
+
+                    if ($freshBooking) {
+                        event(new BookingStatusUpdated($freshBooking, (string) $freshBooking->status));
+                    }
+                });
+            }
         });
+
+        if ($stage === Opportunity::STAGE_BOOKING_CONFIRMED && $booking) {
+            return $this->redirectToBooking($booking, $bookingExisted);
+        }
 
         return back()->with('success', 'Opportunity stage updated successfully.');
     }
@@ -512,13 +562,13 @@ class OpportunityController extends Controller
         $this->authorizeOpportunity($opportunity);
 
         $validated = $request->validate([
-            'lost_reason' => ['nullable', 'string', 'max:1000'],
+            'lost_reason' => ['required', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
         DB::transaction(function () use ($opportunity, $validated) {
             if (Schema::hasColumn('opportunities', 'stage')) {
-                $opportunity->stage = 'closed_lost';
+                $opportunity->stage = Opportunity::STAGE_CLOSED_LOST;
             }
 
             if (Schema::hasColumn('opportunities', 'status')) {
@@ -527,6 +577,10 @@ class OpportunityController extends Controller
 
             if (Schema::hasColumn('opportunities', 'lost_reason')) {
                 $opportunity->lost_reason = $validated['lost_reason'] ?? null;
+            }
+
+            if (Schema::hasColumn('opportunities', 'close_reason')) {
+                $opportunity->close_reason = $validated['lost_reason'] ?? null;
             }
 
             if (Schema::hasColumn('opportunities', 'lost_at')) {
@@ -570,11 +624,15 @@ class OpportunityController extends Controller
 
         DB::transaction(function () use ($opportunity, $validated) {
             if (Schema::hasColumn('opportunities', 'stage')) {
-                $opportunity->stage = 'closed_won';
+                $opportunity->stage = Opportunity::STAGE_BOOKING_CONFIRMED;
             }
 
             if (Schema::hasColumn('opportunities', 'status')) {
-                $opportunity->status = 'won';
+                $opportunity->status = $this->statusFromStage(Opportunity::STAGE_BOOKING_CONFIRMED);
+            }
+
+            if (Schema::hasColumn('opportunities', 'is_converted')) {
+                $opportunity->is_converted = true;
             }
 
             if (Schema::hasColumn('opportunities', 'won_at')) {
@@ -588,9 +646,13 @@ class OpportunityController extends Controller
             $opportunity->save();
         });
 
-        return redirect()
-            ->route('manager.opportunities.index')
-            ->with('success', 'Opportunity marked as won.');
+        $booking = $this->latestBookingForOpportunity($opportunity->fresh());
+
+        return $booking
+            ? $this->redirectToBooking($booking, true)
+            : redirect()
+                ->route('manager.opportunities.index')
+                ->with('success', 'Opportunity marked as booking confirmed.');
     }
 
     protected function authorizeOpportunity(Opportunity $opportunity): void
@@ -601,11 +663,11 @@ class OpportunityController extends Controller
     protected function statusFromStage(string $stage): string
     {
         return match ($stage) {
-            'closed_won' => 'won',
-            'closed_lost' => 'lost',
-            'manager_confirmation_pending',
-            'appointment',
-            'offer' => 'open',
+            Opportunity::STAGE_BOOKING_CONFIRMED => 'won',
+            Opportunity::STAGE_CLOSED_LOST => 'lost',
+            Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING,
+            Opportunity::STAGE_APPOINTMENT,
+            Opportunity::STAGE_OFFER => 'open',
             default => 'active',
         };
     }
@@ -690,16 +752,152 @@ class OpportunityController extends Controller
         $stage = str_replace(['-', ' '], '_', $stage);
 
         return match ($stage) {
-            'new' => 'new',
-            'attempting_contact', 'attempting', 'contacting', 'contacted' => 'attempting_contact',
-            'collecting_details', 'collecting', 'details', 'details_collection' => 'collecting_details',
-            'manager_confirmation_pending', 'manager_confirmation', 'confirmation_pending' => 'manager_confirmation_pending',
-            'appointment', 'scheduled', 'booking_scheduled' => 'appointment',
-            'offer', 'quotation', 'quote', 'follow_up' => 'offer',
-            'closed_won', 'won' => 'closed_won',
-            'closed_lost', 'lost' => 'closed_lost',
+            'new' => Opportunity::STAGE_NEW,
+            'attempting_contact', 'attempting', 'contacting', 'contacted', 'collecting_details', 'collecting', 'details', 'details_collection' => Opportunity::STAGE_ATTEMPTING_CONTACT,
+            'manager_confirmation_pending', 'manager_confirmation', 'confirmation_pending' => Opportunity::STAGE_MANAGER_CONFIRMATION_PENDING,
+            'appointment', 'scheduled', 'booking_scheduled' => Opportunity::STAGE_APPOINTMENT,
+            'offer', 'quotation', 'quote', 'follow_up' => Opportunity::STAGE_OFFER,
+            'booking_confirmed', 'closed_won', 'won' => Opportunity::STAGE_BOOKING_CONFIRMED,
+            'closed_lost', 'lost' => Opportunity::STAGE_CLOSED_LOST,
             default => $stage,
         };
+    }
+
+    protected function isLegacyOpportunityStageInput(string $stage): bool
+    {
+        $normalized = strtolower(trim($stage));
+        $normalized = str_replace(['-', ' '], '_', $normalized);
+
+        return in_array($normalized, ['collecting_details', 'closed_won'], true);
+    }
+
+    protected function validateStageContext(string $stage, array $data): void
+    {
+        if ($stage === Opportunity::STAGE_BOOKING_CONFIRMED) {
+            validator($data, [
+                'service_type' => ['required', 'string', 'max:255'],
+                'booking_date' => ['required', 'date'],
+                'booking_slot' => ['required', Rule::in(['morning', 'afternoon', 'evening', 'full_day'])],
+            ])->validate();
+        }
+
+        if ($stage === Opportunity::STAGE_CLOSED_LOST) {
+            $subStatus = (string) ($data['stage_sub_status'] ?? '');
+
+            validator($data, [
+                'stage_sub_status' => ['required', Rule::in(array_keys($this->closedLostSubStatuses()))],
+                'stage_reason' => [
+                    Rule::requiredIf(fn () => $subStatus === 'other'),
+                    'nullable',
+                    'string',
+                    'max:1000',
+                ],
+            ])->validate();
+        }
+    }
+
+    protected function createOrUpdateBookingFromOpportunity(Opportunity $opportunity, array $data): JobBooking
+    {
+        $bookingDate = $data['booking_date'] ?? null;
+        $bookingSlot = $this->normalizeBookingSlot($data['booking_slot'] ?? null);
+
+        if (! $bookingDate) {
+            throw ValidationException::withMessages([
+                'booking_date' => 'Please select booking date before confirming the booking.',
+            ]);
+        }
+
+        $existingBooking = JobBooking::query()
+            ->where('company_id', $opportunity->company_id)
+            ->where('opportunity_id', $opportunity->id)
+            ->first();
+
+        $bookingStatus = $existingBooking?->status === JobBooking::STATUS_CONVERTED_TO_JOB
+            ? JobBooking::STATUS_CONVERTED_TO_JOB
+            : JobBooking::STATUS_SCHEDULED;
+
+        $payload = [
+            'client_id' => $opportunity->client_id,
+            'vehicle_id' => $opportunity->vehicle_id,
+            'lead_id' => $opportunity->lead_id,
+            'name' => $opportunity->title,
+            'service_type' => $data['service_type'] ?? $opportunity->service_type,
+            'priority' => $opportunity->priority ?? 'medium',
+            'expected_duration' => 1,
+            'expected_close_date' => $bookingDate,
+            'booking_date' => $bookingDate,
+            'slot' => $bookingSlot,
+            'status' => $bookingStatus,
+            'notes' => $data['booking_notes'] ?? $opportunity->notes ?? 'Auto created from opportunity',
+            'state_changed_at' => now(),
+            'state_changed_by' => auth()->id(),
+        ];
+
+        return JobBooking::updateOrCreate(
+            [
+                'company_id' => $opportunity->company_id,
+                'opportunity_id' => $opportunity->id,
+            ],
+            $payload
+        );
+    }
+
+    protected function redirectToBooking(JobBooking $booking, bool $bookingExisted)
+    {
+        $message = $bookingExisted
+            ? 'Booking already exists. Opening booking.'
+            : 'Booking confirmed and booking created.';
+
+        if (Route::has('manager.bookings.show')) {
+            return redirect()
+                ->route('manager.bookings.show', $booking)
+                ->with('success', $message);
+        }
+
+        return redirect()
+            ->route('manager.bookings.index')
+            ->with('success', $message);
+    }
+
+    protected function closedLostSubStatuses(): array
+    {
+        return [
+            'not_interested' => 'Not interested',
+            'price_not_accepted' => 'Price not accepted',
+            'customer_cancelled' => 'Customer cancelled',
+            'unreachable_after_follow_up' => 'Unreachable after follow-up',
+            'service_not_required' => 'Service no longer required',
+            'service_not_offered' => 'Service not offered',
+            'duplicate' => 'Duplicate opportunity',
+            'booked_elsewhere' => 'Booked elsewhere',
+            'spam_or_test' => 'Spam / test',
+            'other' => 'Other',
+        ];
+    }
+
+    protected function closedLostReasonFromRequest(array $data, ?string $fallback = null): ?string
+    {
+        $subStatus = $data['stage_sub_status'] ?? null;
+
+        if (! $subStatus) {
+            return $data['close_reason'] ?? $fallback;
+        }
+
+        $label = $this->closedLostSubStatuses()[$subStatus] ?? ucfirst(str_replace('_', ' ', (string) $subStatus));
+        $reason = trim((string) ($data['stage_reason'] ?? ''));
+
+        return $reason !== ''
+            ? $label . ': ' . $reason
+            : $label;
+    }
+
+    protected function latestBookingForOpportunity(Opportunity $opportunity): ?JobBooking
+    {
+        return JobBooking::query()
+            ->where('company_id', $opportunity->company_id)
+            ->where('opportunity_id', $opportunity->id)
+            ->latest('id')
+            ->first();
     }
 
     protected function opportunityHasBooking(Opportunity $opportunity): bool
