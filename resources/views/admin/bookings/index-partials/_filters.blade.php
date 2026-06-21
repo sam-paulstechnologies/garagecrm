@@ -20,8 +20,9 @@
     $statusLabel = function ($status) {
         return match (strtolower((string) $status)) {
             '' => 'All Statuses',
-            'pending' => 'Pending',
-            'scheduled' => 'Scheduled',
+            'pending' => 'Manager Confirmation',
+            'scheduled' => 'Booking Confirmed',
+            'reschedule_required' => 'Rescheduling Required',
             'confirmed' => 'Confirmed',
             'vehicle_received' => 'Vehicle Received',
             'converted_to_job' => 'Converted To Job',
@@ -200,7 +201,7 @@
                     <select name="status" class="sf-booking-select h-11 w-full rounded-xl border px-3 text-sm font-bold transition">
                         <option value="">All statuses</option>
 
-                        @foreach(['pending', 'scheduled', 'confirmed', 'vehicle_received', 'converted_to_job', 'completed', 'lost'] as $statusOption)
+                        @foreach(['pending', 'scheduled', 'reschedule_required', 'converted_to_job', 'lost'] as $statusOption)
                             <option value="{{ $statusOption }}" @selected($status === $statusOption)>
                                 {{ $statusLabel($statusOption) }}
                             </option>

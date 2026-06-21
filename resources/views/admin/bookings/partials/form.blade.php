@@ -37,27 +37,28 @@
     $expectedCloseDateVal = old('expected_close_date', $fmtDate($bk?->expected_close_date ?? null));
 
     $lostReasonVal = old('lost_reason', $bk?->lost_reason ?? '');
+    $rescheduleReasonVal = old('reschedule_reason', $bk?->reschedule_reason ?? '');
 
     $bookingStatuses = $bookingStatuses ?? [
         'pending',
         'scheduled',
-        'confirmed',
+        'reschedule_required',
         'converted_to_job',
         'lost',
     ];
 
     $statusLabels = [
-        'pending' => 'Pending',
-        'scheduled' => 'Scheduled',
-        'confirmed' => 'Confirmed',
+        'pending' => 'Manager Confirmation',
+        'scheduled' => 'Booking Confirmed',
+        'reschedule_required' => 'Rescheduling Required',
         'converted_to_job' => 'Converted To Job',
         'lost' => 'Lost Booking',
     ];
 
     $statusHelp = [
-        'pending' => 'Use when booking needs manager review.',
-        'scheduled' => 'Use when date and slot are confirmed.',
-        'confirmed' => 'Use when customer confirmation is completed.',
+        'pending' => 'Use when booking needs manager confirmation.',
+        'scheduled' => 'Use when customer date and slot are confirmed.',
+        'reschedule_required' => 'Use when booking needs a new date, slot, or customer confirmation. Reason is required.',
         'converted_to_job' => 'Use when vehicle is received and work moves to Job module.',
         'lost' => 'Use when booking did not happen. Lost reason is required.',
     ];
@@ -170,6 +171,7 @@
 
     @include('admin.bookings.form-partials._source_details')
     @include('admin.bookings.form-partials._booking_details')
+    @include('admin.bookings.form-partials._reschedule_booking')
     @include('admin.bookings.form-partials._lost_booking')
     @include('admin.bookings.form-partials._vehicle')
     @include('admin.bookings.form-partials._pickup')

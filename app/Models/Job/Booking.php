@@ -23,15 +23,17 @@ class Booking extends Model
     |--------------------------------------------------------------------------
     | Booking Status Flow
     |--------------------------------------------------------------------------
-    | Pending          = WhatsApp / AI / manager review needed
-    | Scheduled        = Confirmed date + slot
-    | Converted To Job = Vehicle received, job created
-    | Lost             = Booking did not happen, reason required
+    | Manager Confirmation = Pending booking awaiting confirmation
+    | Booking Confirmed    = Confirmed date + slot
+    | Rescheduling Required = Needs a new date, slot, or confirmation
+    | Converted To Job     = Vehicle received, job created
+    | Lost                 = Booking did not happen, reason required
     |--------------------------------------------------------------------------
     */
 
     public const STATUS_PENDING = 'pending';
     public const STATUS_SCHEDULED = 'scheduled';
+    public const STATUS_RESCHEDULE_REQUIRED = 'reschedule_required';
     public const STATUS_CONVERTED_TO_JOB = 'converted_to_job';
     public const STATUS_LOST = 'lost';
 
@@ -82,6 +84,8 @@ class Booking extends Model
 
         'status',
         'lost_reason',
+        'reschedule_reason',
+        'reschedule_requested_at',
         'is_archived',
 
         'notes',
@@ -106,6 +110,7 @@ class Booking extends Model
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'state_changed_at' => 'datetime',
+        'reschedule_requested_at' => 'datetime',
         'reminder_sent_at' => 'datetime',
     ];
 
@@ -288,8 +293,9 @@ class Booking extends Model
     public function getStatusLabelAttribute(): string
     {
         return match (strtolower((string) $this->status)) {
-            self::STATUS_PENDING => 'Pending',
-            self::STATUS_SCHEDULED => 'Scheduled',
+            self::STATUS_PENDING => 'Manager Confirmation',
+            self::STATUS_SCHEDULED => 'Booking Confirmed',
+            self::STATUS_RESCHEDULE_REQUIRED => 'Rescheduling Required',
             self::STATUS_CONVERTED_TO_JOB => 'Converted To Job',
             self::STATUS_LOST => 'Lost Booking',
             default => ucfirst(str_replace('_', ' ', (string) $this->status)),

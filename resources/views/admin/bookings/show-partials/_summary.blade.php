@@ -48,6 +48,15 @@
                     {{ $booking->assignedUser?->name ?? $booking->assignee?->name ?? 'Unassigned' }}
                 </div>
             </div>
+
+            @if($status === 'reschedule_required' || filled($booking->reschedule_reason))
+                <div class="sf-booking-soft-panel rounded-2xl border p-4 md:col-span-2">
+                    <div class="text-xs font-extrabold uppercase tracking-wide sf-booking-faint">Reschedule Reason</div>
+                    <div class="mt-1 font-extrabold sf-booking-value">
+                        {{ $booking->reschedule_reason ?: 'Reason not set' }}
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 </div>

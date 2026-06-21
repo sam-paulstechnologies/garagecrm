@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const slotSelect = document.getElementById('slot');
     const statusSelect = document.getElementById('status');
     const statusHelpEl = document.getElementById('status_help');
+    const rescheduleReasonWrap = document.getElementById('reschedule_reason_wrap');
+    const rescheduleReasonInput = document.getElementById('reschedule_reason');
     const lostReasonWrap = document.getElementById('lost_reason_wrap');
     const lostReasonSelect = document.getElementById('lost_reason');
     const pickupRequired = document.getElementById('pickup_required');
@@ -306,6 +308,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (lostReasonWrap) {
             lostReasonWrap.classList.toggle('hidden', status !== 'lost');
+        }
+
+        if (rescheduleReasonWrap) {
+            rescheduleReasonWrap.classList.toggle('hidden', status !== 'reschedule_required');
+        }
+
+        if (rescheduleReasonInput) {
+            if (status === 'reschedule_required') {
+                rescheduleReasonInput.setAttribute('required', 'required');
+            } else {
+                rescheduleReasonInput.removeAttribute('required');
+            }
         }
 
         if (lostReasonSelect) {

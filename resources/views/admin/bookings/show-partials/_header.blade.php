@@ -7,7 +7,7 @@
                 </div>
 
                 <span class="{{ $statusBadge }}">
-                    {{ ucfirst(str_replace('_', ' ', $booking->status ?? 'Pending')) }}
+                    {{ $bookingStatusLabels[$status] ?? ucfirst(str_replace('_', ' ', $booking->status ?? 'Pending')) }}
                 </span>
 
                 <span class="{{ $priorityBadge }}">

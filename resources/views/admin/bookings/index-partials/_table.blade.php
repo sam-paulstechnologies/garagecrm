@@ -3,8 +3,9 @@
 @php
     $statusLabel = function ($status) {
         return match (strtolower((string) $status)) {
-            'pending' => 'Pending',
-            'scheduled' => 'Scheduled',
+            'pending' => 'Manager Confirmation',
+            'scheduled' => 'Booking Confirmed',
+            'reschedule_required' => 'Rescheduling Required',
             'confirmed' => 'Confirmed',
             'vehicle_received' => 'Vehicle Received',
             'converted_to_job' => 'Converted To Job',
@@ -19,6 +20,7 @@
         return match (strtolower((string) $status)) {
             'pending' => 'sf-badge-yellow',
             'scheduled', 'confirmed' => 'sf-badge-green',
+            'reschedule_required' => 'sf-badge-red',
             'vehicle_received' => 'sf-badge-orange',
             'converted_to_job', 'completed' => 'sf-badge-blue',
             'lost', 'cancelled', 'canceled', 'rejected' => 'sf-badge-red',
@@ -50,6 +52,7 @@
         return match (strtolower((string) $booking->status)) {
             'pending' => 'Confirm booking',
             'scheduled', 'confirmed' => 'Receive vehicle',
+            'reschedule_required' => 'Reschedule booking',
             'vehicle_received' => 'Create job',
             'converted_to_job', 'completed' => 'Review job',
             'lost', 'cancelled', 'canceled', 'rejected' => 'No action',

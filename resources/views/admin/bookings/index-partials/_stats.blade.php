@@ -9,13 +9,16 @@
         'today' => 0,
         'pending' => 0,
         'scheduled' => 0,
+        'reschedule_required' => 0,
         'confirmed' => 0,
         'vehicle_received' => 0,
         'converted_to_job' => 0,
         'lost' => 0,
     ], $bookingCounts ?? []);
 
-    $openCount = ($bookingCounts['pending'] ?? 0) + ($bookingCounts['scheduled'] ?? 0);
+    $openCount = ($bookingCounts['pending'] ?? 0)
+        + ($bookingCounts['scheduled'] ?? 0)
+        + ($bookingCounts['reschedule_required'] ?? 0);
 
     $baseQuery = collect(request()->only([
         'q',
@@ -35,14 +38,14 @@
     };
 @endphp
 
-<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-7">
     <a
         href="{{ route('admin.bookings.index', $baseQuery) }}"
         class="rounded-2xl border border-blue-400/25 bg-blue-500/10 p-5 shadow-sm transition hover:border-blue-400/45 {{ $activeClass(!$status && !$bucket) }}"
     >
         <div class="sf-booking-accent-title text-sm font-bold">Open Bookings</div>
         <div class="sf-booking-accent-value mt-2 text-3xl font-extrabold">{{ $openCount }}</div>
-        <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Pending + scheduled</div>
+        <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Confirmation board</div>
     </a>
 
     <a
@@ -58,7 +61,7 @@
         href="{{ route('admin.bookings.index', array_merge($baseQuery, ['status' => 'pending'])) }}"
         class="rounded-2xl border border-yellow-400/25 bg-yellow-500/10 p-5 shadow-sm transition hover:border-yellow-400/45 {{ $activeClass($status === 'pending') }}"
     >
-        <div class="sf-booking-accent-title text-sm font-bold">Pending</div>
+        <div class="sf-booking-accent-title text-sm font-bold">Manager Confirmation</div>
         <div class="sf-booking-accent-value mt-2 text-3xl font-extrabold">{{ $bookingCounts['pending'] ?? 0 }}</div>
         <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Needs action</div>
     </a>
@@ -67,9 +70,18 @@
         href="{{ route('admin.bookings.index', array_merge($baseQuery, ['status' => 'scheduled'])) }}"
         class="rounded-2xl border border-green-400/25 bg-green-500/10 p-5 shadow-sm transition hover:border-green-400/45 {{ $activeClass($status === 'scheduled') }}"
     >
-        <div class="sf-booking-accent-title text-sm font-bold">Scheduled</div>
+        <div class="sf-booking-accent-title text-sm font-bold">Booking Confirmed</div>
         <div class="sf-booking-accent-value mt-2 text-3xl font-extrabold">{{ $bookingCounts['scheduled'] ?? 0 }}</div>
         <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Waiting for vehicle</div>
+    </a>
+
+    <a
+        href="{{ route('admin.bookings.index', array_merge($baseQuery, ['status' => 'reschedule_required'])) }}"
+        class="rounded-2xl border border-red-400/25 bg-red-500/10 p-5 shadow-sm transition hover:border-red-400/45 {{ $activeClass($status === 'reschedule_required') }}"
+    >
+        <div class="sf-booking-accent-title text-sm font-bold">Rescheduling Required</div>
+        <div class="sf-booking-accent-value mt-2 text-3xl font-extrabold">{{ $bookingCounts['reschedule_required'] ?? 0 }}</div>
+        <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Needs new slot</div>
     </a>
 
     <a

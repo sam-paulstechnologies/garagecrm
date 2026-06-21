@@ -18,10 +18,17 @@ class BookingStateService
     private const MAP = [
         Booking::STATUS_PENDING => [
             Booking::STATUS_SCHEDULED,
+            Booking::STATUS_RESCHEDULE_REQUIRED,
         ],
 
         Booking::STATUS_SCHEDULED => [
             Booking::STATUS_PENDING,
+            Booking::STATUS_RESCHEDULE_REQUIRED,
+        ],
+
+        Booking::STATUS_RESCHEDULE_REQUIRED => [
+            Booking::STATUS_PENDING,
+            Booking::STATUS_SCHEDULED,
         ],
 
         Booking::STATUS_CONVERTED_TO_JOB => [],

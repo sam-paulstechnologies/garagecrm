@@ -180,6 +180,33 @@ class BookingLifecycleRepairTest extends TestCase
         $this->assertSame(0, Job::where('booking_id', $booking->id)->count());
     }
 
+    public function test_reschedule_required_requires_reason_and_does_not_create_job(): void
+    {
+        $booking = $this->booking(['status' => Booking::STATUS_SCHEDULED]);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.bookings.edit', $booking))
+            ->put(route('admin.bookings.update', $booking), $this->payload([
+                'status' => Booking::STATUS_RESCHEDULE_REQUIRED,
+                'reschedule_reason' => null,
+            ]))
+            ->assertRedirect(route('admin.bookings.edit', $booking));
+
+        $this->actingAs($this->admin)
+            ->put(route('admin.bookings.update', $booking), $this->payload([
+                'status' => Booking::STATUS_RESCHEDULE_REQUIRED,
+                'reschedule_reason' => 'Customer requested another day.',
+            ]))
+            ->assertRedirect(route('admin.bookings.index'));
+
+        $fresh = $booking->fresh();
+
+        $this->assertSame(Booking::STATUS_RESCHEDULE_REQUIRED, $fresh->status);
+        $this->assertSame('Customer requested another day.', $fresh->reschedule_reason);
+        $this->assertNotNull($fresh->reschedule_requested_at);
+        $this->assertSame(0, Job::where('booking_id', $booking->id)->count());
+    }
+
     public function test_booking_priority_rejects_urgent(): void
     {
         $booking = $this->booking(['status' => Booking::STATUS_PENDING]);
@@ -240,6 +267,7 @@ class BookingLifecycleRepairTest extends TestCase
             'notes' => 'Test booking notes',
             'status' => Booking::STATUS_SCHEDULED,
             'lost_reason' => null,
+            'reschedule_reason' => null,
         ], $overrides);
     }
 
@@ -332,6 +360,8 @@ class BookingLifecycleRepairTest extends TestCase
             $table->date('expected_close_date')->nullable();
             $table->string('status')->default('pending');
             $table->string('lost_reason')->nullable();
+            $table->text('reschedule_reason')->nullable();
+            $table->timestamp('reschedule_requested_at')->nullable();
             $table->boolean('is_archived')->default(false);
             $table->text('notes')->nullable();
             $table->timestamp('confirmed_at')->nullable();

@@ -56,6 +56,7 @@
     $statusBadge = match ($status) {
         'pending' => 'sf-badge-yellow',
         'scheduled', 'confirmed', 'approved' => 'sf-badge-green',
+        'reschedule_required' => 'sf-badge-red',
         'converted_to_job', 'completed' => 'sf-badge-blue',
         'lost', 'cancelled', 'canceled', 'rejected' => 'sf-badge-red',
         default => 'sf-badge-slate',
@@ -80,6 +81,7 @@
     $nextAction = match ($status) {
         'pending' => 'Confirm booking',
         'scheduled', 'confirmed', 'approved' => 'Receive vehicle',
+        'reschedule_required' => 'Reschedule booking',
         'converted_to_job', 'completed' => 'Review job',
         'lost', 'cancelled', 'canceled', 'rejected' => 'No action',
         default => 'Review',
@@ -118,14 +120,16 @@
     $invoice = $job?->primaryInvoice ?? $job?->invoice ?? $job?->invoices?->first();
 
     $bookingStatusLabels = [
-        'pending' => 'Pending',
-        'scheduled' => 'Scheduled',
+        'pending' => 'Manager Confirmation',
+        'scheduled' => 'Booking Confirmed',
+        'reschedule_required' => 'Rescheduling Required',
         'converted_to_job' => 'Converted To Job',
         'lost' => 'Lost Booking',
     ];
     $bookingStatusHelp = [
         'pending' => 'Booking needs manager review or confirmation.',
         'scheduled' => 'Booking date and slot are confirmed.',
+        'reschedule_required' => 'Booking needs a new date, slot, or customer confirmation.',
         'converted_to_job' => 'Booking has moved into the Job module.',
         'lost' => 'Booking did not happen and requires a lost reason.',
     ];

@@ -61,7 +61,7 @@ class BookingController extends Controller
                         });
                 });
             })
-            ->orderByRaw("FIELD(status, 'pending', 'scheduled', 'converted_to_job', 'lost')")
+            ->orderByRaw("FIELD(status, 'pending', 'scheduled', 'reschedule_required', 'converted_to_job', 'lost')")
             ->latest()
             ->paginate(20)
             ->withQueryString();
@@ -69,6 +69,7 @@ class BookingController extends Controller
         $counts = [
             'pending' => $this->countByStatus($companyId, 'pending'),
             'scheduled' => $this->countByStatus($companyId, 'scheduled'),
+            'reschedule_required' => $this->countByStatus($companyId, 'reschedule_required'),
             'converted_to_job' => $this->countByStatus($companyId, 'converted_to_job'),
             'lost' => $this->countByStatus($companyId, 'lost'),
         ];

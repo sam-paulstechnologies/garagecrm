@@ -114,6 +114,40 @@ class BookingActionService
         });
     }
 
+    public function requestReschedule(Booking $booking, int $actorId, string $reason): Booking
+    {
+        return DB::transaction(function () use ($booking, $actorId, $reason) {
+            $this->assertBookingIsUsable($booking);
+
+            DB::table('bookings')
+                ->where('id', $booking->id)
+                ->where('company_id', $booking->company_id)
+                ->update([
+                    'status' => Booking::STATUS_RESCHEDULE_REQUIRED,
+                    'reschedule_reason' => $reason,
+                    'reschedule_requested_at' => now(),
+                    'state_changed_at' => now(),
+                    'state_changed_by' => $actorId,
+                    'updated_at' => now(),
+                ]);
+
+            $freshBooking = Booking::with(['client', 'opportunity', 'vehicleData.make', 'vehicleData.model'])
+                ->where('company_id', $booking->company_id)
+                ->findOrFail($booking->id);
+
+            DB::afterCommit(function () use ($freshBooking) {
+                event(new BookingStatusUpdated($freshBooking, Booking::STATUS_RESCHEDULE_REQUIRED));
+            });
+
+            Log::info('[ManagerBooking] Booking requires reschedule', [
+                'booking_id' => $freshBooking->id,
+                'company_id' => $freshBooking->company_id,
+            ]);
+
+            return $freshBooking;
+        });
+    }
+
     public function convertToJob(Booking $booking, int $actorId): Job
     {
         return DB::transaction(function () use ($booking, $actorId) {

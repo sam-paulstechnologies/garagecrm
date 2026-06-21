@@ -16,6 +16,57 @@
         min-height: 720px;
     }
 
+    .sf-calendar-filters-grid {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .sf-calendar-filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .sf-calendar-filter-field span {
+        color: #94a3b8;
+        font-size: 0.72rem;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+
+    .sf-calendar-filter-field select {
+        min-height: 2.65rem;
+        width: 100%;
+        border: 1px solid #334155;
+        border-radius: 0.9rem;
+        background: rgba(15, 23, 42, 0.92);
+        color: #f8fafc;
+        font-size: 0.88rem;
+        font-weight: 800;
+        padding: 0.5rem 0.85rem;
+    }
+
+    .sf-calendar-stat-chip,
+    .sf-calendar-legend-chip {
+        align-items: center;
+        border-radius: 999px;
+        display: inline-flex;
+        min-height: 1.8rem;
+        padding: 0.35rem 0.7rem;
+    }
+
+    .sf-calendar-stat-chip {
+        border: 1px solid rgba(249, 115, 22, 0.28);
+        background: rgba(249, 115, 22, 0.12);
+        color: #fed7aa;
+    }
+
+    .sf-calendar-legend-pending { background: rgba(245, 158, 11, 0.18); color: #fde68a; }
+    .sf-calendar-legend-confirmed { background: rgba(22, 163, 74, 0.18); color: #bbf7d0; }
+    .sf-calendar-legend-reschedule { background: rgba(220, 38, 38, 0.18); color: #fecaca; }
+
     .sf-calendar-page .fc {
         color: #e2e8f0;
     }
@@ -184,6 +235,26 @@
         background: #ffffff !important;
         color: #0f172a !important;
     }
+
+    html[data-theme="light"] .sf-calendar-filter-field span {
+        color: #64748b;
+    }
+
+    html[data-theme="light"] .sf-calendar-filter-field select {
+        border-color: #cbd5e1;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    html[data-theme="light"] .sf-calendar-stat-chip {
+        border-color: #fed7aa;
+        background: #fff7ed;
+        color: #c2410c;
+    }
+
+    html[data-theme="light"] .sf-calendar-legend-pending { background: #fffbeb; color: #92400e; }
+    html[data-theme="light"] .sf-calendar-legend-confirmed { background: #f0fdf4; color: #15803d; }
+    html[data-theme="light"] .sf-calendar-legend-reschedule { background: #fef2f2; color: #b91c1c; }
     html[data-theme="light"] .sf-calendar-page .border-white\/10 {
         border-color: #dbe3ef !important;
     }
@@ -263,6 +334,10 @@
             min-height: 560px;
         }
 
+        .sf-calendar-filters-grid {
+            grid-template-columns: 1fr;
+        }
+
         .sf-calendar-page .fc .fc-toolbar {
             align-items: flex-start;
             flex-direction: column;
@@ -275,6 +350,12 @@
         .sf-calendar-page .fc .fc-button {
             padding: 0.35rem 0.55rem !important;
             font-size: 0.72rem !important;
+        }
+    }
+
+    @media (min-width: 641px) and (max-width: 1024px) {
+        .sf-calendar-filters-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 </style>

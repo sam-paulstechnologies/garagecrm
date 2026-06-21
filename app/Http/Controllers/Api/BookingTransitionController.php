@@ -66,6 +66,25 @@ class BookingTransitionController extends Controller
                 ]);
             }
 
+            if ($to === Booking::STATUS_RESCHEDULE_REQUIRED) {
+                $rescheduleData = $request->validate([
+                    'reschedule_reason' => ['required', 'string', 'max:1000'],
+                ]);
+
+                $updated = $this->actions->requestReschedule(
+                    $booking,
+                    (int) $request->user()->id,
+                    $rescheduleData['reschedule_reason']
+                );
+
+                return response()->json([
+                    'ok' => true,
+                    'id' => $updated->id,
+                    'status' => $updated->status,
+                    'reschedule_reason' => $updated->reschedule_reason,
+                ]);
+            }
+
             $updated = $this->svc->transition($booking, $data['to']);
         } catch (ValidationException $e) {
             return response()->json([

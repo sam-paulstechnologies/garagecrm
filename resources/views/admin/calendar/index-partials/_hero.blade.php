@@ -1,15 +1,15 @@
 <div class="sf-page-header">
     <div>
         <div class="sf-kicker">
-            Garage Schedule
+            Booking Board
         </div>
 
         <h1 class="sf-page-title mt-3">
-            Garage Calendar
+            Booking Confirmation Calendar
         </h1>
 
         <p class="sf-page-subtitle">
-            View bookings, jobs, and scheduled garage activity in calendar format.
+            Review bookings that need manager confirmation, confirmed bookings, and bookings that must be rescheduled.
         </p>
     </div>
 
@@ -17,12 +17,6 @@
         @if(\Illuminate\Support\Facades\Route::has('admin.bookings.index'))
             <a href="{{ route('admin.bookings.index') }}" class="sf-btn-secondary">
                 Bookings
-            </a>
-        @endif
-
-        @if(\Illuminate\Support\Facades\Route::has('admin.jobs.index'))
-            <a href="{{ route('admin.jobs.index') }}" class="sf-btn-secondary">
-                Jobs
             </a>
         @endif
 

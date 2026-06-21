@@ -25,10 +25,17 @@ class BookingController extends Controller
 {
     protected const STATUS_PENDING = 'pending';
     protected const STATUS_SCHEDULED = 'scheduled';
+    protected const STATUS_RESCHEDULE_REQUIRED = 'reschedule_required';
     protected const STATUS_CONVERTED_TO_JOB = 'converted_to_job';
     protected const STATUS_LOST = 'lost';
 
     protected const ACTIVE_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_SCHEDULED,
+        self::STATUS_RESCHEDULE_REQUIRED,
+    ];
+
+    protected const CAPACITY_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_SCHEDULED,
     ];
@@ -36,6 +43,7 @@ class BookingController extends Controller
     protected const BOOKING_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_SCHEDULED,
+        self::STATUS_RESCHEDULE_REQUIRED,
         self::STATUS_CONVERTED_TO_JOB,
         self::STATUS_LOST,
     ];
@@ -132,8 +140,9 @@ class BookingController extends Controller
     protected function bookingIndexHeading(string $status, string $bucket, string $q = ''): array
     {
         $statusLabels = [
-            self::STATUS_PENDING => 'Pending',
-            self::STATUS_SCHEDULED => 'Scheduled',
+            self::STATUS_PENDING => 'Manager Confirmation',
+            self::STATUS_SCHEDULED => 'Booking Confirmed',
+            self::STATUS_RESCHEDULE_REQUIRED => 'Rescheduling Required',
             self::STATUS_CONVERTED_TO_JOB => 'Converted To Job',
             self::STATUS_LOST => 'Lost',
             'confirmed' => 'Confirmed',
@@ -149,7 +158,8 @@ class BookingController extends Controller
             'morning' => 'Morning',
             'afternoon' => 'Afternoon',
             'evening' => 'Evening',
-            'pending' => 'Pending',
+            'pending' => 'Manager Confirmation',
+            'reschedule_required' => 'Rescheduling Required',
             'overdue' => 'Overdue',
             'no_vehicle' => 'Bookings Missing Vehicle',
             'high_priority' => 'High Priority',
@@ -161,14 +171,14 @@ class BookingController extends Controller
             'morning' => 'Active bookings in the morning slot.',
             'afternoon' => 'Active bookings in the afternoon slot.',
             'evening' => 'Active bookings in the evening slot.',
-            'pending' => 'Bookings waiting for confirmation or review.',
+            'pending' => 'Bookings waiting for manager confirmation.',
             'overdue' => 'Pending bookings past their planned date.',
             'no_vehicle' => 'Active bookings that still need vehicle details.',
             'high_priority' => 'Active bookings marked high priority.',
         ];
 
         $title = 'Open Bookings';
-        $subtitle = 'Active pending and scheduled bookings that still need action.';
+        $subtitle = 'Bookings waiting for confirmation, confirmed bookings, and reschedules that need action.';
 
         if ($bucket !== '' && isset($bucketLabels[$bucket])) {
             $title = in_array($bucket, ['no_vehicle', 'high_priority'], true)
@@ -184,8 +194,9 @@ class BookingController extends Controller
                 : "{$statusTitle} Bookings";
 
             $subtitle = match ($status) {
-                self::STATUS_PENDING => 'Bookings waiting for confirmation or review.',
-                self::STATUS_SCHEDULED => 'Scheduled bookings ready for vehicle receiving or follow-up.',
+                self::STATUS_PENDING => 'Bookings waiting for manager confirmation.',
+                self::STATUS_SCHEDULED => 'Confirmed bookings ready for vehicle receiving or follow-up.',
+                self::STATUS_RESCHEDULE_REQUIRED => 'Bookings that need a new date, slot, or customer confirmation.',
                 self::STATUS_CONVERTED_TO_JOB, 'completed' => 'Bookings that have moved into the job flow.',
                 self::STATUS_LOST, 'cancelled', 'canceled' => 'Bookings that were cancelled, rejected, or lost.',
                 default => 'Bookings filtered by the selected status.',
@@ -312,6 +323,13 @@ class BookingController extends Controller
 
                 if ($data['status'] !== self::STATUS_LOST) {
                     $data['lost_reason'] = null;
+                }
+
+                if ($data['status'] === self::STATUS_RESCHEDULE_REQUIRED) {
+                    $data['reschedule_requested_at'] = now();
+                } else {
+                    $data['reschedule_reason'] = null;
+                    $data['reschedule_requested_at'] = null;
                 }
 
                 if ($allowOverbooking) {
@@ -492,6 +510,13 @@ class BookingController extends Controller
                     $data['lost_reason'] = null;
                 }
 
+                if ($data['status'] === self::STATUS_RESCHEDULE_REQUIRED) {
+                    $data['reschedule_requested_at'] = $booking->reschedule_requested_at ?: now();
+                } else {
+                    $data['reschedule_reason'] = null;
+                    $data['reschedule_requested_at'] = null;
+                }
+
                 if ($allowOverbooking) {
                     $data['notes'] = trim(($data['notes'] ?? '') . "\n\nOverbooking exception: " . $overbookingReason);
                 }
@@ -654,6 +679,13 @@ class BookingController extends Controller
                 Rule::requiredIf(fn () => $request->input('status') === self::STATUS_LOST),
                 'nullable',
                 Rule::in(self::LOST_REASONS),
+            ],
+
+            'reschedule_reason' => [
+                Rule::requiredIf(fn () => $request->input('status') === self::STATUS_RESCHEDULE_REQUIRED),
+                'nullable',
+                'string',
+                'max:1000',
             ],
 
             'allow_overbooking' => ['nullable', 'boolean'],
@@ -915,6 +947,10 @@ class BookingController extends Controller
             abort(422, 'Please select a lost booking reason.');
         }
 
+        if ($status === self::STATUS_RESCHEDULE_REQUIRED && empty($data['reschedule_reason'])) {
+            abort(422, 'Please enter the reschedule reason.');
+        }
+
         if ($status === self::STATUS_CONVERTED_TO_JOB && empty($data['vehicle_id'])) {
             abort(422, 'Please link or create a vehicle before converting this booking to a job.');
         }
@@ -931,7 +967,7 @@ class BookingController extends Controller
         $baseQuery = Booking::where('company_id', $companyId)
             ->whereDate('booking_date', $bookingDate)
             ->where('is_archived', false)
-            ->whereIn('status', self::ACTIVE_STATUSES);
+            ->whereIn('status', self::CAPACITY_STATUSES);
 
         if ($excludeBookingId) {
             $baseQuery->where('id', '!=', $excludeBookingId);
@@ -1040,7 +1076,7 @@ class BookingController extends Controller
     {
         $query = Booking::where('company_id', $companyId)
             ->where('is_archived', false)
-            ->whereIn('status', self::ACTIVE_STATUSES);
+            ->whereIn('status', self::CAPACITY_STATUSES);
 
         if ($excludeBookingId) {
             $query->where('id', '!=', $excludeBookingId);
@@ -1084,6 +1120,11 @@ class BookingController extends Controller
             ->where('status', self::STATUS_SCHEDULED)
             ->count();
 
+        $rescheduleCount = Booking::where('company_id', $companyId)
+            ->where('is_archived', false)
+            ->where('status', self::STATUS_RESCHEDULE_REQUIRED)
+            ->count();
+
         $convertedCount = Booking::where('company_id', $companyId)
             ->where('is_archived', false)
             ->where('status', self::STATUS_CONVERTED_TO_JOB)
@@ -1109,6 +1150,8 @@ class BookingController extends Controller
 
             'scheduled' => $scheduledCount,
 
+            'reschedule_required' => $rescheduleCount,
+
             'converted_to_job' => $convertedCount,
 
             'lost' => Booking::where('company_id', $companyId)
@@ -1132,6 +1175,7 @@ class BookingController extends Controller
             'afternoon' => (clone $base)->where('slot', 'afternoon')->count(),
             'evening' => (clone $base)->where('slot', 'evening')->count(),
             'pending' => (clone $base)->where('status', self::STATUS_PENDING)->count(),
+            'reschedule_required' => (clone $base)->where('status', self::STATUS_RESCHEDULE_REQUIRED)->count(),
 
             'overdue' => (clone $base)
                 ->where('status', self::STATUS_PENDING)
@@ -1157,6 +1201,7 @@ class BookingController extends Controller
             'afternoon' => $query->where('slot', 'afternoon'),
             'evening' => $query->where('slot', 'evening'),
             'pending' => $query->where('status', self::STATUS_PENDING),
+            'reschedule_required' => $query->where('status', self::STATUS_RESCHEDULE_REQUIRED),
 
             'overdue' => $query
                 ->where('status', self::STATUS_PENDING)

@@ -4,115 +4,90 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Job\Booking;
+use App\Models\User;
+use App\Services\Calendar\CalendarEventBuilder;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Route as RouteFacade;
-use Carbon\Carbon;
 
 class CalendarController extends Controller
 {
-    /**
-     * 📅 Calendar UI page
-     */
-    public function index()
+    public function index(Request $request)
     {
-        // Just render the calendar view
-        return view('admin.calendar.index');
+        $companyId = (int) Auth::user()->company_id;
+
+        return view('admin.calendar.index', [
+            'calendarFilters' => $this->filterState($request),
+            'calendarAssignedUsers' => User::query()
+                ->where('company_id', $companyId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'calendarStatuses' => $this->statusOptions(),
+            'calendarSlots' => [
+                'all' => 'All slots',
+                'morning' => 'Morning',
+                'afternoon' => 'Afternoon',
+                'evening' => 'Evening',
+                'full_day' => 'Full day',
+            ],
+        ]);
     }
 
-    /**
-     * 📡 JSON feed for FullCalendar
-     */
-    public function events(Request $request)
+    public function events(Request $request, CalendarEventBuilder $builder)
     {
-        $companyId = Auth::user()->company_id;
+        [$start, $end] = $this->dateRange($request);
 
-        $bookings = Booking::with('client')
-            ->where('company_id', $companyId)
-            ->where(function ($q) {
-                $q->whereNull('is_archived')
-                  ->orWhere('is_archived', false);
-            })
-            ->get();
-
-        $events = $bookings->map(function ($b) {
-            $start = $this->resolveStart($b);
-            if (!$start) {
-                return null;
-            }
-
-            $end = $this->resolveEnd($b, $start);
-
-            $titleParts = [
-                $b->client->name ?? 'Client',
-                $b->service_type ?: ($b->name ?? 'Booking'),
-            ];
-
-            $url = RouteFacade::has('admin.bookings.show')
-                ? route('admin.bookings.show', $b->id)
-                : url('/admin/bookings/' . $b->id);
-
-            return [
-                'id'              => $b->id,
-                'title'           => implode(' - ', array_filter($titleParts)),
-                'start'           => $start->toIso8601String(),
-                'end'             => $end?->toIso8601String(),
-                'url'             => $url,
-                'backgroundColor' => $this->statusColor($b->status),
-                'borderColor'     => $this->statusColor($b->status),
-                'textColor'       => '#ffffff',
-            ];
-        })->filter()->values();
-
-        return response()->json($events);
+        return response()->json(
+            $builder->build(
+                companyId: (int) Auth::user()->company_id,
+                start: $start,
+                end: $end,
+                filters: $this->filterState($request),
+            )
+        );
     }
 
-    /* ================= Helpers ================= */
-
-    private function resolveStart($b): ?Carbon
+    private function dateRange(Request $request): array
     {
-        if (!empty($b->scheduled_at)) {
-            return Carbon::parse($b->scheduled_at);
+        try {
+            $start = $request->filled('start')
+                ? Carbon::parse($request->query('start'))->startOfDay()
+                : now()->startOfMonth()->startOfDay();
+        } catch (\Throwable) {
+            $start = now()->startOfMonth()->startOfDay();
         }
 
-        $date = $b->booking_date ?? null;
-        if (!$date) {
-            return null;
+        try {
+            $end = $request->filled('end')
+                ? Carbon::parse($request->query('end'))->endOfDay()
+                : $start->copy()->endOfMonth()->endOfDay();
+        } catch (\Throwable) {
+            $end = $start->copy()->endOfMonth()->endOfDay();
         }
 
-        $start = Carbon::parse($date);
-
-        $slot = strtolower((string) $b->slot);
-        if (str_contains($slot, 'morning'))   return $start->setTime(9, 0);
-        if (str_contains($slot, 'afternoon')) return $start->setTime(13, 0);
-        if (str_contains($slot, 'evening'))   return $start->setTime(16, 0);
-
-        return $start->setTime(10, 0);
-    }
-
-    private function resolveEnd($b, Carbon $start): Carbon
-    {
-        if (!empty($b->scheduled_end_at)) {
-            return Carbon::parse($b->scheduled_end_at);
+        if ($end->lessThanOrEqualTo($start)) {
+            $end = $start->copy()->addMonth()->endOfDay();
         }
 
-        $hours = is_numeric($b->expected_duration)
-            ? max((int) $b->expected_duration, 1)
-            : 2;
-
-        return $start->copy()->addHours($hours);
+        return [$start, $end];
     }
 
-    private function statusColor($status): string
+    private function filterState(Request $request): array
     {
-        return match (strtolower((string) $status)) {
-            Booking::STATUS_CONFIRMED => '#22c55e',
-            Booking::STATUS_PENDING => '#f59e0b',
-            Booking::STATUS_SCHEDULED => '#6366f1',
-            Booking::STATUS_VEHICLE_RECEIVED => '#8b5cf6',
-            Booking::STATUS_COMPLETED => '#0ea5e9',
-            Booking::STATUS_CANCELED => '#ef4444',
-            default => '#6b7280',
-        };
+        return [
+            'assigned_user' => $request->query('assigned_user', 'all'),
+            'status' => $request->query('status', 'all'),
+            'slot' => $request->query('slot', 'all'),
+        ];
+    }
+
+    private function statusOptions(): array
+    {
+        return [
+            'all' => 'All booking calendar items',
+            Booking::STATUS_PENDING => 'Manager Confirmation',
+            Booking::STATUS_SCHEDULED => 'Booking Confirmed',
+            Booking::STATUS_RESCHEDULE_REQUIRED => 'Rescheduling Required',
+        ];
     }
 }

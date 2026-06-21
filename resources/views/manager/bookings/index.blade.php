@@ -75,9 +75,21 @@
         return match ($status) {
             'pending' => 'badge-soft-warning',
             'scheduled', 'confirmed' => 'badge-soft-primary',
+            'reschedule_required' => 'badge-soft-danger',
             'converted_to_job' => 'badge-soft-success',
             'lost', 'rejected', 'cancelled', 'canceled' => 'badge-soft-danger',
             default => 'badge-soft-muted',
+        };
+    };
+
+    $statusLabel = function ($status) {
+        return match (strtolower((string) $status)) {
+            'pending' => 'Manager Confirmation',
+            'scheduled', 'confirmed' => 'Booking Confirmed',
+            'reschedule_required' => 'Rescheduling Required',
+            'converted_to_job' => 'Converted To Job',
+            'lost' => 'Lost',
+            default => ucfirst(str_replace('_', ' ', (string) $status)),
         };
     };
 @endphp
@@ -132,25 +144,34 @@
     {{-- Stat Cards --}}
     <div class="row g-4 mb-4">
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl">
             <a href="{{ route('manager.bookings.index', ['status' => 'pending']) }}"
                class="booking-stat-card warning {{ ($status ?? request('status')) === 'pending' ? 'active' : '' }}">
-                <span class="booking-stat-label">Pending</span>
+                <span class="booking-stat-label">Manager Confirmation</span>
                 <span class="booking-stat-value">{{ $counts['pending'] ?? 0 }}</span>
                 <span class="booking-stat-note">Needs manager action</span>
             </a>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl">
             <a href="{{ route('manager.bookings.index', ['status' => 'scheduled']) }}"
                class="booking-stat-card primary {{ ($status ?? request('status')) === 'scheduled' ? 'active' : '' }}">
-                <span class="booking-stat-label">Scheduled</span>
+                <span class="booking-stat-label">Booking Confirmed</span>
                 <span class="booking-stat-value">{{ $counts['scheduled'] ?? 0 }}</span>
                 <span class="booking-stat-note">Confirmed bookings</span>
             </a>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl">
+            <a href="{{ route('manager.bookings.index', ['status' => 'reschedule_required']) }}"
+               class="booking-stat-card danger {{ ($status ?? request('status')) === 'reschedule_required' ? 'active' : '' }}">
+                <span class="booking-stat-label">Rescheduling Required</span>
+                <span class="booking-stat-value">{{ $counts['reschedule_required'] ?? 0 }}</span>
+                <span class="booking-stat-note">Needs new slot</span>
+            </a>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl">
             <a href="{{ route('manager.bookings.index', ['status' => 'converted_to_job']) }}"
                class="booking-stat-card success {{ ($status ?? request('status')) === 'converted_to_job' ? 'active' : '' }}">
                 <span class="booking-stat-label">Converted</span>
@@ -159,7 +180,7 @@
             </a>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl">
             <a href="{{ route('manager.bookings.index', ['status' => 'lost']) }}"
                class="booking-stat-card danger {{ ($status ?? request('status')) === 'lost' ? 'active' : '' }}">
                 <span class="booking-stat-label">Lost</span>
@@ -205,8 +226,9 @@
                         </label>
                         <select name="status" class="form-select">
                             <option value="">All</option>
-                            <option value="pending" @selected(($status ?? request('status')) === 'pending')>Pending</option>
-                            <option value="scheduled" @selected(($status ?? request('status')) === 'scheduled')>Scheduled</option>
+                            <option value="pending" @selected(($status ?? request('status')) === 'pending')>Manager Confirmation</option>
+                            <option value="scheduled" @selected(($status ?? request('status')) === 'scheduled')>Booking Confirmed</option>
+                            <option value="reschedule_required" @selected(($status ?? request('status')) === 'reschedule_required')>Rescheduling Required</option>
                             <option value="converted_to_job" @selected(($status ?? request('status')) === 'converted_to_job')>Converted To Job</option>
                             <option value="lost" @selected(($status ?? request('status')) === 'lost')>Lost</option>
                         </select>
@@ -332,7 +354,7 @@
 
                                 <td>
                                     <span class="manager-badge {{ $statusClass($statusValue) }}">
-                                        {{ ucfirst(str_replace('_', ' ', $statusValue)) }}
+                                        {{ $statusLabel($statusValue) }}
                                     </span>
                                 </td>
 

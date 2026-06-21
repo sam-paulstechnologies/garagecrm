@@ -48,6 +48,37 @@
             @endforeach
 
             <details class="sf-booking-stage-lost">
+                <summary class="sf-booking-stage-button {{ $status === 'reschedule_required' ? 'is-danger-active' : 'is-danger' }}"
+                         title="{{ $bookingStatusHelp['reschedule_required'] ?? '' }}">
+                    Rescheduling Required
+                </summary>
+
+                <form method="POST" action="{{ route('admin.bookings.update', $booking) }}" class="mt-3 rounded-2xl border border-red-300/30 bg-red-500/10 p-3">
+                    @csrf
+                    @method('PUT')
+
+                    @foreach($statusFormFields as $field => $value)
+                        <input type="hidden" name="{{ $field }}" value="{{ $value }}">
+                    @endforeach
+
+                    <input type="hidden" name="status" value="reschedule_required">
+
+                    <label for="status_reschedule_reason" class="sf-booking-mini-label">Reschedule Reason</label>
+                    <textarea
+                        id="status_reschedule_reason"
+                        name="reschedule_reason"
+                        class="sf-booking-mini-select min-h-[96px]"
+                        required
+                        placeholder="Why does this booking need rescheduling?"
+                    >{{ $booking->reschedule_reason }}</textarea>
+
+                    <button type="submit" class="sf-booking-stage-submit">
+                        Save Reschedule Status
+                    </button>
+                </form>
+            </details>
+
+            <details class="sf-booking-stage-lost">
                 <summary class="sf-booking-stage-button {{ in_array($status, ['lost', 'cancelled', 'canceled', 'rejected'], true) ? 'is-danger-active' : 'is-danger' }}"
                          title="{{ $bookingStatusHelp['lost'] ?? '' }}">
                     Lost Booking

@@ -12,6 +12,7 @@
         'afternoon' => 0,
         'evening' => 0,
         'pending' => 0,
+        'reschedule_required' => 0,
         'overdue' => 0,
         'no_vehicle' => 0,
         'high_priority' => 0,
@@ -44,9 +45,15 @@
         ],
         [
             'key' => 'pending',
-            'title' => 'Pending',
+            'title' => 'Manager Confirmation',
             'count' => $bucketCounts['pending'] ?? 0,
             'note' => 'Needs action',
+        ],
+        [
+            'key' => 'reschedule_required',
+            'title' => 'Rescheduling Required',
+            'count' => $bucketCounts['reschedule_required'] ?? 0,
+            'note' => 'Needs new slot',
         ],
         [
             'key' => 'overdue',

@@ -119,9 +119,19 @@
     $statusClass = match(strtolower((string) $statusValue)) {
         'pending' => 'badge-soft-warning',
         'scheduled', 'confirmed' => 'badge-soft-primary',
+        'reschedule_required' => 'badge-soft-danger',
         'converted_to_job' => 'badge-soft-success',
         'lost', 'rejected', 'cancelled', 'canceled' => 'badge-soft-danger',
         default => 'badge-soft-muted',
+    };
+
+    $statusLabel = match(strtolower((string) $statusValue)) {
+        'pending' => 'Manager Confirmation',
+        'scheduled', 'confirmed' => 'Booking Confirmed',
+        'reschedule_required' => 'Rescheduling Required',
+        'converted_to_job' => 'Converted To Job',
+        'lost' => 'Lost',
+        default => ucfirst(str_replace('_', ' ', $statusValue)),
     };
 
     $canConfirm = $statusValue === 'pending';
@@ -204,7 +214,7 @@
                     </div>
 
                     <span class="manager-badge {{ $statusClass }}">
-                        {{ ucfirst(str_replace('_', ' ', $statusValue)) }}
+                        {{ $statusLabel }}
                     </span>
                 </div>
 
