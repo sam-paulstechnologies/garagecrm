@@ -102,7 +102,7 @@
             'warnings' => [
                 'label' => 'Needs Review',
                 'short_label' => 'Needs Review',
-                'help' => 'Warnings present',
+                'help' => 'Needs attention',
                 'active_label' => 'Showing rows needing review',
                 'predicate' => $rowNeedsReview,
                 'tone' => 'amber',
@@ -214,6 +214,24 @@
         $summaryExpandedByDefault = $hasActiveRowFilter || session()->has('success');
         $summaryCards = array_filter($rowFilterDefinitions, fn ($definition) => empty($definition['workflow']));
         $workflowCards = array_filter($rowFilterDefinitions, fn ($definition) => ! empty($definition['workflow']));
+        $summaryChipLabels = [
+            'all' => 'Total',
+            'importable' => 'Importable',
+            'warnings' => 'Needs Review',
+            'blocked' => 'Blocked',
+            'existing_clients' => 'Existing',
+            'service_history' => 'Service History',
+            'retention_actions' => 'Retention',
+        ];
+        $visibleSelectableCount = $visibleRows
+            ->filter(fn ($row) => ($row['review_status'] ?? 'pending_review') !== 'applied')
+            ->count();
+        $visibleImportableCount = $visibleRows
+            ->filter(fn ($row) => ($row['review_status'] ?? 'pending_review') !== 'applied' && $rowIsImportable($row))
+            ->count();
+        $visibleNeedsReviewCount = $visibleRows
+            ->filter(fn ($row) => ($row['review_status'] ?? 'pending_review') !== 'applied' && $rowNeedsReview($row))
+            ->count();
     @endphp
 
     <style>
@@ -249,7 +267,8 @@
         }
 
         html[data-theme="light"] .sf-import-preview [class*="text-blue-200"],
-        html[data-theme="light"] .sf-import-preview [class*="text-blue-100"] {
+        html[data-theme="light"] .sf-import-preview [class*="text-blue-100"],
+        html[data-theme="light"] .sf-import-preview [class*="text-cyan-200"] {
             color: #1d4ed8 !important;
         }
 
@@ -280,6 +299,58 @@
             color: #334155 !important;
         }
 
+        .sf-import-preview-hero,
+        .sf-import-preview-panel {
+            border-color: #1e293b;
+            background: rgba(15, 23, 42, 0.78);
+            color: #e2e8f0;
+        }
+
+        .sf-import-preview-filter-chip {
+            min-height: 2.25rem;
+            transform: translateY(0);
+        }
+
+        .sf-import-preview-filter-chip:hover {
+            transform: translateY(-1px);
+        }
+
+        .sf-import-preview-info {
+            position: relative;
+        }
+
+        .sf-import-preview-info [role="tooltip"] {
+            position: absolute;
+            left: 0;
+            top: calc(100% + 0.5rem);
+            z-index: 40;
+            width: min(20rem, calc(100vw - 2rem));
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-0.25rem);
+            transition: opacity 120ms ease, transform 120ms ease;
+        }
+
+        .sf-import-preview-info:focus-within [role="tooltip"],
+        .sf-import-preview-info:hover [role="tooltip"] {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+
+        html[data-theme="light"] .sf-import-preview-hero,
+        html[data-theme="light"] .sf-import-preview-panel {
+            border-color: #dbe3ef !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08) !important;
+        }
+
+        html[data-theme="light"] .sf-import-preview-filter-chip span,
+        html[data-theme="light"] .sf-import-preview-filter-chip strong {
+            color: inherit !important;
+        }
+
         .client-import-checkbox-box svg {
             opacity: 0;
             transform: scale(0.85);
@@ -297,38 +368,29 @@
             transform: scale(1);
         }
 
-        .sf-client-import-filter-card {
-            transform: translateY(0);
-        }
-
-        .sf-client-import-filter-card:hover {
-            transform: translateY(-1px);
-        }
     </style>
 
     <div class="sf-page sf-import-preview mx-auto max-w-[1500px] px-4 py-6 space-y-5">
-        <div class="rounded-2xl border border-slate-800 bg-slate-900/75 p-5 shadow-sm">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="sf-import-preview-hero rounded-2xl border p-5 shadow-sm">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p class="text-xs font-black uppercase tracking-wide text-orange-300">
-                        Preview Only
+                    <p class="text-xs font-black uppercase tracking-wide text-orange-700 dark:text-orange-300">
+                        Client Data
                     </p>
 
-                    <h1 class="mt-1 text-3xl font-extrabold tracking-tight text-white">
+                    <h1 class="mt-1 text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">
                         Client Import Retention Preview
                     </h1>
 
-                    <p class="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-300">
-                        No clients, vehicles, retention actions, campaigns, journeys, or messages have been created yet.
-                        Review validation, duplicates, and suggested retention opportunities before a future approval phase.
-                        Approval only marks rows for future application. It does not create clients or send messages.
+                    <p class="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">
+                        Review contact validation, existing client matches, service history, and retention suggestions before applying approved rows.
                     </p>
                 </div>
 
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap items-center gap-2 lg:justify-end">
                     <a
                         href="{{ route('admin.clients.import.form') }}"
-                        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 text-sm font-bold text-slate-100 transition hover:bg-slate-700"
+                        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-orange-200 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                     >
                         Upload Another File
                     </a>
@@ -336,18 +398,11 @@
                     @if(\Illuminate\Support\Facades\Route::has('admin.clients.import.batches.index'))
                         <a
                             href="{{ route('admin.clients.import.batches.index') }}"
-                            class="inline-flex h-10 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 text-sm font-bold text-blue-200 transition hover:bg-blue-500/15"
+                            class="inline-flex h-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/15"
                         >
                             Recent Previews
                         </a>
                     @endif
-
-                    <span
-                        class="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-xl border border-orange-400/20 bg-orange-500/10 px-4 text-sm font-extrabold text-orange-200"
-                        title="Bulk approval is planned for a later phase."
-                    >
-                        Approval Coming in Phase 4
-                    </span>
                 </div>
             </div>
         </div>
@@ -380,13 +435,13 @@
 
         @if(($summary['truncated'] ?? false) === true)
             <div class="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm font-bold text-amber-200">
-                Preview limited to the first {{ $summary['limit'] ?? 200 }} non-empty rows. Persistent import batches should be added in Phase 2 for larger files.
+                Preview limited to the first {{ $summary['limit'] ?? 200 }} non-empty rows.
             </div>
         @endif
 
         <section
             id="client-import-summary-panel"
-            class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/75"
+            class="sf-import-preview-panel rounded-2xl border p-4 shadow-sm"
             data-client-import-summary
             data-default-expanded="{{ $summaryExpandedByDefault ? 'true' : 'false' }}"
         >
@@ -394,7 +449,7 @@
                 <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
                         <h2 class="text-base font-extrabold tracking-tight text-slate-950 dark:text-white">
-                            Client data validation summary
+                            Row filters
                         </h2>
 
                         @if($hasActiveRowFilter)
@@ -432,7 +487,7 @@
                     aria-controls="client-import-summary-body"
                     aria-expanded="{{ $summaryExpandedByDefault ? 'true' : 'false' }}"
                 >
-                    {{ $summaryExpandedByDefault ? 'Collapse summary' : 'Expand summary' }}
+                    {{ $summaryExpandedByDefault ? 'Collapse filters' : 'Expand filters' }}
                 </button>
             </div>
 
@@ -441,11 +496,11 @@
                 class="{{ $summaryExpandedByDefault ? '' : 'hidden' }} mt-5"
                 data-client-import-summary-body
             >
-                <p class="text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">
-                    These filters use contact validation, warning/error payloads, duplicate matching, service-history detection, retention classification, and manager review state.
+                <p class="text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">
+                    Filter by validation bucket or review state.
                 </p>
 
-                <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                <div class="mt-4 flex flex-wrap gap-2">
                     @foreach($summaryCards as $filterKey => $card)
                         @php
                             $isActiveFilter = $currentRowFilter === $filterKey;
@@ -454,55 +509,41 @@
                                 : ($rowFilterCounts[$filterKey] ?? 0);
                             $tone = $card['tone'];
                             $toneClasses = match ($tone) {
-                                'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
-                                'amber' => 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-                                'rose' => 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
-                                'orange' => 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200',
-                                'cyan' => 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-300 dark:border-cyan-400/20 dark:bg-cyan-500/10 dark:text-cyan-200',
-                                'purple' => 'border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-300 dark:border-purple-400/20 dark:bg-purple-500/10 dark:text-purple-200',
-                                default => 'border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-200 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200',
+                                'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15',
+                                'amber' => 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15',
+                                'rose' => 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15',
+                                'orange' => 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200 dark:hover:bg-orange-500/15',
+                                'cyan' => 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:border-cyan-400/20 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/15',
+                                'purple' => 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-400/20 dark:bg-purple-500/10 dark:text-purple-200 dark:hover:bg-purple-500/15',
+                                default => 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-800',
                             };
                             $activeClasses = $isActiveFilter
-                                ? 'ring-2 ring-orange-400/60 shadow-md'
+                                ? 'ring-2 ring-orange-400/60'
                                 : 'shadow-sm';
+                            $chipLabel = $summaryChipLabels[$filterKey] ?? $card['short_label'];
                         @endphp
 
                         <a
                             href="{{ $filterUrl($filterKey) }}"
-                            class="sf-client-import-filter-card rounded-2xl border p-3 transition focus:outline-none focus:ring-2 focus:ring-orange-400/50 {{ $toneClasses }} {{ $activeClasses }}"
+                            class="sf-import-preview-filter-chip inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-extrabold transition focus:outline-none focus:ring-2 focus:ring-orange-400/50 {{ $toneClasses }} {{ $activeClasses }}"
                             aria-current="{{ $isActiveFilter ? 'true' : 'false' }}"
                         >
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="text-3xl font-black leading-none">
-                                    {{ $count }}
-                                </div>
-
-                                <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide opacity-80 dark:bg-slate-950/30">
-                                    Filter
-                                </span>
-                            </div>
-
-                            <div class="mt-2 text-xs font-black uppercase tracking-wide">
-                                {{ $card['label'] }}
-                            </div>
-
-                            <div class="mt-1 text-xs font-bold opacity-75">
-                                {{ $card['help'] }}
-                            </div>
+                            <span>{{ $chipLabel }}</span>
+                            <strong class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black dark:bg-slate-950/30">{{ $count }}</strong>
                         </a>
                     @endforeach
                 </div>
 
                 @isset($reviewSummary)
                     <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
-                        <div class="flex flex-col gap-1">
+                        <div class="flex flex-wrap items-center gap-2">
                             <h3 class="text-sm font-extrabold tracking-tight text-slate-950 dark:text-white">
                                 Review workflow
                             </h3>
 
-                            <p class="text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-                                These filters are manager review states. They are separate from validation readiness.
-                            </p>
+                            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                Separate from validation readiness.
+                            </span>
                         </div>
 
                         <div class="mt-3 flex flex-wrap gap-2">
@@ -537,17 +578,21 @@
         </section>
 
         @isset($batch)
-            <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-sm">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h2 class="text-base font-extrabold tracking-tight text-orange-200">
+            <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4 shadow-sm">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <h2 class="text-base font-extrabold tracking-tight text-orange-700 dark:text-orange-200">
                             Apply Approved Rows to CRM
                         </h2>
 
-                        <p class="mt-1 max-w-4xl text-sm font-semibold leading-6 text-orange-100">
-                            Applying approved rows will create or update clients and vehicles only. It will not send WhatsApp messages,
-                            create campaigns, create journeys, create message logs, or schedule retention actions.
-                        </p>
+                        <span class="sf-import-preview-info inline-flex">
+                            <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-orange-300/50 bg-white/70 text-xs font-black text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200" aria-describedby="apply-approved-help">
+                                i
+                            </button>
+                            <span id="apply-approved-help" role="tooltip" class="rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold leading-5 text-slate-700 shadow-xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                                Creates or updates clients and vehicles only. It will not send WhatsApp messages, create campaigns, create journeys, create message logs, or schedule retention actions.
+                            </span>
+                        </span>
                     </div>
 
                     <div class="flex flex-wrap gap-2">
@@ -575,17 +620,21 @@
         @endisset
 
         @isset($batch)
-            <div class="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-5 shadow-sm">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h2 class="text-base font-extrabold tracking-tight text-emerald-200">
+            <div class="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 shadow-sm">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <h2 class="text-base font-extrabold tracking-tight text-emerald-700 dark:text-emerald-200">
                             Store Imported Service History
                         </h2>
 
-                        <p class="mt-1 max-w-4xl text-sm font-semibold leading-6 text-emerald-100">
-                            This stores imported service history only. It will not create retention actions, campaigns, journeys,
-                            message logs, or WhatsApp messages.
-                        </p>
+                        <span class="sf-import-preview-info inline-flex">
+                            <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/50 bg-white/70 text-xs font-black text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200" aria-describedby="service-history-help">
+                                i
+                            </button>
+                            <span id="service-history-help" role="tooltip" class="rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold leading-5 text-slate-700 shadow-xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                                Stores imported service history only. It will not create retention actions, campaigns, journeys, message logs, or WhatsApp messages.
+                            </span>
+                        </span>
                     </div>
 
                     <div class="flex flex-wrap gap-2">
@@ -613,17 +662,21 @@
         @endisset
 
         @isset($batch)
-            <div class="rounded-2xl border border-purple-400/20 bg-purple-500/10 p-5 shadow-sm">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h2 class="text-base font-extrabold tracking-tight text-purple-200">
+            <div class="rounded-2xl border border-purple-400/20 bg-purple-500/10 p-4 shadow-sm">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <h2 class="text-base font-extrabold tracking-tight text-purple-700 dark:text-purple-200">
                             Create Pending Retention Actions
                         </h2>
 
-                        <p class="mt-1 max-w-4xl text-sm font-semibold leading-6 text-purple-100">
-                            This creates pending retention actions only. No WhatsApp messages will be sent, and no campaigns,
-                            journeys, message logs, or schedules will be created.
-                        </p>
+                        <span class="sf-import-preview-info inline-flex">
+                            <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-purple-300/50 bg-white/70 text-xs font-black text-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 dark:border-purple-400/20 dark:bg-purple-500/10 dark:text-purple-200" aria-describedby="retention-actions-help">
+                                i
+                            </button>
+                            <span id="retention-actions-help" role="tooltip" class="rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold leading-5 text-slate-700 shadow-xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                                Creates pending retention actions only. No WhatsApp messages will be sent, and no campaigns, journeys, message logs, or schedules will be created.
+                            </span>
+                        </span>
                     </div>
 
                     <div class="flex flex-wrap gap-2">
@@ -891,7 +944,7 @@
                                 id="select-all-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                             >
-                                Select all visible
+                                Select visible ({{ $visibleSelectableCount }})
                             </button>
 
                             <button
@@ -899,7 +952,7 @@
                                 id="clear-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                             >
-                                Clear selection
+                                Clear
                             </button>
 
                             <button
@@ -907,7 +960,7 @@
                                 id="select-valid-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
                             >
-                                Select importable
+                                Select importable ({{ $visibleImportableCount }})
                             </button>
 
                             <button
@@ -915,7 +968,7 @@
                                 id="select-warning-import-rows"
                                 class="inline-flex h-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
                             >
-                                Select needs review
+                                Select needs review ({{ $visibleNeedsReviewCount }})
                             </button>
 
                             <button type="submit" name="action" value="approve" class="inline-flex h-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15">
@@ -1265,7 +1318,7 @@
 
                 const applySummaryState = function () {
                     summaryBody.classList.toggle('hidden', !expanded);
-                    summaryToggle.textContent = expanded ? 'Collapse summary' : 'Expand summary';
+                    summaryToggle.textContent = expanded ? 'Collapse filters' : 'Expand filters';
                     summaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
                     window.localStorage.setItem(storageKey, expanded ? 'false' : 'true');
                 };

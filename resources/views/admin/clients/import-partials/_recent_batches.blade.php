@@ -63,7 +63,7 @@
                                     Importable {{ (int) $batch->valid_rows + (int) $batch->warning_rows }}
                                 </span>
                                 <span class="rounded-full bg-amber-500/10 px-2 py-1 text-amber-200 ring-1 ring-amber-400/20">
-                                    Warnings {{ $batch->warning_rows }}
+                                    Needs Review {{ $batch->warning_rows }}
                                 </span>
                                 <span class="rounded-full bg-rose-500/10 px-2 py-1 text-rose-200 ring-1 ring-rose-400/20">
                                     Blocked {{ $batch->invalid_rows }}

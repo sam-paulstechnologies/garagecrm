@@ -3,6 +3,7 @@
 namespace App\Models\Client;
 
 use App\Models\Shared\File;
+use App\Services\PhoneNumberService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -116,20 +117,7 @@ class Client extends Model
 
     public static function normalizePhone(?string $phone): ?string
     {
-        if (!$phone) return null;
-
-        $phone = preg_replace('/\D+/', '', $phone);
-
-        // UAE logic
-        if (str_starts_with($phone, '05')) {
-            $phone = '971' . substr($phone, 1);
-        }
-
-        if (str_starts_with($phone, '9710')) {
-            $phone = '971' . substr($phone, 3);
-        }
-
-        return $phone ?: null;
+        return app(PhoneNumberService::class)->buildWhatsappLookupKey($phone);
     }
 
     public static function normalizeEmail(?string $email): ?string

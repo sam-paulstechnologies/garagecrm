@@ -49,6 +49,12 @@
         color: #cbd5e1;
     }
 
+    .sf-client-import-page .sf-card-header,
+    .sf-client-import-page [class*="border-b"].border-slate-800,
+    .sf-client-import-page [class*="border-t"].border-slate-800 {
+        border-color: #1e293b;
+    }
+
     .sf-client-import-page .sf-btn-primary,
     .sf-client-import-page .sf-btn-secondary {
         min-height: 2.5rem;
@@ -134,6 +140,80 @@
         border-color: #cbd5e1 !important;
         background: #f1f5f9 !important;
         color: #475569 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page [class*="border-b"].border-slate-800,
+    html[data-theme="light"] .sf-client-import-page [class*="border-t"].border-slate-800,
+    html[data-theme="light"] .sf-client-import-table,
+    html[data-theme="light"] .sf-client-import-table tbody {
+        border-color: #e2e8f0 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-table thead {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-table tbody tr {
+        border-color: #e2e8f0 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-table tbody tr:hover {
+        background: #f8fafc !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .text-orange-300,
+    html[data-theme="light"] .sf-client-import-page .text-orange-200,
+    html[data-theme="light"] .sf-client-import-page .text-orange-100\/80 {
+        color: #c2410c !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .text-emerald-300,
+    html[data-theme="light"] .sf-client-import-page .text-emerald-200 {
+        color: #047857 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .text-amber-300,
+    html[data-theme="light"] .sf-client-import-page .text-amber-200 {
+        color: #b45309 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .text-rose-300,
+    html[data-theme="light"] .sf-client-import-page .text-rose-200,
+    html[data-theme="light"] .sf-client-import-page .text-red-300,
+    html[data-theme="light"] .sf-client-import-page .text-red-400 {
+        color: #be123c !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .text-slate-300,
+    html[data-theme="light"] .sf-client-import-page .text-slate-400,
+    html[data-theme="light"] .sf-client-import-page .text-slate-500 {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .bg-orange-500\/10 {
+        background: #fff7ed !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .bg-emerald-500\/10 {
+        background: #ecfdf5 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .bg-amber-500\/10 {
+        background: #fffbeb !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .bg-rose-500\/10,
+    html[data-theme="light"] .sf-client-import-page .bg-red-500\/10 {
+        background: #fff1f2 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .bg-slate-500\/10 {
+        background: #f1f5f9 !important;
+    }
+
+    html[data-theme="light"] .sf-client-import-page .ring-slate-400\/20,
+    html[data-theme="light"] .sf-client-import-page .ring-slate-500\/20 {
+        --tw-ring-color: #cbd5e1 !important;
     }
 
     html[data-theme="light"] .sf-client-import-page .sf-btn-secondary {
