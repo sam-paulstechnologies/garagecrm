@@ -55,7 +55,7 @@
     ];
 @endphp
 
-<div class="sf-floating-quick-action-shell fixed right-0 top-1/2 z-[9999] hidden -translate-y-1/2 lg:block">
+<div class="sf-floating-quick-action-shell fixed z-[9999]">
     <div class="sf-floating-quick-actions overflow-visible rounded-l-2xl border border-r-0 border-orange-500/50 bg-emerald-950/95 shadow-2xl backdrop-blur">
         @foreach ($quickActions as $action)
             @php

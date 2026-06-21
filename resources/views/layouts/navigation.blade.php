@@ -79,6 +79,7 @@
 
     $growthActive =
         request()->routeIs('admin.lead-sources.*') ||
+        request()->routeIs('admin.growth.*') ||
         request()->routeIs('admin.audience-segmentations.*') ||
         request()->routeIs('admin.retention-actions.index') ||
         request()->routeIs('admin.whatsapp.templates.*') ||
@@ -90,6 +91,12 @@
             'description' => 'WhatsApp, website forms, and Meta lead ads',
             'route' => 'admin.lead-sources.index',
             'active' => 'admin.lead-sources.*',
+        ],
+        [
+            'label' => 'Journey Mapping',
+            'description' => 'Map campaign types to preview journeys',
+            'route' => 'admin.growth.journey-mapping.index',
+            'active' => 'admin.growth.journey-mapping.*',
         ],
         [
             'label' => 'Audience Segmentation',
@@ -432,7 +439,7 @@
             </div>
 
             {{-- Center: Desktop Primary Nav --}}
-            <div class="hidden items-center gap-1 lg:flex">
+            <div class="hidden items-center gap-1 xl:flex">
                 @foreach($primaryNavItems as $item)
                     @if(Route::has($item['route']))
                         <a
@@ -604,7 +611,7 @@
             </div>
 
             {{-- Right: Desktop Profile --}}
-            <div class="hidden items-center lg:flex">
+            <div class="hidden items-center xl:flex">
                 <div class="relative" @click.outside="userOpen = false">
                     <button
                         type="button"
@@ -683,7 +690,7 @@
             </div>
 
             {{-- Mobile: Center Burger --}}
-            <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 lg:hidden">
+            <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 xl:hidden">
                 <button
                     type="button"
                     @click="toggleMobile()"
@@ -716,7 +723,7 @@
             </div>
 
             {{-- Mobile: right spacer so theme toggle has room --}}
-            <div class="h-11 w-11 lg:hidden"></div>
+            <div class="h-11 w-11 xl:hidden"></div>
         </div>
     </div>
 
@@ -725,7 +732,7 @@
         x-cloak
         x-show="open"
         x-transition
-        class="sf-nav-mobile-menu border-t lg:hidden"
+        class="sf-nav-mobile-menu border-t xl:hidden"
     >
         <div class="space-y-3 px-4 py-4">
 

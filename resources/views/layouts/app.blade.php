@@ -288,8 +288,15 @@
             transition: transform 0.22s ease, box-shadow 0.22s ease;
         }
 
+        .sf-floating-quick-action-shell {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
         .sf-floating-quick-action-shell:hover .sf-floating-quick-actions,
-        .sf-floating-quick-action-shell:focus-within .sf-floating-quick-actions {
+        .sf-floating-quick-action-shell:focus-within .sf-floating-quick-actions,
+        .sf-floating-quick-action-shell:active .sf-floating-quick-actions {
             transform: translateX(0);
             box-shadow: 0 22px 48px rgba(2, 44, 34, 0.34);
         }
@@ -370,6 +377,53 @@
             background: #ffffff;
             color: #0f172a !important;
             box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+        }
+
+        @media (max-width: 1023px) {
+            .sf-floating-quick-action-shell {
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+            }
+
+            .sf-floating-quick-actions {
+                border-radius: 1rem 0 0 1rem !important;
+                border-right: 0 !important;
+                transform: translateX(calc(100% - 18px));
+            }
+
+            .sf-floating-quick-actions a {
+                height: 3.5rem !important;
+                width: 3.5rem !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+            }
+
+            .sf-floating-quick-actions a:first-child {
+                border-top-left-radius: 1rem !important;
+            }
+
+            .sf-floating-quick-actions a:last-child {
+                border-bottom: 0 !important;
+                border-bottom-left-radius: 1rem !important;
+            }
+
+            .sf-floating-quick-action-shell:hover .sf-floating-quick-actions,
+            .sf-floating-quick-action-shell:focus-within .sf-floating-quick-actions,
+            .sf-floating-quick-action-shell:active .sf-floating-quick-actions {
+                transform: translateX(0);
+            }
+        }
+
+        @media (max-width: 520px) {
+            .sf-floating-quick-actions a {
+                height: 3.125rem !important;
+                width: 3.125rem !important;
+            }
+
+            .sf-floating-quick-actions a span:first-child {
+                height: 2.15rem !important;
+                width: 2.15rem !important;
+            }
         }
     </style>
 
