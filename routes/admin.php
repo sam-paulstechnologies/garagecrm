@@ -537,6 +537,12 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::put('opportunities/{opportunity}/restore', [OpportunityController::class, 'restore'])
             ->name('opportunities.restore');
 
+        Route::patch('opportunities/{opportunity}/stage', [OpportunityController::class, 'updateStage'])
+            ->name('opportunities.stage');
+
+        Route::patch('opportunities/{opportunity}/quick-update', [OpportunityController::class, 'quickUpdate'])
+            ->name('opportunities.quick-update');
+
         Route::resource('opportunities', OpportunityController::class);
 
         /*

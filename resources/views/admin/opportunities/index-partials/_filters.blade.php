@@ -5,6 +5,7 @@
     $stage = $stage ?? request('stage', '');
     $priority = $priority ?? request('priority', '');
     $bucket = $bucket ?? request('bucket', '');
+    $pipelineStatus = $pipelineStatus ?? request('pipeline_status', ($stage === '' ? 'open' : ''));
 
     $opportunityFilters = $opportunityFilters ?? [];
 
@@ -59,9 +60,10 @@
         '' => 'All Stages',
         'new' => 'New',
         'attempting_contact' => 'Attempting Contact',
+        'appointment' => 'Appointment',
+        'offer' => 'Offer',
         'manager_confirmation_pending' => 'Manager Confirmation Pending',
-        'appointment' => 'Appointment Planned',
-        'closed_won' => 'Booking Confirmed',
+        'booking_confirmed' => 'Booking Confirmed',
         'closed_lost' => 'Closed Lost',
     ];
 
@@ -122,6 +124,10 @@
             <input type="hidden" name="bucket" value="{{ $bucket }}">
         @endif
 
+        @if($pipelineStatus)
+            <input type="hidden" name="pipeline_status" value="{{ $pipelineStatus }}">
+        @endif
+
         {{-- Compact collapsed row --}}
         <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div class="min-w-0">
@@ -131,7 +137,7 @@
                     </h2>
 
                     @if($hasActiveFilters)
-                        <span class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
+                        <span class="sf-badge-orange">
                             Active
                         </span>
                     @endif
@@ -203,7 +209,7 @@
 
                     <select name="stage" class="sf-opportunity-select h-11 w-full rounded-xl border px-3 text-sm font-bold transition">
                         <option value="">All stages</option>
-                        @foreach(['new', 'attempting_contact', 'manager_confirmation_pending', 'appointment', 'closed_won', 'closed_lost'] as $stageOption)
+                        @foreach(['new', 'attempting_contact', 'appointment', 'offer', 'manager_confirmation_pending', 'booking_confirmed', 'closed_lost'] as $stageOption)
                             <option value="{{ $stageOption }}" @selected($stage === $stageOption)>
                                 {{ $stageLabel($stageOption) }}
                             </option>

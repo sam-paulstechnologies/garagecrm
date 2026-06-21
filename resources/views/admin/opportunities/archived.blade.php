@@ -5,13 +5,13 @@
 @section('content')
 @php
     $stageBadge = function ($stage) {
-        return match (strtolower((string) $stage)) {
+        return match (\App\Models\Client\Opportunity::normalizeStage($stage)) {
             'new' => 'sf-badge-blue',
             'attempting_contact' => 'sf-badge-yellow',
             'manager_confirmation_pending' => 'sf-badge-orange',
             'appointment', 'offer' => 'sf-badge-blue',
-            'closed_won', 'won' => 'sf-badge-green',
-            'closed_lost', 'lost' => 'sf-badge-red',
+            'booking_confirmed' => 'sf-badge-green',
+            'closed_lost' => 'sf-badge-red',
             default => 'sf-badge-slate',
         };
     };

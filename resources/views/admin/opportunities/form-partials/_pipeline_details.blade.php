@@ -1,7 +1,7 @@
 <div class="sf-card">
     <div class="sf-card-header">
-        <h2 class="sf-section-title">Pipeline Details</h2>
-        <p class="sf-section-subtitle">Control the sales stage, priority, value, owner, and expected appointment date.</p>
+        <h2 class="sf-section-title">Opportunity Lifecycle</h2>
+        <p class="sf-section-subtitle">Booking Confirmed opens or reuses a Booking. Closed Lost needs a reason.</p>
     </div>
 
     <div class="sf-card-body">
@@ -13,7 +13,7 @@
                         <option value="{{ $value }}" @selected($selectedStage === $value)>{{ $label }}</option>
                     @endforeach
                 </select>
-                <p class="sf-help">Select the current stage of this opportunity.</p>
+                <p class="sf-help">Select the current stage for this opportunity.</p>
                 @error('stage')<div class="sf-error">{{ $message }}</div>@enderror
             </div>
 
@@ -30,7 +30,7 @@
             <div>
                 <label class="sf-label">Tentative Appointment / Planning Date</label>
                 <input type="date" name="expected_close_date" id="expected_close_date" value="{{ old('expected_close_date', $fmtDate($opp?->expected_close_date ?? null)) }}" class="sf-input">
-                <p class="sf-help">This is only a tentative or planning date. Confirmed booking date is captured when stage is Booking Confirmed.</p>
+                <p class="sf-help">This is a planning date. Confirmed booking date is captured when stage is Booking Confirmed.</p>
                 @error('expected_close_date')<div class="sf-error">{{ $message }}</div>@enderror
             </div>
 
@@ -55,15 +55,21 @@
             </div>
 
             <div id="close_reason_wrap" class="hidden">
-                <label class="sf-label">Close Reason <span class="text-red-300">*</span></label>
-                <select name="close_reason" id="close_reason" class="sf-select">
+                <label class="sf-label">Closed Lost Reason <span class="text-red-300">*</span></label>
+                <select name="stage_sub_status" id="stage_sub_status" class="sf-select">
                     <option value="">-- Select reason --</option>
-                    @foreach($closeReasonOptions as $reason)
-                        <option value="{{ $reason }}" @selected(old('close_reason', $opp?->close_reason ?? '') === $reason)>{{ $reason }}</option>
+                    @foreach($closeReasonOptions as $value => $reason)
+                        <option value="{{ $value }}" @selected(old('stage_sub_status') === $value)>{{ $reason }}</option>
                     @endforeach
                 </select>
                 <p class="sf-help">Used later for retention and marketing analysis.</p>
-                @error('close_reason')<div class="sf-error">{{ $message }}</div>@enderror
+                @error('stage_sub_status')<div class="sf-error">{{ $message }}</div>@enderror
+
+                <div class="mt-3">
+                    <label class="sf-label">Reason Note</label>
+                    <textarea name="stage_reason" id="stage_reason" rows="3" class="sf-textarea" placeholder="Required when reason is Other">{{ old('stage_reason') }}</textarea>
+                    @error('stage_reason')<div class="sf-error">{{ $message }}</div>@enderror
+                </div>
             </div>
         </div>
     </div>

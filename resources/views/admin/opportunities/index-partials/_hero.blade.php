@@ -4,11 +4,11 @@
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h1 class="sf-opportunity-title text-3xl font-extrabold tracking-tight">
-                Opportunities
+                {{ $pageTitle ?? 'Open Opportunities' }}
             </h1>
 
             <p class="sf-opportunity-muted mt-2 max-w-3xl text-sm font-medium">
-                Track opportunities from lead qualification to appointment, booking, job, and invoice.
+                {{ $pageSubtitle ?? 'Active pipeline opportunities that still need follow-up, confirmation, or conversion.' }}
             </p>
         </div>
 

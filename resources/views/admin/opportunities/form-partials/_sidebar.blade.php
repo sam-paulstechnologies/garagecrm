@@ -1,66 +1,50 @@
-<div class="space-y-6">
-    <div class="sf-card">
-        <div class="sf-card-header">
-            <h2 class="sf-section-title">Stage Rules</h2>
-        </div>
-
-        <div class="sf-card-body">
-            <ul class="space-y-3 text-sm text-slate-300">
-                <li class="flex gap-3">
-                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">1</span>
-                    <span><strong class="text-white">Appointment Planned</strong> is only tentative planning.</span>
-                </li>
-
-                <li class="flex gap-3">
-                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">2</span>
-                    <span><strong class="text-white">Booking Confirmed</strong> means customer agreed and booking details must be captured.</span>
-                </li>
-
-                <li class="flex gap-3">
-                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/20">3</span>
-                    <span><strong class="text-white">Closed Lost</strong> should include a close reason.</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-
+<div class="sf-crm-sidebar space-y-4 lg:sticky lg:top-24">
     @if($isEdit && $opp)
-        <div class="sf-card">
-            <div class="sf-card-header">
-                <h2 class="sf-section-title">Current Snapshot</h2>
+        <div class="sf-opportunity-edit-panel rounded-2xl border shadow-sm">
+            <div class="border-b border-slate-800 px-5 py-4">
+                <h2 class="sf-opportunity-edit-title text-base font-extrabold tracking-tight">Opportunity Snapshot</h2>
             </div>
 
-            <div class="sf-card-body space-y-4 text-sm">
-                <div>
-                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Opportunity</div>
-                    <div class="mt-1 font-extrabold text-white">{{ $opp->title ?? 'Untitled Opportunity' }}</div>
-                </div>
+            <div class="divide-y divide-slate-800 text-sm">
+                @foreach([
+                    'Opportunity' => $opp->title ?? 'Untitled Opportunity',
+                    'Client' => $opp->client?->name ?? 'Not set',
+                    'Stage' => \App\Models\Client\Opportunity::stageLabel($opp->stage ?? 'new'),
+                    'Priority' => ucfirst($opp->priority ?? 'Medium'),
+                    'Created' => $opp->created_at?->format('d M Y, h:i A') ?? '-',
+                ] as $label => $value)
+                    <div class="sf-crm-snapshot-row px-5 py-3">
+                        <div class="sf-opportunity-edit-muted text-xs font-black uppercase tracking-wide">{{ $label }}</div>
+                        <div class="sf-opportunity-edit-value mt-1 font-bold">{{ $value }}</div>
+                    </div>
+                @endforeach
 
-                <div>
-                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Client</div>
-                    <div class="mt-1 font-bold text-slate-200">{{ $opp->client?->name ?? '-' }}</div>
-                </div>
-
-                <div>
-                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Stage</div>
-                    <div class="mt-1"><span class="sf-badge-orange">{{ $stageOptions[$opp->stage] ?? ucwords(str_replace('_', ' ', $opp->stage ?? 'new')) }}</span></div>
-                </div>
-
-                <div>
-                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Created</div>
-                    <div class="mt-1 font-bold text-slate-200">{{ $opp->created_at?->format('d M Y, h:i A') ?? '-' }}</div>
-                </div>
+                @if($opp->bookings->isNotEmpty())
+                    @php $latestBooking = $opp->bookings->sortByDesc('created_at')->first(); @endphp
+                    <div class="sf-crm-snapshot-row px-5 py-3">
+                        <div class="sf-opportunity-edit-muted text-xs font-black uppercase tracking-wide">Booking</div>
+                        <a href="{{ route('admin.bookings.show', $latestBooking) }}" class="sf-crm-link mt-1 inline-flex text-sm font-bold">
+                            Open Booking #{{ $latestBooking->id }}
+                        </a>
+                    </div>
+                @endif
             </div>
         </div>
     @endif
 
-    <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20">
-        <h3 class="font-extrabold text-blue-300">Vehicle Tip</h3>
-        <p class="mt-2 text-sm font-medium leading-6 text-blue-100/80">Use an existing vehicle when possible. Manual vehicle capture should be used only if the vehicle does not exist yet.</p>
+    <div class="sf-opportunity-edit-panel rounded-2xl border p-5 shadow-sm">
+        <h2 class="sf-opportunity-edit-title text-base font-extrabold tracking-tight">Edit Guidelines</h2>
+        <ul class="mt-3 space-y-2 text-sm">
+            <li class="sf-opportunity-edit-muted">Use stage changes only for real pipeline movement.</li>
+            <li class="sf-opportunity-edit-muted">Booking Confirmed creates or opens one Booking.</li>
+            <li class="sf-opportunity-edit-muted">Vehicle and service details improve booking context.</li>
+        </ul>
     </div>
 
-    <div class="rounded-3xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-xl shadow-black/20">
-        <h3 class="font-extrabold text-orange-300">WhatsApp Flow</h3>
-        <p class="mt-2 text-sm font-medium leading-6 text-orange-100/80">Stage changes may trigger follow-up logic depending on your WhatsApp event mapping and automation setup.</p>
+    <div class="rounded-2xl border border-orange-400/25 bg-orange-500/10 p-5 shadow-sm">
+        <h3 class="sf-opportunity-edit-note-title font-extrabold">WhatsApp Note</h3>
+        <p class="sf-opportunity-edit-note-text mt-2 text-sm font-medium leading-6">
+            Editing an opportunity does not automatically resend WhatsApp messages. Continue messaging from Inbox or automations.
+        </p>
     </div>
 </div>

@@ -2,7 +2,7 @@
     <div class="flex flex-col gap-3 border-b border-white/10 p-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h2 class="sf-section-title">Pipeline Status</h2>
-            <p class="sf-section-subtitle">Appointment Planned means timing is being discussed. Booking Confirmed means the customer agreed to proceed.</p>
+            <p class="sf-section-subtitle">Appointment means timing is being discussed. Booking Confirmed means the customer agreed to proceed.</p>
         </div>
 
         <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 px-4 py-3 text-sm font-bold text-orange-300">

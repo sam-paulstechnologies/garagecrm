@@ -3,10 +3,12 @@
 @php
     $q = $q ?? request('q', '');
     $bucket = $bucket ?? request('bucket', '');
+    $pipelineStatus = $pipelineStatus ?? request('pipeline_status', (($stage ?? request('stage', '')) === '' ? 'open' : ''));
+    $selectedBucket = $selectedBucket ?? $bucket;
 
     $opportunityFilters = collect(request()->only([
         'q',
-        'stage',
+        'pipeline_status',
         'priority',
         'date_range',
         'lead_source',
@@ -19,13 +21,13 @@
         ->filter(fn ($value) => filled($value) && $value !== 'all')
         ->all();
 
-    $bucketTotal = collect($bucketCards ?? [])->sum('count');
+    $bucketTotal = collect($bucketCards ?? [])->count();
 
     $selectedBucketTitle = null;
 
     if ($bucket) {
-        $matchedBucket = collect($bucketCards ?? [])->firstWhere('key', $bucket);
-        $selectedBucketTitle = $matchedBucket['title'] ?? ucwords(str_replace('_', ' ', $bucket));
+        $matchedBucket = collect($bucketCards ?? [])->firstWhere('key', $selectedBucket);
+        $selectedBucketTitle = $matchedBucket['title'] ?? ucwords(str_replace('_', ' ', $selectedBucket));
     }
 
     $bucketSummary = [
@@ -43,8 +45,8 @@
                 </h2>
 
                 @if(! blank($bucket))
-                    <span class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-300">
-                        Active
+                    <span class="sf-badge-orange">
+                        Selected
                     </span>
                 @endif
 
@@ -77,10 +79,20 @@
     </div>
 
     <div id="sfOpportunityBucketsBody" class="mt-5 hidden">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             @foreach($bucketCards as $bucketCard)
+                @php
+                    $bucketQuery = array_merge(
+                        $opportunityFilters,
+                        [
+                            'bucket' => $bucketCard['key'],
+                            'q' => $q,
+                            'pipeline_status' => $pipelineStatus,
+                        ]
+                    );
+                @endphp
                 <a
-                    href="{{ route('admin.opportunities.index', array_merge($opportunityFilters, ['bucket' => $bucketCard['key'], 'q' => $q])) }}"
+                    href="{{ route('admin.opportunities.index', $bucketQuery) }}"
                     class="block rounded-2xl border p-4 transition {{ $bucketCardClass($bucketCard['key']) }}"
                 >
                     <div class="sf-opportunity-value text-2xl font-extrabold">

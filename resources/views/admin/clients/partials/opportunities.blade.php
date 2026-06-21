@@ -7,15 +7,15 @@
         : collect();
 
     $stageBadge = function ($stage) {
-        $stage = strtolower((string) $stage);
+        $stage = \App\Models\Client\Opportunity::normalizeStage($stage);
 
         return match ($stage) {
             'new' => 'sf-badge-blue',
             'attempting_contact' => 'sf-badge-yellow',
             'appointment' => 'sf-badge-orange',
             'offer' => 'sf-badge-blue',
-            'closed_won', 'won' => 'sf-badge-green',
-            'closed_lost', 'lost' => 'sf-badge-red',
+            'booking_confirmed' => 'sf-badge-green',
+            'closed_lost' => 'sf-badge-red',
             default => 'sf-badge-slate',
         };
     };
@@ -53,7 +53,7 @@
     {{-- Opportunities --}}
     @forelse ($opps as $opp)
         @php
-            $stage = ucfirst(str_replace('_', ' ', $opp->stage ?? 'new'));
+            $stage = \App\Models\Client\Opportunity::stageLabel($opp->stage ?? 'new');
             $mk = optional($opp->vehicleMake)->name;
             $md = optional($opp->vehicleModel)->name;
             $veh = trim(($mk ? $mk : '') . ' ' . ($md ? $md : ''));

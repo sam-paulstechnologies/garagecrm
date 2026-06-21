@@ -1,7 +1,7 @@
 <div class="sf-card">
     <div class="sf-card-header">
-        <h2 class="sf-section-title">Basic Details</h2>
-        <p class="sf-section-subtitle">Link the opportunity to a client, lead, and title.</p>
+        <h2 class="sf-section-title">Basic Opportunity Details</h2>
+        <p class="sf-section-subtitle">Link the opportunity to the customer, lead, and record title.</p>
     </div>
 
     <div class="sf-card-body">

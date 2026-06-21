@@ -4,7 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const stageSelect = document.getElementById('stage_select');
     const bookingWrap = document.getElementById('booking_confirmation_wrap');
     const closeReasonWrap = document.getElementById('close_reason_wrap');
-    const closeReason = document.getElementById('close_reason');
+    const closeReason = document.getElementById('stage_sub_status');
+    const stageReason = document.getElementById('stage_reason');
     const bookingDate = document.getElementById('booking_date');
     const bookingSlot = document.getElementById('booking_slot');
 
@@ -22,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const stage = stageSelect?.value || '';
 
         if (bookingWrap) {
-            bookingWrap.classList.toggle('hidden', stage !== 'closed_won');
+            bookingWrap.classList.toggle('hidden', stage !== 'booking_confirmed');
         }
 
         if (closeReasonWrap) {
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (bookingDate && bookingSlot) {
-            if (stage === 'closed_won') {
+            if (stage === 'booking_confirmed') {
                 bookingDate.setAttribute('required', 'required');
                 bookingSlot.setAttribute('required', 'required');
 
@@ -48,6 +49,14 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 bookingDate.removeAttribute('required');
                 bookingSlot.removeAttribute('required');
+            }
+        }
+
+        if (stageReason) {
+            if (stage === 'closed_lost' && closeReason?.value === 'other') {
+                stageReason.setAttribute('required', 'required');
+            } else {
+                stageReason.removeAttribute('required');
             }
         }
     }
@@ -135,6 +144,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     stageSelect?.addEventListener('change', refreshStageFields);
+    closeReason?.addEventListener('change', refreshStageFields);
 
     clientSelect?.addEventListener('change', function () {
         filterVehiclesByClient();

@@ -23,9 +23,10 @@
     $stageOptions = [
         'new' => 'New',
         'attempting_contact' => 'Attempting Contact',
+        'appointment' => 'Appointment',
+        'offer' => 'Offer',
         'manager_confirmation_pending' => 'Manager Confirmation Pending',
-        'appointment' => 'Appointment Planned',
-        'closed_won' => 'Booking Confirmed',
+        'booking_confirmed' => 'Booking Confirmed',
         'closed_lost' => 'Closed Lost',
     ];
 
@@ -53,17 +54,19 @@
     ];
 
     $closeReasonOptions = [
-        'Price too high',
-        'Customer not responding',
-        'Went to another garage',
-        'Not serviceable',
-        'Wrong lead',
-        'Duplicate',
-        'Customer postponed',
-        'Other',
+        'not_interested' => 'Not interested',
+        'price_not_accepted' => 'Price not accepted',
+        'customer_cancelled' => 'Customer cancelled',
+        'unreachable_after_follow_up' => 'Unreachable after follow-up',
+        'service_not_required' => 'Service no longer required',
+        'service_not_offered' => 'Service not offered',
+        'duplicate' => 'Duplicate opportunity',
+        'booked_elsewhere' => 'Booked elsewhere',
+        'spam_or_test' => 'Spam / test',
+        'other' => 'Other',
     ];
 
-    $selectedStage = $oldOr('stage', 'new');
+    $selectedStage = \App\Models\Client\Opportunity::normalizeStage($oldOr('stage', 'new'));
     $selectedPriority = $oldOr('priority', 'medium');
     $selectedClientId = (string) old('client_id', $opp?->client_id ?? request('client_id', ''));
     $selectedLeadId = (string) old('lead_id', $opp?->lead_id ?? request('lead_id', ''));
@@ -112,29 +115,68 @@
     $selectedManualModelId = (string) old('manual_model_id', $opp?->manual_model_id ?? '');
 @endphp
 
-<form method="POST" action="{{ $action }}" class="space-y-6">
+<form method="POST" action="{{ $action }}" class="{{ $isEdit ? 'sf-opportunity-edit-form space-y-6' : 'space-y-6' }}">
     @csrf
 
     @if($isEdit)
         @method('PUT')
     @endif
 
-    @include('admin.opportunities.form-partials._errors')
-    @include('admin.opportunities.form-partials._pipeline_guide')
+    @if($isEdit)
+        @include('admin.opportunities.form-partials._errors')
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div class="space-y-6 lg:col-span-2">
-            @include('admin.opportunities.form-partials._basic_details')
-            @include('admin.opportunities.form-partials._pipeline_details')
-            @include('admin.opportunities.form-partials._booking_confirmation')
-            @include('admin.opportunities.form-partials._vehicle')
-            @include('admin.opportunities.form-partials._services')
-            @include('admin.opportunities.form-partials._notes')
-            @include('admin.opportunities.form-partials._actions')
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div class="lg:col-span-2">
+                <div class="sf-opportunity-edit-panel sf-opportunity-edit-card rounded-2xl border shadow-sm">
+                    <div class="sf-crm-card-header border-b border-slate-800 px-5 py-4">
+                        <h2 class="sf-opportunity-edit-title text-base font-extrabold tracking-tight">Opportunity Information</h2>
+                    </div>
+
+                    <div class="p-4 sm:p-5">
+                        <div class="sf-opportunity-edit-sections">
+                            @include('admin.opportunities.form-partials._basic_details')
+                            @include('admin.opportunities.form-partials._pipeline_details')
+                            @include('admin.opportunities.form-partials._booking_confirmation')
+                            @include('admin.opportunities.form-partials._vehicle')
+                            @include('admin.opportunities.form-partials._services')
+                            @include('admin.opportunities.form-partials._notes')
+                        </div>
+                    </div>
+
+                    <div class="sf-crm-action-bar border-t border-slate-800 px-5 py-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="submit" class="sf-btn-primary">
+                                Update Opportunity
+                            </button>
+
+                            <a href="{{ route('admin.opportunities.show', $opp) }}" class="sf-btn-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @include('admin.opportunities.form-partials._sidebar')
         </div>
+    @else
+        @include('admin.opportunities.form-partials._errors')
+        @include('admin.opportunities.form-partials._pipeline_guide')
 
-        @include('admin.opportunities.form-partials._sidebar')
-    </div>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div class="space-y-6 lg:col-span-2">
+                @include('admin.opportunities.form-partials._basic_details')
+                @include('admin.opportunities.form-partials._pipeline_details')
+                @include('admin.opportunities.form-partials._booking_confirmation')
+                @include('admin.opportunities.form-partials._vehicle')
+                @include('admin.opportunities.form-partials._services')
+                @include('admin.opportunities.form-partials._notes')
+                @include('admin.opportunities.form-partials._actions')
+            </div>
+
+            @include('admin.opportunities.form-partials._sidebar')
+        </div>
+    @endif
 </form>
 
 @include('admin.opportunities.form-partials._scripts')

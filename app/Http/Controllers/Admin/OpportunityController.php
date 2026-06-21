@@ -14,6 +14,7 @@ use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
@@ -38,17 +39,29 @@ class OpportunityController extends Controller
         $stage = trim((string) $request->get('stage', ''));
         $priority = trim((string) $request->get('priority', ''));
         $bucket = trim((string) $request->get('bucket', ''));
+        $pipelineStatus = trim((string) $request->get('pipeline_status', ''));
+        $statusKeys = ['open', 'appointment', 'missed_appointment', 'won', 'lost'];
+
+        if ($pipelineStatus === '' && in_array($bucket, $statusKeys, true)) {
+            $pipelineStatus = $bucket;
+            $bucket = '';
+        }
+
+        if ($stage !== '') {
+            $pipelineStatus = '';
+        }
+
+        if ($pipelineStatus === '' && $stage === '') {
+            $pipelineStatus = 'open';
+        }
 
         $opportunities = $this->baseOpportunityQuery($companyId, $q)
             ->where('is_archived', false)
-            ->when($stage === '', function ($query) {
-                $query->whereNotIn('stage', [
-                    Opportunity::STAGE_CLOSED_WON,
-                    Opportunity::STAGE_CLOSED_LOST,
-                ]);
+            ->when($pipelineStatus !== '', function ($query) use ($pipelineStatus) {
+                $this->applyPipelineStatusFilter($query, $pipelineStatus);
             })
-            ->when($stage !== '', function ($query) use ($stage) {
-                $query->where('stage', $stage);
+            ->when($pipelineStatus === '' && $stage !== '', function ($query) use ($stage) {
+                $this->applyStageFilter($query, $stage);
             })
             ->when($priority !== '', function ($query) use ($priority) {
                 $query->where('priority', $priority);
@@ -60,12 +73,18 @@ class OpportunityController extends Controller
             ->paginate(20)
             ->withQueryString();
 
+        [$pageTitle, $pageSubtitle] = $this->opportunityPageContext($pipelineStatus, $stage);
+
         return view('admin.opportunities.index', [
             'opportunities' => $opportunities,
             'q' => $q,
             'stage' => $stage,
             'priority' => $priority,
             'bucket' => $bucket,
+            'pipelineStatus' => $pipelineStatus,
+            'selectedBucket' => $bucket,
+            'pageTitle' => $pageTitle,
+            'pageSubtitle' => $pageSubtitle,
             'stages' => Opportunity::STAGES,
             'opportunityCounts' => $this->opportunityCounts($companyId),
             'bucketCounts' => $this->bucketCounts($companyId),
@@ -127,6 +146,9 @@ class OpportunityController extends Controller
 
         $data = $this->validatedData($request, $companyId, true);
         $data['service_type'] = $this->resolveOpportunityServiceType($data);
+        $data['close_reason'] = $data['stage'] === Opportunity::STAGE_CLOSED_LOST
+            ? $this->closedLostReasonFromRequest($data)
+            : null;
 
         $this->validateLinkedRecords($data, $companyId);
         $this->validateStageRequirements($data);
@@ -135,14 +157,13 @@ class OpportunityController extends Controller
         $data['is_archived'] = false;
         $data['priority'] = $data['priority'] ?? 'medium';
 
-        if ($data['stage'] !== Opportunity::STAGE_CLOSED_LOST) {
-            $data['close_reason'] = null;
-        }
+        $booking = null;
+        $bookingExisted = false;
 
-        DB::transaction(function () use (&$data, $companyId) {
+        DB::transaction(function () use (&$data, $companyId, &$booking) {
             $data['vehicle_id'] = $this->resolveVehicleForOpportunity($data, $companyId);
 
-            if ($data['stage'] === Opportunity::STAGE_CLOSED_WON) {
+            if ($data['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED) {
                 $data['is_converted'] = true;
             }
 
@@ -152,7 +173,7 @@ class OpportunityController extends Controller
 
             $opportunity = Opportunity::create($this->opportunityPayload($data));
 
-            if ($data['stage'] === Opportunity::STAGE_CLOSED_WON) {
+            if ($data['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED) {
                 $booking = $this->createOrUpdateBookingFromOpportunity($opportunity, $data);
 
                 DB::afterCommit(function () use ($booking) {
@@ -164,6 +185,10 @@ class OpportunityController extends Controller
                 });
             }
         });
+
+        if ($data['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED && $booking) {
+            return $this->redirectToBooking($booking, $bookingExisted);
+        }
 
         return redirect()
             ->route('admin.opportunities.index')
@@ -179,11 +204,198 @@ class OpportunityController extends Controller
             'client',
             'lead',
             'assignee',
+            'vehicle',
             'vehicleMake',
             'vehicleModel',
+            'bookings',
+            'jobs',
+            'invoices',
         ]);
 
-        return view('admin.opportunities.show', compact('opportunity'));
+        return view('admin.opportunities.show', [
+            'opportunity' => $opportunity,
+            'stages' => Opportunity::STAGES,
+            'closedLostSubStatuses' => $this->closedLostSubStatuses(),
+            'users' => $this->assignableUsers($this->companyId()),
+        ]);
+    }
+
+    public function quickUpdate(Request $request, Opportunity $opportunity)
+    {
+        $this->authorizeCompany($opportunity);
+
+        $companyId = $this->companyId();
+        $field = (string) $request->input('field');
+        $allowedFields = [
+            'title',
+            'priority',
+            'value',
+            'source',
+            'assigned_to',
+            'expected_close_date',
+            'service_type',
+            'notes',
+            'next_follow_up',
+        ];
+
+        $request->validate([
+            'field' => ['required', Rule::in($allowedFields)],
+        ]);
+
+        $rules = match ($field) {
+            'title' => ['required', 'string', 'max:255'],
+            'priority' => ['nullable', Rule::in(['low', 'medium', 'high', 'urgent'])],
+            'value' => ['nullable', 'numeric', 'min:0'],
+            'source' => ['nullable', 'string', 'max:255'],
+            'assigned_to' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(function ($q) use ($companyId) {
+                    $q->where('company_id', $companyId)
+                        ->whereIn('role', ['admin', 'manager']);
+                }),
+            ],
+            'expected_close_date', 'next_follow_up' => ['nullable', 'date'],
+            'service_type' => ['nullable', 'string', 'max:1000'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            default => ['prohibited'],
+        };
+
+        $data = $request->validate([
+            'value' => $rules,
+        ]);
+
+        $value = $data['value'] ?? null;
+
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+
+        if ($value === '') {
+            $value = null;
+        }
+
+        if ($field === 'value' && $value !== null) {
+            $value = (float) $value;
+        }
+
+        $opportunity->update([
+            $field => $value,
+        ]);
+
+        return redirect()
+            ->route('admin.opportunities.show', $opportunity)
+            ->with('success', 'Opportunity field updated.');
+    }
+
+    public function updateStage(Request $request, Opportunity $opportunity)
+    {
+        $this->authorizeCompany($opportunity);
+
+        $companyId = $this->companyId();
+
+        $data = $request->validate([
+            'stage' => ['required', Rule::in(Opportunity::STAGES)],
+            'booking_date' => ['nullable', 'date'],
+            'booking_slot' => ['nullable', Rule::in(['morning', 'afternoon', 'evening'])],
+            'booking_notes' => ['nullable', 'string', 'max:2000'],
+            'stage_sub_status' => [
+                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_LOST),
+                'nullable',
+                Rule::in(array_keys($this->closedLostSubStatuses())),
+            ],
+            'stage_reason' => [
+                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_LOST && $request->input('stage_sub_status') === 'other'),
+                'nullable',
+                'string',
+                'max:200',
+            ],
+            'close_reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $payload = $opportunity->only([
+            'title',
+            'client_id',
+            'lead_id',
+            'vehicle_id',
+            'vehicle_make_id',
+            'vehicle_model_id',
+            'other_make',
+            'other_model',
+            'service_type',
+            'value',
+            'expected_close_date',
+            'priority',
+            'notes',
+            'assigned_to',
+        ]);
+
+        $payload['stage'] = $data['stage'];
+        $payload['close_reason'] = $data['stage'] === Opportunity::STAGE_CLOSED_LOST
+            ? $this->closedLostReasonFromRequest($data, $opportunity->close_reason)
+            : null;
+        $payload['booking_date'] = $data['booking_date'] ?? null;
+        $payload['booking_slot'] = $data['booking_slot'] ?? null;
+        $payload['booking_notes'] = $data['booking_notes'] ?? null;
+        $payload['service_type'] = $this->resolveOpportunityServiceType($payload, $opportunity);
+
+        $this->validateLinkedRecords($payload, $companyId);
+        $this->validateStageRequirements($payload);
+
+        $pipeline = Opportunity::STAGES;
+        $currentIndex = array_search(Opportunity::normalizeStage($opportunity->stage), $pipeline, true);
+        $nextIndex = array_search((string) $payload['stage'], $pipeline, true);
+
+        if ($currentIndex !== false && $nextIndex !== false && $nextIndex < $currentIndex) {
+            return redirect()
+                ->route('admin.opportunities.show', $opportunity)
+                ->with('error', 'Invalid pipeline transition. Use the edit page if this opportunity needs a corrective rollback.');
+        }
+
+        $booking = null;
+        $bookingExisted = $payload['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED
+            ? Booking::where('company_id', $opportunity->company_id)
+                ->where('opportunity_id', $opportunity->id)
+                ->exists()
+            : false;
+
+        DB::transaction(function () use ($opportunity, &$payload, $companyId, &$booking) {
+            $currentStage = Opportunity::normalizeStage($opportunity->stage);
+            $newStage = (string) $payload['stage'];
+
+            $this->validateStageTransition($currentStage, $newStage);
+
+            $payload['vehicle_id'] = $this->resolveVehicleForOpportunity($payload, $companyId);
+
+            if ($newStage === Opportunity::STAGE_BOOKING_CONFIRMED) {
+                $payload['is_converted'] = true;
+            }
+
+            if ($newStage === Opportunity::STAGE_CLOSED_LOST) {
+                $payload['is_converted'] = false;
+            }
+
+            $opportunity->update($this->opportunityPayload($payload));
+
+            if ($newStage === Opportunity::STAGE_BOOKING_CONFIRMED) {
+                $booking = $this->createOrUpdateBookingFromOpportunity($opportunity->fresh(), $payload);
+
+                DB::afterCommit(function () use ($booking) {
+                    $freshBooking = $booking->fresh();
+
+                    if ($freshBooking) {
+                        event(new BookingStatusUpdated($freshBooking, (string) $freshBooking->status));
+                    }
+                });
+            }
+        });
+
+        if ($payload['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED && $booking) {
+            return $this->redirectToBooking($booking, $bookingExisted);
+        }
+
+        return redirect()
+            ->route('admin.opportunities.show', $opportunity)
+            ->with('success', 'Opportunity stage updated.');
     }
 
     /** ✏️ Edit */
@@ -236,25 +448,31 @@ class OpportunityController extends Controller
         $data = $this->validatedData($request, $companyId, false);
         $data['client_id'] = $opportunity->client_id;
         $data['service_type'] = $this->resolveOpportunityServiceType($data, $opportunity);
+        $data['close_reason'] = $data['stage'] === Opportunity::STAGE_CLOSED_LOST
+            ? $this->closedLostReasonFromRequest($data, $opportunity->close_reason)
+            : null;
 
         $this->validateLinkedRecords($data, $companyId);
         $this->validateStageRequirements($data);
 
         $data['priority'] = $data['priority'] ?? 'medium';
 
-        if ($data['stage'] !== Opportunity::STAGE_CLOSED_LOST) {
-            $data['close_reason'] = null;
-        }
+        $booking = null;
+        $bookingExisted = $data['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED
+            ? Booking::where('company_id', $opportunity->company_id)
+                ->where('opportunity_id', $opportunity->id)
+                ->exists()
+            : false;
 
-        DB::transaction(function () use ($opportunity, &$data, $companyId) {
-            $currentStage = (string) $opportunity->stage;
+        DB::transaction(function () use ($opportunity, &$data, $companyId, &$booking) {
+            $currentStage = Opportunity::normalizeStage($opportunity->stage);
             $newStage = (string) $data['stage'];
 
             $this->validateStageTransition($currentStage, $newStage);
 
             $data['vehicle_id'] = $this->resolveVehicleForOpportunity($data, $companyId);
 
-            if ($newStage === Opportunity::STAGE_CLOSED_WON) {
+            if ($newStage === Opportunity::STAGE_BOOKING_CONFIRMED) {
                 $data['is_converted'] = true;
             }
 
@@ -264,7 +482,7 @@ class OpportunityController extends Controller
 
             $opportunity->update($this->opportunityPayload($data));
 
-            if ($newStage === Opportunity::STAGE_CLOSED_WON) {
+            if ($newStage === Opportunity::STAGE_BOOKING_CONFIRMED) {
                 $booking = $this->createOrUpdateBookingFromOpportunity($opportunity->fresh(), $data);
 
                 DB::afterCommit(function () use ($booking) {
@@ -276,6 +494,10 @@ class OpportunityController extends Controller
                 });
             }
         });
+
+        if ($data['stage'] === Opportunity::STAGE_BOOKING_CONFIRMED && $booking) {
+            return $this->redirectToBooking($booking, $bookingExisted);
+        }
 
         return redirect()
             ->route('admin.opportunities.index')
@@ -326,10 +548,20 @@ class OpportunityController extends Controller
             'notes' => ['nullable', 'string'],
 
             'close_reason' => [
-                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_LOST),
                 'nullable',
                 'string',
                 'max:255',
+            ],
+            'stage_sub_status' => [
+                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_LOST),
+                'nullable',
+                Rule::in(array_keys($this->closedLostSubStatuses())),
+            ],
+            'stage_reason' => [
+                Rule::requiredIf(fn () => $request->input('stage') === Opportunity::STAGE_CLOSED_LOST && $request->input('stage_sub_status') === 'other'),
+                'nullable',
+                'string',
+                'max:200',
             ],
 
             'booking_date' => [
@@ -470,6 +702,8 @@ class OpportunityController extends Controller
                 'booking_date',
                 'booking_slot',
                 'booking_notes',
+                'stage_sub_status',
+                'stage_reason',
             ])
             ->toArray();
     }
@@ -604,7 +838,8 @@ class OpportunityController extends Controller
             'open' => Opportunity::where('company_id', $companyId)
                 ->where('is_archived', false)
                 ->whereNotIn('stage', [
-                    Opportunity::STAGE_CLOSED_WON,
+                    Opportunity::STAGE_BOOKING_CONFIRMED,
+                    Opportunity::LEGACY_STAGE_CLOSED_WON,
                     Opportunity::STAGE_CLOSED_LOST,
                 ])
                 ->count(),
@@ -623,7 +858,10 @@ class OpportunityController extends Controller
 
             'won' => Opportunity::where('company_id', $companyId)
                 ->where('is_archived', false)
-                ->where('stage', Opportunity::STAGE_CLOSED_WON)
+                ->whereIn('stage', [
+                    Opportunity::STAGE_BOOKING_CONFIRMED,
+                    Opportunity::LEGACY_STAGE_CLOSED_WON,
+                ])
                 ->count(),
 
             'lost' => Opportunity::where('company_id', $companyId)
@@ -638,27 +876,23 @@ class OpportunityController extends Controller
         $base = Opportunity::where('company_id', $companyId)
             ->where('is_archived', false)
             ->whereNotIn('stage', [
-                Opportunity::STAGE_CLOSED_WON,
+                Opportunity::STAGE_BOOKING_CONFIRMED,
+                Opportunity::LEGACY_STAGE_CLOSED_WON,
                 Opportunity::STAGE_CLOSED_LOST,
             ]);
 
         return [
-            'new' => (clone $base)->where('stage', 'new')->count(),
-
-            'attempting_contact' => (clone $base)->where('stage', 'attempting_contact')->count(),
-
-            'manager_confirmation_pending' => (clone $base)->where('stage', 'manager_confirmation_pending')->count(),
-
-            'appointment' => (clone $base)->where('stage', 'appointment')->count(),
-
-            'missed_appointment' => (clone $base)
-                ->where('stage', 'appointment')
-                ->whereNotNull('expected_close_date')
-                ->whereDate('expected_close_date', '<', now()->toDateString())
-                ->count(),
-
             'high_priority' => (clone $base)
                 ->whereIn('priority', ['high', 'urgent'])
+                ->count(),
+
+            'follow_up_due' => (clone $base)
+                ->whereNotNull('next_follow_up')
+                ->whereDate('next_follow_up', '<=', now()->toDateString())
+                ->count(),
+
+            'no_follow_up' => (clone $base)
+                ->whereNull('next_follow_up')
                 ->count(),
 
             'unassigned' => (clone $base)
@@ -669,11 +903,26 @@ class OpportunityController extends Controller
                 ->whereNull('vehicle_id')
                 ->count(),
 
+            'missing_service' => (clone $base)
+                ->where(function ($q) {
+                    $q->whereNull('service_type')
+                        ->orWhere('service_type', '');
+                })
+                ->count(),
+
+            'missing_close_date' => (clone $base)
+                ->whereNull('expected_close_date')
+                ->count(),
+
             'no_value' => (clone $base)
                 ->where(function ($q) {
                     $q->whereNull('value')
                         ->orWhere('value', 0);
                 })
+                ->count(),
+
+            'stale_open' => (clone $base)
+                ->where('updated_at', '<=', now()->subDays(7))
                 ->count(),
         ];
     }
@@ -681,11 +930,44 @@ class OpportunityController extends Controller
     protected function applyBucketFilter($query, string $bucket): void
     {
         match ($bucket) {
-            'new' => $query->where('stage', 'new'),
+            'high_priority' => $query->whereIn('priority', ['high', 'urgent']),
 
-            'attempting_contact' => $query->where('stage', 'attempting_contact'),
+            'follow_up_due' => $query
+                ->whereNotNull('next_follow_up')
+                ->whereDate('next_follow_up', '<=', now()->toDateString()),
 
-            'manager_confirmation_pending' => $query->where('stage', 'manager_confirmation_pending'),
+            'no_follow_up' => $query->whereNull('next_follow_up'),
+
+            'unassigned' => $query->whereNull('assigned_to'),
+
+            'no_vehicle' => $query->whereNull('vehicle_id'),
+
+            'missing_service' => $query->where(function ($q) {
+                $q->whereNull('service_type')
+                    ->orWhere('service_type', '');
+            }),
+
+            'missing_close_date' => $query->whereNull('expected_close_date'),
+
+            'no_value' => $query->where(function ($q) {
+                $q->whereNull('value')
+                    ->orWhere('value', 0);
+            }),
+
+            'stale_open' => $query->where('updated_at', '<=', now()->subDays(7)),
+
+            default => null,
+        };
+    }
+
+    protected function applyPipelineStatusFilter($query, string $status): void
+    {
+        match ($status) {
+            'open' => $query->whereNotIn('stage', [
+                Opportunity::STAGE_BOOKING_CONFIRMED,
+                Opportunity::LEGACY_STAGE_CLOSED_WON,
+                Opportunity::STAGE_CLOSED_LOST,
+            ]),
 
             'appointment' => $query->where('stage', 'appointment'),
 
@@ -694,19 +976,55 @@ class OpportunityController extends Controller
                 ->whereNotNull('expected_close_date')
                 ->whereDate('expected_close_date', '<', now()->toDateString()),
 
-            'high_priority' => $query->whereIn('priority', ['high', 'urgent']),
+            'won' => $query->whereIn('stage', [
+                Opportunity::STAGE_BOOKING_CONFIRMED,
+                Opportunity::LEGACY_STAGE_CLOSED_WON,
+            ]),
 
-            'unassigned' => $query->whereNull('assigned_to'),
-
-            'no_vehicle' => $query->whereNull('vehicle_id'),
-
-            'no_value' => $query->where(function ($q) {
-                $q->whereNull('value')
-                    ->orWhere('value', 0);
-            }),
+            'lost' => $query->where('stage', Opportunity::STAGE_CLOSED_LOST),
 
             default => null,
         };
+    }
+
+    protected function applyStageFilter($query, string $stage): void
+    {
+        $normalizedStage = Opportunity::normalizeStage($stage);
+
+        match ($normalizedStage) {
+            Opportunity::STAGE_ATTEMPTING_CONTACT => $query->whereIn('stage', [
+                Opportunity::STAGE_ATTEMPTING_CONTACT,
+                Opportunity::LEGACY_STAGE_COLLECTING_DETAILS,
+            ]),
+            Opportunity::STAGE_BOOKING_CONFIRMED => $query->whereIn('stage', [
+                Opportunity::STAGE_BOOKING_CONFIRMED,
+                Opportunity::LEGACY_STAGE_CLOSED_WON,
+            ]),
+            default => $query->where('stage', $normalizedStage),
+        };
+    }
+
+    protected function opportunityPageContext(string $pipelineStatus, string $stage): array
+    {
+        if ($pipelineStatus !== '') {
+            return match ($pipelineStatus) {
+                'open' => ['Open Opportunities', 'Active pipeline opportunities that still need follow-up, confirmation, or conversion.'],
+                'appointment' => ['Appointment', 'Opportunities with an appointment planned and waiting for confirmation.'],
+                'missed_appointment' => ['Missed Appointments', 'Appointments with a past expected close date that need recovery.'],
+                'won' => ['Booking Confirmed', 'Opportunities converted into confirmed bookings.'],
+                'lost' => ['Closed Lost', 'Lost opportunities and reasons for pipeline leakage.'],
+                default => [ucwords(str_replace('_', ' ', $pipelineStatus)), 'Filtered opportunity view.'],
+            };
+        }
+
+        if ($stage !== '') {
+            return [
+                ucwords(str_replace('_', ' ', $stage)),
+                'Opportunities filtered by selected pipeline stage.',
+            ];
+        }
+
+        return ['Open Opportunities', 'Active pipeline opportunities that still need follow-up, confirmation, or conversion.'];
     }
 
     protected function createOrUpdateBookingFromOpportunity(Opportunity $opportunity, array $data): Booking
@@ -774,6 +1092,55 @@ class OpportunityController extends Controller
         );
     }
 
+    protected function redirectToBooking(Booking $booking, bool $bookingExisted)
+    {
+        $message = $bookingExisted
+            ? 'Booking already exists. Opening booking.'
+            : 'Booking confirmed and booking created.';
+
+        if (Route::has('admin.bookings.show')) {
+            return redirect()
+                ->route('admin.bookings.show', $booking)
+                ->with('success', $message);
+        }
+
+        return redirect()
+            ->route('admin.bookings.index')
+            ->with('success', $message);
+    }
+
+    protected function closedLostSubStatuses(): array
+    {
+        return [
+            'not_interested' => 'Not interested',
+            'price_not_accepted' => 'Price not accepted',
+            'customer_cancelled' => 'Customer cancelled',
+            'unreachable_after_follow_up' => 'Unreachable after follow-up',
+            'service_not_required' => 'Service no longer required',
+            'service_not_offered' => 'Service not offered',
+            'duplicate' => 'Duplicate opportunity',
+            'booked_elsewhere' => 'Booked elsewhere',
+            'spam_or_test' => 'Spam / test',
+            'other' => 'Other',
+        ];
+    }
+
+    protected function closedLostReasonFromRequest(array $data, ?string $fallback = null): ?string
+    {
+        $subStatus = $data['stage_sub_status'] ?? null;
+
+        if (! $subStatus) {
+            return $data['close_reason'] ?? $fallback;
+        }
+
+        $label = $this->closedLostSubStatuses()[$subStatus] ?? ucfirst(str_replace('_', ' ', (string) $subStatus));
+        $reason = trim((string) ($data['stage_reason'] ?? ''));
+
+        return $reason !== ''
+            ? $label . ': ' . $reason
+            : $label;
+    }
+
     protected function assignableUsers(int $companyId)
     {
         return User::where('company_id', $companyId)
@@ -784,19 +1151,19 @@ class OpportunityController extends Controller
 
     protected function validateStageRequirements(array $data): void
     {
-        if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['service_type'])) {
+        if (($data['stage'] ?? null) === Opportunity::STAGE_BOOKING_CONFIRMED && empty($data['service_type'])) {
             throw ValidationException::withMessages([
                 'service_type' => 'Please select at least one service type before confirming the booking.',
             ]);
         }
 
-        if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['booking_date'])) {
+        if (($data['stage'] ?? null) === Opportunity::STAGE_BOOKING_CONFIRMED && empty($data['booking_date'])) {
             throw ValidationException::withMessages([
                 'booking_date' => 'Please select booking date before confirming the booking.',
             ]);
         }
 
-        if (($data['stage'] ?? null) === Opportunity::STAGE_CLOSED_WON && empty($data['booking_slot'])) {
+        if (($data['stage'] ?? null) === Opportunity::STAGE_BOOKING_CONFIRMED && empty($data['booking_slot'])) {
             throw ValidationException::withMessages([
                 'booking_slot' => 'Please select booking slot before confirming the booking.',
             ]);
@@ -847,8 +1214,8 @@ class OpportunityController extends Controller
     {
         $pipeline = Opportunity::STAGES;
 
-        $currentIndex = array_search($current, $pipeline, true);
-        $nextIndex = array_search($next, $pipeline, true);
+        $currentIndex = array_search(Opportunity::normalizeStage($current), $pipeline, true);
+        $nextIndex = array_search(Opportunity::normalizeStage($next), $pipeline, true);
 
         if ($currentIndex === false || $nextIndex === false) {
             return;

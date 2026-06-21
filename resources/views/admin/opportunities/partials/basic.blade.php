@@ -166,7 +166,7 @@
                                 </label>
 
                                 <select name="stage" required class="sf-select">
-                                    @foreach(['new','attempting_contact','appointment','offer','closed_won','closed_lost'] as $stage)
+                                    @foreach(['new','attempting_contact','appointment','offer','manager_confirmation_pending','booking_confirmed','closed_lost'] as $stage)
                                         <option value="{{ $stage }}" @selected(old('stage') == $stage)>
                                             {{ ucfirst(str_replace('_', ' ', $stage)) }}
                                         </option>

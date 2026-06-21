@@ -1,7 +1,7 @@
 <div class="sf-card">
     <div class="sf-card-header">
-        <h2 class="sf-section-title">Vehicle Details</h2>
-        <p class="sf-section-subtitle">Link an existing vehicle or capture vehicle details manually.</p>
+        <h2 class="sf-section-title">Service / Vehicle Context</h2>
+        <p class="sf-section-subtitle">Link an existing vehicle or capture vehicle details for follow-up.</p>
     </div>
 
     <div class="sf-card-body space-y-6">

@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function () {
         stageSelect.addEventListener('change', function () {
             const normalized = this.value.toLowerCase().replace(/\s/g, '_');
 
-            if (normalized === 'closed_won') {
+            if (normalized === 'booking_confirmed') {
                 setTimeout(function () {
                     bookingModal.show();
                 }, 300);

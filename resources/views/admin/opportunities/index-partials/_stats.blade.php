@@ -3,6 +3,8 @@
 @php
     $baseQuery = collect(request()->only([
         'q',
+        'bucket',
+        'priority',
         'date_range',
         'lead_source',
         'assigned_user',
@@ -15,10 +17,11 @@
         ->all();
 @endphp
 
-<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+<div id="sfOpportunityStatusCards" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
     <a
-        href="{{ route('admin.opportunities.index', $baseQuery) }}"
-        class="sf-opportunity-panel rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['pipeline_status' => 'open'])) }}"
+        class="sf-opportunity-panel {{ $statusCardClass('open') }} rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        @if(($pipelineStatus ?? '') === 'open') aria-current="page" @endif
     >
         <div class="text-sm font-bold text-blue-300">
             Open Opportunities
@@ -34,11 +37,12 @@
     </a>
 
     <a
-        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['bucket' => 'appointment'])) }}"
-        class="sf-opportunity-panel rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['pipeline_status' => 'appointment'])) }}"
+        class="sf-opportunity-panel {{ $statusCardClass('appointment') }} rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        @if(($pipelineStatus ?? '') === 'appointment') aria-current="page" @endif
     >
         <div class="text-sm font-bold text-orange-300">
-            Appointment Planned
+            Appointment
         </div>
 
         <div class="mt-2 text-3xl font-extrabold sf-opportunity-value">
@@ -51,8 +55,9 @@
     </a>
 
     <a
-        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['bucket' => 'missed_appointment'])) }}"
-        class="sf-opportunity-panel rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['pipeline_status' => 'missed_appointment'])) }}"
+        class="sf-opportunity-panel {{ $statusCardClass('missed_appointment') }} rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        @if(($pipelineStatus ?? '') === 'missed_appointment') aria-current="page" @endif
     >
         <div class="text-sm font-bold text-red-300">
             Missed Appointments
@@ -68,8 +73,9 @@
     </a>
 
     <a
-        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['stage' => 'closed_won'])) }}"
-        class="sf-opportunity-panel rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['pipeline_status' => 'won'])) }}"
+        class="sf-opportunity-panel {{ $statusCardClass('won') }} rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        @if(($pipelineStatus ?? '') === 'won') aria-current="page" @endif
     >
         <div class="text-sm font-bold text-green-300">
             Booking Confirmed
@@ -85,8 +91,9 @@
     </a>
 
     <a
-        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['stage' => 'closed_lost'])) }}"
-        class="sf-opportunity-panel rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        href="{{ route('admin.opportunities.index', array_merge($baseQuery, ['pipeline_status' => 'lost'])) }}"
+        class="sf-opportunity-panel {{ $statusCardClass('lost') }} rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5"
+        @if(($pipelineStatus ?? '') === 'lost') aria-current="page" @endif
     >
         <div class="text-sm font-bold text-red-300">
             Closed Lost
