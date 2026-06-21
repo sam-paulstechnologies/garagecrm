@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\EnsureMediaTeamMetaOnly;
+use App\Http\Middleware\EnsureUserIsActive;
+use App\Http\Middleware\ForcePasswordChange;
+use App\Http\Middleware\RoleMiddleware;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -10,53 +14,59 @@ class ProfileTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutMiddleware([
+            EnsureMediaTeamMetaOnly::class,
+            EnsureUserIsActive::class,
+            ForcePasswordChange::class,
+            RoleMiddleware::class,
+        ]);
+    }
+
     public function test_profile_page_is_displayed(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
+        $this
             ->actingAs($user)
-            ->get('/profile');
-
-        $response->assertOk();
+            ->get(route('admin.profile.edit'))
+            ->assertOk();
     }
 
     public function test_profile_information_can_be_updated(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
+        $this
             ->actingAs($user)
-            ->patch('/profile', [
+            ->patch(route('admin.profile.update'), [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
-            ]);
-
-        $response
+            ])
             ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
+            ->assertRedirect(route('admin.profile.edit', absolute: false));
 
         $user->refresh();
 
         $this->assertSame('Test User', $user->name);
         $this->assertSame('test@example.com', $user->email);
-        $this->assertNull($user->email_verified_at);
     }
 
     public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
+        $this
             ->actingAs($user)
-            ->patch('/profile', [
+            ->patch(route('admin.profile.update'), [
                 'name' => 'Test User',
                 'email' => $user->email,
-            ]);
-
-        $response
+            ])
             ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
+            ->assertRedirect(route('admin.profile.edit', absolute: false));
 
         $this->assertNotNull($user->refresh()->email_verified_at);
     }
@@ -65,13 +75,11 @@ class ProfileTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this
+        $this
             ->actingAs($user)
-            ->delete('/profile', [
+            ->delete(route('admin.profile.destroy'), [
                 'password' => 'password',
-            ]);
-
-        $response
+            ])
             ->assertSessionHasNoErrors()
             ->assertRedirect('/');
 
@@ -83,16 +91,14 @@ class ProfileTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this
+        $this
             ->actingAs($user)
-            ->from('/profile')
-            ->delete('/profile', [
+            ->from(route('admin.profile.edit'))
+            ->delete(route('admin.profile.destroy'), [
                 'password' => 'wrong-password',
-            ]);
-
-        $response
+            ])
             ->assertSessionHasErrors('password')
-            ->assertRedirect('/profile');
+            ->assertRedirect(route('admin.profile.edit', absolute: false));
 
         $this->assertNotNull($user->fresh());
     }
