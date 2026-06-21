@@ -17,4 +17,7 @@
     $hasRevenue = $amount > 0;
     $hasJob = !empty($invoice->job_id);
     $roiReady = $statusValue === 'paid' && $hasRevenue && $hasJob;
+    $sourceLabel = $invoice->source
+        ? ucwords(str_replace('_', ' ', $invoice->source))
+        : 'Generated';
 @endphp

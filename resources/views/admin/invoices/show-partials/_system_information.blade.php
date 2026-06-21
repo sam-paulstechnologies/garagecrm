@@ -1,19 +1,17 @@
 <div class="sf-card">
     <div class="sf-card-header">
         <h2 class="sf-section-title">
-            Invoice Details
+            System Information
         </h2>
     </div>
 
     <div class="sf-card-body">
         <div class="sf-invoice-field-grid">
             @foreach([
-                'Invoice Number' => $invoiceNumber,
-                'Amount' => $currency . ' ' . number_format($amount, 2),
-                'Status' => $statusLabels[$statusValue] ?? ucwords($statusValue),
-                'Source' => $sourceLabel,
-                'Invoice Date' => $invoice->invoice_date?->format('d M Y') ?? 'Not set',
-                'Due Date' => $invoice->due_date?->format('d M Y') ?? 'Not set',
+                'Created At' => $invoice->created_at?->format('d M Y, h:i A') ?? 'Not set',
+                'Last Updated' => $invoice->updated_at?->format('d M Y, h:i A') ?? 'Not set',
+                'Deleted' => method_exists($invoice, 'trashed') && $invoice->trashed() ? 'Yes' : 'No',
+                'Invoice ID' => '#' . $invoice->id,
             ] as $label => $value)
                 <div class="sf-invoice-field-card">
                     <div class="sf-invoice-field-label">{{ $label }}</div>

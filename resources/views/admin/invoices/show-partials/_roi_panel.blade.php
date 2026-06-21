@@ -6,52 +6,26 @@
     </div>
 
     <div class="sf-card-body space-y-4 text-sm">
-        <div class="flex items-center justify-between gap-4">
-            <span class="font-medium text-slate-400">
-                Invoice amount
-            </span>
+        <div class="sf-invoice-field-grid">
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">Invoice Amount</div>
+                <div class="sf-invoice-field-value">{{ $currency }} {{ number_format($amount, 2) }}</div>
+            </div>
 
-            @if($hasRevenue)
-                <span class="font-extrabold text-green-300">
-                    Available
-                </span>
-            @else
-                <span class="font-extrabold text-red-300">
-                    Missing
-                </span>
-            @endif
-        </div>
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">Paid Amount</div>
+                <div class="sf-invoice-field-value">{{ $currency }} {{ number_format($paidAmount, 2) }}</div>
+            </div>
 
-        <div class="flex items-center justify-between gap-4">
-            <span class="font-medium text-slate-400">
-                Paid status
-            </span>
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">Outstanding</div>
+                <div class="sf-invoice-field-value">{{ $currency }} {{ number_format($outstandingAmount, 2) }}</div>
+            </div>
 
-            @if($statusValue === 'paid')
-                <span class="font-extrabold text-green-300">
-                    Paid
-                </span>
-            @else
-                <span class="font-extrabold text-yellow-300">
-                    Not paid
-                </span>
-            @endif
-        </div>
-
-        <div class="flex items-center justify-between gap-4">
-            <span class="font-medium text-slate-400">
-                Linked job
-            </span>
-
-            @if($hasJob)
-                <span class="font-extrabold text-green-300">
-                    Linked
-                </span>
-            @else
-                <span class="font-extrabold text-red-300">
-                    Missing
-                </span>
-            @endif
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">Payment Status</div>
+                <div class="sf-invoice-field-value">{{ $statusLabels[$statusValue] ?? ucwords($statusValue) }}</div>
+            </div>
         </div>
 
         <div class="sf-divider"></div>

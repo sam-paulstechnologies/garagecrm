@@ -99,14 +99,34 @@ class InvoiceController extends Controller
             'roi_revenue' => (clone $base)->where('status', 'paid')->sum('amount'),
         ];
 
+        [$invoicePageTitle, $invoicePageSubtitle] = $this->invoiceIndexHeading($status, $q);
+
         return view('admin.invoices.index', compact(
             'invoices',
             'q',
             'status',
             'stats',
             'invoiceFilters',
-            'assignedUsers'
+            'assignedUsers',
+            'invoicePageTitle',
+            'invoicePageSubtitle'
         ));
+    }
+
+    protected function invoiceIndexHeading(string $status, string $q = ''): array
+    {
+        [$title, $subtitle] = match ($status) {
+            'paid' => ['Paid Invoices', 'Revenue-ready invoices that are marked as paid.'],
+            'pending' => ['Pending Invoices', 'Invoices awaiting payment confirmation.'],
+            'overdue' => ['Overdue Invoices', 'Invoices past due that need follow-up.'],
+            default => ['Total Invoices', 'Track invoice revenue, payment status, job attribution, and ROI readiness.'],
+        };
+
+        if ($q !== '') {
+            $subtitle .= ' Search: "' . str($q)->limit(40) . '".';
+        }
+
+        return [$title, $subtitle];
     }
 
     /*

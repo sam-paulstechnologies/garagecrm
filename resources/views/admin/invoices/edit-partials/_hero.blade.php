@@ -2,7 +2,7 @@
     <div>
         <div class="flex flex-wrap items-center gap-2">
             <div class="sf-kicker">
-                Revenue Tracking
+                Invoice Management
             </div>
 
             <span class="{{ $statusBadge }}">
@@ -31,11 +31,11 @@
 
     <div class="flex flex-wrap items-center gap-2">
         <a href="{{ route('admin.invoices.show', $invoice) }}" class="sf-btn-secondary">
-            Back to Invoice
+            View Invoice
         </a>
 
         <a href="{{ route('admin.invoices.index') }}" class="sf-btn-secondary">
-            All Invoices
+            Back to Invoices
         </a>
     </div>
 </div>

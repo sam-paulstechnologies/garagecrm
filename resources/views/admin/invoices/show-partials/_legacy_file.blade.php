@@ -1,19 +1,31 @@
-@if($invoice->file_path)
-    <div class="sf-card">
-        <div class="sf-card-header">
-            <h2 class="sf-section-title">
-                Uploaded Invoice File
-            </h2>
+<div class="sf-card">
+    <div class="sf-card-header">
+        <h2 class="sf-section-title">
+            File / Download
+        </h2>
 
-            <p class="sf-section-subtitle">
-                File upload is legacy support only. SayaraForce now uses invoice number and amount for ROI tracking.
-            </p>
+        <p class="sf-section-subtitle">
+            Generated and uploaded invoices keep the existing download behavior.
+        </p>
+    </div>
+
+    <div class="sf-card-body">
+        <div class="sf-invoice-field-grid">
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">File Name</div>
+                <div class="sf-invoice-field-value">{{ $invoice->file_path ? basename((string) $invoice->file_path) : 'No file uploaded' }}</div>
+            </div>
+
+            <div class="sf-invoice-field-card">
+                <div class="sf-invoice-field-label">Source</div>
+                <div class="sf-invoice-field-value">{{ $sourceLabel }}</div>
+            </div>
         </div>
 
-        <div class="sf-card-body">
-            <a href="{{ route('admin.invoices.download', $invoice) }}" class="sf-btn-primary">
+        @if($hasDownload)
+            <a href="{{ route('admin.invoices.download', $invoice) }}" class="sf-btn-primary mt-4">
                 Download File
             </a>
-        </div>
+        @endif
     </div>
-@endif
+</div>

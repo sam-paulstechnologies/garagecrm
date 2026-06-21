@@ -31,13 +31,15 @@
 @endphp
 
 <div class="sf-page sf-invoices-page mx-auto max-w-7xl px-4 py-6 space-y-6">
-    @include('admin.invoices.index-partials._hero')
+    <div class="sf-index-sticky-panel space-y-6">
+        @include('admin.invoices.index-partials._hero')
 
-    {{-- Search and filter first --}}
-    @include('admin.invoices.index-partials._filters')
+        {{-- Search and filter first --}}
+        @include('admin.invoices.index-partials._filters')
 
-    {{-- KPI tiles --}}
-    @include('admin.invoices.index-partials._stats')
+        {{-- KPI tiles --}}
+        @include('admin.invoices.index-partials._stats')
+    </div>
 
     {{-- ROI note --}}
     @include('admin.invoices.index-partials._note')

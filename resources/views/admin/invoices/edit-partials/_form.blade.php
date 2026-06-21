@@ -1,11 +1,5 @@
-<form method="POST"
-      action="{{ route('admin.invoices.update', $invoice) }}"
-      class="space-y-6">
-
-    @csrf
-    @method('PUT')
-
-    <div class="sf-card">
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div class="sf-card sf-crm-edit-card">
         <div class="sf-card-header">
             <h2 class="sf-section-title">
                 Invoice Information
@@ -17,7 +11,19 @@
         </div>
 
         <div class="sf-card-body">
-            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <form method="POST"
+                  action="{{ route('admin.invoices.update', $invoice) }}"
+                  class="space-y-6">
+
+                @csrf
+                @method('PUT')
+
+                <div class="sf-crm-section">
+                    <div class="sf-crm-section-head">
+                        <h3>Client / Job Link</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                     <label class="sf-label">
                         Client <span class="text-red-300">*</span>
@@ -72,6 +78,15 @@
                         <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
+                    </div>
+                </div>
+
+                <div class="sf-crm-section">
+                    <div class="sf-crm-section-head">
+                        <h3>Invoice Identity</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
 
                 <div>
                     <label class="sf-label">
@@ -108,7 +123,15 @@
                         <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
+                    </div>
+                </div>
 
+                <div class="sf-crm-section">
+                    <div class="sf-crm-section-head">
+                        <h3>Payment Details</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                     <label class="sf-label">
                         Status <span class="text-red-300">*</span>
@@ -181,11 +204,53 @@
                         <div class="sf-error">{{ $message }}</div>
                     @enderror
                 </div>
-            </div>
+                    </div>
+                </div>
+
+                @include('admin.invoices.edit-partials._roi_preview')
+                @include('admin.invoices.edit-partials._legacy_file')
+
+                <div class="sf-crm-action-bar flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-4">
+                    <a href="{{ route('admin.invoices.show', $invoice) }}" class="sf-btn-secondary">
+                        Cancel
+                    </a>
+
+                    <button type="submit" class="sf-btn-primary">
+                        Update Invoice
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
-    @include('admin.invoices.edit-partials._roi_preview')
-    @include('admin.invoices.edit-partials._legacy_file')
-    @include('admin.invoices.edit-partials._actions')
-</form>
+    <aside class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+        <div class="sf-card sf-invoice-edit-side-card">
+            <div class="sf-card-header">
+                <h2 class="sf-section-title">Invoice Snapshot</h2>
+            </div>
+
+            <div class="divide-y divide-white/10 text-sm">
+                @foreach([
+                    'Invoice' => $invoiceNumber,
+                    'Client' => $invoice->client?->name ?? 'No client linked',
+                    'Status' => ucwords($statusValue),
+                    'Source' => $sourceLabel,
+                    'Amount' => $currency . ' ' . number_format($amount, 2),
+                    'Linked Job' => $invoice->job?->job_code ?? 'Not linked',
+                ] as $label => $value)
+                    <div class="px-5 py-3">
+                        <div class="sf-invoice-field-label">{{ $label }}</div>
+                        <div class="sf-invoice-field-value">{{ $value }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="sf-invoice-note rounded-2xl border p-5 shadow-sm">
+            <div class="sf-invoice-note-title font-extrabold">Payment / ROI Guidance</div>
+            <p class="sf-invoice-note-text mt-2 text-sm font-semibold leading-6">
+                Paid invoices with amount and linked job are revenue-ready for ROI reporting. Download behavior remains unchanged for uploaded files.
+            </p>
+        </div>
+    </aside>
+</div>

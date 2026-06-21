@@ -9,10 +9,9 @@
 @section('content')
 @include('admin.invoices.edit-partials._context')
 
-<div class="sf-page sf-invoices-page space-y-6">
+<div class="sf-page sf-invoices-page sf-invoices-edit mx-auto max-w-7xl px-4 py-6 space-y-6">
     @include('admin.invoices.edit-partials._hero')
     @include('admin.invoices.edit-partials._errors')
-    @include('admin.invoices.edit-partials._note')
     @include('admin.invoices.edit-partials._form')
 </div>
 @endsection

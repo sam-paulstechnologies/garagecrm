@@ -4,18 +4,18 @@
     $phoneService = app(\App\Services\PhoneNumberService::class);
 @endphp
 
-<div class="sf-table-wrap">
+<div class="sf-table-wrap sf-invoices-table-wrap">
     <div class="sf-table-scroll">
-        <table class="sf-table">
+        <table class="sf-table sf-invoices-table">
             <thead>
                 <tr>
-                    <th class="w-[16%]">Invoice</th>
-                    <th class="w-[16%]">Client</th>
-                    <th class="w-[20%]">Linked Job</th>
+                    <th class="w-[22%]">Invoice</th>
+                    <th class="w-[18%]">Client / Job</th>
                     <th class="w-[13%]">Amount</th>
                     <th class="w-[11%]">Status</th>
-                    <th class="w-[14%]">ROI Status</th>
-                    <th class="w-[10%] text-right">Actions</th>
+                    <th class="w-[14%]">Due / Date</th>
+                    <th class="w-[10%]">Source / File</th>
+                    <th class="w-[12%] text-right">Actions</th>
                 </tr>
             </thead>
 
@@ -41,16 +41,17 @@
                             ?? null;
                         $phoneDisplay = $phone ? $phoneService->formatForDisplay($phone) : null;
                         $phoneTelUrl = $phone ? $phoneService->buildTelUrl($phone) : null;
+                        $sourceLabel = $invoice->source ? ucwords(str_replace('_', ' ', $invoice->source)) : 'Generated';
                     @endphp
 
                     <tr>
-                        <td>
-                            <div class="font-extrabold sf-invoice-value">
+                        <td data-label="Invoice">
+                            <a href="{{ route('admin.invoices.show', $invoice) }}" class="sf-invoice-name-link">
                                 {{ $invoiceNumber }}
-                            </div>
+                            </a>
 
-                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
-                                {{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('Y-m-d') : 'No invoice date' }}
+                            <div class="sf-invoice-muted mt-1 text-xs font-semibold">
+                                {{ $sourceLabel }}
                             </div>
 
                             @if($phoneDisplay && $phoneTelUrl)
@@ -64,45 +65,74 @@
                             @endif
                         </td>
 
-                        <td>
+                        <td data-label="Client / Job">
                             <div class="font-bold sf-invoice-value">
                                 {{ $invoice->client?->name ?? 'N/A' }}
                             </div>
 
-                        </td>
-
-                        <td>
-                            @if($invoice->job)
-                                <div class="font-bold sf-invoice-value">
+                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
+                                @if($invoice->job)
                                     {{ $invoice->job->job_code ?? 'Job #' . $invoice->job->id }}
-                                </div>
-
-                                <div class="sf-invoice-muted mt-1 max-w-[260px] text-xs font-medium">
-                                    <span class="block truncate" title="{{ $invoice->job->description }}">
-                                        {{ $invoice->job->description ?: 'No job description' }}
-                                    </span>
-                                </div>
-                            @else
-                                <span class="sf-invoice-muted font-medium">
+                                @else
                                     Not linked
-                                </span>
-                            @endif
+                                @endif
+                            </div>
                         </td>
 
-                        <td>
+                        <td data-label="Amount">
                             <div class="font-extrabold text-orange-300">
                                 {{ $invoice->currency ?? 'AED' }}
                                 {{ number_format((float) ($invoice->amount ?? 0), 2) }}
                             </div>
                         </td>
 
-                        <td>
+                        <td data-label="Status">
                             <span class="{{ $statusBadgeClass($statusValue) }}">
                                 {{ ucwords($statusValue) }}
                             </span>
                         </td>
 
-                        <td>
+                        <td data-label="Due / Date">
+                            <div class="font-bold sf-invoice-value">
+                                {{ $invoice->due_date ? \Carbon\Carbon::parse($invoice->due_date)->format('d M Y') : 'No due date' }}
+                            </div>
+
+                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
+                                Issued {{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') : '-' }}
+                            </div>
+                        </td>
+
+                        <td data-label="Source / File">
+                            <div class="font-bold sf-invoice-value">
+                                {{ $sourceLabel }}
+                            </div>
+
+                            <div class="sf-invoice-muted mt-1 text-xs font-medium">
+                                {{ $invoice->file_path ? 'Download available' : 'No file' }}
+                            </div>
+                        </td>
+
+                        <td data-label="Actions" class="text-right">
+                            <div class="sf-invoices-action-group">
+                                <a href="{{ route('admin.invoices.show', $invoice) }}" class="sf-invoices-action-pill sf-invoices-action-view">
+                                    View
+                                </a>
+
+                                <a href="{{ route('admin.invoices.edit', $invoice) }}" class="sf-invoices-action-pill sf-invoices-action-edit">
+                                    Edit
+                                </a>
+
+                                @if($invoice->file_path && \Illuminate\Support\Facades\Route::has('admin.invoices.download'))
+                                    <a href="{{ route('admin.invoices.download', $invoice) }}" class="sf-invoices-action-pill sf-invoices-action-download">
+                                        Download
+                                    </a>
+                                @endif
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr class="sf-invoice-roi-row">
+                        <td colspan="7">
                             @if($roiReady)
                                 <span class="sf-badge-orange">ROI Ready</span>
 
@@ -124,24 +154,6 @@
                                     Revenue not confirmed
                                 </div>
                             @endif
-                        </td>
-
-                        <td class="text-right">
-                            <div class="flex justify-end gap-3 whitespace-nowrap">
-                                <a href="{{ route('admin.invoices.show', $invoice) }}" class="sf-link">
-                                    View
-                                </a>
-
-                                <a href="{{ route('admin.invoices.edit', $invoice) }}" class="sf-link">
-                                    Edit
-                                </a>
-
-                                @if($invoice->file_path && \Illuminate\Support\Facades\Route::has('admin.invoices.download'))
-                                    <a href="{{ route('admin.invoices.download', $invoice) }}" class="sf-link">
-                                        Download
-                                    </a>
-                                @endif
-                            </div>
                         </td>
                     </tr>
                 @empty

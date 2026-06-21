@@ -25,19 +25,48 @@
                 Invoice {{ $invoiceNumber }}
             </h1>
 
-            <p class="mt-2 text-sm font-medium text-slate-400">
-                Lightweight invoice record used for revenue and campaign ROI reporting.
-            </p>
+            <div class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm font-medium sf-invoice-muted">
+                @if($contactTelUrl && $contactPhoneDisplay)
+                    <a href="{{ $contactTelUrl }}" class="sf-invoice-hero-chip" title="Click to call this customer.">
+                        {{ $contactPhoneDisplay }}
+                    </a>
+                @elseif($contactPhoneDisplay)
+                    <span>{{ $contactPhoneDisplay }}</span>
+                @endif
+
+                <span>{{ $invoice->client?->name ?? 'No client' }}</span>
+                <span>{{ $job?->job_code ?? 'No job linked' }}</span>
+                <span>{{ $currency }} {{ number_format($amount, 2) }}</span>
+                <span>{{ $invoice->due_date?->format('d M Y') ?? 'No due date' }}</span>
+            </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            <a href="#invoice-activity-timeline" class="sf-btn-secondary">
+                View All Activity
+            </a>
+
             <a href="{{ route('admin.invoices.edit', $invoice) }}" class="sf-btn-primary">
                 Edit Invoice
             </a>
 
-            <a href="{{ route('admin.invoices.index') }}" class="sf-btn-secondary">
-                Back to Invoices
-            </a>
+            @if($hasDownload)
+                <a href="{{ route('admin.invoices.download', $invoice) }}" class="sf-btn-secondary">
+                    Download
+                </a>
+            @endif
+
+            @if($job && Route::has('admin.jobs.show'))
+                <a href="{{ route('admin.jobs.show', $job) }}" class="sf-btn-secondary">
+                    View Job
+                </a>
+            @endif
+
+            @if($invoice->client && Route::has('admin.clients.show'))
+                <a href="{{ route('admin.clients.show', $invoice->client) }}" class="sf-btn-secondary">
+                    View Client
+                </a>
+            @endif
         </div>
     </div>
 </div>
