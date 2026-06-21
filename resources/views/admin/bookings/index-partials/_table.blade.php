@@ -86,20 +86,30 @@
             ($booking->vehicleModel?->name ?? $booking->other_model ?? '')
         );
     };
+
+    $phoneForBooking = function ($booking) {
+        return $booking->client?->phone
+            ?? $booking->client?->whatsapp
+            ?? $booking->lead?->phone
+            ?? $booking->lead?->phone_norm
+            ?? $booking->opportunity?->client?->phone
+            ?? $booking->opportunity?->lead?->phone
+            ?? null;
+    };
 @endphp
 
 <div class="sf-booking-panel overflow-hidden rounded-2xl border shadow-sm">
     <div class="overflow-x-auto">
-        <table class="sf-booking-table min-w-full divide-y divide-slate-800 text-sm">
+        <table class="sf-booking-table min-w-full table-fixed divide-y divide-slate-800 text-sm">
             <thead>
                 <tr>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Booking</th>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Client / Vehicle</th>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Date / Slot</th>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Status</th>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Priority</th>
-                    <th class="px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Next Action</th>
-                    <th class="px-5 py-3 text-right text-xs font-black uppercase tracking-wide">Action</th>
+                    <th class="w-[22%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Booking</th>
+                    <th class="w-[17%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Client / Vehicle</th>
+                    <th class="w-[13%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Date / Slot</th>
+                    <th class="w-[12%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Status</th>
+                    <th class="w-[9%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Priority</th>
+                    <th class="w-[12%] px-5 py-3 text-left text-xs font-black uppercase tracking-wide">Next Action</th>
+                    <th class="w-[15%] px-5 py-3 text-right text-xs font-black uppercase tracking-wide">Actions</th>
                 </tr>
             </thead>
 
@@ -112,12 +122,23 @@
                             : '-';
 
                         $vehicle = $vehicleLabel($booking);
+                        $phone = $phoneForBooking($booking);
                     @endphp
 
                     <tr class="transition hover:bg-slate-800/30">
                         <td class="px-5 py-4 align-top">
-                            <div class="sf-booking-title font-extrabold">
-                                {{ $booking->name ?? 'Booking #' . $booking->id }}
+                            @if(Route::has('admin.bookings.show'))
+                                <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-booking-name-link">
+                                    {{ $booking->name ?? 'Booking #' . $booking->id }}
+                                </a>
+                            @else
+                                <div class="sf-booking-title font-extrabold">
+                                    {{ $booking->name ?? 'Booking #' . $booking->id }}
+                                </div>
+                            @endif
+
+                            <div class="mt-1 text-xs font-extrabold text-orange-300">
+                                {{ $phone ?: 'No phone' }}
                             </div>
 
                             <div class="sf-booking-muted mt-1 text-xs font-medium">
@@ -175,11 +196,29 @@
                         </td>
 
                         <td class="px-5 py-4 text-right align-top">
-                            @if(Route::has('admin.bookings.show'))
-                                <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-link">
-                                    View
-                                </a>
-                            @endif
+                            <div class="sf-bookings-action-group">
+                                @if(Route::has('admin.bookings.show'))
+                                    <a href="{{ route('admin.bookings.show', $booking) }}" class="sf-bookings-action-pill sf-bookings-action-view">
+                                        View
+                                    </a>
+                                @endif
+
+                                @if(Route::has('admin.bookings.edit'))
+                                    <a href="{{ route('admin.bookings.edit', $booking) }}" class="sf-bookings-action-pill sf-bookings-action-edit">
+                                        Edit
+                                    </a>
+                                @endif
+
+                                @if(Route::has('admin.bookings.archive') && empty($booking->is_archived))
+                                    <form method="POST" action="{{ route('admin.bookings.archive', $booking) }}" class="inline">
+                                        @csrf
+                                        @method('PUT')
+                                        <button type="submit" class="sf-bookings-action-pill sf-bookings-action-archive">
+                                            Archive
+                                        </button>
+                                    </form>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                 @empty

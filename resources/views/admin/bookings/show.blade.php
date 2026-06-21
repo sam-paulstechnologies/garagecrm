@@ -96,6 +96,98 @@
 
         return 'sf-booking-step-idle';
     };
+
+    $phoneService = app(\App\Services\PhoneNumberService::class);
+    $contactPhone = $booking->client?->phone
+        ?? $booking->client?->whatsapp
+        ?? $booking->lead?->phone
+        ?? $booking->lead?->phone_norm
+        ?? $booking->opportunity?->client?->phone
+        ?? $booking->opportunity?->lead?->phone
+        ?? null;
+    $contactPhoneDisplay = $contactPhone ? $phoneService->formatForDisplay($contactPhone) : null;
+    $contactTelUrl = $contactPhone ? $phoneService->buildTelUrl($contactPhone) : null;
+    $whatsappLookup = $contactPhone ? $phoneService->buildWhatsappLookupKey($contactPhone) : null;
+    $bookingWhatsappInboxUrl = \Illuminate\Support\Facades\Route::has('admin.inbox.index')
+        ? route('admin.inbox.index', $whatsappLookup ? ['search' => $whatsappLookup] : [])
+        : '#';
+    $whatsappFloatingUrl = $bookingWhatsappInboxUrl;
+    $contactEmail = trim((string) ($booking->client?->email ?? $booking->lead?->email ?? $booking->opportunity?->lead?->email ?? ''));
+    $contactMailtoUrl = $contactEmail !== '' ? 'mailto:' . $contactEmail : null;
+    $job = $booking->job ?? null;
+    $invoice = $job?->primaryInvoice ?? $job?->invoice ?? $job?->invoices?->first();
+
+    $bookingStatusLabels = [
+        'pending' => 'Pending',
+        'scheduled' => 'Scheduled',
+        'converted_to_job' => 'Converted To Job',
+        'lost' => 'Lost Booking',
+    ];
+    $bookingStatusHelp = [
+        'pending' => 'Booking needs manager review or confirmation.',
+        'scheduled' => 'Booking date and slot are confirmed.',
+        'converted_to_job' => 'Booking has moved into the Job module.',
+        'lost' => 'Booking did not happen and requires a lost reason.',
+    ];
+    $bookingLostReasons = [
+        'cancelled_by_customer' => 'Cancelled by customer',
+        'rejected_by_garage' => 'Rejected by garage',
+        'no_show' => 'No show',
+        'slot_unavailable' => 'Slot unavailable',
+        'duplicate' => 'Duplicate',
+        'wrong_booking' => 'Wrong booking',
+        'price_issue' => 'Price issue',
+        'customer_postponed' => 'Customer postponed',
+        'other' => 'Other',
+    ];
+
+    $activityItems = collect([
+        [
+            'title' => 'Booking created',
+            'meta' => $booking->created_at?->format('d M Y, h:i A') ?? '-',
+            'detail' => 'Booking record was created.',
+        ],
+    ]);
+
+    if ($booking->updated_at && (!$booking->created_at || $booking->updated_at->ne($booking->created_at))) {
+        $activityItems->push([
+            'title' => 'Booking updated',
+            'meta' => $booking->updated_at->format('d M Y, h:i A'),
+            'detail' => 'Current status: ' . ($bookingStatusLabels[$status] ?? ucfirst(str_replace('_', ' ', $status))),
+        ]);
+    }
+
+    if ($booking->opportunity) {
+        $activityItems->push([
+            'title' => 'Opportunity linked',
+            'meta' => $booking->opportunity->created_at?->format('d M Y, h:i A') ?? '-',
+            'detail' => $booking->opportunity->title ?? 'Opportunity #' . $booking->opportunity->id,
+        ]);
+    }
+
+    if ($job) {
+        $activityItems->push([
+            'title' => 'Job linked',
+            'meta' => $job->created_at?->format('d M Y, h:i A') ?? '-',
+            'detail' => $job->job_code ?? 'Job #' . $job->id,
+        ]);
+    }
+
+    if ($invoice) {
+        $activityItems->push([
+            'title' => 'Invoice linked',
+            'meta' => $invoice->created_at?->format('d M Y, h:i A') ?? '-',
+            'detail' => $invoice->number ?? 'Invoice #' . $invoice->id,
+        ]);
+    }
+
+    foreach (($communications ?? collect())->take(5) as $communication) {
+        $activityItems->push([
+            'title' => 'Communication recorded',
+            'meta' => $communication->created_at?->format('d M Y, h:i A') ?? '-',
+            'detail' => $communication->subject ?? $communication->message ?? $communication->body ?? 'Customer communication linked to this booking.',
+        ]);
+    }
 @endphp
 
     @include('admin.bookings.show-partials._styles')
@@ -111,6 +203,7 @@
                 @include('admin.bookings.show-partials._service_panel')
                 @include('admin.bookings.show-partials._pickup_panel')
                 @include('admin.bookings.show-partials._notes')
+                @include('admin.bookings.show-partials._activity_panel')
             </div>
 
             <div class="space-y-6">

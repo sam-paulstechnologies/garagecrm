@@ -5,25 +5,20 @@
         </h2>
     </div>
 
-    <div class="space-y-4 p-5 text-sm">
-        <div>
-            <div class="text-xs font-bold uppercase tracking-wide sf-booking-faint">Created At</div>
-            <div class="mt-1 font-bold sf-booking-muted">
-                {{ $booking->created_at?->format('d M Y, h:i A') ?? '-' }}
+    <div class="p-5">
+        <div class="sf-booking-system-grid">
+            <div class="sf-booking-system-card">
+                <div class="sf-booking-system-label">Created At</div>
+                <div class="sf-booking-system-value">
+                    {{ $booking->created_at?->format('d M Y, h:i A') ?? '-' }}
+                </div>
             </div>
-        </div>
 
-        <div>
-            <div class="text-xs font-bold uppercase tracking-wide sf-booking-faint">Last Updated</div>
-            <div class="mt-1 font-bold sf-booking-muted">
-                {{ $booking->updated_at?->format('d M Y, h:i A') ?? '-' }}
-            </div>
-        </div>
-
-        <div>
-            <div class="text-xs font-bold uppercase tracking-wide sf-booking-faint">Company ID</div>
-            <div class="mt-1 font-bold sf-booking-muted">
-                {{ $booking->company_id ?? '-' }}
+            <div class="sf-booking-system-card">
+                <div class="sf-booking-system-label">Last Updated</div>
+                <div class="sf-booking-system-value">
+                    {{ $booking->updated_at?->format('d M Y, h:i A') ?? '-' }}
+                </div>
             </div>
         </div>
     </div>

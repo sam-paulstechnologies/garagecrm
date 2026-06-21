@@ -15,7 +15,7 @@
         'lost' => 0,
     ], $bookingCounts ?? []);
 
-    $openCount = ($bookingCounts['pending'] ?? 0) + ($bookingCounts['scheduled'] ?? 0) + ($bookingCounts['confirmed'] ?? 0);
+    $openCount = ($bookingCounts['pending'] ?? 0) + ($bookingCounts['scheduled'] ?? 0);
 
     $baseQuery = collect(request()->only([
         'q',
@@ -42,7 +42,7 @@
     >
         <div class="sf-booking-accent-title text-sm font-bold">Open Bookings</div>
         <div class="sf-booking-accent-value mt-2 text-3xl font-extrabold">{{ $openCount }}</div>
-        <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Pending + scheduled + confirmed</div>
+        <div class="sf-booking-accent-muted mt-1 text-xs font-medium">Pending + scheduled</div>
     </a>
 
     <a

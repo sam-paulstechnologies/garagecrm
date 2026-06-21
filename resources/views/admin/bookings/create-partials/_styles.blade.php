@@ -59,7 +59,7 @@
 
     .sf-booking-form-page .sf-btn-primary {
         background: #ff7a1a;
-        color: #ffffff;
+        color: #111827;
     }
 
     .sf-booking-form-page .sf-btn-primary:hover {
@@ -124,11 +124,11 @@
     }
 
     html[data-theme="light"] .sf-booking-form-page .text-orange-300 {
-        color: #c2410c !important;
+        color: #7c2d12 !important;
     }
 
     html[data-theme="light"] .sf-booking-form-page .text-orange-100\/80 {
-        color: #9a3412 !important;
+        color: #431407 !important;
     }
 
     html[data-theme="light"] .sf-booking-form-page .text-blue-300 {
@@ -137,6 +137,43 @@
 
     html[data-theme="light"] .sf-booking-form-page .text-blue-100\/80 {
         color: #1e40af !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .text-green-300 {
+        color: #14532d !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .text-green-100\/80,
+    html[data-theme="light"] .sf-booking-form-page .text-green-100\/70 {
+        color: #052e16 !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .text-yellow-300 {
+        color: #713f12 !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .text-yellow-100\/80,
+    html[data-theme="light"] .sf-booking-form-page .text-yellow-100\/70 {
+        color: #422006 !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .text-red-300,
+    html[data-theme="light"] .sf-booking-form-page .text-red-100\/90,
+    html[data-theme="light"] .sf-booking-form-page .text-red-100\/80,
+    html[data-theme="light"] .sf-booking-form-page .text-red-100\/70 {
+        color: #450a0a !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .bg-orange-500\/10 .text-orange-300,
+    html[data-theme="light"] .sf-booking-form-page .bg-orange-500\/10 .text-orange-100\/80,
+    html[data-theme="light"] .sf-booking-form-page .bg-orange-500\/10 .text-orange-100\/70 {
+        color: #431407 !important;
+    }
+
+    html[data-theme="light"] .sf-booking-form-page .bg-blue-500\/10 .text-blue-300,
+    html[data-theme="light"] .sf-booking-form-page .bg-blue-500\/10 .text-blue-100\/80,
+    html[data-theme="light"] .sf-booking-form-page .bg-blue-500\/10 .text-blue-100\/70 {
+        color: #172554 !important;
     }
 
     html[data-theme="light"] .sf-booking-form-page .bg-slate-950 {

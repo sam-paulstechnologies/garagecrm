@@ -1,15 +1,11 @@
 <div class="sf-page-header">
     <div>
-        <div class="sf-kicker">
-            Booking Management
-        </div>
-
-        <h1 class="sf-page-title mt-3">
+        <h1 class="sf-page-title">
             Edit Booking #{{ $booking->id }}
         </h1>
 
         <p class="sf-page-subtitle">
-            Update booking details, client, opportunity, vehicle, date, slot, priority, and assigned team member.
+            Update customer appointment details, vehicle context, slot, priority, and booking status.
         </p>
     </div>
 

@@ -115,14 +115,88 @@ class BookingController extends Controller
             ->paginate(20)
             ->withQueryString();
 
+        [$bookingPageTitle, $bookingPageSubtitle] = $this->bookingIndexHeading($status, $bucket, $q);
+
         return view('admin.bookings.index', [
             'bookings' => $bookings,
             'q' => $q,
             'status' => $status,
             'bucket' => $bucket,
+            'bookingPageTitle' => $bookingPageTitle,
+            'bookingPageSubtitle' => $bookingPageSubtitle,
             'bookingCounts' => $this->bookingCounts($companyId),
             'bucketCounts' => $this->bookingBucketCounts($companyId),
         ]);
+    }
+
+    protected function bookingIndexHeading(string $status, string $bucket, string $q = ''): array
+    {
+        $statusLabels = [
+            self::STATUS_PENDING => 'Pending',
+            self::STATUS_SCHEDULED => 'Scheduled',
+            self::STATUS_CONVERTED_TO_JOB => 'Converted To Job',
+            self::STATUS_LOST => 'Lost',
+            'confirmed' => 'Confirmed',
+            'vehicle_received' => 'Vehicle Received',
+            'completed' => 'Completed',
+            'cancelled' => 'Cancelled',
+            'canceled' => 'Cancelled',
+        ];
+
+        $bucketLabels = [
+            'today' => "Today's",
+            'upcoming' => 'Upcoming',
+            'morning' => 'Morning',
+            'afternoon' => 'Afternoon',
+            'evening' => 'Evening',
+            'pending' => 'Pending',
+            'overdue' => 'Overdue',
+            'no_vehicle' => 'Bookings Missing Vehicle',
+            'high_priority' => 'High Priority',
+        ];
+
+        $bucketSubtitles = [
+            'today' => 'Bookings scheduled for today that still need attention.',
+            'upcoming' => 'Upcoming active bookings in the schedule.',
+            'morning' => 'Active bookings in the morning slot.',
+            'afternoon' => 'Active bookings in the afternoon slot.',
+            'evening' => 'Active bookings in the evening slot.',
+            'pending' => 'Bookings waiting for confirmation or review.',
+            'overdue' => 'Pending bookings past their planned date.',
+            'no_vehicle' => 'Active bookings that still need vehicle details.',
+            'high_priority' => 'Active bookings marked high priority.',
+        ];
+
+        $title = 'Open Bookings';
+        $subtitle = 'Active pending and scheduled bookings that still need action.';
+
+        if ($bucket !== '' && isset($bucketLabels[$bucket])) {
+            $title = in_array($bucket, ['no_vehicle', 'high_priority'], true)
+                ? $bucketLabels[$bucket]
+                : $bucketLabels[$bucket] . ' Bookings';
+            $subtitle = $bucketSubtitles[$bucket] ?? $subtitle;
+        }
+
+        if ($status !== '') {
+            $statusTitle = $statusLabels[$status] ?? ucwords(str_replace('_', ' ', $status));
+            $title = $bucket === 'today'
+                ? "Today's {$statusTitle} Bookings"
+                : "{$statusTitle} Bookings";
+
+            $subtitle = match ($status) {
+                self::STATUS_PENDING => 'Bookings waiting for confirmation or review.',
+                self::STATUS_SCHEDULED => 'Scheduled bookings ready for vehicle receiving or follow-up.',
+                self::STATUS_CONVERTED_TO_JOB, 'completed' => 'Bookings that have moved into the job flow.',
+                self::STATUS_LOST, 'cancelled', 'canceled' => 'Bookings that were cancelled, rejected, or lost.',
+                default => 'Bookings filtered by the selected status.',
+            };
+        }
+
+        if ($q !== '') {
+            $subtitle .= ' Search: "' . str($q)->limit(40) . '".';
+        }
+
+        return [$title, $subtitle];
     }
 
     public function archived()

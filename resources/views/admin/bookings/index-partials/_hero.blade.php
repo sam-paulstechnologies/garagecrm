@@ -4,11 +4,11 @@
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h1 class="sf-booking-title text-3xl font-extrabold tracking-tight">
-                Bookings
+                {{ $bookingPageTitle ?? 'Open Bookings' }}
             </h1>
 
             <p class="sf-booking-muted mt-2 max-w-3xl text-sm font-medium">
-                Track confirmed appointments, pickup schedules, vehicle intake, and booking conversion to jobs.
+                {{ $bookingPageSubtitle ?? 'Active pending and scheduled bookings that still need action.' }}
             </p>
         </div>
 
