@@ -2,6 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Client\Client;
+use App\Models\Client\Lead;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
 class Conversation extends Model
@@ -26,12 +30,22 @@ class Conversation extends Model
         'is_whatsapp_linked'=> 'boolean',
     ];
 
-    public function messages()
+    public function messages(): HasMany
     {
         return $this->hasMany(MessageLog::class)->orderBy('id');
     }
 
-    public function markAllRead()
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function markAllRead(): void
     {
         MessageLog::where('conversation_id', $this->id)
             ->where('direction', 'in')

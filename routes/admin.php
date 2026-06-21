@@ -732,5 +732,8 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
             Route::post('/send', [InboxController::class, 'send'])
                 ->name('send');
+
+            Route::post('/suggest-reply', [InboxController::class, 'suggestReply'])
+                ->name('suggest-reply');
         });
     });

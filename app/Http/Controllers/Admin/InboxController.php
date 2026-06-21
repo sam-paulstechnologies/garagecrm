@@ -3,12 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client\Client;
+use App\Models\Client\Lead;
 use App\Models\Conversation;
 use App\Models\MessageLog;
+use App\Services\PhoneNumberService;
 use App\Services\WhatsApp\WhatsAppService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class InboxController extends Controller
 {
@@ -18,16 +24,11 @@ class InboxController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $query = Conversation::query()
-            ->where('company_id', $companyId)
-            ->when($search !== '', function ($q) use ($search) {
-                $q->where(function ($sub) use ($search) {
-                    $sub->where('customer_name', 'like', "%{$search}%")
-                        ->orWhere('customer_phone', 'like', "%{$search}%")
-                        ->orWhere('last_message_preview', 'like', "%{$search}%");
-                });
-            })
-            ->orderByDesc('last_message_at')
-            ->limit(100);
+            ->where('company_id', $companyId);
+
+        $this->applyConversationSearch($query, $companyId, $search);
+
+        $query->orderByDesc('last_message_at')->limit(100);
 
         $items = $query->get()->map(function ($c) {
             return [
@@ -81,7 +82,7 @@ class InboxController extends Controller
         ]);
     }
 
-    public function send(Request $request, WhatsAppService $wa)
+    public function send(Request $request, WhatsAppService $wa): JsonResponse
     {
         $request->validate([
             'conversation_id' => 'required|exists:conversations,id',
@@ -94,32 +95,41 @@ class InboxController extends Controller
             ->where('company_id', $companyId)
             ->firstOrFail();
 
-        if ($conversation->lead) {
-            $conversation->lead->update([
-                'conversation_state' => 'human',
-            ]);
-        }
+        $lead = $this->pauseLinkedLeadForHumanReply($conversation, $companyId);
 
-        $wa->sendText(
-            $conversation->customer_phone,
-            $request->message,
-            ['company_id' => $companyId]
-        );
+        try {
+            $wa->sendText(
+                $conversation->customer_phone,
+                $request->input('message'),
+                ['company_id' => $companyId]
+            );
+        } catch (Throwable $e) {
+            Log::warning('[Inbox] Admin WhatsApp send failed', [
+                'company_id' => $companyId,
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'WhatsApp message could not be sent. Please check WhatsApp settings and try again.',
+            ], 422);
+        }
 
         MessageLog::out([
             'company_id' => $companyId,
             'conversation_id' => $conversation->id,
-            'lead_id' => $conversation->lead_id,
+            'lead_id' => $lead?->id ?? $conversation->lead_id,
             'channel' => 'whatsapp',
             'to_number' => $conversation->customer_phone,
             'from_number' => null,
-            'body' => $request->message,
+            'body' => $request->input('message'),
             'source' => 'human',
             'provider_status' => 'queued',
         ]);
 
         $conversation->update([
-            'last_message_preview' => Str::limit($request->message, 120),
+            'last_message_preview' => Str::limit($request->input('message'), 120),
             'last_message_at' => now(),
         ]);
 
@@ -188,16 +198,94 @@ class InboxController extends Controller
 
     protected function conversationContext(Conversation $conversation, int $companyId): array
     {
-        $lead = $conversation->lead;
+        $lead = $this->resolveLeadForConversation($conversation, $companyId);
+        $client = $conversation->client;
 
         return [
             'lead_id' => $lead?->id,
             'lead_name' => $lead?->name,
             'lead_status' => $lead?->status,
             'conversation_state' => $lead?->conversation_state,
+            'client_id' => $client?->id,
+            'client_name' => $client?->name,
             'phone' => $conversation->customer_phone,
-            'name' => $conversation->customer_name,
+            'name' => $conversation->customer_name ?: ($lead?->name ?? $client?->name),
         ];
+    }
+
+    protected function applyConversationSearch(Builder $query, int $companyId, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $lookup = $this->phoneLookupKey($search);
+
+        if ($lookup) {
+            $query->where(function (Builder $sub) use ($companyId, $lookup) {
+                $sub->whereRaw($this->normalizedPhoneSql('customer_phone') . ' = ?', [$lookup])
+                    ->orWhereIn('lead_id', Lead::query()
+                        ->select('id')
+                        ->where('company_id', $companyId)
+                        ->where('phone_norm', $lookup))
+                    ->orWhereIn('client_id', Client::query()
+                        ->select('id')
+                        ->where('company_id', $companyId)
+                        ->where('phone_norm', $lookup))
+                    ->orWhereIn('id', MessageLog::query()
+                        ->select('conversation_id')
+                        ->where('company_id', $companyId)
+                        ->whereNotNull('conversation_id')
+                        ->where(function (Builder $messages) use ($lookup) {
+                            $messages->whereRaw($this->normalizedPhoneSql('from_number') . ' = ?', [$lookup])
+                                ->orWhereRaw($this->normalizedPhoneSql('to_number') . ' = ?', [$lookup]);
+                        }));
+            });
+
+            return;
+        }
+
+        $query->where(function (Builder $sub) use ($search) {
+            $sub->where('customer_name', 'like', "%{$search}%")
+                ->orWhere('customer_phone', 'like', "%{$search}%")
+                ->orWhere('last_message_preview', 'like', "%{$search}%");
+        });
+    }
+
+    protected function pauseLinkedLeadForHumanReply(Conversation $conversation, int $companyId): ?Lead
+    {
+        $lead = $this->resolveLeadForConversation($conversation, $companyId);
+
+        if ($lead) {
+            $lead->update([
+                'conversation_state' => 'human',
+            ]);
+        }
+
+        return $lead;
+    }
+
+    protected function resolveLeadForConversation(Conversation $conversation, int $companyId): ?Lead
+    {
+        if ($conversation->lead && (int) $conversation->lead->company_id === $companyId) {
+            return $conversation->lead;
+        }
+
+        return Lead::findByPhone($companyId, $conversation->customer_phone);
+    }
+
+    protected function phoneLookupKey(string $value): ?string
+    {
+        $lookup = app(PhoneNumberService::class)->buildWhatsappLookupKey($value);
+
+        return $lookup && strlen($lookup) >= 7 ? $lookup : null;
+    }
+
+    protected function normalizedPhoneSql(string $column): string
+    {
+        $wrapped = str_contains($column, '.') ? $column : "`{$column}`";
+
+        return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$wrapped}, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '')";
     }
 
     protected function basicAiSuggestion(string $lastText, string $tone, Conversation $conversation): string
