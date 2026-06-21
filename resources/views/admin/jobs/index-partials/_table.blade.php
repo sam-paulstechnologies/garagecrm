@@ -48,24 +48,26 @@
 
                     <tr>
                         <td data-label="Job">
-                            <a href="{{ route('admin.jobs.show', $job) }}" class="sf-job-name-link">
-                                {{ $job->job_code ?? '-' }}
-                            </a>
-
-                            @if($phoneDisplay && $phoneTelUrl)
-                                <a href="{{ $phoneTelUrl }}" class="mt-1 inline-flex text-xs font-extrabold text-orange-300 underline decoration-orange-300/40 underline-offset-2">
-                                    {{ $phoneDisplay }}
+                            <div class="min-w-0">
+                                <a href="{{ route('admin.jobs.show', $job) }}" class="sf-job-name-link">
+                                    {{ $job->job_code ?? '-' }}
                                 </a>
-                            @else
-                                <div class="mt-1 text-xs font-extrabold text-slate-400">
-                                    No phone
-                                </div>
-                            @endif
 
-                            <div class="sf-job-muted mt-1 max-w-[280px] text-xs font-medium">
-                                <span class="block truncate" title="{{ $job->description }}">
-                                    {{ $job->description ?: 'No description added' }}
-                                </span>
+                                <div class="mt-1 text-sm font-bold sf-job-value">
+                                    @if($phoneDisplay && $phoneTelUrl)
+                                        <a href="{{ $phoneTelUrl }}" class="sf-link break-all">
+                                            {{ $phoneDisplay }}
+                                        </a>
+                                    @else
+                                        <span class="sf-job-muted">No phone</span>
+                                    @endif
+                                </div>
+
+                                <div class="sf-job-muted mt-1 max-w-[280px] text-xs font-medium">
+                                    <span class="block truncate" title="{{ $job->description }}">
+                                        {{ $job->description ?: 'No description added' }}
+                                    </span>
+                                </div>
                             </div>
                         </td>
 

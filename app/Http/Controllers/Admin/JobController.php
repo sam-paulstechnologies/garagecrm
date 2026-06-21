@@ -175,6 +175,23 @@ class JobController extends Controller
         $companyId = $this->companyId();
 
         $q = trim((string) $request->get('q'));
+        $bucket = (string) $request->get('bucket', '');
+        $completedStatuses = ['completed'];
+
+        $jobFilters = [
+            'date_range' => $request->get('date_range', 'all_time'),
+            'lead_source' => $request->get('lead_source', 'all'),
+            'assigned_user' => $request->get('assigned_user', 'all'),
+            'service_type' => $request->get('service_type', 'all'),
+            'customer_type' => $request->get('customer_type', 'all'),
+            'from_date' => $request->get('from_date'),
+            'to_date' => $request->get('to_date'),
+        ];
+
+        $assignedUsers = User::query()
+            ->where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $query = $this->companyScope()
             ->with([
@@ -185,25 +202,10 @@ class JobController extends Controller
             ->where('is_archived', false)
             ->where('status', 'completed');
 
-        if ($q !== '') {
-            $query->where(function ($where) use ($q, $companyId) {
-                $where
-                    ->where('job_code', 'like', "%{$q}%")
-                    ->orWhere('description', 'like', "%{$q}%")
-                    ->orWhere('work_summary', 'like', "%{$q}%")
-                    ->orWhere('issues_found', 'like', "%{$q}%")
-                    ->orWhere('parts_used', 'like', "%{$q}%")
-                    ->orWhereHas('client', function ($clientQuery) use ($q, $companyId) {
-                        $clientQuery
-                            ->where('company_id', $companyId)
-                            ->where(function ($clientSearch) use ($q) {
-                                $clientSearch
-                                    ->where('name', 'like', "%{$q}%")
-                                    ->orWhere('phone', 'like', "%{$q}%")
-                                    ->orWhere('email', 'like', "%{$q}%");
-                            });
-                    });
-            });
+        $this->applyJobIndexFilters($query, $request, $companyId, $completedStatuses, false);
+
+        if ($bucket !== '') {
+            $this->applyJobBucketFilter($query, $bucket);
         }
 
         $jobs = $query
@@ -211,7 +213,22 @@ class JobController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('admin.jobs.completed', compact('jobs', 'q'));
+        $base = $this->companyScope()
+            ->where('is_archived', false)
+            ->where('status', 'completed');
+
+        $this->applyJobIndexFilters($base, $request, $companyId, $completedStatuses, false);
+
+        $bucketCounts = $this->buildJobBucketCounts((clone $base)->get());
+
+        return view('admin.jobs.completed', compact(
+            'jobs',
+            'q',
+            'bucket',
+            'jobFilters',
+            'assignedUsers',
+            'bucketCounts'
+        ));
     }
 
     /*
