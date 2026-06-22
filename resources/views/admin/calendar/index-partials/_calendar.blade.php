@@ -2,7 +2,7 @@
     <div class="sf-card-header flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
             <h2 class="sf-section-title">
-                Booking Confirmation Board
+                Booking Calendar
             </h2>
 
             <p class="sf-section-subtitle">

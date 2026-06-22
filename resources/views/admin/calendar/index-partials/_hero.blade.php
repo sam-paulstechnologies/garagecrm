@@ -1,10 +1,6 @@
-<div class="sf-page-header">
+<div class="sf-page-header sf-calendar-hero">
     <div>
-        <div class="sf-kicker">
-            Booking Board
-        </div>
-
-        <h1 class="sf-page-title mt-3">
+        <h1 class="sf-page-title">
             Booking Confirmation Calendar
         </h1>
 

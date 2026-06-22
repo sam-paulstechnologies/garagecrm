@@ -18,6 +18,7 @@ class CalendarController extends Controller
 
         return view('admin.calendar.index', [
             'calendarFilters' => $this->filterState($request),
+            'calendarCounts' => $this->bookingCalendarCounts($companyId),
             'calendarAssignedUsers' => User::query()
                 ->where('company_id', $companyId)
                 ->orderBy('name')
@@ -89,5 +90,26 @@ class CalendarController extends Controller
             Booking::STATUS_SCHEDULED => 'Booking Confirmed',
             Booking::STATUS_RESCHEDULE_REQUIRED => 'Rescheduling Required',
         ];
+    }
+
+    private function bookingCalendarCounts(int $companyId): array
+    {
+        $base = Booking::query()
+            ->where('company_id', $companyId)
+            ->where(function ($query) {
+                $query->whereNull('is_archived')->orWhere('is_archived', false);
+            });
+
+        $visibleStatuses = [
+            Booking::STATUS_PENDING,
+            Booking::STATUS_SCHEDULED,
+            Booking::STATUS_RESCHEDULE_REQUIRED,
+        ];
+
+        return collect($visibleStatuses)
+            ->mapWithKeys(fn (string $status) => [
+                $status => (clone $base)->where('status', $status)->count(),
+            ])
+            ->all();
     }
 }

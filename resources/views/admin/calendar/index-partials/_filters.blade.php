@@ -2,22 +2,41 @@
     $filters = $calendarFilters ?? [];
 @endphp
 
-<div class="sf-card sf-calendar-filter-panel">
-    <div class="sf-card-header">
-        <div>
-            <h2 class="sf-section-title">Calendar Filters</h2>
-            <p class="sf-section-subtitle">Filter the read-only feed without leaving the calendar.</p>
+<div
+    id="sfCalendarFilters"
+    class="sf-card sf-calendar-filter-panel"
+    data-calendar-filter-panel
+>
+    <div class="sf-card-header sf-calendar-filter-summary" data-calendar-panel-summary>
+        <div class="flex min-w-0 flex-wrap items-center gap-3">
+            <h2 class="sf-section-title">Search & Filter Calendar</h2>
+
+            <span class="sf-calendar-filter-pill">
+                {{ $calendarStatuses[$filters['status'] ?? 'all'] ?? 'All booking calendar items' }}
+            </span>
+
+            <span class="sf-calendar-filter-pill">
+                {{ $calendarSlots[$filters['slot'] ?? 'all'] ?? 'All slots' }}
+            </span>
+
+            @if(($filters['assigned_user'] ?? 'all') !== 'all')
+                <span class="sf-calendar-filter-pill">
+                    {{ ($filters['assigned_user'] ?? '') === 'unassigned' ? 'Unassigned' : 'Assigned user selected' }}
+                </span>
+            @endif
         </div>
 
-        <div class="flex flex-wrap gap-2 text-xs font-black">
-            <span class="sf-calendar-stat-chip">Manager Confirmation</span>
-            <span class="sf-calendar-stat-chip">Booking Confirmed</span>
-            <span class="sf-calendar-stat-chip">Rescheduling Required</span>
-            <span class="sf-calendar-stat-chip">Unassigned</span>
-        </div>
+        <button
+            type="button"
+            class="sf-btn-secondary"
+            data-calendar-panel-toggle
+            aria-expanded="false"
+        >
+            Show Filters
+        </button>
     </div>
 
-    <div class="sf-card-body">
+    <div class="sf-card-body hidden" data-calendar-panel-body>
         <div class="sf-calendar-filters-grid">
             <label class="sf-calendar-filter-field">
                 <span>Assigned User</span>
@@ -49,6 +68,12 @@
                     @endforeach
                 </select>
             </label>
+        </div>
+
+        <div class="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-4">
+            <button type="button" class="sf-btn-secondary" data-calendar-reset>
+                Reset
+            </button>
         </div>
     </div>
 </div>
