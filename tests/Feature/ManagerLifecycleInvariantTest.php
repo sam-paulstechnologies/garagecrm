@@ -292,6 +292,152 @@ class ManagerLifecycleInvariantTest extends TestCase
         $this->assertSame('pending', $invoice->fresh()->status);
     }
 
+    public function test_manager_can_mark_booking_as_rescheduling_required_with_replacement_slot(): void
+    {
+        $booking = $this->booking([
+            'status' => Booking::STATUS_SCHEDULED,
+            'booking_date' => now()->addDay()->toDateString(),
+            'slot' => 'morning',
+        ]);
+
+        $this->actingAs($this->manager)
+            ->from(route('manager.bookings.show', $booking))
+            ->patch(route('manager.bookings.reschedule', $booking), [
+                'booking_date' => now()->addDays(2)->toDateString(),
+                'slot' => 'afternoon',
+                'reschedule_reason' => 'Customer requested a later slot.',
+            ])
+            ->assertRedirect(route('manager.bookings.show', $booking));
+
+        $fresh = $booking->fresh();
+
+        $this->assertSame(Booking::STATUS_RESCHEDULE_REQUIRED, $fresh->status);
+        $this->assertSame('Customer requested a later slot.', $fresh->reschedule_reason);
+        $this->assertSame('afternoon', $fresh->slot);
+        $this->assertNotNull($fresh->reschedule_requested_at);
+        $this->assertSame(0, Job::where('booking_id', $booking->id)->count());
+    }
+
+    public function test_manager_reschedule_requires_reason_date_and_capacity(): void
+    {
+        $targetDate = now()->addDays(3)->toDateString();
+        $blocking = $this->booking([
+            'status' => Booking::STATUS_SCHEDULED,
+            'booking_date' => $targetDate,
+            'slot' => 'full_day',
+        ]);
+        $booking = $this->booking([
+            'status' => Booking::STATUS_PENDING,
+            'booking_date' => now()->addDay()->toDateString(),
+            'slot' => 'morning',
+        ]);
+
+        $this->actingAs($this->manager)
+            ->from(route('manager.bookings.show', $booking))
+            ->patch(route('manager.bookings.reschedule', $booking), [
+                'booking_date' => $targetDate,
+                'slot' => 'morning',
+            ])
+            ->assertRedirect(route('manager.bookings.show', $booking))
+            ->assertSessionHasErrors('reschedule_reason');
+
+        $this->actingAs($this->manager)
+            ->from(route('manager.bookings.show', $booking))
+            ->patch(route('manager.bookings.reschedule', $booking), [
+                'booking_date' => $targetDate,
+                'slot' => 'morning',
+                'reschedule_reason' => 'Need a different time.',
+            ])
+            ->assertRedirect(route('manager.bookings.show', $booking))
+            ->assertSessionHasErrors('slot');
+
+        $this->assertSame(Booking::STATUS_PENDING, $booking->fresh()->status);
+        $this->assertSame(Booking::STATUS_SCHEDULED, $blocking->fresh()->status);
+    }
+
+    public function test_manager_cannot_reschedule_cross_company_or_converted_booking(): void
+    {
+        $converted = $this->booking(['status' => Booking::STATUS_CONVERTED_TO_JOB]);
+
+        $this->actingAs($this->manager)
+            ->from(route('manager.bookings.show', $converted))
+            ->patch(route('manager.bookings.reschedule', $converted), [
+                'booking_date' => now()->addDay()->toDateString(),
+                'slot' => 'morning',
+                'reschedule_reason' => 'Try to move completed journey.',
+            ])
+            ->assertRedirect(route('manager.bookings.show', $converted))
+            ->assertSessionHasErrors('booking');
+
+        $otherCompanyId = (int) DB::table('companies')->insertGetId([
+            'name' => 'Other Garage',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $crossCompanyBooking = Booking::create([
+            'company_id' => $otherCompanyId,
+            'client_id' => $this->clientId,
+            'vehicle_id' => $this->vehicleId,
+            'booking_date' => now()->addDay()->toDateString(),
+            'slot' => 'morning',
+            'status' => Booking::STATUS_PENDING,
+            'is_archived' => false,
+        ]);
+
+        $this->actingAs($this->manager)
+            ->patch(route('manager.bookings.reschedule', $crossCompanyBooking->id), [
+                'booking_date' => now()->addDays(2)->toDateString(),
+                'slot' => 'morning',
+                'reschedule_reason' => 'Cross company attempt.',
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_manager_opportunity_index_shows_closed_lost_and_no_legacy_stage_choices(): void
+    {
+        $opportunity = $this->opportunity([
+            'title' => 'Closed Lost Manager Visible',
+            'stage' => Opportunity::STAGE_CLOSED_LOST,
+            'status' => 'lost',
+        ]);
+
+        $response = $this->actingAs($this->manager)
+            ->get(route('manager.opportunities.index', ['stage' => Opportunity::STAGE_CLOSED_LOST]))
+            ->assertOk()
+            ->assertSee('Closed Lost Manager Visible')
+            ->assertSee('Closed Lost');
+
+        $response->assertDontSee('value="collecting_details"', false);
+        $response->assertDontSee('value="closed_won"', false);
+        $response->assertDontSee('Collecting Details');
+        $response->assertDontSee('Closed Won');
+
+        $this->assertSame(Opportunity::STAGE_CLOSED_LOST, $opportunity->fresh()->stage);
+    }
+
+    public function test_manager_job_status_ui_only_renders_generic_active_statuses(): void
+    {
+        $job = $this->job();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.show', $job))
+            ->assertOk()
+            ->assertSee('Complete the job using the invoice completion action.')
+            ->assertSee('value="pending"', false)
+            ->assertSee('value="in_progress"', false)
+            ->assertDontSee('value="completed"', false)
+            ->assertDontSee('value="cancelled"', false);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.index'))
+            ->assertOk()
+            ->assertSee('Pending')
+            ->assertSee('In Progress')
+            ->assertSee('Completed')
+            ->assertDontSee('Cancelled');
+    }
+
     private function lead(array $overrides = []): Lead
     {
         return Lead::withoutEvents(fn () => Lead::create(array_merge([
@@ -330,6 +476,21 @@ class ManagerLifecycleInvariantTest extends TestCase
             'client_id' => $this->clientId,
             'description' => 'Lifecycle job',
             'status' => 'pending',
+            'is_archived' => false,
+        ], $overrides));
+    }
+
+    private function booking(array $overrides = []): Booking
+    {
+        return Booking::create(array_merge([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'vehicle_id' => $this->vehicleId,
+            'name' => 'Lifecycle booking',
+            'service_type' => 'General Service',
+            'booking_date' => now()->addDay()->toDateString(),
+            'slot' => 'morning',
+            'status' => Booking::STATUS_PENDING,
             'is_archived' => false,
         ], $overrides));
     }
@@ -452,6 +613,8 @@ class ManagerLifecycleInvariantTest extends TestCase
             $table->date('expected_close_date')->nullable();
             $table->string('status')->default('pending');
             $table->string('lost_reason')->nullable();
+            $table->text('reschedule_reason')->nullable();
+            $table->timestamp('reschedule_requested_at')->nullable();
             $table->boolean('is_archived')->default(false);
             $table->text('notes')->nullable();
             $table->timestamp('confirmed_at')->nullable();

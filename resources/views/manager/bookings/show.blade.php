@@ -494,18 +494,28 @@
                                         <option value="morning" @selected($bookingSlotValue === 'morning')>Morning</option>
                                         <option value="afternoon" @selected($bookingSlotValue === 'afternoon')>Afternoon</option>
                                         <option value="evening" @selected($bookingSlotValue === 'evening')>Evening</option>
-                                        <option value="pickup" @selected($bookingSlotValue === 'pickup')>Pickup</option>
-                                        <option value="dropoff" @selected($bookingSlotValue === 'dropoff')>Dropoff</option>
+                                        <option value="full_day" @selected($bookingSlotValue === 'full_day')>Full Day</option>
                                     </select>
                                 </div>
 
                                 <div class="mb-3">
-                                    <label class="form-label">Reason / Notes</label>
+                                    <label class="form-label">Reschedule Reason</label>
                                     <textarea
-                                        name="notes"
+                                        name="reschedule_reason"
                                         rows="3"
                                         class="form-control"
                                         placeholder="Why is this booking being rescheduled?"
+                                        required
+                                    ></textarea>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Internal Notes</label>
+                                    <textarea
+                                        name="notes"
+                                        rows="2"
+                                        class="form-control"
+                                        placeholder="Optional manager notes"
                                     ></textarea>
                                 </div>
 

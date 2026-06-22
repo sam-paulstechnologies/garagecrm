@@ -6,9 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Job\Booking;
 use App\Services\Booking\BookingActionService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BookingController extends Controller
 {
+    protected const CAPACITY_STATUSES = [
+        Booking::STATUS_PENDING,
+        Booking::STATUS_SCHEDULED,
+    ];
+
     public function __construct(
         protected BookingActionService $bookingActionService
     ) {}
@@ -148,6 +157,53 @@ class BookingController extends Controller
         }
     }
 
+    public function reschedule(Request $request, Booking $booking)
+    {
+        $this->authorizeBooking($booking);
+
+        if (in_array((string) $booking->status, [Booking::STATUS_CONVERTED_TO_JOB, Booking::STATUS_LOST], true)) {
+            return back()->withErrors([
+                'booking' => 'Converted or lost bookings cannot be rescheduled.',
+            ]);
+        }
+
+        $data = $request->validate([
+            'booking_date' => ['required', 'date', 'after_or_equal:today'],
+            'slot' => ['required', Rule::in(['morning', 'afternoon', 'evening', 'full_day'])],
+            'booking_time' => ['nullable', 'date_format:H:i'],
+            'reschedule_reason' => ['required', 'string', 'max:1000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $this->ensureSlotAvailable(
+                companyId: (int) $booking->company_id,
+                bookingDate: $data['booking_date'],
+                slot: $data['slot'],
+                excludeBookingId: (int) $booking->id
+            );
+
+            $this->bookingActionService->requestReschedule(
+                $booking,
+                (int) auth()->id(),
+                $data['reschedule_reason'],
+                [
+                    'booking_date' => $data['booking_date'],
+                    'slot' => $data['slot'],
+                    'notes' => $data['notes'] ?? null,
+                ]
+            );
+
+            return back()->with('success', 'Booking marked as rescheduling required.');
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'booking' => $e->getMessage() ?: 'Unable to reschedule booking.',
+            ]);
+        }
+    }
+
     public function convertToJob(Booking $booking)
     {
         $this->authorizeBooking($booking);
@@ -178,5 +234,81 @@ class BookingController extends Controller
             ->where('is_archived', false)
             ->where('status', $status)
             ->count();
+    }
+
+    protected function ensureSlotAvailable(
+        int $companyId,
+        string $bookingDate,
+        string $slot,
+        ?int $excludeBookingId = null
+    ): void {
+        $baseQuery = Booking::where('company_id', $companyId)
+            ->whereDate('booking_date', $bookingDate)
+            ->where('is_archived', false)
+            ->whereIn('status', self::CAPACITY_STATUSES);
+
+        if ($excludeBookingId) {
+            $baseQuery->where('id', '!=', $excludeBookingId);
+        }
+
+        $fullDayExists = (clone $baseQuery)
+            ->where('slot', 'full_day')
+            ->exists();
+
+        if ($slot !== 'full_day' && $fullDayExists) {
+            throw ValidationException::withMessages([
+                'slot' => 'A full-day booking already exists for this date.',
+            ]);
+        }
+
+        if ($slot === 'full_day') {
+            if ((clone $baseQuery)->exists()) {
+                throw ValidationException::withMessages([
+                    'slot' => 'This date already has bookings. Full-day booking would overbook the day.',
+                ]);
+            }
+
+            return;
+        }
+
+        $capacity = $this->slotCapacity($companyId, $slot);
+        $slotBookingCount = (clone $baseQuery)
+            ->where('slot', $slot)
+            ->count();
+
+        if ($slotBookingCount >= $capacity) {
+            throw ValidationException::withMessages([
+                'slot' => "The {$slot} slot is already full for this date. Capacity: {$capacity}.",
+            ]);
+        }
+    }
+
+    protected function slotCapacity(int $companyId, string $slot): int
+    {
+        $defaults = [
+            'morning' => 3,
+            'afternoon' => 3,
+            'evening' => 3,
+            'full_day' => 1,
+        ];
+
+        $default = $defaults[$slot] ?? 1;
+
+        if (! Schema::hasTable('company_settings')) {
+            return $default;
+        }
+
+        foreach (["booking_slot_capacity_{$slot}", "slot_capacity_{$slot}"] as $key) {
+            $value = DB::table('company_settings')
+                ->where('company_id', $companyId)
+                ->where('key', $key)
+                ->value('value');
+
+            if (is_numeric($value) && (int) $value > 0) {
+                return (int) $value;
+            }
+        }
+
+        return $default;
     }
 }

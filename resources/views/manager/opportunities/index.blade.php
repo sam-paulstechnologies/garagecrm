@@ -9,11 +9,10 @@
     $stageLabels = $stageLabels ?? [
         'new' => 'New',
         'attempting_contact' => 'Attempting Contact',
-        'collecting_details' => 'Collecting Details',
-        'manager_confirmation_pending' => 'Manager Confirmation Pending',
         'appointment' => 'Appointment',
         'offer' => 'Offer',
-        'closed_won' => 'Closed Won',
+        'manager_confirmation_pending' => 'Manager Confirmation Pending',
+        'booking_confirmed' => 'Booking Confirmed',
         'closed_lost' => 'Closed Lost',
     ];
 
@@ -25,12 +24,11 @@
 
         return match ($stage) {
             'new' => 'new',
-            'attempting_contact', 'attempting', 'contacting', 'contacted' => 'attempting_contact',
-            'collecting_details', 'collecting', 'details', 'details_collection' => 'collecting_details',
+            'attempting_contact', 'attempting', 'contacting', 'contacted', 'collecting_details', 'collecting', 'details', 'details_collection' => 'attempting_contact',
             'manager_confirmation_pending', 'manager_confirmation', 'confirmation_pending' => 'manager_confirmation_pending',
             'appointment', 'scheduled', 'booking_scheduled' => 'appointment',
             'offer', 'quotation', 'quote', 'follow_up' => 'offer',
-            'closed_won', 'won' => 'closed_won',
+            'booking_confirmed', 'closed_won', 'won' => 'booking_confirmed',
             'closed_lost', 'lost' => 'closed_lost',
             default => $stage,
         };
@@ -79,7 +77,7 @@
         $status = strtolower((string) $status);
 
         return match ($status) {
-            'won', 'closed_won' => 'badge-soft-success',
+            'booking_confirmed', 'won', 'closed_won' => 'badge-soft-success',
             'lost', 'closed_lost' => 'badge-soft-danger',
             'open', 'active' => 'badge-soft-primary',
             default => 'badge-soft-muted',
@@ -92,11 +90,10 @@
         return match ($stage) {
             'new' => 'badge-soft-primary',
             'attempting_contact' => 'badge-soft-warning',
-            'collecting_details' => 'badge-soft-info',
             'manager_confirmation_pending' => 'badge-soft-orange',
             'appointment' => 'badge-soft-info',
             'offer' => 'badge-soft-purple',
-            'closed_won' => 'badge-soft-success',
+            'booking_confirmed' => 'badge-soft-success',
             'closed_lost' => 'badge-soft-danger',
             default => 'badge-soft-muted',
         };
@@ -194,8 +191,6 @@
                             <option value="">All</option>
                             <option value="active" @selected(($status ?? request('status')) === 'active')>Active</option>
                             <option value="open" @selected(($status ?? request('status')) === 'open')>Open</option>
-                            <option value="won" @selected(($status ?? request('status')) === 'won')>Won</option>
-                            <option value="lost" @selected(($status ?? request('status')) === 'lost')>Lost</option>
                         </select>
                     </div>
 
@@ -214,7 +209,7 @@
         <div class="sf-panel-header">
             <div>
                 <h2 class="sf-panel-title">
-                    Open Opportunities
+                    Opportunities
                 </h2>
                 <p class="sf-panel-subtitle">
                     Use Schedule Booking when the customer confirms date and time.
@@ -378,7 +373,7 @@
                                                 @method('PATCH')
 
                                                 <button class="btn btn-sm btn-outline-success">
-                                                    Won
+                                                    Booking Confirmed
                                                 </button>
                                             </form>
                                         @endif
@@ -389,7 +384,7 @@
                                                 @method('PATCH')
 
                                                 <button class="btn btn-sm btn-outline-danger">
-                                                    Lost
+                                                    Closed Lost
                                                 </button>
                                             </form>
                                         @endif
@@ -415,7 +410,7 @@
             </div>
         @else
             <div class="sf-empty">
-                <h3>No open opportunities found</h3>
+                <h3>No opportunities found</h3>
                 <p>Opportunities needing manager follow-up will appear here.</p>
             </div>
         @endif

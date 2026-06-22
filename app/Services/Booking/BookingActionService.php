@@ -114,22 +114,50 @@ class BookingActionService
         });
     }
 
-    public function requestReschedule(Booking $booking, int $actorId, string $reason): Booking
+    public function requestReschedule(
+        Booking $booking,
+        int $actorId,
+        string $reason,
+        array $replacement = []
+    ): Booking
     {
-        return DB::transaction(function () use ($booking, $actorId, $reason) {
+        return DB::transaction(function () use ($booking, $actorId, $reason, $replacement) {
             $this->assertBookingIsUsable($booking);
+
+            $payload = [
+                'status' => Booking::STATUS_RESCHEDULE_REQUIRED,
+                'reschedule_reason' => $reason,
+                'reschedule_requested_at' => now(),
+                'state_changed_at' => now(),
+                'state_changed_by' => $actorId,
+                'updated_at' => now(),
+            ];
+
+            if (! empty($replacement['booking_date'])) {
+                $payload['booking_date'] = $replacement['booking_date'];
+                $payload['expected_close_date'] = $replacement['booking_date'];
+            }
+
+            if (! empty($replacement['slot'])) {
+                $payload['slot'] = $replacement['slot'];
+            }
+
+            if (! empty($replacement['notes'])) {
+                $existingNotes = trim((string) ($booking->notes ?? ''));
+                $appendNotes = trim(implode("\n", array_filter([
+                    '',
+                    'Reschedule requested by manager',
+                    'Reason: ' . $reason,
+                    'Notes: ' . $replacement['notes'],
+                ])));
+
+                $payload['notes'] = trim($existingNotes . "\n" . $appendNotes);
+            }
 
             DB::table('bookings')
                 ->where('id', $booking->id)
                 ->where('company_id', $booking->company_id)
-                ->update([
-                    'status' => Booking::STATUS_RESCHEDULE_REQUIRED,
-                    'reschedule_reason' => $reason,
-                    'reschedule_requested_at' => now(),
-                    'state_changed_at' => now(),
-                    'state_changed_by' => $actorId,
-                    'updated_at' => now(),
-                ]);
+                ->update($payload);
 
             $freshBooking = Booking::with(['client', 'opportunity', 'vehicleData.make', 'vehicleData.model'])
                 ->where('company_id', $booking->company_id)

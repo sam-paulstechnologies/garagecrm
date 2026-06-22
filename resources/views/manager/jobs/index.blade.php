@@ -77,7 +77,6 @@
             'pending' => 'badge-soft-warning',
             'in_progress' => 'badge-soft-primary',
             'completed' => 'badge-soft-success',
-            'cancelled', 'canceled' => 'badge-soft-danger',
             default => 'badge-soft-muted',
         };
     };
@@ -142,7 +141,7 @@
     {{-- Stat Cards --}}
     <div class="row g-4 mb-4">
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl-4">
             <a href="{{ route('manager.jobs.index', ['status' => 'pending']) }}"
                class="job-stat-card warning {{ ($status ?? request('status')) === 'pending' ? 'active' : '' }}">
                 <span class="job-stat-label">Pending</span>
@@ -151,7 +150,7 @@
             </a>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl-4">
             <a href="{{ route('manager.jobs.index', ['status' => 'in_progress']) }}"
                class="job-stat-card primary {{ ($status ?? request('status')) === 'in_progress' ? 'active' : '' }}">
                 <span class="job-stat-label">In Progress</span>
@@ -160,21 +159,12 @@
             </a>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-12 col-sm-6 col-xl-4">
             <a href="{{ route('manager.jobs.index', ['status' => 'completed']) }}"
                class="job-stat-card success {{ ($status ?? request('status')) === 'completed' ? 'active' : '' }}">
                 <span class="job-stat-label">Completed</span>
                 <span class="job-stat-value">{{ $counts['completed'] ?? 0 }}</span>
                 <span class="job-stat-note">Feedback should trigger</span>
-            </a>
-        </div>
-
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="{{ route('manager.jobs.index', ['status' => 'cancelled']) }}"
-               class="job-stat-card danger {{ ($status ?? request('status')) === 'cancelled' ? 'active' : '' }}">
-                <span class="job-stat-label">Cancelled</span>
-                <span class="job-stat-value">{{ $counts['cancelled'] ?? 0 }}</span>
-                <span class="job-stat-note">Cancelled jobs</span>
             </a>
         </div>
 
@@ -218,7 +208,6 @@
                             <option value="pending" @selected(($status ?? request('status')) === 'pending')>Pending</option>
                             <option value="in_progress" @selected(($status ?? request('status')) === 'in_progress')>In Progress</option>
                             <option value="completed" @selected(($status ?? request('status')) === 'completed')>Completed</option>
-                            <option value="cancelled" @selected(($status ?? request('status')) === 'cancelled')>Cancelled</option>
                         </select>
                     </div>
 

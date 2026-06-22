@@ -12,7 +12,6 @@
         'pending' => 'badge-soft-warning',
         'in_progress' => 'badge-soft-primary',
         'completed' => 'badge-soft-success',
-        'cancelled', 'canceled' => 'badge-soft-danger',
         default => 'badge-soft-muted',
     };
 
@@ -505,7 +504,7 @@
                             Job Status
                         </h2>
                         <p class="sf-panel-subtitle">
-                            Update progress manually.
+                            Complete the job using the invoice completion action.
                         </p>
                     </div>
                 </div>
@@ -531,8 +530,6 @@
                                         required>
                                     <option value="pending" @selected($statusValue === 'pending')>Pending</option>
                                     <option value="in_progress" @selected($statusValue === 'in_progress')>In Progress</option>
-                                    <option value="completed" @selected($statusValue === 'completed')>Completed</option>
-                                    <option value="cancelled" @selected($statusValue === 'cancelled')>Cancelled</option>
                                 </select>
                             </div>
 

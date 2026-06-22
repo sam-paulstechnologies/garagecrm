@@ -30,6 +30,11 @@ class JobController extends Controller
 
         $q = trim((string) $request->get('q', ''));
         $status = trim((string) $request->get('status', ''));
+        $validStatuses = ['pending', 'in_progress', 'completed'];
+
+        if ($status !== '' && ! in_array($status, $validStatuses, true)) {
+            $status = '';
+        }
 
         $jobs = Job::with([
                 'client',
@@ -55,7 +60,7 @@ class JobController extends Controller
                         });
                 });
             })
-            ->orderByRaw("FIELD(status, 'pending', 'in_progress', 'completed')")
+            ->orderByRaw("CASE status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END")
             ->latest()
             ->paginate(20)
             ->withQueryString();

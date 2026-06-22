@@ -99,10 +99,10 @@ class OpportunityController extends Controller
             })
             ->when(Schema::hasColumn('opportunities', 'stage'), function ($query) {
                 $query->whereNotIn('stage', [
+                    'collecting_details',
                     'closed_won',
-                    'closed_lost',
+                    'Collecting Details',
                     'Closed Won',
-                    'Closed Lost',
                 ]);
             })
             ->latest('id')
