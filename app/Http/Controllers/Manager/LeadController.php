@@ -56,13 +56,21 @@ class LeadController extends Controller
 
         $q = trim((string) $request->get('q', ''));
         $status = $this->normalizeLeadStatus($request->get('status'));
-        $source = trim((string) $request->get('source', ''));
+        $source = trim((string) ($request->get('source') ?? $request->get('lead_source', '')));
+        $assignedUser = trim((string) $request->get('assigned_user', 'all'));
+        $serviceType = trim((string) $request->get('service_type', 'all'));
+        $bucket = trim((string) $request->get('bucket', ''));
+        $assignedColumn = $this->firstExistingColumn('leads', [
+            'assigned_to',
+            'assigned_to_id',
+            'assigned_user_id',
+            'manager_id',
+            'user_id',
+        ]);
 
-        $leads = Lead::query()
-            ->where('company_id', $companyId)
-            ->when(Schema::hasColumn('leads', 'is_active'), function ($query) {
-                $query->where('is_active', 1);
-            })
+        $baseQuery = $this->managerLeadBaseQuery($companyId);
+
+        $leads = (clone $baseQuery)
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     foreach ([
@@ -91,34 +99,46 @@ class LeadController extends Controller
             ->when($source !== '' && Schema::hasColumn('leads', 'source'), function ($query) use ($source) {
                 $query->where('source', $source);
             })
-            ->when(Schema::hasColumn('leads', 'status'), function ($query) {
-                $query->whereNotIn('status', [
-                    'converted',
-                    'lost',
-                    'Converted',
-                    'Converted to Opportunity',
-                    'Disqualified',
-                    'Closed',
-                ]);
+            ->when($assignedUser !== '' && $assignedUser !== 'all' && $assignedColumn, function ($query) use ($assignedColumn, $assignedUser) {
+                $query->where($assignedColumn, (int) $assignedUser);
+            })
+            ->when($serviceType !== '' && $serviceType !== 'all' && Schema::hasColumn('leads', 'service_type'), function ($query) use ($serviceType) {
+                $query->where('service_type', $serviceType);
+            })
+            ->when($bucket !== '', function ($query) use ($bucket) {
+                $this->applyLeadBucket($query, $bucket);
             })
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
 
         $sources = $this->leadSources($companyId);
+        $serviceTypes = $this->leadServiceTypes($companyId);
         $managers = $this->assignableUsers($companyId);
         $leadStatuses = $this->leadStatuses;
         $statusLabels = $this->statusLabels;
+        $leadCounts = $this->leadCounts($baseQuery);
+        $bucketCounts = $this->bucketCounts($baseQuery);
+        $contactOnHoldSubStatuses = $this->contactOnHoldSubStatuses();
+        $disqualifiedSubStatuses = $this->disqualifiedSubStatuses();
 
         return view('manager.leads.index', compact(
             'leads',
             'sources',
+            'serviceTypes',
             'managers',
             'q',
             'status',
             'source',
+            'assignedUser',
+            'serviceType',
+            'bucket',
             'leadStatuses',
-            'statusLabels'
+            'statusLabels',
+            'leadCounts',
+            'bucketCounts',
+            'contactOnHoldSubStatuses',
+            'disqualifiedSubStatuses'
         ));
     }
 
@@ -375,6 +395,21 @@ class LeadController extends Controller
             ->pluck('source');
     }
 
+    protected function leadServiceTypes(int $companyId)
+    {
+        if (! Schema::hasColumn('leads', 'service_type')) {
+            return collect();
+        }
+
+        return Lead::query()
+            ->where('company_id', $companyId)
+            ->whereNotNull('service_type')
+            ->select('service_type')
+            ->distinct()
+            ->orderBy('service_type')
+            ->pluck('service_type');
+    }
+
     protected function assignableUsers(int $companyId)
     {
         return User::query()
@@ -398,6 +433,110 @@ class LeadController extends Controller
         }
 
         return null;
+    }
+
+    protected function managerLeadBaseQuery(int $companyId)
+    {
+        return Lead::query()
+            ->where('company_id', $companyId)
+            ->when(Schema::hasColumn('leads', 'is_active'), function ($query) {
+                $query->where('is_active', 1);
+            })
+            ->when(Schema::hasColumn('leads', 'status'), function ($query) {
+                $query->whereNotIn('status', [
+                    'converted',
+                    'lost',
+                    'Converted',
+                    'Converted to Opportunity',
+                    'Lost',
+                    'Closed',
+                    'closed_won',
+                    'closed_lost',
+                ]);
+            });
+    }
+
+    protected function leadCounts($baseQuery): array
+    {
+        $counts = [
+            'open' => (clone $baseQuery)->count(),
+            'followup_due' => 0,
+        ];
+
+        foreach ($this->leadStatuses as $status) {
+            $counts[$status] = Schema::hasColumn('leads', 'status')
+                ? (clone $baseQuery)->where('status', $status)->count()
+                : 0;
+        }
+
+        $followUpQuery = clone $baseQuery;
+        $this->applyFollowUpDue($followUpQuery);
+        $counts['followup_due'] = $followUpQuery->count();
+
+        return $counts;
+    }
+
+    protected function bucketCounts($baseQuery): array
+    {
+        $buckets = [
+            'new',
+            'attempting_contact',
+            'contact_on_hold',
+            'qualified',
+            'disqualified',
+            'followup_due',
+        ];
+
+        $counts = [];
+
+        foreach ($buckets as $bucket) {
+            $query = clone $baseQuery;
+            $this->applyLeadBucket($query, $bucket);
+            $counts[$bucket] = $query->count();
+        }
+
+        return $counts;
+    }
+
+    protected function applyLeadBucket($query, string $bucket): void
+    {
+        if (in_array($bucket, $this->leadStatuses, true) && Schema::hasColumn('leads', 'status')) {
+            $query->where('status', $bucket);
+
+            return;
+        }
+
+        if ($bucket === 'followup_due') {
+            $this->applyFollowUpDue($query);
+        }
+    }
+
+    protected function applyFollowUpDue($query): void
+    {
+        $hasFollowUpDate = Schema::hasColumn('leads', 'follow_up_date');
+        $hasFollowUpRequired = Schema::hasColumn('leads', 'follow_up_required');
+        $hasFollowUpAt = Schema::hasColumn('leads', 'follow_up_at');
+
+        $query->where(function ($sub) use ($hasFollowUpDate, $hasFollowUpRequired, $hasFollowUpAt) {
+            if ($hasFollowUpDate) {
+                $sub->where(function ($dateQuery) use ($hasFollowUpRequired) {
+                    $dateQuery->whereDate('follow_up_date', '<=', now()->toDateString());
+
+                    if ($hasFollowUpRequired) {
+                        $dateQuery->where('follow_up_required', true);
+                    }
+                });
+            }
+
+            if ($hasFollowUpAt) {
+                $method = $hasFollowUpDate ? 'orWhere' : 'where';
+                $sub->{$method}('follow_up_at', '<=', now());
+            }
+
+            if (! $hasFollowUpDate && ! $hasFollowUpAt) {
+                $sub->whereRaw('1 = 0');
+            }
+        });
     }
 
     protected function normalizeLeadStatus(?string $status): string

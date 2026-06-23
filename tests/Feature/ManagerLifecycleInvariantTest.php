@@ -134,6 +134,78 @@ class ManagerLifecycleInvariantTest extends TestCase
         $this->assertSame(0, Opportunity::where('lead_id', $lead->id)->count());
     }
 
+    public function test_manager_leads_index_uses_queue_layout_and_company_scope(): void
+    {
+        $lead = $this->lead([
+            'name' => 'Scoped Manager Lead',
+            'phone' => '971500000002',
+            'service_type' => 'General Service',
+            'source' => 'website',
+        ]);
+
+        $otherCompanyId = (int) DB::table('companies')->insertGetId([
+            'name' => 'Other Lead Company',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Lead::withoutEvents(fn () => Lead::create([
+            'company_id' => $otherCompanyId,
+            'name' => 'Cross Company Lead',
+            'phone' => '971500000099',
+            'status' => Lead::STATUS_NEW,
+            'is_active' => true,
+        ]));
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.leads.index'))
+            ->assertOk()
+            ->assertSee('Manager Action Queue')
+            ->assertSee('Search & Filter Leads', false)
+            ->assertSee('Lead Buckets')
+            ->assertSee('Score / Priority')
+            ->assertSee('WhatsApp / Status')
+            ->assertSee('Scoped Manager Lead')
+            ->assertSee('href="tel:+971500000002"', false)
+            ->assertSee('WhatsApp Inbox')
+            ->assertDontSee('Cross Company Lead')
+            ->assertDontSee('href="' . url('/manager/leads/' . $lead->id) . '"', false);
+
+        $this->assertFalse(Route::has('manager.leads.show'));
+    }
+
+    public function test_manager_leads_index_renders_only_approved_status_choices_and_filters(): void
+    {
+        $newLead = $this->lead([
+            'name' => 'Visible New Lead',
+            'status' => Lead::STATUS_NEW,
+        ]);
+
+        $qualifiedLead = $this->lead([
+            'name' => 'Visible Qualified Lead',
+            'status' => Lead::STATUS_QUALIFIED,
+        ]);
+
+        $response = $this->actingAs($this->manager)
+            ->get(route('manager.leads.index', ['status' => Lead::STATUS_QUALIFIED]))
+            ->assertOk()
+            ->assertSee('Visible Qualified Lead')
+            ->assertDontSee('Visible New Lead')
+            ->assertSee('value="new"', false)
+            ->assertSee('value="attempting_contact"', false)
+            ->assertSee('value="contact_on_hold"', false)
+            ->assertSee('value="qualified"', false)
+            ->assertSee('value="disqualified"', false)
+            ->assertDontSee('value="converted"', false)
+            ->assertDontSee('value="lost"', false)
+            ->assertDontSee('Converted')
+            ->assertDontSee('Lost');
+
+        $this->assertSame(Lead::STATUS_NEW, $newLead->fresh()->status);
+        $this->assertSame(Lead::STATUS_QUALIFIED, $qualifiedLead->fresh()->status);
+        $response->assertSee('Search & Filter Leads', false);
+    }
+
     public function test_manager_lead_hold_and_disqualified_validation_is_enforced(): void
     {
         $lead = $this->lead();
