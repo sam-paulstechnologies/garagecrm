@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -74,6 +75,25 @@ class ManagerLifecycleInvariantTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    public function test_manager_dashboard_renders_shared_theme_controls_without_broken_links(): void
+    {
+        $response = $this->actingAs($this->manager)
+            ->get(route('manager.dashboard'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Manager Dashboard')
+            ->assertSee('sayaraforce_theme', false)
+            ->assertSee('data-sf-theme-toggle', false)
+            ->assertSee('managerMobileNav', false)
+            ->assertSee(route('manager.settings.index'), false)
+            ->assertDontSee('manager/profile', false);
+
+        if (! Route::has('manager.calendar.index')) {
+            $response->assertDontSee('manager/calendar', false);
+        }
     }
 
     public function test_manager_qualifying_lead_creates_or_reuses_opportunity(): void

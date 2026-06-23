@@ -1,11 +1,28 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>@yield('title', 'Manager Dashboard') — SayaraForce</title>
+
+    {{-- Prevent theme flash before page loads. Uses the same key as the Admin layout. --}}
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('sayaraforce_theme') || 'dark';
+
+                if (savedTheme !== 'light' && savedTheme !== 'dark') {
+                    savedTheme = 'dark';
+                }
+
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
 
     {{-- App Assets --}}
     @viteReactRefresh
@@ -19,14 +36,19 @@
 
     <style>
         :root {
+            color-scheme: dark;
+
             --sf-bg: #050914;
-            --sf-surface: #ffffff;
-            --sf-surface-soft: #f8fafc;
-            --sf-border: rgba(148, 163, 184, 0.22);
-            --sf-border-light: #e5e7eb;
-            --sf-text: #0f172a;
-            --sf-muted: #64748b;
-            --sf-dark-muted: #94a3b8;
+            --sf-bg-soft: #0f172a;
+            --sf-surface: #111827;
+            --sf-surface-soft: #172033;
+            --sf-surface-strong: #1e293b;
+            --sf-border: rgba(148, 163, 184, 0.20);
+            --sf-border-light: rgba(148, 163, 184, 0.24);
+            --sf-text: #f8fafc;
+            --sf-text-strong: #ffffff;
+            --sf-muted: #94a3b8;
+            --sf-muted-strong: #cbd5e1;
             --sf-primary: #2563eb;
             --sf-primary-dark: #1d4ed8;
             --sf-orange: #ea580c;
@@ -35,7 +57,40 @@
             --sf-danger-dark: #b91c1c;
             --sf-success: #16a34a;
             --sf-warning: #f59e0b;
-            --sf-header: #060b16;
+            --sf-header: rgba(6, 11, 22, 0.94);
+            --sf-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
+            --sf-soft-shadow: 0 16px 40px rgba(0, 0, 0, 0.20);
+            --sf-input-bg: #0f172a;
+            --sf-input-text: #f8fafc;
+            --sf-row-hover: rgba(148, 163, 184, 0.10);
+            --sf-orange-soft: rgba(249, 115, 22, 0.14);
+            --sf-theme-toggle-bg: rgba(255, 255, 255, 0.08);
+            --sf-theme-toggle-border: rgba(255, 255, 255, 0.14);
+        }
+
+        html[data-theme="light"] {
+            color-scheme: light;
+
+            --sf-bg: #f4f7fb;
+            --sf-bg-soft: #eef3f9;
+            --sf-surface: #ffffff;
+            --sf-surface-soft: #f8fafc;
+            --sf-surface-strong: #ffffff;
+            --sf-border: rgba(15, 23, 42, 0.10);
+            --sf-border-light: #d9e1ec;
+            --sf-text: #0f172a;
+            --sf-text-strong: #020617;
+            --sf-muted: #64748b;
+            --sf-muted-strong: #475569;
+            --sf-header: rgba(255, 255, 255, 0.94);
+            --sf-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+            --sf-soft-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+            --sf-input-bg: #ffffff;
+            --sf-input-text: #0f172a;
+            --sf-row-hover: #f8fafc;
+            --sf-orange-soft: rgba(249, 115, 22, 0.10);
+            --sf-theme-toggle-bg: #ffffff;
+            --sf-theme-toggle-border: #d9e1ec;
         }
 
         * {
@@ -47,7 +102,7 @@
             min-height: 100%;
         }
 
-        body {
+        body.manager-theme-body {
             margin: 0;
             background:
                 radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
@@ -56,6 +111,10 @@
             color: var(--sf-text);
             font-family: Figtree, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             font-size: 14px;
+        }
+
+        html[data-theme="light"] body.manager-theme-body {
+            background: var(--sf-bg);
         }
 
         a {
@@ -76,9 +135,10 @@
             position: sticky;
             top: 0;
             z-index: 1020;
-            background: rgba(6, 11, 22, 0.96);
-            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+            background: var(--sf-header);
+            border-bottom: 1px solid var(--sf-border);
             backdrop-filter: blur(14px);
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
         }
 
         .manager-header-inner {
@@ -98,11 +158,53 @@
             gap: 18px;
         }
 
+        .manager-mobile-toggle {
+            display: none;
+            width: 44px;
+            height: 44px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            border: 1px solid var(--sf-border-light);
+            color: var(--sf-text);
+            background: var(--sf-surface);
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+        }
+
+        .manager-mobile-toggle span,
+        .manager-mobile-toggle span::before,
+        .manager-mobile-toggle span::after {
+            display: block;
+            width: 18px;
+            height: 2px;
+            border-radius: 999px;
+            background: currentColor;
+            content: "";
+        }
+
+        .manager-mobile-toggle span {
+            position: relative;
+        }
+
+        .manager-mobile-toggle span::before,
+        .manager-mobile-toggle span::after {
+            position: absolute;
+            left: 0;
+        }
+
+        .manager-mobile-toggle span::before {
+            top: -6px;
+        }
+
+        .manager-mobile-toggle span::after {
+            top: 6px;
+        }
+
         .manager-brand {
             display: inline-flex;
             align-items: center;
             gap: 10px;
-            color: #ffffff;
+            color: var(--sf-text-strong);
             font-weight: 800;
             text-decoration: none;
             white-space: nowrap;
@@ -110,7 +212,7 @@
         }
 
         .manager-brand:hover {
-            color: #ffffff;
+            color: var(--sf-text-strong);
         }
 
         .manager-logo {
@@ -139,7 +241,7 @@
             font-size: 15px;
             font-weight: 900;
             letter-spacing: -0.02em;
-            color: #ffffff;
+            color: var(--sf-text-strong);
         }
 
         .manager-brand-badge {
@@ -183,7 +285,7 @@
             min-height: 40px;
             padding: 0 13px;
             border-radius: 12px;
-            color: #a7b0c0;
+            color: var(--sf-muted-strong);
             font-size: 14px;
             font-weight: 800;
             text-decoration: none;
@@ -192,22 +294,22 @@
         }
 
         .manager-nav a:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.07);
+            color: var(--sf-text-strong);
+            background: rgba(148, 163, 184, 0.12);
         }
 
         .manager-nav a.active {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.12);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            color: var(--sf-text-strong);
+            background: var(--sf-orange-soft);
+            box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.24);
         }
 
         .manager-nav a.manager-safe-link {
-            color: #cbd5e1;
+            color: var(--sf-muted-strong);
         }
 
         .manager-nav a.manager-safe-link.active {
-            color: #fdba74;
+            color: var(--sf-text-strong);
             background: rgba(249, 115, 22, 0.12);
             box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.18);
         }
@@ -251,29 +353,30 @@
         }
 
         .manager-dropdown-menu {
-            border: 0;
-            border-radius: 14px;
-            padding: 8px;
-            min-width: 190px;
-            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+            border: 1px solid var(--sf-border-light);
+            border-radius: 18px;
+            padding: 10px;
+            min-width: 260px;
+            background: var(--sf-surface);
+            box-shadow: var(--sf-shadow);
         }
 
         .manager-dropdown-header {
-            padding: 8px 10px 10px;
-            border-bottom: 1px solid #eef2f7;
+            padding: 8px 10px 12px;
+            border-bottom: 1px solid var(--sf-border-light);
             margin-bottom: 6px;
         }
 
         .manager-dropdown-name {
             font-weight: 900;
             font-size: 13px;
-            color: #0f172a;
+            color: var(--sf-text-strong);
             margin: 0;
         }
 
         .manager-dropdown-role {
             font-size: 11px;
-            color: #64748b;
+            color: var(--sf-muted);
             margin: 2px 0 0;
         }
 
@@ -281,7 +384,7 @@
             width: 100%;
             border: 0;
             background: transparent;
-            color: #334155;
+            color: var(--sf-muted-strong);
             text-align: left;
             font-size: 13px;
             font-weight: 700;
@@ -290,8 +393,8 @@
         }
 
         .manager-dropdown-item:hover {
-            background: #f1f5f9;
-            color: #0f172a;
+            background: var(--sf-row-hover);
+            color: var(--sf-text-strong);
         }
 
         .manager-dropdown-item.danger {
@@ -299,8 +402,8 @@
         }
 
         .manager-dropdown-item.danger:hover {
-            background: #fef2f2;
-            color: #b91c1c;
+            background: rgba(220, 38, 38, 0.10);
+            color: #ef4444;
         }
 
         /*
@@ -323,9 +426,9 @@
             margin: 0 auto 20px;
             padding: 22px 24px;
             border-radius: 22px;
-            background: rgba(255, 255, 255, 0.96);
+            background: var(--sf-surface);
             border: 1px solid var(--sf-border);
-            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+            box-shadow: var(--sf-shadow);
         }
         @endif
 
@@ -335,14 +438,17 @@
         |--------------------------------------------------------------------------
         */
         .card {
+            color: var(--sf-text);
+            background: var(--sf-surface);
             border: 1px solid var(--sf-border-light);
             border-radius: 18px;
-            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--sf-soft-shadow);
         }
 
         .card-header {
-            background: #ffffff;
-            border-bottom: 1px solid #eef2f7;
+            color: var(--sf-text-strong);
+            background: var(--sf-surface);
+            border-bottom: 1px solid var(--sf-border-light);
             border-radius: 18px 18px 0 0 !important;
             font-weight: 900;
         }
@@ -401,7 +507,9 @@
         .form-control,
         .form-select {
             border-radius: 10px;
-            border-color: #dbe2ea;
+            color: var(--sf-input-text);
+            background-color: var(--sf-input-bg);
+            border-color: var(--sf-border-light);
             font-size: 14px;
         }
 
@@ -412,27 +520,27 @@
         }
 
         .table {
-            color: #0f172a;
+            color: var(--sf-text);
             vertical-align: middle;
         }
 
         .table thead th {
             font-size: 12px;
-            color: #475569;
+            color: var(--sf-muted-strong);
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            background: #f8fafc;
-            border-bottom: 1px solid #e5e7eb;
+            background: var(--sf-surface-soft);
+            border-bottom: 1px solid var(--sf-border-light);
         }
 
         .table tbody td {
             font-size: 13px;
-            color: #334155;
+            color: var(--sf-muted-strong);
         }
 
         .table-hover tbody tr:hover {
-            background: #f8fafc;
+            background: var(--sf-row-hover);
         }
 
         .badge {
@@ -453,28 +561,29 @@
         |--------------------------------------------------------------------------
         */
         .sf-page-title {
-            color: #ffffff;
+            color: var(--sf-text-strong);
             font-weight: 950;
             letter-spacing: -0.04em;
             margin: 0;
         }
 
         .sf-page-subtitle {
-            color: var(--sf-dark-muted);
+            color: var(--sf-muted);
             margin: 6px 0 0;
             font-weight: 600;
         }
 
         .sf-panel {
-            background: #ffffff;
+            color: var(--sf-text);
+            background: var(--sf-surface);
             border: 1px solid var(--sf-border-light);
             border-radius: 18px;
-            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--sf-soft-shadow);
         }
 
         .sf-panel-header {
             padding: 18px 22px;
-            border-bottom: 1px solid #eef2f7;
+            border-bottom: 1px solid var(--sf-border-light);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -483,7 +592,7 @@
 
         .sf-panel-title {
             margin: 0;
-            color: #0f172a;
+            color: var(--sf-text-strong);
             font-size: 16px;
             font-weight: 950;
             letter-spacing: -0.02em;
@@ -491,7 +600,7 @@
 
         .sf-panel-subtitle {
             margin: 4px 0 0;
-            color: #64748b;
+            color: var(--sf-muted);
             font-size: 12px;
             font-weight: 700;
         }
@@ -502,23 +611,30 @@
 
         .sf-stat-card {
             min-height: 122px;
-            background: #ffffff;
+            color: var(--sf-text);
+            background: var(--sf-surface);
             border: 1px solid var(--sf-border-light);
             border-radius: 16px;
             padding: 20px 22px;
-            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--sf-soft-shadow);
+            transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        a .sf-stat-card:hover {
+            border-color: rgba(249, 115, 22, 0.38);
+            transform: translateY(-1px);
         }
 
         .sf-stat-label {
             margin: 0 0 12px;
-            color: #64748b;
+            color: var(--sf-muted);
             font-weight: 800;
             font-size: 13px;
         }
 
         .sf-stat-value {
             margin: 0;
-            color: #0f172a;
+            color: var(--sf-text-strong);
             font-size: 28px;
             line-height: 1;
             font-weight: 950;
@@ -527,7 +643,7 @@
 
         .sf-stat-help {
             margin: 12px 0 0;
-            color: #94a3b8;
+            color: var(--sf-muted);
             font-size: 12px;
             font-weight: 700;
         }
@@ -577,14 +693,143 @@
         }
 
         .sf-action-button.light {
-            color: #0f172a;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
+            color: var(--sf-text-strong);
+            background: var(--sf-surface);
+            border: 1px solid var(--sf-border-light);
         }
 
         .sf-action-button.light:hover {
-            color: #0f172a;
+            color: var(--sf-text-strong);
+            background: var(--sf-surface-soft);
+        }
+
+        .manager-theme-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border: 0;
+            border-radius: 12px;
+            padding: 10px;
+            background: transparent;
+            color: var(--sf-muted-strong);
+            text-align: left;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .manager-theme-toggle:hover,
+        .manager-theme-toggle:focus {
+            background: var(--sf-row-hover);
+            color: var(--sf-text-strong);
+        }
+
+        .manager-theme-label {
+            display: block;
+            color: var(--sf-text-strong);
+            font-weight: 900;
+        }
+
+        .manager-theme-state {
+            display: block;
+            margin-top: 2px;
+            color: var(--sf-muted);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .manager-theme-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex: 0 0 auto;
+            border-radius: 999px;
+            border: 1px solid var(--sf-theme-toggle-border);
+            background: var(--sf-theme-toggle-bg);
+            transition: background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .manager-theme-switch::after {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 999px;
             background: #f8fafc;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.26);
+            content: "";
+            transition: transform 0.18s ease, background 0.18s ease;
+        }
+
+        html[data-theme="light"] .manager-theme-switch {
+            background: #f97316;
+            border-color: rgba(249, 115, 22, 0.40);
+        }
+
+        html[data-theme="light"] .manager-theme-switch::after {
+            transform: translateX(20px);
+            background: #fff7ed;
+        }
+
+        .manager-mobile-menu {
+            border-top: 1px solid var(--sf-border-light);
+            background: var(--sf-header);
+        }
+
+        .manager-mobile-menu-inner {
+            width: min(1320px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 14px 0 18px;
+        }
+
+        .manager-mobile-nav {
+            display: grid;
+            gap: 8px;
+        }
+
+        .manager-mobile-nav a {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-radius: 14px;
+            padding: 12px 14px;
+            color: var(--sf-muted-strong);
+            background: var(--sf-surface);
+            border: 1px solid var(--sf-border-light);
+            font-weight: 900;
+        }
+
+        .manager-mobile-nav a.active {
+            color: var(--sf-text-strong);
+            background: var(--sf-orange-soft);
+            border-color: rgba(249, 115, 22, 0.30);
+        }
+
+        .manager-mobile-utility {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--sf-border-light);
+        }
+
+        body.manager-theme-body .text-dark {
+            color: var(--sf-text-strong) !important;
+        }
+
+        body.manager-theme-body .text-muted {
+            color: var(--sf-muted) !important;
+        }
+
+        body.manager-theme-body .bg-light {
+            background-color: var(--sf-surface-soft) !important;
+            color: var(--sf-text-strong) !important;
+        }
+
+        body.manager-theme-body .border,
+        body.manager-theme-body .border-bottom,
+        body.manager-theme-body .border-top {
+            border-color: var(--sf-border-light) !important;
         }
 
         /*
@@ -601,49 +846,35 @@
                 width: min(100% - 24px, 1320px);
             }
 
-            .manager-nav a {
-                padding: 0 11px;
-                font-size: 13px;
+            .manager-mobile-toggle {
+                display: inline-flex;
+            }
+
+            .manager-nav-wrap {
+                display: none;
+            }
+
+            .manager-header-left {
+                flex: 1;
+                justify-content: space-between;
             }
         }
 
         @media (max-width: 900px) {
-            .manager-header {
-                position: relative;
-            }
-
             .manager-header-inner {
-                min-height: auto;
-                padding: 12px 0;
-                align-items: flex-start;
-                flex-direction: column;
+                min-height: 60px;
+                padding: 8px 0;
             }
 
             .manager-header-left {
                 width: 100%;
-                align-items: flex-start;
-                flex-direction: column;
-                gap: 12px;
-            }
-
-            .manager-nav-wrap {
-                width: 100%;
-            }
-
-            .manager-nav {
-                width: 100%;
-                padding-bottom: 2px;
+                align-items: center;
+                flex-direction: row;
+                gap: 10px;
             }
 
             .manager-user-area {
-                position: absolute;
-                top: 12px;
-                right: 0;
-            }
-
-            .manager-brand-name,
-            .manager-brand-badge {
-                display: none;
+                margin-left: auto;
             }
 
             main.manager-main {
@@ -677,7 +908,7 @@
     @stack('styles')
 </head>
 
-<body>
+<body class="manager-theme-body">
 
 @php
     use Illuminate\Support\Facades\Route;
@@ -813,6 +1044,18 @@
                     </span>
                 </a>
 
+                <button
+                    class="manager-mobile-toggle"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#managerMobileNav"
+                    aria-controls="managerMobileNav"
+                    aria-expanded="false"
+                    aria-label="Open manager navigation"
+                >
+                    <span aria-hidden="true"></span>
+                </button>
+
                 <div class="manager-nav-wrap">
                     <nav class="manager-nav">
                         @foreach($managerNavItems as $item)
@@ -845,6 +1088,26 @@
                                 <p class="manager-dropdown-role">Manager</p>
                             </div>
 
+                            <button
+                                type="button"
+                                class="manager-theme-toggle"
+                                data-sf-theme-toggle
+                                aria-pressed="false"
+                                aria-label="Toggle manager theme"
+                            >
+                                <span>
+                                    <span class="manager-theme-label">Theme</span>
+                                    <span class="manager-theme-state" data-sf-theme-label>Dark mode</span>
+                                </span>
+                                <span class="manager-theme-switch" aria-hidden="true"></span>
+                            </button>
+
+                            @if(Route::has('manager.settings.index'))
+                                <a href="{{ route('manager.settings.index') }}" class="manager-dropdown-item d-block">
+                                    Settings
+                                </a>
+                            @endif
+
                             @if(Route::has('logout'))
                                 <form method="POST" action="{{ route('logout') }}" class="m-0">
                                     @csrf
@@ -858,6 +1121,40 @@
                 @endauth
             </div>
 
+        </div>
+
+        <div class="collapse manager-mobile-menu" id="managerMobileNav">
+            <div class="manager-mobile-menu-inner">
+                <nav class="manager-mobile-nav" aria-label="Manager mobile navigation">
+                    @foreach($managerNavItems as $item)
+                        @if(Route::has($item['route']))
+                            <a href="{{ route($item['route']) }}"
+                               class="{{ $isRouteActive($item['active']) ? 'active' : '' }}">
+                                <span>{{ $item['label'] }}</span>
+                                @if($isRouteActive($item['active']))
+                                    <span aria-hidden="true">Active</span>
+                                @endif
+                            </a>
+                        @endif
+                    @endforeach
+                </nav>
+
+                <div class="manager-mobile-utility">
+                    <button
+                        type="button"
+                        class="manager-theme-toggle"
+                        data-sf-theme-toggle
+                        aria-pressed="false"
+                        aria-label="Toggle manager theme"
+                    >
+                        <span>
+                            <span class="manager-theme-label">Theme</span>
+                            <span class="manager-theme-state" data-sf-theme-label>Dark mode</span>
+                        </span>
+                        <span class="manager-theme-switch" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -898,6 +1195,42 @@
 
 {{-- Alpine --}}
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var toggles = document.querySelectorAll('[data-sf-theme-toggle]');
+        var labels = document.querySelectorAll('[data-sf-theme-label]');
+
+        function applyTheme(theme) {
+            if (theme !== 'light' && theme !== 'dark') {
+                theme = 'dark';
+            }
+
+            document.documentElement.setAttribute('data-theme', theme);
+
+            labels.forEach(function (label) {
+                label.textContent = theme === 'light' ? 'Light mode' : 'Dark mode';
+            });
+
+            toggles.forEach(function (toggle) {
+                toggle.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+            });
+
+            try {
+                localStorage.setItem('sayaraforce_theme', theme);
+            } catch (e) {}
+        }
+
+        applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+        toggles.forEach(function (toggle) {
+            toggle.addEventListener('click', function () {
+                var activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+                applyTheme(activeTheme === 'dark' ? 'light' : 'dark');
+            });
+        });
+    });
+</script>
 
 @stack('scripts')
 

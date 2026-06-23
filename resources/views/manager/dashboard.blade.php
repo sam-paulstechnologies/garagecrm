@@ -6,7 +6,7 @@
 <div class="space-y-6">
 
     {{-- Header --}}
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
+    <div class="manager-dashboard-hero d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
             <h1 class="sf-page-title">
                 Manager Dashboard
@@ -472,6 +472,14 @@
         min-width: 0;
     }
 
+    .manager-dashboard-hero {
+        padding: 24px 28px;
+        border: 1px solid var(--sf-border-light);
+        border-radius: 22px;
+        background: var(--sf-surface);
+        box-shadow: var(--sf-shadow);
+    }
+
     .manager-work-card {
         min-height: 86px;
         display: flex;
@@ -480,30 +488,86 @@
         justify-content: center;
         gap: 8px;
         padding: 14px 10px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--sf-border-light);
         border-radius: 14px;
-        color: #0f172a;
-        background: #ffffff;
+        color: var(--sf-text-strong);
+        background: var(--sf-surface);
         text-decoration: none;
         transition: all 0.15s ease;
     }
 
     .manager-work-card:hover {
-        color: #0f172a;
-        background: #f8fafc;
+        color: var(--sf-text-strong);
+        background: var(--sf-surface-soft);
         border-color: rgba(37, 99, 235, 0.35);
         transform: translateY(-1px);
         box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
     }
 
     .manager-work-icon {
-        font-size: 22px;
+        width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        color: #9a3412;
+        background: #ffedd5;
+        border: 1px solid #fed7aa;
+        font-size: 0;
+        font-weight: 950;
         line-height: 1;
+    }
+
+    .manager-work-icon::after {
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        content: "SF";
+    }
+
+    a[href*="escalations"] .manager-work-icon::after {
+        content: "ES";
+    }
+
+    a[href*="bookings"] .manager-work-icon::after {
+        content: "BK";
+    }
+
+    a[href*="jobs"] .manager-work-icon::after {
+        content: "JB";
+    }
+
+    a[href*="leads"] .manager-work-icon::after {
+        content: "LD";
+    }
+
+    a[href*="opportunities"] .manager-work-icon::after {
+        content: "OP";
+    }
+
+    a[href*="clients"] .manager-work-icon::after {
+        content: "CL";
+    }
+
+    a[href*="team"] .manager-work-icon::after {
+        content: "TM";
+    }
+
+    html[data-theme="dark"] .manager-work-icon {
+        color: #fed7aa;
+        background: rgba(249, 115, 22, 0.14);
+        border-color: rgba(249, 115, 22, 0.24);
     }
 
     .manager-work-label {
         font-size: 13px;
         font-weight: 900;
+    }
+
+    @media (max-width: 640px) {
+        .manager-dashboard-hero {
+            padding: 20px;
+        }
     }
 </style>
 @endpush
