@@ -163,13 +163,19 @@
                             </label>
 
                             <input type="file"
+                                   id="lead_import_file"
                                    name="lead_file"
                                    accept=".csv,.txt,.xls,.xlsx,text/csv"
                                    required
+                                   data-selected-file-target="lead_import_file_name"
                                    class="sf-import-field block file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
 
                             <p class="sf-help">
                                 The upload creates a preview batch first. Phone numbers should stay plain text, for example 971587000000.
+                            </p>
+
+                            <p id="lead_import_file_name" class="sf-help mt-2 font-extrabold text-orange-200" aria-live="polite">
+                                No file selected yet.
                             </p>
 
                             @error('lead_file')
@@ -397,3 +403,23 @@
 
 </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-selected-file-target]').forEach(function (input) {
+                var target = document.getElementById(input.getAttribute('data-selected-file-target'));
+
+                if (!target) {
+                    return;
+                }
+
+                input.addEventListener('change', function () {
+                    target.textContent = input.files && input.files.length
+                        ? 'Selected file: ' + input.files[0].name
+                        : 'No file selected yet.';
+                });
+            });
+        });
+    </script>
+@endpush

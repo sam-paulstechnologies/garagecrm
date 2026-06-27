@@ -96,6 +96,30 @@ class ManagerLifecycleInvariantTest extends TestCase
         }
     }
 
+    public function test_manager_inbox_renders_demo_safe_inertia_shell(): void
+    {
+        $this->actingAs($this->manager)
+            ->get(route('manager.inbox.index'))
+            ->assertOk()
+            ->assertSee('Manager/Inbox/Index', false)
+            ->assertDontSee('manager/profile', false);
+    }
+
+    public function test_lead_import_pages_show_selected_file_feedback(): void
+    {
+        $this->actingAs($this->admin)
+            ->get(route('admin.leads.import.options'))
+            ->assertOk()
+            ->assertSee('data-selected-file-target', false)
+            ->assertSee('No file selected yet.');
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.leads.import.preview'))
+            ->assertOk()
+            ->assertSee('data-selected-file-target', false)
+            ->assertSee('No file selected yet.');
+    }
+
     public function test_manager_qualifying_lead_creates_or_reuses_opportunity(): void
     {
         $lead = $this->lead();

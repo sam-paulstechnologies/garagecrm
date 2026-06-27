@@ -104,13 +104,19 @@
                             </label>
 
                             <input type="file"
+                                   id="lead_excel_file"
                                    name="file"
                                    accept=".xlsx,.xls,.csv"
                                    required
+                                   data-selected-file-target="lead_excel_file_name"
                                    class="block w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 file:mr-4 file:rounded-lg file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-orange-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400">
 
                             <p class="sf-help">
                                 Please use the sample sheet columns: name, phone, email, source, notes, preferred_channel.
+                            </p>
+
+                            <p id="lead_excel_file_name" class="sf-help mt-2 font-extrabold text-orange-200" aria-live="polite">
+                                No file selected yet.
                             </p>
 
                             @error('file')
@@ -227,3 +233,23 @@
 
 </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-selected-file-target]').forEach(function (input) {
+                var target = document.getElementById(input.getAttribute('data-selected-file-target'));
+
+                if (!target) {
+                    return;
+                }
+
+                input.addEventListener('change', function () {
+                    target.textContent = input.files && input.files.length
+                        ? 'Selected file: ' + input.files[0].name
+                        : 'No file selected yet.';
+                });
+            });
+        });
+    </script>
+@endpush

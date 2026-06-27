@@ -14,6 +14,7 @@ export default function Index({ selectedConversationId = null }) {
     const [sending, setSending] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [composerTab, setComposerTab] = useState("ai");
+    const [sendError, setSendError] = useState("");
 
     const bottomRef = useRef(null);
 
@@ -82,6 +83,7 @@ export default function Index({ selectedConversationId = null }) {
         if (!message.trim() || !selected || sending) return;
 
         setSending(true);
+        setSendError("");
 
         try {
             await axios.post("/manager/inbox/send", {
@@ -93,7 +95,7 @@ export default function Index({ selectedConversationId = null }) {
             await loadMessages(selected.id);
         } catch (error) {
             console.error("Failed to send message", error);
-            alert("Message failed to send. Please check WhatsApp settings/logs.");
+            setSendError("Message was not sent. Check WhatsApp settings/logs before retrying.");
         } finally {
             setSending(false);
         }
@@ -755,6 +757,17 @@ export default function Index({ selectedConversationId = null }) {
                     border-top: 1px solid rgba(255, 255, 255, 0.08);
                 }
 
+                .sf-send-error {
+                    margin: 10px 12px 0;
+                    border: 1px solid rgba(248, 113, 113, 0.24);
+                    border-radius: 12px;
+                    background: rgba(127, 29, 29, 0.28);
+                    color: #fecaca;
+                    padding: 10px 12px;
+                    font-size: 12px;
+                    font-weight: 800;
+                }
+
                 .sf-input-icons {
                     display: flex;
                     align-items: center;
@@ -763,13 +776,15 @@ export default function Index({ selectedConversationId = null }) {
                 }
 
                 .sf-icon-btn {
-                    width: 34px;
+                    min-width: 34px;
                     height: 34px;
                     border: 0;
                     border-radius: 11px;
                     background: transparent;
                     color: #94a3b8;
-                    font-size: 17px;
+                    font-size: 11px;
+                    font-weight: 900;
+                    padding: 0 9px;
                 }
 
                 .sf-icon-btn:hover {
@@ -809,12 +824,13 @@ export default function Index({ selectedConversationId = null }) {
                 }
 
                 .sf-send-extra {
-                    width: 42px;
+                    min-width: 58px;
                     height: 42px;
                     border: 1px solid rgba(255, 255, 255, 0.10);
                     border-radius: 14px;
                     background: rgba(2, 6, 23, 0.72);
                     color: #fdba74;
+                    padding: 0 12px;
                     font-weight: 900;
                 }
 
@@ -1031,6 +1047,25 @@ export default function Index({ selectedConversationId = null }) {
                     .sf-ai-note {
                         width: 100%;
                     }
+
+                    .sf-composer-tabs {
+                        overflow-x: auto;
+                    }
+
+                    .sf-composer-tab {
+                        white-space: nowrap;
+                    }
+
+                    .sf-input-actions {
+                        align-items: stretch;
+                        flex-direction: column;
+                        gap: 10px;
+                    }
+
+                    .sf-send-group,
+                    .sf-send-btn {
+                        width: 100%;
+                    }
                 }
             `}</style>
 
@@ -1053,7 +1088,7 @@ export default function Index({ selectedConversationId = null }) {
 
                             <div className="sf-search-area">
                                 <div className="sf-search-box">
-                                    <span>⌕</span>
+                                    <span>Search</span>
                                     <input
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
@@ -1205,13 +1240,13 @@ export default function Index({ selectedConversationId = null }) {
 
                                                                 {statusLabel(m) && (
                                                                     <span>
-                                                                        · {statusLabel(m)}
+                                                                        {" | "}{statusLabel(m)}
                                                                     </span>
                                                                 )}
 
                                                                 {m.direction === "out" && (
                                                                     <span>
-                                                                        {m.provider_status === "read" ? "✓✓" : "✓"}
+                                                                        {m.provider_status === "read" ? "Read" : "Sent"}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1231,7 +1266,7 @@ export default function Index({ selectedConversationId = null }) {
                                                 onClick={() => setComposerTab("ai")}
                                                 className={`sf-composer-tab ${composerTab === "ai" ? "active" : ""}`}
                                             >
-                                                ✨ AI Reply
+                                                AI Reply
                                             </button>
 
                                             <button
@@ -1239,7 +1274,7 @@ export default function Index({ selectedConversationId = null }) {
                                                 onClick={() => setComposerTab("quick")}
                                                 className={`sf-composer-tab ${composerTab === "quick" ? "active" : ""}`}
                                             >
-                                                ⚡ Quick Replies
+                                                Quick Replies
                                             </button>
 
                                             <button
@@ -1247,7 +1282,7 @@ export default function Index({ selectedConversationId = null }) {
                                                 onClick={() => setComposerTab("template")}
                                                 className={`sf-composer-tab ${composerTab === "template" ? "active" : ""}`}
                                             >
-                                                ▣ Templates
+                                                Templates
                                             </button>
                                         </div>
 
@@ -1328,18 +1363,24 @@ export default function Index({ selectedConversationId = null }) {
                                                 placeholder="Type a message... Press Enter to send, Shift+Enter for new line"
                                             />
 
+                                            {sendError && (
+                                                <div className="sf-send-error">
+                                                    {sendError}
+                                                </div>
+                                            )}
+
                                             <div className="sf-input-actions">
                                                 <div className="sf-input-icons">
                                                     <button type="button" className="sf-icon-btn">
-                                                        🙂
+                                                        Emoji
                                                     </button>
 
                                                     <button type="button" className="sf-icon-btn">
-                                                        📎
+                                                        Attach
                                                     </button>
 
                                                     <button type="button" className="sf-icon-btn">
-                                                        🖼
+                                                        Image
                                                     </button>
                                                 </div>
 
@@ -1350,12 +1391,11 @@ export default function Index({ selectedConversationId = null }) {
                                                         disabled={sending || !message.trim()}
                                                         className="sf-send-btn"
                                                     >
-                                                        <span>➤</span>
                                                         <span>{sending ? "Sending..." : "Send"}</span>
                                                     </button>
 
                                                     <button type="button" className="sf-send-extra">
-                                                        ⌄
+                                                        More
                                                     </button>
                                                 </div>
                                             </div>
@@ -1365,7 +1405,7 @@ export default function Index({ selectedConversationId = null }) {
                             ) : (
                                 <div className="sf-empty-state">
                                     <div className="sf-empty-card">
-                                        <div className="sf-empty-icon">💬</div>
+                                        <div className="sf-empty-icon">MSG</div>
                                         <h2>WhatsApp Inbox</h2>
                                         <p>Select a conversation from the left to view messages and reply from SayaraForce.</p>
                                     </div>
@@ -1429,7 +1469,7 @@ export default function Index({ selectedConversationId = null }) {
                                         </div>
 
                                         <a href={leadProfileUrl} className="sf-outline-btn">
-                                            View Full Lead Profile ↗
+                                            View Full Lead Profile
                                         </a>
                                     </>
                                 ) : (
@@ -1448,7 +1488,7 @@ export default function Index({ selectedConversationId = null }) {
                                     <div className="sf-info-row">
                                         <div className="sf-info-label">First Contact</div>
                                         <div className="sf-info-value">
-                                            {selected?.last_message_at ? formatDate(selected.last_message_at) : "—"}
+                                            {selected?.last_message_at ? formatDate(selected.last_message_at) : "No date"}
                                         </div>
                                     </div>
 
@@ -1487,15 +1527,15 @@ export default function Index({ selectedConversationId = null }) {
 
                                 <div className="sf-action-list">
                                     <button type="button" onClick={markRead} className="sf-action-btn">
-                                        ✓ Mark as Read
+                                        Mark as Read
                                     </button>
 
                                     <button type="button" className="sf-action-btn">
-                                        👥 Assign to Team Member
+                                        Assign to Team Member
                                     </button>
 
                                     <button type="button" className="sf-action-btn danger">
-                                        ⊘ Block Contact
+                                        Block Contact
                                     </button>
                                 </div>
                             </div>
