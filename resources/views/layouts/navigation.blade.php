@@ -3,6 +3,7 @@
 @php
     use Illuminate\Support\Facades\Route;
 
+    $useAdminFullWidthShell = $useAdminFullWidthShell ?? false;
     $isManagerArea = request()->routeIs('manager.*');
     $isAdminArea = request()->routeIs('admin.*') || ! $isManagerArea;
     $isMediaTeam = auth()->check()
@@ -413,7 +414,7 @@
     }"
     class="sf-nav sticky top-0 z-40 border-b shadow-lg backdrop-blur"
 >
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="{{ $useAdminFullWidthShell ? 'max-w-none' : 'mx-auto max-w-7xl' }} px-4 sm:px-6 lg:px-8">
         <div class="relative flex min-h-16 items-center justify-between gap-4">
 
             {{-- Left: Brand --}}
@@ -439,7 +440,7 @@
             </div>
 
             {{-- Center: Desktop Primary Nav --}}
-            <div class="hidden items-center gap-1 xl:flex">
+            <div class="hidden items-center gap-1 {{ $useAdminFullWidthShell ? 'lg:flex' : 'xl:flex' }}">
                 @foreach($primaryNavItems as $item)
                     @if(Route::has($item['route']))
                         <a
@@ -611,7 +612,7 @@
             </div>
 
             {{-- Right: Desktop Profile --}}
-            <div class="hidden items-center xl:flex">
+            <div class="hidden items-center {{ $useAdminFullWidthShell ? 'lg:flex' : 'xl:flex' }}">
                 <div class="relative" @click.outside="userOpen = false">
                     <button
                         type="button"
@@ -690,7 +691,7 @@
             </div>
 
             {{-- Mobile: Center Burger --}}
-            <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 xl:hidden">
+            <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 {{ $useAdminFullWidthShell ? 'lg:hidden' : 'xl:hidden' }}">
                 <button
                     type="button"
                     @click="toggleMobile()"
@@ -723,7 +724,7 @@
             </div>
 
             {{-- Mobile: right spacer so theme toggle has room --}}
-            <div class="h-11 w-11 xl:hidden"></div>
+            <div class="h-11 w-11 {{ $useAdminFullWidthShell ? 'lg:hidden' : 'xl:hidden' }}"></div>
         </div>
     </div>
 
@@ -732,7 +733,7 @@
         x-cloak
         x-show="open"
         x-transition
-        class="sf-nav-mobile-menu border-t xl:hidden"
+        class="sf-nav-mobile-menu border-t {{ $useAdminFullWidthShell ? 'lg:hidden' : 'xl:hidden' }}"
     >
         <div class="space-y-3 px-4 py-4">
 

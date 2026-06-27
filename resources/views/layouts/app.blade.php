@@ -425,12 +425,19 @@
                 width: 2.15rem !important;
             }
         }
+
     </style>
 
     @stack('styles')
 </head>
 
 <body class="font-sans antialiased sf-theme-body">
+
+    @php
+        $useAdminFullWidthShell = auth()->check()
+            && request()->routeIs('admin.*')
+            && strtolower(trim((string) auth()->user()->role)) !== 'media_team';
+    @endphp
 
     <div class="min-h-screen relative overflow-x-hidden sf-app-shell">
 
@@ -449,7 +456,7 @@
         {{-- Optional Header --}}
         @hasSection('header')
             <header class="border-b backdrop-blur sf-theme-header">
-                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                <div class="{{ $useAdminFullWidthShell ? 'max-w-none' : 'mx-auto max-w-7xl' }} px-4 py-6 sm:px-6 lg:px-8">
                     @yield('header')
                 </div>
             </header>
@@ -516,6 +523,12 @@
             var toggles = document.querySelectorAll('[data-sf-theme-toggle]');
             var icons = document.querySelectorAll('[data-sf-theme-icon]');
             var labels = document.querySelectorAll('[data-sf-theme-label]');
+
+            try {
+                localStorage.removeItem('sayaraforce_admin_sidebar_collapsed');
+                localStorage.removeItem('admin_sidebar_collapsed');
+                localStorage.removeItem('sidebarCollapsed');
+            } catch (e) {}
 
             function applyTheme(theme) {
                 document.documentElement.setAttribute('data-theme', theme);
