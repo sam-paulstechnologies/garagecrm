@@ -6,6 +6,16 @@
     <title>SayaraForce — Lead Recovery & Retention CRM for UAE Garages</title>
     <meta name="description" content="SayaraForce helps UAE garages recover missed leads, track WhatsApp follow-ups, manage bookings, and bring old customers back with retention campaigns.">
 
+    @if(config('services.sayaraforce.ga4_measurement_id'))
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.sayaraforce.ga4_measurement_id') }}"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '{{ config('services.sayaraforce.ga4_measurement_id') }}');
+        </script>
+    @endif
+
     <style>
         :root {
             --bg: #050914;
@@ -692,7 +702,8 @@
             color: #94a3b8;
             font-size: 11px;
             font-weight: 900;
-            text-decoration: line-through;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
 
         .price {
@@ -973,6 +984,11 @@
 
                 <div class="hero-actions">
                     <a href="#audit" class="btn btn-primary">Request Free 7-Day Lead Recovery Audit</a>
+                    <a href="{{ config('services.sayaraforce.public_whatsapp_click_url') ?: '#audit' }}"
+                       class="btn btn-secondary"
+                       @if(config('services.sayaraforce.public_whatsapp_click_url')) target="_blank" rel="noopener" @endif>
+                        WhatsApp Us
+                    </a>
                     <a href="#pricing" class="btn btn-secondary">View Founders Pricing</a>
                 </div>
 
@@ -1194,8 +1210,8 @@
             </h2>
 
             <p class="section-copy">
-                Founders pricing is available for the first 10 selected garages only.
-                Includes guided setup, onboarding support, and early access to new features.
+                Draft launch pricing for founder review. First 10 UAE garages can receive 50% off
+                for the first 3 months, setup included.
             </p>
 
             <div class="pricing-grid">
@@ -1203,8 +1219,8 @@
                     <h3 class="plan-name">Starter</h3>
                     <p class="plan-desc">For small garages starting with lead tracking and WhatsApp follow-up.</p>
 
-                    <div class="old-price">AED 1,999/month</div>
-                    <div class="price">AED 999 <span>/month</span></div>
+                    <div class="old-price">Draft launch range</div>
+                    <div class="price">AED 499-699 <span>/month</span></div>
 
                     <ul class="features-list">
                         <li>Lead capture</li>
@@ -1223,8 +1239,8 @@
                     <h3 class="plan-name">Growth</h3>
                     <p class="plan-desc">For garages handling WhatsApp, Meta, website leads and retention follow-ups.</p>
 
-                    <div class="old-price">AED 2,999/month</div>
-                    <div class="price">AED 1,499 <span>/month</span></div>
+                    <div class="old-price">Draft launch price</div>
+                    <div class="price">AED 999 <span>/month</span></div>
 
                     <ul class="features-list">
                         <li>Everything in Starter</li>
@@ -1242,8 +1258,8 @@
                     <h3 class="plan-name">Pro</h3>
                     <p class="plan-desc">For garages that want full lead recovery, reports, team workflow, and campaigns.</p>
 
-                    <div class="old-price">AED 3,999/month</div>
-                    <div class="price">AED 1,999 <span>/month</span></div>
+                    <div class="old-price">Draft launch price</div>
+                    <div class="price">AED 1,499 <span>/month</span></div>
 
                     <ul class="features-list">
                         <li>Everything in Growth</li>
@@ -1259,7 +1275,7 @@
             </div>
 
             <p class="section-copy" style="font-size: 12px; margin-top: 28px;">
-                Not sure which plan fits? Start with a free 7-day lead recovery and retention audit.
+                WhatsApp/Meta usage and provider fees are separate where applicable. Final pricing requires founder approval.
             </p>
         </div>
     </section>
@@ -1286,22 +1302,37 @@
                     </div>
                 </div>
 
-                <form class="form" method="POST" action="#">
+                @if(session('success'))
+                    <div class="form-note" style="border-color: rgba(22, 163, 74, 0.35); color: #14532d; background: #dcfce7;">
+                        {{ session('success') }}
+                    </div>
+                @endif
+
+                <form class="form" method="POST" action="{{ route('public.demo.store') }}">
                     @csrf
 
                     <label>
                         Garage Name
-                        <input type="text" name="garage_name" placeholder="Example: City Auto Garage">
+                        <input type="text" name="garage_name" value="{{ old('garage_name') }}" placeholder="Example: City Auto Garage" required>
+                        @error('garage_name') <span class="form-note">{{ $message }}</span> @enderror
                     </label>
 
                     <label>
                         Your Name
-                        <input type="text" name="name" placeholder="Owner / Manager name">
+                        <input type="text" name="name" value="{{ old('name') }}" placeholder="Owner / Manager name" required>
+                        @error('name') <span class="form-note">{{ $message }}</span> @enderror
                     </label>
 
                     <label>
                         WhatsApp Number
-                        <input type="text" name="phone" placeholder="+971 5X XXX XXXX">
+                        <input type="text" name="phone" value="{{ old('phone') }}" placeholder="+971 5X XXX XXXX" required>
+                        @error('phone') <span class="form-note">{{ $message }}</span> @enderror
+                    </label>
+
+                    <label>
+                        Email
+                        <input type="email" name="email" value="{{ old('email') }}" placeholder="owner@example.com">
+                        @error('email') <span class="form-note">{{ $message }}</span> @enderror
                     </label>
 
                     <label>
@@ -1315,12 +1346,18 @@
                         </select>
                     </label>
 
+                    <label>
+                        What should we review?
+                        <textarea name="message" rows="4" placeholder="Example: WhatsApp leads, missed follow-ups, booking tracking">{{ old('message') }}</textarea>
+                        @error('message') <span class="form-note">{{ $message }}</span> @enderror
+                    </label>
+
                     <button type="submit" class="btn btn-primary">
-                        Request Free Audit
+                        Book Demo / Request Free Audit
                     </button>
 
                     <p class="form-note">
-                        Form connection can be enabled after UAT. For now, use this section as the conversion block.
+                        Your request is stored securely for founder follow-up. Live CRM routing is enabled after final approval.
                     </p>
                 </form>
             </div>
@@ -1335,6 +1372,8 @@
                 <a href="https://app.sayaraforce.com/login">Login</a>
                 <a href="#pricing">Pricing</a>
                 <a href="#audit">Audit</a>
+                <a href="{{ route('privacy-policy') }}">Privacy</a>
+                <a href="{{ route('terms') }}">Terms</a>
             </div>
         </div>
     </footer>

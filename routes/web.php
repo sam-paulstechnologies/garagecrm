@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\PasswordForceController;
+use App\Http\Controllers\Public\DemoRequestController;
 use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
 use App\Http\Middleware\VerifyCsrfToken;
@@ -48,6 +49,16 @@ Route::get('/', function (Request $request) {
 */
 Route::view('/privacy-policy', 'legal.privacy-policy')
     ->name('privacy-policy');
+
+Route::view('/terms', 'legal.terms')
+    ->name('terms');
+
+Route::post('/book-demo', [DemoRequestController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('public.demo.store');
+
+Route::view('/thank-you', 'public.thank-you')
+    ->name('public.demo.thank-you');
 
 /*
 |--------------------------------------------------------------------------

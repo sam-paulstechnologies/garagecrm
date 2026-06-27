@@ -157,6 +157,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SayaraForce Public Website
+    |--------------------------------------------------------------------------
+    | These values are intentionally optional. The public demo form stores a
+    | local enquiry until founder-approved CRM/WhatsApp routing is enabled.
+    |--------------------------------------------------------------------------
+    */
+
+    'sayaraforce' => [
+        'public_whatsapp_click_url' => env('SAYARAFORCE_PUBLIC_WHATSAPP_CLICK_URL'),
+        'ga4_measurement_id' => env('SAYARAFORCE_GA4_MEASUREMENT_ID'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Shared cURL CA Bundle
     |--------------------------------------------------------------------------
     */
