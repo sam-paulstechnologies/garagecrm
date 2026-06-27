@@ -1,2 +1,19 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin/
+Disallow: /manager/
+Disallow: /tenant/
+Disallow: /mechanic/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+Disallow: /dashboard
+Disallow: /home
+Disallow: /password/
+Disallow: /webhooks/
+Disallow: /_ops/
+Disallow: /db-counts
+Disallow: /book-demo
+Disallow: /thank-you
+
+Sitemap: https://sayaraforce.com/sitemap.xml

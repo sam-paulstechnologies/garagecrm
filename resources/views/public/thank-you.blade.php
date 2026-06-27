@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Thank You - SayaraForce</title>
     <meta name="description" content="Thank you for requesting a SayaraForce demo or lead recovery audit.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://sayaraforce.com/thank-you">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SayaraForce">
+    <meta property="og:title" content="Thank You - SayaraForce">
+    <meta property="og:description" content="Thank you for requesting a SayaraForce demo or lead recovery audit.">
+    <meta property="og:url" content="https://sayaraforce.com/thank-you">
+    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Thank You - SayaraForce">
+    <meta name="twitter:description" content="Thank you for requesting a SayaraForce demo or lead recovery audit.">
+    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     @if(config('services.sayaraforce.ga4_measurement_id'))
         <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.sayaraforce.ga4_measurement_id') }}"></script>
         <script>

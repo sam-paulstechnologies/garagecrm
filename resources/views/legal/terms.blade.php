@@ -5,6 +5,20 @@
     <title>Terms - SayaraForce</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sayaraforce.com/terms">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SayaraForce">
+    <meta property="og:title" content="Terms - SayaraForce">
+    <meta property="og:description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
+    <meta property="og:url" content="https://sayaraforce.com/terms">
+    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Terms - SayaraForce">
+    <meta name="twitter:description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
+    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
         body {
             margin: 0;

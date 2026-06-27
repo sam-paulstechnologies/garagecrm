@@ -50,6 +50,9 @@ Route::get('/', function (Request $request) {
 Route::view('/privacy-policy', 'legal.privacy-policy')
     ->name('privacy-policy');
 
+Route::view('/privacy', 'legal.privacy-policy')
+    ->name('privacy');
+
 Route::view('/terms', 'legal.terms')
     ->name('terms');
 

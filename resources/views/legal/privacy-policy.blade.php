@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <meta name="description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sayaraforce.com/privacy">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SayaraForce">
+    <meta property="og:title" content="Privacy Policy - SayaraForce">
+    <meta property="og:description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
+    <meta property="og:url" content="https://sayaraforce.com/privacy">
+    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Privacy Policy - SayaraForce">
+    <meta name="twitter:description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
+    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
     <style>
         body {

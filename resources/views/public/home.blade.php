@@ -1,20 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    @php
+        $seoTitle = 'SayaraForce | WhatsApp CRM for UAE Garages';
+        $seoDescription = 'SayaraForce is a WhatsApp-first garage CRM for UAE garages, service centers, and auto repair teams in Dubai that need better lead management, bookings, jobs, invoices, and retention follow-up.';
+        $canonicalUrl = 'https://sayaraforce.com/';
+        $publicWhatsappUrl = config('services.sayaraforce.public_whatsapp_click_url');
+        $ga4MeasurementId = config('services.sayaraforce.ga4_measurement_id');
+        $structuredData = [
+            '@context' => 'https://schema.org',
+            '@graph' => [
+                [
+                    '@type' => 'Organization',
+                    '@id' => 'https://sayaraforce.com/#organization',
+                    'name' => 'SayaraForce',
+                    'url' => 'https://sayaraforce.com/',
+                    'logo' => 'https://sayaraforce.com/apple-touch-icon.png',
+                    'description' => 'SayaraForce helps UAE garages recover missed leads, manage WhatsApp follow-up, convert bookings, track jobs, raise invoices, and retain customers.',
+                ],
+                [
+                    '@type' => 'SoftwareApplication',
+                    '@id' => 'https://sayaraforce.com/#software',
+                    'name' => 'SayaraForce',
+                    'applicationCategory' => 'BusinessApplication',
+                    'operatingSystem' => 'Web',
+                    'url' => 'https://sayaraforce.com/',
+                    'description' => 'WhatsApp CRM for UAE garages, garage CRM Dubai teams, auto repair lead management, car service center CRM, booking workflow, and customer retention.',
+                    'offers' => [
+                        '@type' => 'Offer',
+                        'priceCurrency' => 'AED',
+                        'price' => '499',
+                        'availability' => 'https://schema.org/InStock',
+                    ],
+                    'publisher' => [
+                        '@id' => 'https://sayaraforce.com/#organization',
+                    ],
+                ],
+                [
+                    '@type' => 'FAQPage',
+                    '@id' => 'https://sayaraforce.com/#faq',
+                    'mainEntity' => [
+                        [
+                            '@type' => 'Question',
+                            'name' => 'Is SayaraForce built for garages in the UAE?',
+                            'acceptedAnswer' => [
+                                '@type' => 'Answer',
+                                'text' => 'Yes. SayaraForce is built for UAE garages and service centers that manage enquiries, WhatsApp follow-ups, bookings, jobs, invoices, and repeat service reminders.',
+                            ],
+                        ],
+                        [
+                            '@type' => 'Question',
+                            'name' => 'Can SayaraForce help with WhatsApp leads?',
+                            'acceptedAnswer' => [
+                                '@type' => 'Answer',
+                                'text' => 'SayaraForce helps garage teams organize WhatsApp enquiries, assign follow-ups, and move customers from lead to booking without losing context.',
+                            ],
+                        ],
+                        [
+                            '@type' => 'Question',
+                            'name' => 'Does SayaraForce replace my garage management system?',
+                            'acceptedAnswer' => [
+                                '@type' => 'Answer',
+                                'text' => 'SayaraForce focuses on lead recovery, follow-up, bookings, jobs, invoices, and retention. It can work alongside existing garage operations tools where needed.',
+                            ],
+                        ],
+                        [
+                            '@type' => 'Question',
+                            'name' => 'Can it help bring old customers back?',
+                            'acceptedAnswer' => [
+                                '@type' => 'Answer',
+                                'text' => 'Yes. SayaraForce helps identify old customers, missed follow-ups, and service reminder opportunities so garages can generate repeat jobs.',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    @endphp
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SayaraForce — Lead Recovery & Retention CRM for UAE Garages</title>
-    <meta name="description" content="SayaraForce helps UAE garages recover missed leads, track WhatsApp follow-ups, manage bookings, and bring old customers back with retention campaigns.">
+    <title>{{ $seoTitle }}</title>
+    <meta name="description" content="{{ $seoDescription }}">
+    <link rel="canonical" href="{{ $canonicalUrl }}">
+    <meta name="robots" content="index, follow">
 
-    @if(config('services.sayaraforce.ga4_measurement_id'))
-        <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.sayaraforce.ga4_measurement_id') }}"></script>
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SayaraForce">
+    <meta property="og:title" content="{{ $seoTitle }}">
+    <meta property="og:description" content="{{ $seoDescription }}">
+    <meta property="og:url" content="{{ $canonicalUrl }}">
+    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
+
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ $seoTitle }}">
+    <meta name="twitter:description" content="{{ $seoDescription }}">
+    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <script type="application/ld+json">
+        {!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) !!}
+    </script>
+
+    <?php if($ga4MeasurementId): ?>
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $ga4MeasurementId }}"></script>
         <script>
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', '{{ config('services.sayaraforce.ga4_measurement_id') }}');
+            gtag('config', '{{ $ga4MeasurementId }}');
         </script>
-    @endif
+    <?php endif; ?>
 
     <style>
         :root {
@@ -746,6 +843,41 @@
             margin-top: 26px;
         }
 
+        .faq {
+            background: #ffffff;
+        }
+
+        .faq-grid {
+            margin-top: 34px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .faq-card {
+            padding: 22px;
+            border-radius: 20px;
+            background: #f8fafc;
+            border: 1px solid #dbe4ef;
+            text-align: left;
+        }
+
+        .faq-card h3 {
+            margin: 0;
+            color: #0f172a;
+            font-size: 16px;
+            font-weight: 950;
+            letter-spacing: -0.02em;
+        }
+
+        .faq-card p {
+            margin: 10px 0 0;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.65;
+            font-weight: 650;
+        }
+
         .audit {
             background: #0b1220;
         }
@@ -868,7 +1000,8 @@
             }
 
             .cards-3,
-            .pricing-grid {
+            .pricing-grid,
+            .faq-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -936,6 +1069,7 @@
                 <a href="#solution">Solution</a>
                 <a href="#retention">Retention</a>
                 <a href="#pricing">Pricing</a>
+                <a href="#faq">FAQ</a>
                 <a href="#audit">Audit</a>
             </div>
 
@@ -984,11 +1118,16 @@
 
                 <div class="hero-actions">
                     <a href="#audit" class="btn btn-primary">Request Free 7-Day Lead Recovery Audit</a>
-                    <a href="{{ config('services.sayaraforce.public_whatsapp_click_url') ?: '#audit' }}"
-                       class="btn btn-secondary"
-                       @if(config('services.sayaraforce.public_whatsapp_click_url')) target="_blank" rel="noopener" @endif>
-                        WhatsApp Us
-                    </a>
+                    <?php if($publicWhatsappUrl): ?>
+                        <a href="{{ $publicWhatsappUrl }}"
+                           class="btn btn-secondary"
+                           target="_blank"
+                           rel="noopener">
+                            WhatsApp Us
+                        </a>
+                    <?php else: ?>
+                        <a href="#audit" class="btn btn-secondary">WhatsApp Us</a>
+                    <?php endif; ?>
                     <a href="#pricing" class="btn btn-secondary">View Founders Pricing</a>
                 </div>
 
@@ -1210,8 +1349,9 @@
             </h2>
 
             <p class="section-copy">
-                Draft launch pricing for founder review. First 10 UAE garages can receive 50% off
-                for the first 3 months, setup included.
+                Clear launch pricing for UAE garages that want better WhatsApp follow-up,
+                booking visibility, and repeat customer retention. First 10 UAE garages can receive
+                50% off for the first 3 months, setup included.
             </p>
 
             <div class="pricing-grid">
@@ -1219,7 +1359,7 @@
                     <h3 class="plan-name">Starter</h3>
                     <p class="plan-desc">For small garages starting with lead tracking and WhatsApp follow-up.</p>
 
-                    <div class="old-price">Draft launch range</div>
+                    <div class="old-price">Launch range</div>
                     <div class="price">AED 499-699 <span>/month</span></div>
 
                     <ul class="features-list">
@@ -1239,7 +1379,7 @@
                     <h3 class="plan-name">Growth</h3>
                     <p class="plan-desc">For garages handling WhatsApp, Meta, website leads and retention follow-ups.</p>
 
-                    <div class="old-price">Draft launch price</div>
+                    <div class="old-price">Launch price</div>
                     <div class="price">AED 999 <span>/month</span></div>
 
                     <ul class="features-list">
@@ -1258,7 +1398,7 @@
                     <h3 class="plan-name">Pro</h3>
                     <p class="plan-desc">For garages that want full lead recovery, reports, team workflow, and campaigns.</p>
 
-                    <div class="old-price">Draft launch price</div>
+                    <div class="old-price">Launch price</div>
                     <div class="price">AED 1,499 <span>/month</span></div>
 
                     <ul class="features-list">
@@ -1275,8 +1415,58 @@
             </div>
 
             <p class="section-copy" style="font-size: 12px; margin-top: 28px;">
-                WhatsApp/Meta usage and provider fees are separate where applicable. Final pricing requires founder approval.
+                WhatsApp/Meta usage and provider fees are separate where applicable.
             </p>
+        </div>
+    </section>
+
+    <section id="faq" class="section faq">
+        <div class="container">
+            <div class="section-kicker">FAQ</div>
+
+            <h2 class="section-title">
+                Questions UAE garage owners ask before using SayaraForce.
+            </h2>
+
+            <p class="section-copy">
+                Think of SayaraForce as a WhatsApp CRM for UAE garages and service centers:
+                a practical garage CRM Dubai teams can use for auto repair lead management,
+                booking follow-up, and car service center CRM workflows.
+            </p>
+
+            <div class="faq-grid">
+                <article class="faq-card">
+                    <h3>Is SayaraForce built for garages in the UAE?</h3>
+                    <p>
+                        Yes. SayaraForce is designed around UAE garage workflows, WhatsApp enquiries,
+                        service bookings, jobs, invoices, and repeat customer follow-up.
+                    </p>
+                </article>
+
+                <article class="faq-card">
+                    <h3>Can SayaraForce help with WhatsApp leads?</h3>
+                    <p>
+                        Yes. It helps your team capture WhatsApp and website enquiries, track ownership,
+                        follow up faster, and keep the customer journey visible from lead to invoice.
+                    </p>
+                </article>
+
+                <article class="faq-card">
+                    <h3>Does SayaraForce replace my garage management system?</h3>
+                    <p>
+                        Not necessarily. Many garages use it as the follow-up and revenue recovery layer
+                        around existing operations, especially for missed leads and retention.
+                    </p>
+                </article>
+
+                <article class="faq-card">
+                    <h3>Can it help bring old customers back?</h3>
+                    <p>
+                        Yes. SayaraForce tracks service history and retention signals so garages can
+                        follow up with customers when another service, inspection, or reminder is due.
+                    </p>
+                </article>
+            </div>
         </div>
     </section>
 
@@ -1302,11 +1492,11 @@
                     </div>
                 </div>
 
-                @if(session('success'))
+                <?php if(session('success')): ?>
                     <div class="form-note" style="border-color: rgba(22, 163, 74, 0.35); color: #14532d; background: #dcfce7;">
                         {{ session('success') }}
                     </div>
-                @endif
+                <?php endif; ?>
 
                 <form class="form" method="POST" action="{{ route('public.demo.store') }}">
                     @csrf
@@ -1357,7 +1547,7 @@
                     </button>
 
                     <p class="form-note">
-                        Your request is stored securely for founder follow-up. Live CRM routing is enabled after final approval.
+                        Your request is stored securely. The SayaraForce team will contact you to arrange the audit or demo.
                     </p>
                 </form>
             </div>
