@@ -62,6 +62,19 @@ class MetaWhatsAppWebhookController extends Controller
     */
     public function handle(Request $request)
     {
+        // TEMPORARY DIAGNOSTIC: remove after Meta webhook delivery is confirmed in production.
+        Log::info('[SF-WA Connect][META][RAW WEBHOOK DIAGNOSTIC] Incoming POST received', [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'ip' => $request->ip(),
+            'content_type' => $request->header('content-type'),
+            'user_agent' => $request->userAgent(),
+            'signature_present' => $request->headers->has('X-Hub-Signature-256'),
+            'content_length' => strlen($request->getContent()),
+            'query' => $request->query(),
+            'raw_body' => $request->getContent(),
+        ]);
+
         Log::info('[SF-WA Connect][META] Webhook hit');
 
         $signatureResponse = $this->validateSignature($request);
