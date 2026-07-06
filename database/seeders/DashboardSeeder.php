@@ -46,6 +46,11 @@ class DashboardSeeder extends Seeder
         */
         $users = [
             [
+                'name' => 'Platform Owner',
+                'email' => 'platform-owner@garage.test',
+                'role' => 'super_admin',
+            ],
+            [
                 'name' => 'John Admin',
                 'email' => 'admin@garage.test',
                 'role' => 'admin',
@@ -70,7 +75,7 @@ class DashboardSeeder extends Seeder
                     'email' => $userData['email'],
                     'password' => Hash::make($demoPassword),
                     'role' => $userData['role'],
-                    'company_id' => $company->id,
+                    'company_id' => $userData['role'] === 'super_admin' ? null : $company->id,
                     'status' => 'active',
                 ]
             );
@@ -214,6 +219,7 @@ class DashboardSeeder extends Seeder
 
         $this->command?->info('Dashboard sample data created successfully.');
         $this->command?->warn('Local/testing demo users created:');
+        $this->command?->line('platform-owner@garage.test');
         $this->command?->line('admin@garage.test');
         $this->command?->line('mechanic@garage.test');
         $this->command?->line('manager@garage.test');

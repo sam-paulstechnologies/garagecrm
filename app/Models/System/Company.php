@@ -27,6 +27,8 @@ class Company extends Model
 
         'address',
         'plan_id',
+        'status',
+        'suspended_at',
         'logo',
         'trial_ends_at',
 
@@ -60,6 +62,7 @@ class Company extends Model
 
     protected $casts = [
         'trial_ends_at' => 'datetime',
+        'suspended_at' => 'datetime',
 
         /*
         |--------------------------------------------------------------------------
@@ -98,6 +101,16 @@ class Company extends Model
     public function plan()
     {
         return $this->belongsTo(Plan::class);
+    }
+
+    public function moduleSettings()
+    {
+        return $this->hasMany(\App\Models\CompanyModuleSetting::class, 'company_id');
+    }
+
+    public function superAdminAuditLogs()
+    {
+        return $this->hasMany(\App\Models\SuperAdminAuditLog::class, 'company_id');
     }
 
     /*

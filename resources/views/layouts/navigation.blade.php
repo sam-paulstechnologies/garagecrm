@@ -4,14 +4,19 @@
     use Illuminate\Support\Facades\Route;
 
     $useAdminFullWidthShell = $useAdminFullWidthShell ?? false;
+    $isSuperAdmin = auth()->check()
+        && strtolower(trim((string) auth()->user()->role)) === 'super_admin';
+    $isSuperAdminArea = request()->routeIs('super-admin.*');
     $isManagerArea = request()->routeIs('manager.*');
-    $isAdminArea = request()->routeIs('admin.*') || ! $isManagerArea;
+    $isAdminArea = request()->routeIs('admin.*') || (! $isManagerArea && ! $isSuperAdminArea);
     $isMediaTeam = auth()->check()
         && strtolower(trim((string) auth()->user()->role)) === 'media_team';
 
     $brandUrl = url('/');
 
-    if ($isManagerArea && Route::has('manager.dashboard')) {
+    if ($isSuperAdmin && Route::has('super-admin.dashboard')) {
+        $brandUrl = route('super-admin.dashboard');
+    } elseif ($isManagerArea && Route::has('manager.dashboard')) {
         $brandUrl = route('manager.dashboard');
     } elseif ($isMediaTeam && Route::has('admin.lead-sources.meta')) {
         $brandUrl = route('admin.lead-sources.meta');
@@ -48,7 +53,16 @@
         }
     }
 
-    if ($isManagerArea) {
+    if ($isSuperAdmin) {
+        $primaryNavItems = [
+            ['label' => 'Dashboard', 'route' => 'super-admin.dashboard', 'active' => 'super-admin.dashboard'],
+            ['label' => 'Garages', 'route' => 'super-admin.garages.index', 'active' => 'super-admin.garages.*'],
+            ['label' => 'Message Logs', 'route' => 'super-admin.logs.messages', 'active' => 'super-admin.logs.messages'],
+            ['label' => 'Lead Logs', 'route' => 'super-admin.logs.leads', 'active' => 'super-admin.logs.leads'],
+            ['label' => 'System Health', 'route' => 'super-admin.system.health', 'active' => 'super-admin.system.*'],
+            ['label' => 'Audit', 'route' => 'super-admin.audit.index', 'active' => 'super-admin.audit.*'],
+        ];
+    } elseif ($isManagerArea) {
         $primaryNavItems = [
             ['label' => 'Dashboard', 'route' => 'manager.dashboard', 'active' => 'manager.dashboard'],
             ['label' => 'Clients', 'route' => 'manager.clients.index', 'active' => 'manager.clients.*'],
@@ -179,7 +193,9 @@
 
     $profileRoute = null;
 
-    if ($isManagerArea && Route::has('manager.profile.edit')) {
+    if ($isSuperAdmin) {
+        $profileRoute = null;
+    } elseif ($isManagerArea && Route::has('manager.profile.edit')) {
         $profileRoute = route('manager.profile.edit');
     } elseif (Route::has('admin.profile.edit')) {
         $profileRoute = route('admin.profile.edit');

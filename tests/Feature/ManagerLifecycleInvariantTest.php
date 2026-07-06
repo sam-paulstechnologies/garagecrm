@@ -101,7 +101,7 @@ class ManagerLifecycleInvariantTest extends TestCase
         $this->actingAs($this->manager)
             ->get(route('manager.inbox.index'))
             ->assertOk()
-            ->assertSee('Manager/Inbox/Index', false)
+            ->assertSee('Manager\/Inbox\/Index', false)
             ->assertDontSee('manager/profile', false);
     }
 

@@ -146,6 +146,7 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
 
         return match (strtolower(trim((string) $user->role))) {
             'admin'    => redirect()->route('admin.dashboard'),
+            'super_admin' => redirect()->route('super-admin.dashboard'),
             'manager'  => redirect()->route('manager.dashboard'),
             'mechanic' => redirect()->route('mechanic.dashboard'),
             'tenant'   => redirect()->route('tenant.dashboard'),
@@ -186,6 +187,10 @@ require __DIR__.'/auth.php';
 
 if (file_exists(__DIR__.'/admin.php')) {
     require __DIR__.'/admin.php';
+}
+
+if (file_exists(__DIR__.'/super_admin.php')) {
+    require __DIR__.'/super_admin.php';
 }
 
 if (file_exists(__DIR__.'/manager.php')) {

@@ -435,7 +435,7 @@
 
     @php
         $useAdminFullWidthShell = auth()->check()
-            && request()->routeIs('admin.*')
+            && (request()->routeIs('admin.*') || request()->routeIs('super-admin.*'))
             && strtolower(trim((string) auth()->user()->role)) !== 'media_team';
     @endphp
 
@@ -471,9 +471,9 @@
 
     {{-- WhatsApp Floating Popup --}}
     @auth
-        @if(! request()->routeIs('admin.lead-sources.meta*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('partials.whatsapp-popup'))
+        @if(! request()->routeIs('admin.lead-sources.meta*') && ! request()->routeIs('super-admin.*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('partials.whatsapp-popup'))
             @include('partials.whatsapp-popup')
-        @elseif(! request()->routeIs('admin.lead-sources.meta*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('admin.partials.whatsapp-popup'))
+        @elseif(! request()->routeIs('admin.lead-sources.meta*') && ! request()->routeIs('super-admin.*') && strtolower(trim((string) auth()->user()->role)) !== 'media_team' && View::exists('admin.partials.whatsapp-popup'))
             @include('admin.partials.whatsapp-popup')
         @endif
     @endauth
