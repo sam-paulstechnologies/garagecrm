@@ -65,14 +65,14 @@
     } elseif ($isManagerArea) {
         $primaryNavItems = [
             ['label' => 'Dashboard', 'route' => 'manager.dashboard', 'active' => 'manager.dashboard'],
-            ['label' => 'Clients', 'route' => 'manager.clients.index', 'active' => 'manager.clients.*'],
             ['label' => 'Leads', 'route' => 'manager.leads.index', 'active' => 'manager.leads.*'],
             ['label' => 'Opportunities', 'route' => 'manager.opportunities.index', 'active' => 'manager.opportunities.*'],
             ['label' => 'Bookings', 'route' => 'manager.bookings.index', 'active' => 'manager.bookings.*'],
             ['label' => 'Jobs', 'route' => 'manager.jobs.index', 'active' => 'manager.jobs.*'],
             ['label' => 'Invoices', 'route' => 'manager.invoices.index', 'active' => 'manager.invoices.*'],
+            ['label' => 'Clients', 'route' => 'manager.clients.index', 'active' => 'manager.clients.*'],
+            ['label' => 'Reports', 'route' => 'manager.growth.index', 'active' => 'manager.growth.*'],
             ['label' => 'Inbox', 'route' => 'manager.inbox.index', 'active' => 'manager.inbox.*'],
-            ['label' => 'Team', 'route' => 'manager.team.index', 'active' => 'manager.team.*'],
         ];
     } elseif ($isMediaTeam) {
         $primaryNavItems = [

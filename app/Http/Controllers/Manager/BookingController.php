@@ -70,7 +70,7 @@ class BookingController extends Controller
                         });
                 });
             })
-            ->orderByRaw("FIELD(status, 'pending', 'scheduled', 'reschedule_required', 'converted_to_job', 'lost')")
+            ->orderByRaw("CASE status WHEN 'pending' THEN 1 WHEN 'scheduled' THEN 2 WHEN 'reschedule_required' THEN 3 WHEN 'converted_to_job' THEN 4 WHEN 'lost' THEN 5 ELSE 6 END")
             ->latest()
             ->paginate(20)
             ->withQueryString();

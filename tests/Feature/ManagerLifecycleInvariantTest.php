@@ -88,12 +88,226 @@ class ManagerLifecycleInvariantTest extends TestCase
             ->assertSee('sayaraforce_theme', false)
             ->assertSee('data-sf-theme-toggle', false)
             ->assertSee('managerMobileNav', false)
-            ->assertSee(route('manager.settings.index'), false)
+            ->assertSee(route('manager.growth.index'), false)
+            ->assertSee('Reports')
+            ->assertDontSee(route('manager.settings.index'), false)
+            ->assertDontSee(route('manager.team.index'), false)
             ->assertDontSee('manager/profile', false);
 
         if (! Route::has('manager.calendar.index')) {
             $response->assertDontSee('manager/calendar', false);
         }
+    }
+
+    public function test_manager_can_open_allowed_operational_pages(): void
+    {
+        $this->lead(['name' => 'Allowed Page Lead']);
+        $this->opportunity(['title' => 'Allowed Page Opportunity']);
+        $this->booking(['name' => 'Allowed Page Booking']);
+        $this->job(['description' => 'Allowed page job']);
+        Invoice::create([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'source' => 'generated',
+            'amount' => 125,
+            'status' => 'pending',
+            'number' => 'INV-ALLOWED',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+            'due_date' => now()->toDateString(),
+        ]);
+
+        $allowedRoutes = [
+            'manager.dashboard',
+            'manager.leads.index',
+            'manager.opportunities.index',
+            'manager.bookings.index',
+            'manager.jobs.index',
+            'manager.clients.index',
+            'manager.invoices.index',
+            'manager.growth.index',
+            'manager.inbox.index',
+        ];
+
+        foreach ($allowedRoutes as $routeName) {
+            if (! Route::has($routeName)) {
+                continue;
+            }
+
+            $this->actingAs($this->manager)
+                ->get(route($routeName))
+                ->assertOk();
+        }
+    }
+
+    public function test_manager_is_denied_admin_platform_and_configuration_routes(): void
+    {
+        $forbiddenRoutes = [
+            'admin.dashboard',
+            'admin.settings.index',
+            'admin.settings.launch-setup.edit',
+            'admin.whatsapp.settings.edit',
+            'admin.whatsapp.connect',
+            'admin.whatsapp.templates.index',
+            'admin.lead-sources.meta',
+            'admin.marketing.campaigns.index',
+            'admin.ai.edit',
+            'admin.documents.index',
+            'super-admin.dashboard',
+        ];
+
+        foreach ($forbiddenRoutes as $routeName) {
+            if (! Route::has($routeName)) {
+                continue;
+            }
+
+            $this->actingAs($this->manager)
+                ->get(route($routeName))
+                ->assertForbidden();
+        }
+    }
+
+    public function test_manager_nav_hides_admin_only_and_admin_adjacent_links(): void
+    {
+        $response = $this->actingAs($this->manager)
+            ->get(route('manager.dashboard'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Dashboard')
+            ->assertSee('Leads')
+            ->assertSee('Opportunities')
+            ->assertSee('Bookings')
+            ->assertSee('Jobs')
+            ->assertSee('Clients')
+            ->assertSee('Invoices')
+            ->assertSee('Reports')
+            ->assertSee('Inbox')
+            ->assertDontSee('href="' . route('manager.settings.index') . '"', false)
+            ->assertDontSee('href="' . route('manager.team.index') . '"', false)
+            ->assertDontSee('/admin/settings', false)
+            ->assertDontSee('/admin/whatsapp', false)
+            ->assertDontSee('/admin/lead-sources', false)
+            ->assertDontSee('/admin/users', false)
+            ->assertDontSee('/super-admin', false);
+    }
+
+    public function test_manager_direct_record_access_is_tenant_isolated(): void
+    {
+        $ownLead = $this->lead(['name' => 'Own Tenant Lead']);
+        $ownBooking = $this->booking(['name' => 'Own Tenant Booking']);
+        $ownJob = $this->job(['description' => 'Own tenant job']);
+        $ownInvoice = Invoice::create([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'job_id' => $ownJob->id,
+            'source' => 'generated',
+            'amount' => 150,
+            'status' => 'pending',
+            'number' => 'INV-OWN',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+            'due_date' => now()->toDateString(),
+        ]);
+
+        $otherCompanyId = (int) DB::table('companies')->insertGetId([
+            'name' => 'Other Tenant Garage',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $otherClientId = (int) DB::table('clients')->insertGetId([
+            'company_id' => $otherCompanyId,
+            'name' => 'Other Tenant Client',
+            'phone' => '971500009999',
+            'phone_norm' => '971500009999',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $otherLead = Lead::withoutEvents(fn () => Lead::create([
+            'company_id' => $otherCompanyId,
+            'client_id' => $otherClientId,
+            'name' => 'Other Tenant Lead',
+            'phone' => '971500009998',
+            'status' => Lead::STATUS_NEW,
+            'is_active' => true,
+        ]));
+
+        $otherBooking = Booking::create([
+            'company_id' => $otherCompanyId,
+            'client_id' => $otherClientId,
+            'name' => 'Other Tenant Booking',
+            'service_type' => 'General Service',
+            'booking_date' => now()->addDay()->toDateString(),
+            'slot' => 'morning',
+            'status' => Booking::STATUS_PENDING,
+            'is_archived' => false,
+        ]);
+
+        $otherJob = Job::create([
+            'company_id' => $otherCompanyId,
+            'client_id' => $otherClientId,
+            'description' => 'Other tenant job',
+            'status' => 'pending',
+            'is_archived' => false,
+        ]);
+
+        $otherInvoice = Invoice::create([
+            'company_id' => $otherCompanyId,
+            'client_id' => $otherClientId,
+            'job_id' => $otherJob->id,
+            'source' => 'generated',
+            'amount' => 999,
+            'status' => 'pending',
+            'number' => 'INV-OTHER',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+            'due_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.leads.index'))
+            ->assertOk()
+            ->assertSee('Own Tenant Lead')
+            ->assertDontSee('Other Tenant Lead');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.clients.index'))
+            ->assertOk()
+            ->assertSee('Lifecycle Client')
+            ->assertDontSee('Other Tenant Client');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.bookings.show', $ownBooking))
+            ->assertOk();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.show', $ownJob))
+            ->assertOk();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.show', $ownInvoice->id))
+            ->assertOk();
+
+        $crossLeadResponse = $this->actingAs($this->manager)
+            ->patch(route('manager.leads.status', $otherLead), [
+                'status' => Lead::STATUS_ATTEMPTING,
+            ]);
+
+        $this->assertContains($crossLeadResponse->getStatusCode(), [403, 404]);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.bookings.show', $otherBooking->id))
+            ->assertNotFound();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.show', $otherJob->id))
+            ->assertNotFound();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.show', $otherInvoice->id))
+            ->assertNotFound();
     }
 
     public function test_manager_inbox_renders_demo_safe_inertia_shell(): void
@@ -793,6 +1007,39 @@ class ManagerLifecycleInvariantTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+
+        if (! Schema::hasTable('conversations')) {
+            Schema::create('conversations', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('company_id');
+                $table->unsignedBigInteger('lead_id')->nullable();
+                $table->unsignedBigInteger('client_id')->nullable();
+                $table->string('customer_name')->nullable();
+                $table->string('customer_phone')->nullable();
+                $table->text('last_message_preview')->nullable();
+                $table->timestamp('last_message_at')->nullable();
+                $table->unsignedInteger('unread_count')->default(0);
+                $table->timestamps();
+            });
+        }
+
+        if (! Schema::hasTable('message_logs')) {
+            Schema::create('message_logs', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('company_id')->nullable();
+                $table->unsignedBigInteger('conversation_id')->nullable();
+                $table->unsignedBigInteger('lead_id')->nullable();
+                $table->string('channel')->nullable();
+                $table->string('direction')->nullable();
+                $table->string('source')->nullable();
+                $table->string('provider_status')->nullable();
+                $table->string('to_number')->nullable();
+                $table->string('from_number')->nullable();
+                $table->text('body')->nullable();
+                $table->timestamp('read_at')->nullable();
+                $table->timestamps();
+            });
+        }
     }
 
     private function ensureUserColumns(): void

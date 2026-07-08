@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>@yield('title', 'Manager Dashboard') — SayaraForce</title>
+    <title>@yield('title', 'Manager Dashboard') - SayaraForce</title>
 
     {{-- Prevent theme flash before page loads. Uses the same key as the Admin layout. --}}
     <script>
@@ -906,6 +906,190 @@
     </style>
 
     @stack('styles')
+
+    <style>
+        /*
+        |--------------------------------------------------------------------------
+        | Manager Theme Guardrails
+        |--------------------------------------------------------------------------
+        | Several legacy manager blades still carry page-local light-only rules.
+        | Keep their structure intact, but force shared surfaces back onto the
+        | manager theme tokens after all page styles have loaded.
+        |--------------------------------------------------------------------------
+        */
+        body.manager-theme-body .sf-page-title {
+            color: var(--sf-text-strong) !important;
+        }
+
+        body.manager-theme-body .sf-page-subtitle {
+            color: var(--sf-muted) !important;
+        }
+
+        body.manager-theme-body .sf-panel,
+        body.manager-theme-body .card,
+        body.manager-theme-body .list-group-item,
+        body.manager-theme-body .booking-stat-card,
+        body.manager-theme-body .job-stat-card,
+        body.manager-theme-body .invoice-stat-card,
+        body.manager-theme-body .manager-stat-card,
+        body.manager-theme-body .manager-bucket-card {
+            background: var(--sf-surface) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-text) !important;
+        }
+
+        body.manager-theme-body .sf-panel-header,
+        body.manager-theme-body .sf-panel-body,
+        body.manager-theme-body .card-header,
+        body.manager-theme-body .card-body,
+        body.manager-theme-body .card-footer,
+        body.manager-theme-body .manager-pagination,
+        body.manager-theme-body .sf-empty,
+        body.manager-theme-body .modal-body,
+        body.manager-theme-body .modal-footer,
+        body.manager-theme-body .schedule-modal-body,
+        body.manager-theme-body .schedule-modal-footer,
+        body.manager-theme-body .schedule-summary {
+            background: var(--sf-surface) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-text) !important;
+        }
+
+        body.manager-theme-body .modal-content {
+            background: var(--sf-surface) !important;
+            border: 1px solid var(--sf-border-light) !important;
+            color: var(--sf-text) !important;
+        }
+
+        body.manager-theme-body .sf-panel-title,
+        body.manager-theme-body .sf-empty h3,
+        body.manager-theme-body .card h1,
+        body.manager-theme-body .card h2,
+        body.manager-theme-body .card h3,
+        body.manager-theme-body .card h4,
+        body.manager-theme-body .card h5,
+        body.manager-theme-body .card h6,
+        body.manager-theme-body .fw-bold,
+        body.manager-theme-body .fw-semibold,
+        body.manager-theme-body .fw-black,
+        body.manager-theme-body .text-dark,
+        body.manager-theme-body .lead-primary,
+        body.manager-theme-body .lead-value,
+        body.manager-theme-body .booking-stat-value,
+        body.manager-theme-body .job-stat-value,
+        body.manager-theme-body .invoice-stat-value,
+        body.manager-theme-body .summary-value {
+            color: var(--sf-text-strong) !important;
+        }
+
+        body.manager-theme-body .sf-panel-subtitle,
+        body.manager-theme-body .sf-empty p,
+        body.manager-theme-body .text-muted,
+        body.manager-theme-body .small,
+        body.manager-theme-body .booking-stat-label,
+        body.manager-theme-body .booking-stat-note,
+        body.manager-theme-body .job-stat-label,
+        body.manager-theme-body .job-stat-note,
+        body.manager-theme-body .invoice-stat-label,
+        body.manager-theme-body .invoice-stat-note,
+        body.manager-theme-body .summary-label {
+            color: var(--sf-muted) !important;
+        }
+
+        body.manager-theme-body .bg-white,
+        body.manager-theme-body .bg-light,
+        body.manager-theme-body .table-light,
+        body.manager-theme-body .table-light th {
+            background-color: var(--sf-surface-soft) !important;
+            color: var(--sf-text-strong) !important;
+        }
+
+        body.manager-theme-body .table,
+        body.manager-theme-body .manager-bookings-table,
+        body.manager-theme-body .manager-jobs-table,
+        body.manager-theme-body .manager-invoices-table,
+        body.manager-theme-body .manager-opportunities-table {
+            color: var(--sf-text) !important;
+        }
+
+        body.manager-theme-body .table thead th,
+        body.manager-theme-body .manager-bookings-table thead th,
+        body.manager-theme-body .manager-jobs-table thead th,
+        body.manager-theme-body .manager-invoices-table thead th,
+        body.manager-theme-body .manager-opportunities-table thead th {
+            background: var(--sf-surface-soft) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-muted-strong) !important;
+        }
+
+        body.manager-theme-body .table tbody td,
+        body.manager-theme-body .manager-bookings-table tbody td,
+        body.manager-theme-body .manager-jobs-table tbody td,
+        body.manager-theme-body .manager-invoices-table tbody td,
+        body.manager-theme-body .manager-opportunities-table tbody td {
+            background: var(--sf-surface) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-text) !important;
+        }
+
+        body.manager-theme-body .table tbody tr:hover td,
+        body.manager-theme-body .manager-bookings-table tbody tr:hover td,
+        body.manager-theme-body .manager-jobs-table tbody tr:hover td,
+        body.manager-theme-body .manager-invoices-table tbody tr:hover td,
+        body.manager-theme-body .manager-opportunities-table tbody tr:hover td {
+            background: var(--sf-row-hover) !important;
+        }
+
+        body.manager-theme-body .form-label {
+            color: var(--sf-muted-strong) !important;
+        }
+
+        body.manager-theme-body .form-control,
+        body.manager-theme-body .form-select,
+        body.manager-theme-body textarea,
+        body.manager-theme-body input,
+        body.manager-theme-body select {
+            background-color: var(--sf-input-bg) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-input-text) !important;
+        }
+
+        body.manager-theme-body .form-control::placeholder,
+        body.manager-theme-body textarea::placeholder,
+        body.manager-theme-body input::placeholder {
+            color: var(--sf-muted) !important;
+        }
+
+        body.manager-theme-body .manager-count-pill {
+            background: var(--sf-surface-soft) !important;
+            border-color: var(--sf-border-light) !important;
+            color: var(--sf-text-strong) !important;
+        }
+
+        html[data-theme="dark"] body.manager-theme-body .booking-stat-card.warning,
+        html[data-theme="dark"] body.manager-theme-body .job-stat-card.warning,
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.warning {
+            background: rgba(245, 158, 11, 0.12) !important;
+        }
+
+        html[data-theme="dark"] body.manager-theme-body .booking-stat-card.primary,
+        html[data-theme="dark"] body.manager-theme-body .job-stat-card.primary,
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.primary {
+            background: rgba(37, 99, 235, 0.14) !important;
+        }
+
+        html[data-theme="dark"] body.manager-theme-body .booking-stat-card.success,
+        html[data-theme="dark"] body.manager-theme-body .job-stat-card.success,
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.success {
+            background: rgba(22, 163, 74, 0.12) !important;
+        }
+
+        html[data-theme="dark"] body.manager-theme-body .booking-stat-card.danger,
+        html[data-theme="dark"] body.manager-theme-body .job-stat-card.danger,
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.danger {
+            background: rgba(220, 38, 38, 0.12) !important;
+        }
+    </style>
 </head>
 
 <body class="manager-theme-body">
@@ -918,12 +1102,6 @@
             'label' => 'Dashboard',
             'route' => 'manager.dashboard',
             'active' => 'manager.dashboard',
-            'safe' => false,
-        ],
-        [
-            'label' => 'Clients',
-            'route' => 'manager.clients.index',
-            'active' => 'manager.clients.*',
             'safe' => false,
         ],
         [
@@ -956,6 +1134,12 @@
             'active' => 'manager.invoices.*',
             'safe' => false,
         ],
+        [
+            'label' => 'Clients',
+            'route' => 'manager.clients.index',
+            'active' => 'manager.clients.*',
+            'safe' => false,
+        ],
 
         /*
         |--------------------------------------------------------------------------
@@ -972,36 +1156,16 @@
         ],
 
         [
-            'label' => 'Inbox',
-            'route' => 'manager.inbox.index',
-            'active' => ['manager.inbox.*', 'manager.escalations', 'manager.conversation', 'manager.conversation.*'],
+            'label' => 'Reports',
+            'route' => 'manager.growth.index',
+            'active' => 'manager.growth.*',
             'safe' => false,
         ],
 
-        /*
-        |--------------------------------------------------------------------------
-        | Manager-safe Growth + Settings
-        |--------------------------------------------------------------------------
-        | These are separate from Admin Growth/Admin Settings.
-        |--------------------------------------------------------------------------
-        */
         [
-            'label' => 'Growth',
-            'route' => 'manager.growth.index',
-            'active' => 'manager.growth.*',
-            'safe' => true,
-        ],
-        [
-            'label' => 'Settings',
-            'route' => 'manager.settings.index',
-            'active' => 'manager.settings.*',
-            'safe' => true,
-        ],
-
-        [
-            'label' => 'Team',
-            'route' => 'manager.team.index',
-            'active' => 'manager.team.*',
+            'label' => 'Inbox',
+            'route' => 'manager.inbox.index',
+            'active' => ['manager.inbox.*', 'manager.escalations', 'manager.conversation', 'manager.conversation.*'],
             'safe' => false,
         ],
     ];
@@ -1101,12 +1265,6 @@
                                 </span>
                                 <span class="manager-theme-switch" aria-hidden="true"></span>
                             </button>
-
-                            @if(Route::has('manager.settings.index'))
-                                <a href="{{ route('manager.settings.index') }}" class="manager-dropdown-item d-block">
-                                    Settings
-                                </a>
-                            @endif
 
                             @if(Route::has('logout'))
                                 <form method="POST" action="{{ route('logout') }}" class="m-0">

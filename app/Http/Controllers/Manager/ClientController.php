@@ -24,11 +24,16 @@ class ClientController extends Controller
 
         $q = trim((string) $request->get('q', ''));
 
-        $clients = Client::query()
+        $baseQuery = Client::query()
             ->where('company_id', $companyId)
             ->when(Schema::hasColumn('clients', 'is_active'), function ($query) {
                 $query->where('is_active', 1);
             })
+            ->when(Schema::hasColumn('clients', 'is_archived'), function ($query) {
+                $query->where('is_archived', false);
+            });
+
+        $clients = (clone $baseQuery)
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     foreach ([
@@ -56,7 +61,20 @@ class ClientController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('manager.clients.index', compact('clients', 'q'));
+        $clientCounts = [
+            'total' => (clone $baseQuery)->count(),
+            'with_phone' => Schema::hasColumn('clients', 'phone')
+                ? (clone $baseQuery)->whereNotNull('phone')->where('phone', '!=', '')->count()
+                : 0,
+            'with_email' => Schema::hasColumn('clients', 'email')
+                ? (clone $baseQuery)->whereNotNull('email')->where('email', '!=', '')->count()
+                : 0,
+            'new_30_days' => Schema::hasColumn('clients', 'created_at')
+                ? (clone $baseQuery)->where('created_at', '>=', now()->subDays(30))->count()
+                : 0,
+        ];
+
+        return view('manager.clients.index', compact('clients', 'q', 'clientCounts'));
     }
 
     public function show(Client $client)

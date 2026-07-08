@@ -441,12 +441,12 @@
                     </div>
                 @endif
 
-                @if(Route::has('manager.team.index'))
+                @if(Route::has('manager.growth.index'))
                     <div class="col-6 col-md-4 col-xl">
-                        <a href="{{ route('manager.team.index') }}"
+                        <a href="{{ route('manager.growth.index') }}"
                            class="manager-work-card">
-                            <span class="manager-work-icon">👥</span>
-                            <span class="manager-work-label">Team</span>
+                            <span class="manager-work-icon"></span>
+                            <span class="manager-work-label">Reports</span>
                         </a>
                     </div>
                 @endif
@@ -549,8 +549,8 @@
         content: "CL";
     }
 
-    a[href*="team"] .manager-work-icon::after {
-        content: "TM";
+    a[href*="growth"] .manager-work-icon::after {
+        content: "RP";
     }
 
     html[data-theme="dark"] .manager-work-icon {

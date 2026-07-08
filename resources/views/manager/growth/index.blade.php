@@ -285,8 +285,8 @@
                     </p>
                 </div>
 
-                <a href="{{ route('manager.settings.index') }}" class="sf-action-button light">
-                    View Manager Settings
+                <a href="{{ route('manager.dashboard') }}" class="sf-action-button light">
+                    Back to Dashboard
                 </a>
             </div>
         </div>
