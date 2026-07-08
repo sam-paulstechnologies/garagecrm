@@ -112,6 +112,13 @@ class OpportunityController extends Controller
         $managers = $this->assignableUsers($companyId);
         $opportunityStages = $this->opportunityStages;
         $stageLabels = $this->stageLabels;
+        $opportunityCounts = [
+            'total' => $this->countOpportunities($companyId),
+        ];
+
+        foreach ($this->opportunityStages as $stageKey) {
+            $opportunityCounts[$stageKey] = $this->countOpportunities($companyId, $stageKey);
+        }
 
         return view('manager.opportunities.index', compact(
             'opportunities',
@@ -120,13 +127,25 @@ class OpportunityController extends Controller
             'stage',
             'status',
             'opportunityStages',
-            'stageLabels'
+            'stageLabels',
+            'opportunityCounts'
         ));
     }
 
     public function show(Opportunity $opportunity)
     {
         $this->authorizeOpportunity($opportunity);
+        $opportunity->loadMissing([
+            'lead',
+            'client',
+            'assignee',
+            'vehicle',
+            'vehicleMake',
+            'vehicleModel',
+            'bookings',
+            'jobs',
+            'invoices',
+        ]);
 
         /*
         |--------------------------------------------------------------------------
@@ -151,6 +170,30 @@ class OpportunityController extends Controller
             'opportunityStages',
             'stageLabels'
         ));
+    }
+
+    protected function countOpportunities(int $companyId, ?string $stage = null): int
+    {
+        return Opportunity::query()
+            ->where('company_id', $companyId)
+            ->when(Schema::hasColumn('opportunities', 'is_active'), function ($query) {
+                $query->where('is_active', 1);
+            })
+            ->when(Schema::hasColumn('opportunities', 'is_archived'), function ($query) {
+                $query->where('is_archived', false);
+            })
+            ->when(Schema::hasColumn('opportunities', 'stage'), function ($query) {
+                $query->whereNotIn('stage', [
+                    'collecting_details',
+                    'closed_won',
+                    'Collecting Details',
+                    'Closed Won',
+                ]);
+            })
+            ->when($stage !== null && Schema::hasColumn('opportunities', 'stage'), function ($query) use ($stage) {
+                $query->where('stage', $stage);
+            })
+            ->count();
     }
 
     public function updateStage(Request $request, Opportunity $opportunity)

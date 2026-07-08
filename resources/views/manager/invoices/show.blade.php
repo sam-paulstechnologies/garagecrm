@@ -1,6 +1,6 @@
 @extends('layouts.manager')
 
-@section('title', ($invoice->invoice_number ?? $invoice->reference_number ?? 'Invoice #' . $invoice->id))
+@section('title', ($invoice->invoice_number ?? $invoice->reference_number ?? $invoice->number ?? 'Invoice #' . $invoice->id))
 
 @section('content')
 @php
@@ -8,6 +8,7 @@
 
     $invoiceNumber = $invoice->invoice_number
         ?? $invoice->reference_number
+        ?? $invoice->number
         ?? 'Invoice #' . $invoice->id;
 
     $labourAmount = $invoice->labour_amount

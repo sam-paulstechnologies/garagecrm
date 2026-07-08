@@ -577,7 +577,7 @@
                                     @foreach($teamMembers ?? [] as $member)
                                         <option value="{{ $member->id }}"
                                             @selected((int) old('assigned_to', $job->assigned_to) === (int) $member->id)>
-                                            {{ $member->name }} @if($member->role) — {{ ucfirst($member->role) }} @endif
+                                            {{ $member->name }} @if($member->role) - {{ ucfirst($member->role) }} @endif
                                         </option>
                                     @endforeach
                                 </select>
@@ -681,7 +681,7 @@
                                 Complete Job + Capture Invoice
                             </h5>
                             <p class="invoice-modal-subtitle mb-0">
-                                {{ $job->job_code ?: 'Job #' . $job->id }} · {{ $customerName }}
+                                {{ $job->job_code ?: 'Job #' . $job->id }} &middot; {{ $customerName }}
                             </p>
                         </div>
 

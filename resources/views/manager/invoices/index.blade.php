@@ -9,6 +9,7 @@
     $invoiceNumber = function ($invoice) {
         return $invoice->invoice_number
             ?? $invoice->reference_number
+            ?? $invoice->number
             ?? 'Invoice #' . $invoice->id;
     };
 

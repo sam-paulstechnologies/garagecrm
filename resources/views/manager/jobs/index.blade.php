@@ -299,7 +299,7 @@
                                             {{ $bookingDate($job->booking) }}
 
                                             @if($slotValue)
-                                                · {{ ucfirst(str_replace('_', ' ', $slotValue)) }}
+                                                &middot; {{ ucfirst(str_replace('_', ' ', $slotValue)) }}
                                             @endif
                                         </div>
                                     @else

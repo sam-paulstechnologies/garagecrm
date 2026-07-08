@@ -931,8 +931,16 @@
         body.manager-theme-body .booking-stat-card,
         body.manager-theme-body .job-stat-card,
         body.manager-theme-body .invoice-stat-card,
+        body.manager-theme-body .opportunity-stat-card,
         body.manager-theme-body .manager-stat-card,
-        body.manager-theme-body .manager-bucket-card {
+        body.manager-theme-body .manager-bucket-card,
+        body.manager-theme-body .detail-card,
+        body.manager-theme-body .linked-record-card,
+        body.manager-theme-body .invoice-box,
+        body.manager-theme-body .reschedule-box,
+        body.manager-theme-body .linked-job-box,
+        body.manager-theme-body .empty-mini,
+        body.manager-theme-body .notes-content {
             background: var(--sf-surface) !important;
             border-color: var(--sf-border-light) !important;
             color: var(--sf-text) !important;
@@ -978,7 +986,14 @@
         body.manager-theme-body .booking-stat-value,
         body.manager-theme-body .job-stat-value,
         body.manager-theme-body .invoice-stat-value,
-        body.manager-theme-body .summary-value {
+        body.manager-theme-body .opportunity-stat-value,
+        body.manager-theme-body .summary-value,
+        body.manager-theme-body .detail-value,
+        body.manager-theme-body .timeline-value,
+        body.manager-theme-body .invoice-row strong,
+        body.manager-theme-body .linked-record-card strong,
+        body.manager-theme-body .reschedule-box h3,
+        body.manager-theme-body .reject-box h3 {
             color: var(--sf-text-strong) !important;
         }
 
@@ -992,7 +1007,13 @@
         body.manager-theme-body .job-stat-note,
         body.manager-theme-body .invoice-stat-label,
         body.manager-theme-body .invoice-stat-note,
-        body.manager-theme-body .summary-label {
+        body.manager-theme-body .opportunity-stat-label,
+        body.manager-theme-body .opportunity-stat-note,
+        body.manager-theme-body .summary-label,
+        body.manager-theme-body .detail-label,
+        body.manager-theme-body .timeline-label,
+        body.manager-theme-body .invoice-row span,
+        body.manager-theme-body .empty-mini {
             color: var(--sf-muted) !important;
         }
 
@@ -1068,26 +1089,35 @@
 
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.warning,
         html[data-theme="dark"] body.manager-theme-body .job-stat-card.warning,
-        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.warning {
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.warning,
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.warning {
             background: rgba(245, 158, 11, 0.12) !important;
         }
 
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.primary,
         html[data-theme="dark"] body.manager-theme-body .job-stat-card.primary,
-        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.primary {
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.primary,
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.primary,
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.info {
             background: rgba(37, 99, 235, 0.14) !important;
         }
 
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.success,
         html[data-theme="dark"] body.manager-theme-body .job-stat-card.success,
-        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.success {
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.success,
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.success {
             background: rgba(22, 163, 74, 0.12) !important;
         }
 
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.danger,
         html[data-theme="dark"] body.manager-theme-body .job-stat-card.danger,
-        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.danger {
+        html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.danger,
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.danger {
             background: rgba(220, 38, 38, 0.12) !important;
+        }
+
+        html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.purple {
+            background: rgba(147, 51, 234, 0.12) !important;
         }
     </style>
 </head>

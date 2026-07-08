@@ -342,7 +342,7 @@
                                         @endif
 
                                         @if($slotValue)
-                                            @if($timeValue) · @endif
+                                            @if($timeValue) &middot; @endif
                                             {{ ucfirst(str_replace('_', ' ', $slotValue)) }}
                                         @endif
 

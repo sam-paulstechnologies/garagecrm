@@ -198,17 +198,26 @@ export default function Index({ selectedConversationId = null }) {
         ? `/manager/leads?lead=${context.lead_id}`
         : "/manager/leads";
 
+    const unreadTotal = conversations.reduce(
+        (total, item) => total + Number(item.unread_count || 0),
+        0
+    );
+
+    const linkedLeadCount = conversations.filter((item) => item.lead_id).length;
+    const visibleConversationCount = conversations.length;
+    const selectedMessageCount = messages.length;
+
     return (
         <AuthenticatedLayout>
             <style>{`
                 body {
-                    overflow: hidden;
+                    overflow: auto;
                     background: #070b16;
                 }
 
                 .sf-inbox-page {
-                    height: calc(100vh - 64px);
-                    overflow: hidden;
+                    min-height: calc(100vh - 64px);
+                    overflow: visible;
                     background:
                         radial-gradient(circle at top right, rgba(249, 115, 22, 0.10), transparent 30%),
                         radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
@@ -217,12 +226,98 @@ export default function Index({ selectedConversationId = null }) {
                 }
 
                 .sf-inbox-shell {
-                    height: 100%;
+                    min-height: calc(100vh - 64px);
                     padding: 28px 24px;
                 }
 
+                .sf-inbox-hero {
+                    max-width: 1780px;
+                    margin: 0 auto 16px;
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) repeat(4, minmax(140px, 190px));
+                    gap: 14px;
+                    align-items: stretch;
+                }
+
+                .sf-inbox-hero-copy,
+                .sf-inbox-stat {
+                    min-width: 0;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 22px;
+                    background: rgba(15, 23, 42, 0.92);
+                    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.20);
+                }
+
+                .sf-inbox-hero-copy {
+                    padding: 20px 22px;
+                }
+
+                .sf-inbox-kicker {
+                    display: inline-flex;
+                    width: max-content;
+                    margin-bottom: 10px;
+                    border-radius: 999px;
+                    border: 1px solid rgba(249, 115, 22, 0.22);
+                    padding: 6px 10px;
+                    background: rgba(249, 115, 22, 0.14);
+                    color: #fdba74;
+                    font-size: 11px;
+                    font-weight: 950;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                }
+
+                .sf-inbox-hero-title {
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 28px;
+                    line-height: 1.05;
+                    font-weight: 950;
+                    letter-spacing: -0.04em;
+                }
+
+                .sf-inbox-hero-subtitle {
+                    max-width: 760px;
+                    margin: 8px 0 0;
+                    color: #94a3b8;
+                    font-size: 14px;
+                    font-weight: 700;
+                    line-height: 1.6;
+                }
+
+                .sf-inbox-stat {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    padding: 16px;
+                }
+
+                .sf-inbox-stat span {
+                    color: #94a3b8;
+                    font-size: 12px;
+                    font-weight: 900;
+                }
+
+                .sf-inbox-stat strong {
+                    margin-top: 7px;
+                    color: #ffffff;
+                    font-size: 30px;
+                    line-height: 1;
+                    font-weight: 950;
+                    letter-spacing: -0.05em;
+                }
+
+                .sf-inbox-stat em {
+                    margin-top: 7px;
+                    color: #94a3b8;
+                    font-size: 11px;
+                    font-style: normal;
+                    font-weight: 750;
+                }
+
                 .sf-inbox-frame {
-                    height: 100%;
+                    height: min(760px, calc(100vh - 250px));
+                    min-height: 620px;
                     display: grid;
                     grid-template-columns: 380px minmax(0, 1fr) 360px;
                     gap: 16px;
@@ -274,8 +369,9 @@ export default function Index({ selectedConversationId = null }) {
                 }
 
                 .sf-plus-btn {
-                    width: 44px;
+                    min-width: 62px;
                     height: 44px;
+                    padding: 0 12px;
                     border: 0;
                     border-radius: 16px;
                     display: inline-flex;
@@ -283,10 +379,11 @@ export default function Index({ selectedConversationId = null }) {
                     justify-content: center;
                     background: linear-gradient(135deg, #f97316, #ea580c);
                     color: #ffffff;
-                    font-size: 24px;
+                    font-size: 12px;
                     line-height: 1;
-                    font-weight: 800;
+                    font-weight: 950;
                     box-shadow: 0 14px 26px rgba(249, 115, 22, 0.28);
+                    text-decoration: none;
                 }
 
                 .sf-search-area {
@@ -564,7 +661,9 @@ export default function Index({ selectedConversationId = null }) {
                     justify-content: center;
                     background: rgba(249, 115, 22, 0.14);
                     color: #fdba74;
-                    font-size: 28px;
+                    font-size: 12px;
+                    font-weight: 950;
+                    letter-spacing: 0.05em;
                 }
 
                 .sf-empty-card h2 {
@@ -962,6 +1061,8 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-action-btn {
                     width: 100%;
                     height: 42px;
+                    display: inline-flex;
+                    align-items: center;
                     border: 1px solid rgba(255, 255, 255, 0.10);
                     border-radius: 12px;
                     background: rgba(15, 23, 42, 0.72);
@@ -988,11 +1089,141 @@ export default function Index({ selectedConversationId = null }) {
                     color: #fecaca;
                 }
 
+                .sf-inbox-page {
+                    --inbox-bg: #070b16;
+                    --inbox-panel: rgba(15, 23, 42, 0.92);
+                    --inbox-panel-soft: rgba(2, 6, 23, 0.40);
+                    --inbox-chat-bg: #0b1220;
+                    --inbox-border: rgba(255, 255, 255, 0.08);
+                    --inbox-text: #e5e7eb;
+                    --inbox-strong: #ffffff;
+                    --inbox-muted: #94a3b8;
+                    --inbox-input: rgba(2, 6, 23, 0.72);
+                    --inbox-hover: rgba(255, 255, 255, 0.05);
+                    --inbox-accent-soft: rgba(249, 115, 22, 0.14);
+                }
+
+                html[data-theme="light"] .sf-inbox-page {
+                    --inbox-bg: #f4f7fb;
+                    --inbox-panel: #ffffff;
+                    --inbox-panel-soft: #f8fafc;
+                    --inbox-chat-bg: #eef3f9;
+                    --inbox-border: #d9e1ec;
+                    --inbox-text: #0f172a;
+                    --inbox-strong: #020617;
+                    --inbox-muted: #64748b;
+                    --inbox-input: #ffffff;
+                    --inbox-hover: #f1f5f9;
+                    --inbox-accent-soft: rgba(249, 115, 22, 0.10);
+                }
+
+                .sf-inbox-page {
+                    background:
+                        radial-gradient(circle at top right, rgba(249, 115, 22, 0.10), transparent 30%),
+                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+                        var(--inbox-bg);
+                    color: var(--inbox-text);
+                }
+
+                .sf-panel,
+                .sf-inbox-hero-copy,
+                .sf-inbox-stat,
+                .sf-empty-card,
+                .sf-right-section {
+                    background: var(--inbox-panel);
+                    border-color: var(--inbox-border);
+                    color: var(--inbox-text);
+                }
+
+                .sf-left-header,
+                .sf-chat-header,
+                .sf-search-area,
+                .sf-composer,
+                .sf-right-section + .sf-right-section,
+                .sf-date-pill {
+                    background: var(--inbox-panel-soft);
+                    border-color: var(--inbox-border);
+                }
+
+                .sf-title,
+                .sf-chat-name,
+                .sf-profile-name,
+                .sf-right-title,
+                .sf-empty-card h2,
+                .sf-conv-name,
+                .sf-inbox-hero-title,
+                .sf-inbox-stat strong,
+                .sf-info-value {
+                    color: var(--inbox-strong);
+                }
+
+                .sf-subtitle,
+                .sf-chat-phone,
+                .sf-profile-phone,
+                .sf-right-subtitle,
+                .sf-empty-card p,
+                .sf-conv-time,
+                .sf-conv-preview,
+                .sf-info-label,
+                .sf-ai-note,
+                .sf-date-pill,
+                .sf-inbox-hero-subtitle,
+                .sf-inbox-stat span,
+                .sf-inbox-stat em {
+                    color: var(--inbox-muted);
+                }
+
+                .sf-search-box,
+                .sf-menu-dots,
+                .sf-input-box,
+                .sf-tone-select,
+                .sf-icon-btn,
+                .sf-send-extra,
+                .sf-action-btn {
+                    background: var(--inbox-input);
+                    border-color: var(--inbox-border);
+                    color: var(--inbox-text);
+                }
+
+                .sf-search-box input,
+                .sf-input-box textarea {
+                    color: var(--inbox-strong);
+                }
+
+                .sf-conversation:hover,
+                .sf-action-btn:hover,
+                .sf-icon-btn:hover {
+                    background: var(--inbox-hover);
+                }
+
+                .sf-conversation.active,
+                .sf-status-pill {
+                    background: var(--inbox-accent-soft);
+                }
+
+                .sf-messages {
+                    background-color: var(--inbox-chat-bg);
+                }
+
+                .sf-message-row.in .sf-bubble {
+                    background: var(--inbox-panel);
+                    color: var(--inbox-text);
+                    border-color: var(--inbox-border);
+                }
+
                 .sf-mobile-back {
                     display: none;
                 }
 
                 @media (max-width: 1400px) {
+                    .sf-inbox-hero {
+                        grid-template-columns: repeat(4, minmax(0, 1fr));
+                    }
+
+                    .sf-inbox-hero-copy {
+                        grid-column: 1 / -1;
+                    }
+
                     .sf-inbox-frame {
                         grid-template-columns: 360px minmax(0, 1fr);
                     }
@@ -1004,11 +1235,15 @@ export default function Index({ selectedConversationId = null }) {
 
                 @media (max-width: 900px) {
                     .sf-inbox-shell {
-                        padding: 0;
+                        padding: 12px;
+                    }
+
+                    .sf-inbox-hero {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
                     }
 
                     .sf-inbox-frame {
-                        height: 100%;
+                        height: calc(100vh - 24px);
                         grid-template-columns: 1fr;
                         gap: 0;
                     }
@@ -1067,10 +1302,54 @@ export default function Index({ selectedConversationId = null }) {
                         width: 100%;
                     }
                 }
+
+                @media (max-width: 640px) {
+                    .sf-inbox-hero {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .sf-inbox-hero-title {
+                        font-size: 24px;
+                    }
+                }
             `}</style>
 
             <div className="sf-inbox-page">
                 <div className="sf-inbox-shell">
+                    <section className="sf-inbox-hero">
+                        <div className="sf-inbox-hero-copy">
+                            <div className="sf-inbox-kicker">Manager Inbox</div>
+                            <h1 className="sf-inbox-hero-title">Operational Messages</h1>
+                            <p className="sf-inbox-hero-subtitle">
+                                Review WhatsApp conversations, draft manager replies, and keep customer context visible while staying inside the operational manager workflow.
+                            </p>
+                        </div>
+
+                        <div className="sf-inbox-stat">
+                            <span>Conversations</span>
+                            <strong>{visibleConversationCount}</strong>
+                            <em>Loaded for this garage</em>
+                        </div>
+
+                        <div className="sf-inbox-stat">
+                            <span>Unread</span>
+                            <strong>{unreadTotal}</strong>
+                            <em>Needs attention</em>
+                        </div>
+
+                        <div className="sf-inbox-stat">
+                            <span>Linked Leads</span>
+                            <strong>{linkedLeadCount}</strong>
+                            <em>Customer context attached</em>
+                        </div>
+
+                        <div className="sf-inbox-stat">
+                            <span>Open Thread</span>
+                            <strong>{selectedMessageCount}</strong>
+                            <em>Messages in view</em>
+                        </div>
+                    </section>
+
                     <div className="sf-inbox-frame">
                         <aside className={`sf-panel sf-left-panel ${selected ? "mobile-hidden" : ""}`}>
                             <div className="sf-left-header">
@@ -1081,9 +1360,9 @@ export default function Index({ selectedConversationId = null }) {
                                     </div>
                                 </div>
 
-                                <button type="button" className="sf-plus-btn">
-                                    +
-                                </button>
+                                <a href="/manager/leads" className="sf-plus-btn" aria-label="Open leads">
+                                    Leads
+                                </a>
                             </div>
 
                             <div className="sf-search-area">
@@ -1189,7 +1468,7 @@ export default function Index({ selectedConversationId = null }) {
                                                 className="sf-menu-dots"
                                                 title="Mark read"
                                             >
-                                                ✓
+                                                Read
                                             </button>
                                         </div>
                                     </header>
@@ -1198,7 +1477,7 @@ export default function Index({ selectedConversationId = null }) {
                                         {loadingMessages ? (
                                             <div className="sf-empty-state">
                                                 <div className="sf-empty-card">
-                                                    <div className="sf-empty-icon">⏳</div>
+                                                    <div className="sf-empty-icon">LOAD</div>
                                                     <h2>Loading messages</h2>
                                                     <p>Please wait while we fetch this conversation.</p>
                                                 </div>
@@ -1206,7 +1485,7 @@ export default function Index({ selectedConversationId = null }) {
                                         ) : messages.length === 0 ? (
                                             <div className="sf-empty-state">
                                                 <div className="sf-empty-card">
-                                                    <div className="sf-empty-icon">💬</div>
+                                                    <div className="sf-empty-icon">MSG</div>
                                                     <h2>No messages yet</h2>
                                                     <p>Start the conversation by typing a reply below.</p>
                                                 </div>
@@ -1530,13 +1809,13 @@ export default function Index({ selectedConversationId = null }) {
                                         Mark as Read
                                     </button>
 
-                                    <button type="button" className="sf-action-btn">
-                                        Assign to Team Member
-                                    </button>
+                                    <a href={leadProfileUrl} className="sf-action-btn">
+                                        Open Lead Queue
+                                    </a>
 
-                                    <button type="button" className="sf-action-btn danger">
-                                        Block Contact
-                                    </button>
+                                    <a href="/manager/growth" className="sf-action-btn">
+                                        Open Reports
+                                    </a>
                                 </div>
                             </div>
                         </aside>

@@ -319,6 +319,125 @@ class ManagerLifecycleInvariantTest extends TestCase
             ->assertDontSee('manager/profile', false);
     }
 
+    public function test_manager_polished_operational_pages_render_core_sections(): void
+    {
+        $lead = $this->lead([
+            'name' => 'Polished Lead Screen',
+            'phone' => '971500000333',
+        ]);
+
+        $opportunity = $this->opportunity([
+            'title' => 'Polished Opportunity Screen',
+            'lead_id' => $lead->id,
+            'stage' => Opportunity::STAGE_OFFER,
+            'status' => 'open',
+        ]);
+
+        $booking = $this->booking([
+            'name' => 'Polished Booking Screen',
+            'opportunity_id' => $opportunity->id,
+            'status' => Booking::STATUS_SCHEDULED,
+        ]);
+
+        $job = $this->job([
+            'booking_id' => $booking->id,
+            'opportunity_id' => $opportunity->id,
+            'description' => 'Polished job screen',
+        ]);
+
+        $invoice = Invoice::create([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'job_id' => $job->id,
+            'booking_id' => $booking->id,
+            'opportunity_id' => $opportunity->id,
+            'source' => 'generated',
+            'amount' => 375,
+            'status' => 'pending',
+            'number' => 'INV-POLISH',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+            'due_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.leads.index'))
+            ->assertOk()
+            ->assertSee('Manager Action Queue')
+            ->assertSee('Lead Queue')
+            ->assertSee('Polished Lead Screen');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.opportunities.index'))
+            ->assertOk()
+            ->assertSee('Total Pipeline')
+            ->assertSee('Filter Opportunities')
+            ->assertSee('Polished Opportunity Screen');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.opportunities.show', $opportunity))
+            ->assertOk()
+            ->assertSee('Opportunity Review')
+            ->assertSee('Opportunity Summary')
+            ->assertSee('Stage Action')
+            ->assertSee('Schedule Booking');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.bookings.index'))
+            ->assertOk()
+            ->assertSee('Manager Booking Queue')
+            ->assertSee('Booking List')
+            ->assertSee('General Service');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.bookings.show', $booking))
+            ->assertOk()
+            ->assertSee('Booking Review')
+            ->assertSee('Manager Actions')
+            ->assertSee('Status Timeline');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.index'))
+            ->assertOk()
+            ->assertSee('Manager Job Queue')
+            ->assertSee('Job List')
+            ->assertSee('Polished job screen');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.jobs.show', $job))
+            ->assertOk()
+            ->assertSee('Job Review')
+            ->assertSee('Work Details')
+            ->assertSee('Invoice')
+            ->assertSee('Timeline');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.index'))
+            ->assertOk()
+            ->assertSee('Manager Invoice Desk')
+            ->assertSee('Invoice List')
+            ->assertSee('INV-POLISH');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.show', $invoice->id))
+            ->assertOk()
+            ->assertSee('Invoice Review')
+            ->assertSee('Invoice Summary')
+            ->assertSee('Payment Actions')
+            ->assertSee('Timeline');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.growth.index'))
+            ->assertOk()
+            ->assertSee('Growth Overview')
+            ->assertSee('Manager-safe Growth Access');
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.inbox.index'))
+            ->assertOk()
+            ->assertSee('Manager\/Inbox\/Index', false);
+    }
+
     public function test_lead_import_pages_show_selected_file_feedback(): void
     {
         $this->actingAs($this->admin)

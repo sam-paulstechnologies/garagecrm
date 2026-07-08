@@ -144,6 +144,30 @@
         </div>
     @endif
 
+    {{-- Pipeline Stat Cards --}}
+    @php
+        $pipelineCards = [
+            ['key' => '', 'label' => 'Total Pipeline', 'count' => $opportunityCounts['total'] ?? 0, 'note' => 'All manager-visible opportunities', 'tone' => 'primary'],
+            ['key' => 'new', 'label' => 'New', 'count' => $opportunityCounts['new'] ?? 0, 'note' => 'Needs first movement', 'tone' => 'primary'],
+            ['key' => 'attempting_contact', 'label' => 'Attempting Contact', 'count' => $opportunityCounts['attempting_contact'] ?? 0, 'note' => 'Reach-out in progress', 'tone' => 'warning'],
+            ['key' => 'appointment', 'label' => 'Appointment', 'count' => $opportunityCounts['appointment'] ?? 0, 'note' => 'Booking conversation active', 'tone' => 'info'],
+            ['key' => 'offer', 'label' => 'Offer', 'count' => $opportunityCounts['offer'] ?? 0, 'note' => 'Estimate or quote follow-up', 'tone' => 'purple'],
+            ['key' => 'booking_confirmed', 'label' => 'Booking Confirmed', 'count' => $opportunityCounts['booking_confirmed'] ?? 0, 'note' => 'Ready for booking/job flow', 'tone' => 'success'],
+            ['key' => 'closed_lost', 'label' => 'Closed Lost', 'count' => $opportunityCounts['closed_lost'] ?? 0, 'note' => 'Reason captured', 'tone' => 'danger'],
+        ];
+    @endphp
+
+    <div class="opportunity-stat-grid mb-4">
+        @foreach($pipelineCards as $card)
+            <a href="{{ $card['key'] ? route('manager.opportunities.index', ['stage' => $card['key']]) : route('manager.opportunities.index') }}"
+               class="opportunity-stat-card {{ $card['tone'] }} {{ ($card['key'] === '' && empty($stage ?? request('stage'))) || $normalizeStage($stage ?? request('stage')) === $normalizeStage($card['key']) ? 'active' : '' }}">
+                <span class="opportunity-stat-label">{{ $card['label'] }}</span>
+                <strong class="opportunity-stat-value">{{ number_format((int) $card['count']) }}</strong>
+                <em class="opportunity-stat-note">{{ $card['note'] }}</em>
+            </a>
+        @endforeach
+    </div>
+
     {{-- Filters --}}
     <div class="sf-panel mb-4">
         <div class="sf-panel-header">
@@ -248,7 +272,7 @@
                                     <div class="small text-muted mt-1">
                                         #{{ $opportunity->id }}
                                         @if(!empty($opportunity->email))
-                                            · {{ $opportunity->email }}
+                                            &middot; {{ $opportunity->email }}
                                         @endif
                                     </div>
                                 </td>
@@ -445,7 +469,7 @@
                                     Schedule Booking
                                 </h5>
                                 <p class="mb-0 schedule-modal-subtitle">
-                                    {{ $opportunityName($opportunity) }} · {{ $opportunityPhone($opportunity) }}
+                                    {{ $opportunityName($opportunity) }} &middot; {{ $opportunityPhone($opportunity) }}
                                 </p>
                             </div>
 
@@ -686,6 +710,69 @@
     .sf-action-button.light:hover {
         background: #f8fafc;
         border-color: #94a3b8;
+    }
+
+    .opportunity-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .opportunity-stat-card {
+        min-height: 132px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        border-radius: 20px;
+        padding: 18px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        color: #0f172a;
+        text-decoration: none;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .opportunity-stat-card:hover {
+        color: #0f172a;
+        transform: translateY(-1px);
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.13);
+    }
+
+    .opportunity-stat-card.active {
+        border-color: rgba(234, 88, 12, 0.45);
+        box-shadow: 0 18px 46px rgba(234, 88, 12, 0.14);
+    }
+
+    .opportunity-stat-card.primary { background: linear-gradient(135deg, #eff6ff, #ffffff); }
+    .opportunity-stat-card.warning { background: linear-gradient(135deg, #fffbeb, #ffffff); }
+    .opportunity-stat-card.info { background: linear-gradient(135deg, #f0f9ff, #ffffff); }
+    .opportunity-stat-card.purple { background: linear-gradient(135deg, #faf5ff, #ffffff); }
+    .opportunity-stat-card.success { background: linear-gradient(135deg, #f0fdf4, #ffffff); }
+    .opportunity-stat-card.danger { background: linear-gradient(135deg, #fef2f2, #ffffff); }
+
+    .opportunity-stat-label {
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 900;
+    }
+
+    .opportunity-stat-value {
+        margin-top: 9px;
+        color: #020617;
+        font-size: 32px;
+        line-height: 1;
+        font-weight: 950;
+        letter-spacing: -0.05em;
+    }
+
+    .opportunity-stat-note {
+        margin-top: 8px;
+        color: #64748b;
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 800;
+        line-height: 1.35;
     }
 
     .manager-count-pill {
@@ -1109,6 +1196,10 @@
     }
 
     @media (max-width: 992px) {
+        .opportunity-stat-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
         .manager-opportunities-table th:nth-child(2),
         .manager-opportunities-table td:nth-child(2),
         .manager-opportunities-table th:nth-child(3),
@@ -1148,6 +1239,10 @@
     }
 
     @media (max-width: 768px) {
+        .opportunity-stat-grid {
+            grid-template-columns: 1fr;
+        }
+
         .sf-page-title {
             font-size: 30px !important;
         }

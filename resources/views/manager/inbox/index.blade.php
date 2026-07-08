@@ -171,11 +171,11 @@
                                 {{ $leadPhone($selectedLead) }}
 
                                 @if(!empty($selectedLead->email))
-                                    · {{ $selectedLead->email }}
+                                    &middot; {{ $selectedLead->email }}
                                 @endif
 
                                 @if(!empty($selectedLead->source))
-                                    · Source: {{ $selectedLead->source }}
+                                    &middot; Source: {{ $selectedLead->source }}
                                 @endif
                             </div>
                         </div>
@@ -219,11 +219,11 @@
                                                 {{ ucfirst($direction ?: 'inbound') }}
 
                                                 @if(!empty($message->status))
-                                                    · {{ ucfirst($message->status) }}
+                                                    &middot; {{ ucfirst($message->status) }}
                                                 @endif
 
                                                 @if(!empty($message->created_at))
-                                                    · {{ \Carbon\Carbon::parse($message->created_at)->format('d M Y, h:i A') }}
+                                                    &middot; {{ \Carbon\Carbon::parse($message->created_at)->format('d M Y, h:i A') }}
                                                 @endif
                                             </div>
                                         </div>

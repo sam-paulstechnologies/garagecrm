@@ -5,12 +5,11 @@
 @section('content')
 
     {{-- Page Header --}}
-    <div class="mb-4">
+    <section class="manager-growth-hero mb-4">
         <div class="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
             <div>
-                <div class="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill mb-3"
-                     style="background: rgba(234, 88, 12, 0.14); color: #fdba74; font-size: 12px; font-weight: 900;">
-                    Manager View · Read-only v1
+                <div class="manager-growth-kicker">
+                    Manager View &middot; Read-only v1
                 </div>
 
                 <h1 class="sf-page-title">
@@ -33,7 +32,7 @@
                 </a>
             </div>
         </div>
-    </div>
+    </section>
 
     {{-- Growth Cards --}}
     <div class="row g-3 mb-4">
@@ -44,19 +43,19 @@
                 $toneMap = [
                     'blue' => [
                         'gradient' => 'linear-gradient(135deg, #2563eb, #60a5fa)',
-                        'icon' => '#',
+                        'icon' => 'SUM',
                     ],
                     'orange' => [
                         'gradient' => 'linear-gradient(135deg, #ea580c, #fb923c)',
-                        'icon' => '↗',
+                        'icon' => 'UP',
                     ],
                     'green' => [
                         'gradient' => 'linear-gradient(135deg, #16a34a, #86efac)',
-                        'icon' => '✓',
+                        'icon' => 'OK',
                     ],
                     'purple' => [
                         'gradient' => 'linear-gradient(135deg, #9333ea, #c084fc)',
-                        'icon' => '✉',
+                        'icon' => 'MSG',
                     ],
                 ];
 
@@ -80,7 +79,7 @@
                             </p>
                         </div>
 
-                        <div class="d-flex align-items-center justify-content-center text-white"
+                        <div class="growth-card-icon"
                              style="width: 48px; height: 48px; border-radius: 18px; background: {{ $style['gradient'] }}; font-weight: 900; box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);">
                             {{ $style['icon'] }}
                         </div>
@@ -243,13 +242,12 @@
                                 <span class="fw-black text-dark">{{ $completionRate }}%</span>
                             </div>
 
-                            <div style="height: 10px; border-radius: 999px; background: #e5e7eb; overflow: hidden;">
-                                <div style="height: 100%; width: {{ min($completionRate, 100) }}%; border-radius: 999px; background: linear-gradient(90deg, #2563eb, #ea580c);"></div>
+                            <div class="growth-progress-track">
+                                <div class="growth-progress-fill" style="width: {{ min($completionRate, 100) }}%;"></div>
                             </div>
                         </div>
 
-                        <div class="p-3 rounded-4"
-                             style="background: #f8fafc; border: 1px solid #e5e7eb;">
+                        <div class="growth-manager-note p-3 rounded-4">
                             <div class="fw-black text-dark mb-1">Manager Note</div>
                             <p class="mb-0 text-muted fw-semibold" style="line-height: 1.7;">
                                 This page is focused on operational performance only.
@@ -270,16 +268,15 @@
     </div>
 
     {{-- Safe Access Notice --}}
-    <div class="mt-4 rounded-4 overflow-hidden"
-         style="background: #0f172a; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16);">
+    <div class="manager-safe-access mt-4 rounded-4 overflow-hidden">
         <div class="p-4 p-lg-5">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-4">
                 <div>
-                    <h2 class="text-white fw-black mb-2">
+                    <h2 class="fw-black mb-2">
                         Manager-safe Growth Access
                     </h2>
 
-                    <p class="mb-0 text-white-50 fw-semibold" style="max-width: 820px; line-height: 1.7;">
+                    <p class="mb-0 fw-semibold" style="max-width: 820px; line-height: 1.7;">
                         Managers can view growth performance and act on leads, conversations, bookings, and jobs.
                         Admin-only controls like campaign creation, WhatsApp mappings, API credentials, and automation rules are intentionally hidden.
                     </p>
@@ -293,3 +290,69 @@
     </div>
 
 @endsection
+
+@push('styles')
+<style>
+    .manager-growth-hero {
+        border: 1px solid var(--sf-border-light);
+        border-radius: 22px;
+        padding: 28px;
+        background: var(--sf-surface);
+        box-shadow: var(--sf-soft-shadow);
+    }
+
+    .manager-growth-kicker {
+        display: inline-flex;
+        align-items: center;
+        width: max-content;
+        margin-bottom: 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(249, 115, 22, 0.22);
+        padding: 7px 12px;
+        background: var(--sf-orange-soft);
+        color: var(--sf-orange);
+        font-size: 11px;
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .growth-card-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+    }
+
+    .growth-progress-track {
+        height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        border: 1px solid var(--sf-border-light);
+        background: var(--sf-surface-soft);
+    }
+
+    .growth-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--sf-primary), var(--sf-orange));
+    }
+
+    .growth-manager-note,
+    .manager-safe-access {
+        border: 1px solid var(--sf-border-light);
+        background: var(--sf-surface);
+        box-shadow: var(--sf-soft-shadow);
+    }
+
+    .manager-safe-access h2 {
+        color: var(--sf-text-strong);
+    }
+
+    .manager-safe-access p {
+        color: var(--sf-muted);
+    }
+</style>
+@endpush
