@@ -24,6 +24,7 @@ class AdminResponsiveShellTest extends TestCase
             ->assertDontSee('Admin Console')
             ->assertDontSee('aria-label="Admin navigation"', false)
             ->assertDontSee('lg:pl-72', false)
+            ->assertSee('data-sf-shell-breakpoint="lg"', false)
             ->assertSee('max-w-none', false)
             ->assertSee('lg:flex', false)
             ->assertSee('lg:hidden', false);
@@ -39,6 +40,28 @@ class AdminResponsiveShellTest extends TestCase
             ->assertDontSee('sf-admin-sidebar', false)
             ->assertDontSee('Admin Console')
             ->assertDontSee('lg:pl-72', false);
+    }
+
+    public function test_manager_inbox_uses_desktop_shell_at_lg_breakpoint(): void
+    {
+        $manager = $this->user('manager');
+
+        $this->actingAs($manager)
+            ->get(route('manager.inbox.index'))
+            ->assertOk()
+            ->assertSee('Manager\/Inbox\/Index', false)
+            ->assertSee('data-sf-shell-breakpoint="lg"', false);
+    }
+
+    public function test_admin_inbox_keeps_desktop_shell_at_lg_breakpoint(): void
+    {
+        $admin = $this->user('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.inbox.index'))
+            ->assertOk()
+            ->assertSee('Admin\/Inbox\/Index', false)
+            ->assertSee('data-sf-shell-breakpoint="lg"', false);
     }
 
     private function user(string $role): User

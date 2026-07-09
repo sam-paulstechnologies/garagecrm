@@ -200,6 +200,18 @@
         {{-- Navigation --}}
         @auth
             @if(View::exists('layouts.navigation') && (request()->routeIs('admin.*') || request()->routeIs('manager.*')))
+                @php
+                    $isInboxShellRoute = request()->routeIs('admin.inbox.*')
+                        || request()->routeIs('manager.inbox.*')
+                        || request()->routeIs('manager.escalations');
+
+                    $useAdminFullWidthShell = (
+                        request()->routeIs('admin.*')
+                        || request()->routeIs('super-admin.*')
+                        || $isInboxShellRoute
+                    ) && strtolower(trim((string) auth()->user()->role)) !== 'media_team';
+                @endphp
+
                 @include('layouts.navigation')
             @endif
         @else

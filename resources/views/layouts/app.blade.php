@@ -434,8 +434,16 @@
 <body class="font-sans antialiased sf-theme-body">
 
     @php
+        $isInboxShellRoute = request()->routeIs('admin.inbox.*')
+            || request()->routeIs('manager.inbox.*')
+            || request()->routeIs('manager.escalations');
+
         $useAdminFullWidthShell = auth()->check()
-            && (request()->routeIs('admin.*') || request()->routeIs('super-admin.*'))
+            && (
+                request()->routeIs('admin.*')
+                || request()->routeIs('super-admin.*')
+                || $isInboxShellRoute
+            )
             && strtolower(trim((string) auth()->user()->role)) !== 'media_team';
     @endphp
 

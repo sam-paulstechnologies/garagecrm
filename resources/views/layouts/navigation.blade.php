@@ -429,6 +429,7 @@
         }
     }"
     class="sf-nav sticky top-0 z-40 border-b shadow-lg backdrop-blur"
+    data-sf-shell-breakpoint="{{ $useAdminFullWidthShell ? 'lg' : 'xl' }}"
 >
     <div class="{{ $useAdminFullWidthShell ? 'max-w-none' : 'mx-auto max-w-7xl' }} px-4 sm:px-6 lg:px-8">
         <div class="relative flex min-h-16 items-center justify-between gap-4">
