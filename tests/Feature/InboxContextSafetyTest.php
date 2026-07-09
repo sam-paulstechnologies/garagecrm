@@ -106,6 +106,81 @@ class InboxContextSafetyTest extends TestCase
         $this->assertNotContains($other->id, collect($response)->pluck('id')->all());
     }
 
+    public function test_whatsapp_inbox_renders_connected_channel_without_sensitive_tokens(): void
+    {
+        DB::table('companies')
+            ->where('id', $this->companyId)
+            ->update([
+                'meta_display_phone_number' => '+971 50 123 4567',
+                'meta_phone_number_id' => '123456789000999',
+                'meta_access_token' => 'EAAB_SECRET_REVIEW_TOKEN',
+                'meta_verify_token' => 'verify-secret-review-token',
+                'is_whatsapp_active' => true,
+            ]);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.inbox.index'))
+            ->assertOk()
+            ->assertSee('Inbox Garage')
+            ->assertSee('+971 50 123 4567')
+            ->assertSee('&quot;status&quot;:&quot;Connected&quot;', false)
+            ->assertDontSee('EAAB_SECRET_REVIEW_TOKEN')
+            ->assertDontSee('verify-secret-review-token')
+            ->assertDontSee('123456789000999');
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.inbox.index'))
+            ->assertOk()
+            ->assertSee('Inbox Garage')
+            ->assertSee('+971 50 123 4567')
+            ->assertSee('&quot;status&quot;:&quot;Connected&quot;', false)
+            ->assertDontSee('EAAB_SECRET_REVIEW_TOKEN')
+            ->assertDontSee('verify-secret-review-token')
+            ->assertDontSee('123456789000999');
+
+        $this->assertInboxComposerLabelsCustomerRecipientSeparately();
+    }
+
+    public function test_whatsapp_inbox_masks_phone_number_id_when_display_number_is_missing(): void
+    {
+        DB::table('companies')
+            ->where('id', $this->companyId)
+            ->update([
+                'meta_display_phone_number' => null,
+                'meta_phone_number_id' => '123456789000999',
+                'meta_access_token' => 'EAAB_SECRET_REVIEW_TOKEN',
+                'is_whatsapp_active' => true,
+            ]);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.inbox.index'))
+            ->assertOk()
+            ->assertSee('Connected WhatsApp channel configured')
+            ->assertSee('****0999')
+            ->assertDontSee('123456789000999')
+            ->assertDontSee('EAAB_SECRET_REVIEW_TOKEN');
+    }
+
+    private function assertInboxComposerLabelsCustomerRecipientSeparately(): void
+    {
+        $managerInbox = file_get_contents(resource_path('js/Pages/Manager/Inbox/Index.jsx'));
+        $adminInbox = file_get_contents(resource_path('js/Pages/Admin/Inbox/Index.jsx'));
+
+        $this->assertStringContainsString('Connected WhatsApp Channel', $managerInbox);
+        $this->assertStringContainsString('Sending from', $managerInbox);
+        $this->assertStringContainsString('Status:', $managerInbox);
+        $this->assertStringContainsString('<strong>From:</strong>', $managerInbox);
+        $this->assertStringContainsString('<strong>To:</strong>', $managerInbox);
+        $this->assertStringContainsString('customerToLabel', $managerInbox);
+
+        $this->assertStringContainsString('Connected WhatsApp Channel', $adminInbox);
+        $this->assertStringContainsString('Sending from', $adminInbox);
+        $this->assertStringContainsString('Status:', $adminInbox);
+        $this->assertStringContainsString('<strong>From:</strong>', $adminInbox);
+        $this->assertStringContainsString('<strong>To:</strong>', $adminInbox);
+        $this->assertStringContainsString('customerToLabel', $adminInbox);
+    }
+
     public function test_manager_cannot_read_or_send_cross_company_conversation(): void
     {
         $conversation = $this->conversation($this->otherCompanyId);
@@ -317,6 +392,11 @@ class InboxContextSafetyTest extends TestCase
         $this->ensureColumn('users', 'company_id', fn (Blueprint $table) => $table->unsignedBigInteger('company_id')->nullable());
         $this->ensureColumn('users', 'status', fn (Blueprint $table) => $table->boolean('status')->default(true));
         $this->ensureColumn('users', 'must_change_password', fn (Blueprint $table) => $table->boolean('must_change_password')->default(false));
+        $this->ensureColumn('companies', 'meta_display_phone_number', fn (Blueprint $table) => $table->string('meta_display_phone_number')->nullable());
+        $this->ensureColumn('companies', 'meta_phone_number_id', fn (Blueprint $table) => $table->string('meta_phone_number_id')->nullable());
+        $this->ensureColumn('companies', 'meta_access_token', fn (Blueprint $table) => $table->text('meta_access_token')->nullable());
+        $this->ensureColumn('companies', 'meta_verify_token', fn (Blueprint $table) => $table->string('meta_verify_token')->nullable());
+        $this->ensureColumn('companies', 'is_whatsapp_active', fn (Blueprint $table) => $table->boolean('is_whatsapp_active')->default(false));
 
         if (! Schema::hasTable('clients')) {
             Schema::create('clients', function (Blueprint $table) {

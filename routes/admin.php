@@ -714,9 +714,8 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | Inbox Main Page
         |--------------------------------------------------------------------------
         */
-        Route::get('inbox', function () {
-            return inertia('Admin/Inbox/Index');
-        })->name('inbox.index');
+        Route::get('inbox', [InboxController::class, 'index'])
+            ->name('inbox.index');
 
         /*
         |--------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 
-export default function Index({ selectedConversationId = null }) {
+export default function Index({ selectedConversationId = null, whatsappChannel = null }) {
     const [conversations, setConversations] = useState([]);
     const [messages, setMessages] = useState([]);
     const [selected, setSelected] = useState(null);
@@ -189,6 +189,19 @@ export default function Index({ selectedConversationId = null }) {
         "Customer";
 
     const selectedPhone = context?.phone || selected?.customer_phone || "";
+    const channelCompany = whatsappChannel?.company_name || "Garage";
+    const channelDisplayNumber = whatsappChannel?.display_phone_number || "";
+    const channelMaskedPhoneId = whatsappChannel?.phone_number_id_masked || "";
+    const channelStatus = whatsappChannel?.status || "Not connected";
+    const channelIsConnected = Boolean(whatsappChannel?.is_connected);
+    const channelFromLabel = channelDisplayNumber
+        ? `${channelCompany} WhatsApp ${channelDisplayNumber}`
+        : channelMaskedPhoneId
+            ? `${channelCompany} WhatsApp channel configured`
+            : `${channelCompany} WhatsApp not connected`;
+    const customerToLabel = selectedPhone
+        ? `${selectedName} ${selectedPhone}`
+        : selectedName;
 
     const selectedLeadId = context?.lead_id
         ? `L-${String(context.lead_id).padStart(4, "0")}`
@@ -313,6 +326,61 @@ export default function Index({ selectedConversationId = null }) {
                     font-size: 11px;
                     font-style: normal;
                     font-weight: 750;
+                }
+
+                .sf-channel-card {
+                    max-width: 1780px;
+                    margin: -4px auto 16px;
+                    padding: 16px 18px;
+                    border: 1px solid rgba(16, 185, 129, 0.24);
+                    border-radius: 20px;
+                    display: grid;
+                    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(160px, auto));
+                    gap: 14px;
+                    align-items: center;
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(15, 23, 42, 0.92));
+                    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.18);
+                }
+
+                .sf-channel-heading {
+                    color: #ffffff;
+                    font-size: 15px;
+                    font-weight: 950;
+                    letter-spacing: -0.01em;
+                }
+
+                .sf-channel-kicker,
+                .sf-channel-label {
+                    color: #94a3b8;
+                    font-size: 11px;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                }
+
+                .sf-channel-value {
+                    margin-top: 4px;
+                    color: #e5e7eb;
+                    font-size: 13px;
+                    font-weight: 850;
+                    word-break: break-word;
+                }
+
+                .sf-channel-status {
+                    width: fit-content;
+                    border-radius: 999px;
+                    padding: 7px 11px;
+                    border: 1px solid rgba(16, 185, 129, 0.28);
+                    background: rgba(16, 185, 129, 0.16);
+                    color: #86efac;
+                    font-size: 12px;
+                    font-weight: 950;
+                }
+
+                .sf-channel-status.not-connected {
+                    border-color: rgba(239, 68, 68, 0.24);
+                    background: rgba(239, 68, 68, 0.12);
+                    color: #fecaca;
                 }
 
                 .sf-inbox-frame {
@@ -829,6 +897,28 @@ export default function Index({ selectedConversationId = null }) {
                     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
                 }
 
+                .sf-from-to-line {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    background: rgba(15, 23, 42, 0.66);
+                    color: #cbd5e1;
+                    font-size: 12px;
+                    font-weight: 800;
+                }
+
+                .sf-from-to-line span {
+                    min-width: 0;
+                    overflow-wrap: anywhere;
+                }
+
+                .sf-from-to-line strong {
+                    color: #ffffff;
+                    font-weight: 950;
+                }
+
                 .sf-input-box textarea {
                     width: 100%;
                     min-height: 72px;
@@ -1128,6 +1218,7 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-panel,
                 .sf-inbox-hero-copy,
                 .sf-inbox-stat,
+                .sf-channel-card,
                 .sf-empty-card,
                 .sf-right-section {
                     background: var(--inbox-panel);
@@ -1152,6 +1243,8 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-empty-card h2,
                 .sf-conv-name,
                 .sf-inbox-hero-title,
+                .sf-channel-heading,
+                .sf-from-to-line strong,
                 .sf-inbox-stat strong,
                 .sf-info-value {
                     color: var(--inbox-strong);
@@ -1168,6 +1261,8 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-ai-note,
                 .sf-date-pill,
                 .sf-inbox-hero-subtitle,
+                .sf-channel-kicker,
+                .sf-channel-label,
                 .sf-inbox-stat span,
                 .sf-inbox-stat em {
                     color: var(--inbox-muted);
@@ -1176,6 +1271,7 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-search-box,
                 .sf-menu-dots,
                 .sf-input-box,
+                .sf-from-to-line,
                 .sf-tone-select,
                 .sf-icon-btn,
                 .sf-send-extra,
@@ -1188,6 +1284,11 @@ export default function Index({ selectedConversationId = null }) {
                 .sf-search-box input,
                 .sf-input-box textarea {
                     color: var(--inbox-strong);
+                }
+
+                .sf-channel-value,
+                .sf-from-to-line {
+                    color: var(--inbox-text);
                 }
 
                 .sf-conversation:hover,
@@ -1240,6 +1341,10 @@ export default function Index({ selectedConversationId = null }) {
 
                     .sf-inbox-hero {
                         grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+
+                    .sf-channel-card {
+                        grid-template-columns: 1fr;
                     }
 
                     .sf-inbox-frame {
@@ -1347,6 +1452,31 @@ export default function Index({ selectedConversationId = null }) {
                             <span>Open Thread</span>
                             <strong>{selectedMessageCount}</strong>
                             <em>Messages in view</em>
+                        </div>
+                    </section>
+
+                    <section className="sf-channel-card" aria-label="Connected WhatsApp Channel">
+                        <div>
+                            <div className="sf-channel-kicker">Connected WhatsApp Channel</div>
+                            <div className="sf-channel-heading">{channelCompany}</div>
+                        </div>
+
+                        <div>
+                            <div className="sf-channel-label">Sending from</div>
+                            <div className="sf-channel-value">
+                                {channelDisplayNumber || "Connected WhatsApp channel configured"}
+                            </div>
+                        </div>
+
+                        {channelMaskedPhoneId && (
+                            <div>
+                                <div className="sf-channel-label">Phone Number ID</div>
+                                <div className="sf-channel-value">{channelMaskedPhoneId}</div>
+                            </div>
+                        )}
+
+                        <div className={`sf-channel-status ${channelIsConnected ? "" : "not-connected"}`}>
+                            Status: {channelStatus}
                         </div>
                     </section>
 
@@ -1630,6 +1760,16 @@ export default function Index({ selectedConversationId = null }) {
                                         )}
 
                                         <div className="sf-input-box">
+                                            <div className="sf-from-to-line">
+                                                <span>
+                                                    <strong>From:</strong> {channelFromLabel}
+                                                    {channelMaskedPhoneId && !channelDisplayNumber ? ` (Phone Number ID: ${channelMaskedPhoneId})` : ""}
+                                                </span>
+                                                <span>
+                                                    <strong>To:</strong> {customerToLabel}
+                                                </span>
+                                            </div>
+
                                             <textarea
                                                 value={message}
                                                 onChange={(e) => setMessage(e.target.value)}

@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\MessageLog;
 use App\Services\PhoneNumberService;
 use App\Services\WhatsApp\WhatsAppService;
+use App\Support\WhatsAppChannelSummary;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class InboxController extends Controller
     {
         return Inertia::render('Manager/Inbox/Index', [
             'selectedConversationId' => $request->query('conversation'),
+            'whatsappChannel' => WhatsAppChannelSummary::forCompany($request->user()?->company),
         ]);
     }
 

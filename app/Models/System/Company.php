@@ -85,6 +85,10 @@ class Company extends Model
 
     protected $hidden = [
         'meta_access_token',
+        'meta_phone_number_id',
+        'meta_verify_token',
+        'meta_waba_id',
+        'meta_business_id',
     ];
 
     /*

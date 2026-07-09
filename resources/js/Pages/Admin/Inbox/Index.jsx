@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 
-export default function Index() {
+export default function Index({ whatsappChannel = null }) {
     const initialSearch =
         typeof window !== "undefined"
             ? new URLSearchParams(window.location.search).get("search") || ""
@@ -166,6 +166,19 @@ export default function Index() {
         "Customer";
 
     const selectedPhone = context?.phone || selected?.customer_phone || "";
+    const channelCompany = whatsappChannel?.company_name || "Garage";
+    const channelDisplayNumber = whatsappChannel?.display_phone_number || "";
+    const channelMaskedPhoneId = whatsappChannel?.phone_number_id_masked || "";
+    const channelStatus = whatsappChannel?.status || "Not connected";
+    const channelIsConnected = Boolean(whatsappChannel?.is_connected);
+    const channelFromLabel = channelDisplayNumber
+        ? `${channelCompany} WhatsApp ${channelDisplayNumber}`
+        : channelMaskedPhoneId
+            ? `${channelCompany} WhatsApp channel configured`
+            : `${channelCompany} WhatsApp not connected`;
+    const customerToLabel = selectedPhone
+        ? `${selectedName} ${selectedPhone}`
+        : selectedName;
 
     const selectedLeadId = context?.lead_id
         ? `L-${String(context.lead_id).padStart(4, "0")}`
@@ -292,6 +305,60 @@ export default function Index() {
                     line-height: 1;
                     font-weight: 800;
                     box-shadow: 0 14px 26px rgba(255, 122, 26, 0.28);
+                }
+
+                .sf-channel-card {
+                    margin: 12px 14px 0;
+                    padding: 14px;
+                    border: 1px solid rgba(16, 185, 129, 0.24);
+                    border-radius: 18px;
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), var(--sf-inbox-panel-soft));
+                }
+
+                .sf-channel-kicker,
+                .sf-channel-label {
+                    color: var(--sf-inbox-muted);
+                    font-size: 10px;
+                    font-weight: 900;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                }
+
+                .sf-channel-heading {
+                    margin-top: 3px;
+                    color: var(--sf-inbox-heading);
+                    font-size: 15px;
+                    font-weight: 950;
+                }
+
+                .sf-channel-row {
+                    margin-top: 10px;
+                }
+
+                .sf-channel-value {
+                    margin-top: 3px;
+                    color: var(--sf-inbox-text);
+                    font-size: 13px;
+                    font-weight: 850;
+                    overflow-wrap: anywhere;
+                }
+
+                .sf-channel-status {
+                    width: fit-content;
+                    margin-top: 12px;
+                    border-radius: 999px;
+                    padding: 7px 11px;
+                    border: 1px solid rgba(16, 185, 129, 0.28);
+                    background: rgba(16, 185, 129, 0.16);
+                    color: #86efac;
+                    font-size: 12px;
+                    font-weight: 950;
+                }
+
+                .sf-channel-status.not-connected {
+                    border-color: rgba(239, 68, 68, 0.24);
+                    background: rgba(239, 68, 68, 0.12);
+                    color: #fecaca;
                 }
 
                 .sf-search-area {
@@ -733,6 +800,28 @@ export default function Index() {
                     background: rgba(2, 6, 23, 0.72);
                     overflow: hidden;
                     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+                }
+
+                .sf-from-to-line {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    border-bottom: 1px solid var(--sf-inbox-border);
+                    background: var(--sf-inbox-panel-soft);
+                    color: var(--sf-inbox-muted-strong);
+                    font-size: 12px;
+                    font-weight: 800;
+                }
+
+                .sf-from-to-line span {
+                    min-width: 0;
+                    overflow-wrap: anywhere;
+                }
+
+                .sf-from-to-line strong {
+                    color: var(--sf-inbox-heading);
+                    font-weight: 950;
                 }
 
                 .sf-input-box textarea {
@@ -1223,6 +1312,18 @@ export default function Index() {
                     color: #64748b;
                 }
 
+                html[data-theme="light"] .sf-inbox-page .sf-channel-status {
+                    background: #ecfdf5;
+                    border-color: #bbf7d0;
+                    color: #047857;
+                }
+
+                html[data-theme="light"] .sf-inbox-page .sf-channel-status.not-connected {
+                    background: #fef2f2;
+                    border-color: #fecaca;
+                    color: #b91c1c;
+                }
+
                 html[data-theme="light"] .sf-inbox-page .sf-lead-chip,
                 html[data-theme="light"] .sf-inbox-page .sf-ai-chip {
                     background: #eff6ff;
@@ -1338,6 +1439,29 @@ export default function Index() {
                                     +
                                 </button>
                             </div>
+
+                            <section className="sf-channel-card" aria-label="Connected WhatsApp Channel">
+                                <div className="sf-channel-kicker">Connected WhatsApp Channel</div>
+                                <div className="sf-channel-heading">{channelCompany}</div>
+
+                                <div className="sf-channel-row">
+                                    <div className="sf-channel-label">Sending from</div>
+                                    <div className="sf-channel-value">
+                                        {channelDisplayNumber || "Connected WhatsApp channel configured"}
+                                    </div>
+                                </div>
+
+                                {channelMaskedPhoneId && (
+                                    <div className="sf-channel-row">
+                                        <div className="sf-channel-label">Phone Number ID</div>
+                                        <div className="sf-channel-value">{channelMaskedPhoneId}</div>
+                                    </div>
+                                )}
+
+                                <div className={`sf-channel-status ${channelIsConnected ? "" : "not-connected"}`}>
+                                    Status: {channelStatus}
+                                </div>
+                            </section>
 
                             <div className="sf-search-area">
                                 <div className="sf-search-box">
@@ -1599,6 +1723,16 @@ export default function Index() {
                                         )}
 
                                         <div className="sf-input-box">
+                                            <div className="sf-from-to-line">
+                                                <span>
+                                                    <strong>From:</strong> {channelFromLabel}
+                                                    {channelMaskedPhoneId && !channelDisplayNumber ? ` (Phone Number ID: ${channelMaskedPhoneId})` : ""}
+                                                </span>
+                                                <span>
+                                                    <strong>To:</strong> {customerToLabel}
+                                                </span>
+                                            </div>
+
                                             <textarea
                                                 value={message}
                                                 onChange={(e) => setMessage(e.target.value)}

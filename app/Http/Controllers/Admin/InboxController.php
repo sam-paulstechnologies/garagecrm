@@ -9,15 +9,25 @@ use App\Models\Conversation;
 use App\Models\MessageLog;
 use App\Services\PhoneNumberService;
 use App\Services\WhatsApp\WhatsAppService;
+use App\Support\WhatsAppChannelSummary;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
 use Throwable;
 
 class InboxController extends Controller
 {
+    public function index(Request $request): Response
+    {
+        return Inertia::render('Admin/Inbox/Index', [
+            'whatsappChannel' => WhatsAppChannelSummary::forCompany($request->user()?->company),
+        ]);
+    }
+
     public function jsonList(Request $request)
     {
         $companyId = (int) $request->user()->company_id;
