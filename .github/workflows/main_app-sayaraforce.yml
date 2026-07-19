@@ -2,7 +2,8 @@ name: Deploy Laravel to Azure App Service
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   build-and-deploy:
@@ -24,40 +25,77 @@ jobs:
         with:
           path: ~/.composer/cache/files
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+          restore-keys: |
+            ${{ runner.os }}-composer-
 
-      # Laravel required folders
       - name: Create Laravel directories
         run: |
-          mkdir -p storage/framework/{cache,sessions,views}
+          mkdir -p storage/framework/cache
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
           mkdir -p bootstrap/cache
 
-      - name: Install dependencies
-        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
-
-      - name: Build front-end (if applicable)
+      - name: Install PHP dependencies
         run: |
-          if [ -f package.json ]; then
-            corepack enable
-            npm ci
-            npm run build || npm run prod || true
-          fi
+          composer install \
+            --no-dev \
+            --prefer-dist \
+            --no-interaction \
+            --optimize-autoloader
 
-      - name: Prepare Laravel app
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Remove stale frontend build
+        run: rm -rf public/build
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Verify frontend build
         run: |
-          php artisan config:clear || true
-          php artisan route:clear || true
-          php artisan view:clear || true
-          rm -f .env   # we use Azure App Settings
+          test -f public/build/manifest.json
 
-      # 🔥 ZIP EVERYTHING including nginx.conf
-      - name: Create ZIP package
+          echo "=== Vite manifest ==="
+          cat public/build/manifest.json
+
+          echo "=== Verify latest Inbox UI ==="
+          grep -R -F "Connected WhatsApp Channel" public/build/assets \
+            || {
+              echo "ERROR: Latest Inbox UI was not found in built assets."
+              exit 1
+            }
+
+      - name: Prepare Laravel application
         run: |
-          zip -r release.zip . -x "*.git*" -x "node_modules/*"
+          php artisan config:clear
+          php artisan route:clear
+          php artisan view:clear
+          rm -f .env
 
-      - name: Deploy to Azure Web App (Zip Deploy)
+      - name: Create deployment package
+        run: |
+          zip -r release.zip . \
+            -x "*.git*" \
+            -x "node_modules/*" \
+            -x "release.zip" \
+            -x "storage/logs/*"
+
+      - name: Verify deployment package
+        run: |
+          echo "=== public/build files inside ZIP ==="
+          unzip -l release.zip | grep "public/build/manifest.json"
+          unzip -l release.zip | grep "public/build/assets/"
+
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: "app-sayaraforce"
+          app-name: app-sayaraforce
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           package: release.zip
