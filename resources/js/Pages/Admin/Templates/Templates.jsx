@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import AdminHeader from '../../../components/AdminHeader'; // ✅ Adjusted path
+import AdminHeader from '../../../Components/AdminHeader';
 
 const Templates = () => {
   const [templates, setTemplates] = useState([]);

@@ -29,7 +29,7 @@ function mountChatWindow() {
 /* ============================
    Admin Demo Page
    ============================ */
-import DemoPage from "./components/Demo/DemoPage";
+import DemoPage from "./Components/Demo/DemoPage";
 
 function mountAdminDemo() {
     const el = document.getElementById("admin-demo");
