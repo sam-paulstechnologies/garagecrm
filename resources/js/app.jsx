@@ -3,10 +3,12 @@ import './bootstrap'
 import { createInertiaApp } from '@inertiajs/react'
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers'
 import { createRoot } from 'react-dom/client'
+import Alpine from 'alpinejs'
 
-import Alpine from 'alpinejs'   // ✅ ADD THIS
+import TemplateEditor from './Components/WhatsAppTemplateEditor.jsx'
+import './calendar'
 
-// Start Alpine (for Blade popups)
+// Start Alpine for Blade-mounted components and popups.
 window.Alpine = Alpine
 Alpine.start()
 
@@ -23,9 +25,11 @@ createInertiaApp({
 
     setup({ el, App, props }) {
         const root = createRoot(el)
+
         root.render(<App {...props} />)
 
         const loader = document.getElementById('app-loader')
+
         if (loader) {
             loader.classList.add('hidden')
         }
@@ -39,21 +43,31 @@ createInertiaApp({
 
 /**
  * --------------------------------------------------------------------------
- * Blade-mounted WhatsApp editor (SAFE – does not affect Inertia)
+ * Blade-mounted WhatsApp editor
  * --------------------------------------------------------------------------
+ * This mounts only when the Blade page contains #wa-template-editor.
+ * It does not interfere with the Inertia application.
  */
-import TemplateEditor from './components/WhatsAppTemplateEditor.jsx'
-
 function mountWaTemplateEditor() {
-    const el = document.getElementById('wa-template-editor')
-    if (!el) return
+    const element = document.getElementById('wa-template-editor')
+
+    if (!element) {
+        return
+    }
 
     let initial = {}
-    try {
-        initial = JSON.parse(el.dataset.initial || '{}')
-    } catch {}
 
-    const root = createRoot(el)
+    try {
+        initial = JSON.parse(element.dataset.initial || '{}')
+    } catch (error) {
+        console.warn(
+            'Unable to parse WhatsApp template editor initial data.',
+            error
+        )
+    }
+
+    const root = createRoot(element)
+
     root.render(<TemplateEditor initial={initial} />)
 }
 
@@ -62,10 +76,3 @@ if (document.readyState === 'loading') {
 } else {
     mountWaTemplateEditor()
 }
-
-/**
- * --------------------------------------------------------------------------
- * Garage Calendar (Blade mounted – NO Inertia)
- * --------------------------------------------------------------------------
- */
-import './calendar'
