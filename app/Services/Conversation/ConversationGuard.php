@@ -3,10 +3,12 @@
 namespace App\Services\Conversation;
 
 use App\Models\Client\Lead;
+use App\Models\MessageLog;
 use App\Models\Client\Opportunity;
 use App\Services\Leads\LeadConversionService;
 use App\Services\WhatsApp\ManagerNotificationService;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -17,50 +19,99 @@ class ConversationGuard
         protected ManagerNotificationService $managerNotificationService
     ) {}
 
-    public function isDuplicateMessage(Lead $lead, string $text): bool
+    public function isDuplicateMessage(Lead $lead, string $text, array $context = []): bool
     {
-        $data = $this->conversationData($lead);
-
         $currentMessage = $this->normalizeMessage($text);
-        $lastMessage = $this->normalizeMessage($data['last_user_message'] ?? '');
-        $lastTime = $data['last_user_message_at'] ?? null;
 
-        if (
-            $currentMessage !== ''
-            && $lastMessage !== ''
-            && $lastMessage === $currentMessage
-            && $lastTime
-        ) {
-            try {
-                $diff = now()->diffInSeconds(Carbon::parse($lastTime));
+        if ($currentMessage === '') {
+            return false;
+        }
 
-                if ($diff < 10) {
-                    Log::info('[ConversationGuard] Duplicate inbound skipped', [
-                        'company_id' => $lead->company_id,
-                        'lead_id' => $lead->id,
-                        'message' => $currentMessage,
-                        'diff_seconds' => $diff,
-                    ]);
+        $currentAt = $this->currentInboundTime($context);
+        $windowSeconds = $this->duplicateWindowSeconds();
+        $previous = $this->previousInboundMessage($lead, $context, $currentAt);
 
-                    return true;
-                }
-            } catch (\Throwable $e) {
-                Log::debug('[ConversationGuard] Failed to parse last message time', [
+        if ($previous) {
+            $previousMessage = $this->normalizeMessage((string) $previous->body);
+            $previousAt = $previous->created_at instanceof CarbonInterface
+                ? $previous->created_at
+                : Carbon::parse($previous->created_at);
+            $elapsedSeconds = $previousAt->diffInSeconds($currentAt, false);
+
+            if (
+                $previousMessage !== ''
+                && $previousMessage === $currentMessage
+                && $elapsedSeconds >= 0
+                && $elapsedSeconds <= $windowSeconds
+            ) {
+                Log::info('[ConversationGuard] Duplicate inbound skipped', [
+                    'company_id' => $lead->company_id,
                     'lead_id' => $lead->id,
-                    'error'   => $e->getMessage(),
+                    'message' => $currentMessage,
+                    'diff_seconds' => $elapsedSeconds,
+                    'previous_message_log_id' => $previous->id,
+                    'current_message_log_id' => $context['message_log_id'] ?? null,
+                    'duplicate_window_seconds' => $windowSeconds,
                 ]);
+
+                return true;
             }
         }
 
+        $data = $this->conversationData($lead);
         $data['last_user_message'] = trim($text);
         $data['last_user_message_norm'] = $currentMessage;
-        $data['last_user_message_at'] = now()->toIso8601String();
+        $data['last_user_message_at'] = $currentAt->toIso8601String();
 
         $lead->conversation_data = $data;
         $lead->conversation_updated_at = now();
         $lead->save();
 
         return false;
+    }
+
+    protected function previousInboundMessage(Lead $lead, array $context, CarbonInterface $currentAt): ?MessageLog
+    {
+        $query = MessageLog::query()
+            ->where('company_id', (int) $lead->company_id)
+            ->where('lead_id', (int) $lead->id)
+            ->where('direction', 'in')
+            ->where('channel', 'whatsapp')
+            ->where('created_at', '<=', $currentAt);
+
+        if (! empty($context['message_log_id'])) {
+            $query->where('id', '<>', (int) $context['message_log_id']);
+        }
+
+        if (! empty($context['provider_message_id'])) {
+            $query->where(function ($q) use ($context) {
+                $q->whereNull('provider_message_id')
+                    ->orWhere('provider_message_id', '<>', (string) $context['provider_message_id']);
+            });
+        }
+
+        return $query
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    protected function currentInboundTime(array $context): CarbonInterface
+    {
+        if (! empty($context['message_logged_at'])) {
+            try {
+                return Carbon::parse($context['message_logged_at']);
+            } catch (\Throwable) {
+                // Fall through to now.
+            }
+        }
+
+        return now();
+    }
+
+    protected function duplicateWindowSeconds(): int
+    {
+        return max(0, (int) config('conversation.duplicate_window_seconds', env('CONVERSATION_DUPLICATE_WINDOW_SECONDS', 10)));
     }
 
     public function containsProfanity(string $text): bool

@@ -82,6 +82,11 @@ SYS;
             "Capabilities: offer_pickup_drop=".($caps['offer_pickup_drop'] ? 'true' : 'false');
 
         try {
+            if ($this->apiKey() === '') {
+                $this->logUnavailable('missing_api_key', 'replyText');
+
+                return "Thanks! Could you share your preferred day and time window (Morning 8–12 / Afternoon 2–6)?";
+            }
 
             $resp = $this->http()->post(
                 $this->base().'/chat/completions',
@@ -105,7 +110,7 @@ SYS;
 
         } catch (\Throwable $e) {
 
-            Log::warning('[NlpService.replyText] fallback: '.$e->getMessage());
+            $this->logUnavailable($this->failureReason($e), 'replyText');
 
             return "Thanks! Could you share your preferred day and time window (Morning 8–12 / Afternoon 2–6)?";
         }
@@ -144,6 +149,11 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
             "- unclear → fallback";
 
         try {
+            if ($this->apiKey() === '') {
+                $this->logUnavailable('missing_api_key', 'analyze');
+
+                return $this->fallback();
+            }
 
             $resp = $this->http()->post(
                 $this->base().'/chat/completions',
@@ -188,7 +198,7 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
 
         } catch (\Throwable $e) {
 
-            Log::warning('[NlpService] Chat failed '.$e->getMessage());
+            $this->logUnavailable($this->failureReason($e), 'analyze');
 
             return $this->fallback();
         }
@@ -243,5 +253,31 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
             'language' => 'en',
             'entities' => []
         ];
+    }
+
+    protected function failureReason(\Throwable $e): string
+    {
+        $message = strtolower($e->getMessage());
+
+        if (str_contains($message, '401') || str_contains($message, 'unauthorized')) {
+            return 'auth_failed';
+        }
+
+        if (str_contains($message, '429')) {
+            return 'rate_limited';
+        }
+
+        return 'request_failed';
+    }
+
+    protected function logUnavailable(string $reason, string $operation): void
+    {
+        Log::warning('[NlpService] deterministic fallback active', [
+            'operation' => $operation,
+            'reason' => $reason,
+            'base_url_configured' => $this->base() !== '',
+            'model_configured' => $this->model() !== '',
+            'api_key_configured' => $this->apiKey() !== '',
+        ]);
     }
 }

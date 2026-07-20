@@ -188,7 +188,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
         |--------------------------------------------------------------------------
         */
 
-        app(MessageLogger::class)->logInbound([
+        $inboundLog = app(MessageLogger::class)->logInbound([
             'company_id' => $companyId,
             'lead_id' => $lead->id,
             'conversation_id' => $conversationId,
@@ -352,7 +352,14 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 ->escalateToManager($lead, 'Customer sent media attachment on WhatsApp.');
         } else {
             try {
-                $response = app(ConversationEngine::class)->handle($lead, $text, $nlp);
+                $response = app(ConversationEngine::class)->handle($lead, $text, $nlp, [
+                    'message_log_id' => $inboundLog?->id,
+                    'message_logged_at' => $inboundLog?->created_at,
+                    'provider_message_id' => $this->sid,
+                    'from' => $fromE164,
+                    'to' => $toE164,
+                    'provider' => $this->provider,
+                ]);
             } catch (\Throwable $e) {
                 Log::error('[WA] Engine failed', [
                     'company_id' => $companyId,
@@ -1007,7 +1014,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'sendFreeformText',
             ] as $method) {
                 if (method_exists($whatsapp, $method)) {
-                    $this->callWhatsAppMethod(
+                    $result = $this->callWhatsAppMethod(
                         service: $whatsapp,
                         method: $method,
                         args: [
@@ -1030,6 +1037,24 @@ class ProcessInboundWhatsApp implements ShouldQueue
                             'meta' => $context,
                         ]
                     );
+
+                    app(MessageLogger::class)->logOutbound([
+                        'company_id' => $companyId,
+                        'lead_id' => $leadId,
+                        'conversation_id' => $conversationId,
+                        'to' => $toNumberE164,
+                        'from' => $context['from_number'] ?? $context['business_number'] ?? null,
+                        'body' => $body,
+                        'provider_status' => 'sent',
+                        'provider_message_id' => is_array($result)
+                            ? ($result['id'] ?? $result['sid'] ?? $result['message_id'] ?? null)
+                            : null,
+                        'meta' => [
+                            'source' => 'process_inbound_whatsapp',
+                            'send_mode' => 'session_message',
+                            'provider_result' => is_array($result) ? $result : null,
+                        ],
+                    ]);
 
                     Log::info('[WA] Session message sent', [
                         'company_id' => $companyId,

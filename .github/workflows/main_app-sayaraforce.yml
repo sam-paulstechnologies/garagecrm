@@ -93,6 +93,10 @@ jobs:
           unzip -l release.zip | grep "public/build/manifest.json"
           unzip -l release.zip | grep "public/build/assets/"
 
+          echo "=== Azure queue WebJob files inside ZIP ==="
+          unzip -l release.zip | grep "App_Data/jobs/continuous/sayaraforce-queue/run.sh"
+          unzip -l release.zip | grep "App_Data/jobs/continuous/sayaraforce-queue/settings.job"
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:

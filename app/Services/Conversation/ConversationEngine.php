@@ -15,7 +15,7 @@ class ConversationEngine
         protected BookingFlow $bookingFlow
     ) {}
 
-    public function handle(Lead $lead, string $text, ?array $nlp = null): array
+    public function handle(Lead $lead, string $text, ?array $nlp = null, array $context = []): array
     {
         $text = trim($text);
 
@@ -51,7 +51,7 @@ class ConversationEngine
         |--------------------------------------------------------------------------
         */
 
-        if ($this->guard->isDuplicateMessage($lead, $text)) {
+        if ($this->guard->isDuplicateMessage($lead, $text, $context)) {
             return $this->skip();
         }
 
