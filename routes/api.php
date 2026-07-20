@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
-use App\Http\Controllers\Webhooks\WhatsAppWebhookRouterController;
+use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\MetaWebhookController;
 use App\Http\Controllers\Webhooks\GoogleLeadWebhookController;
 
@@ -95,12 +95,12 @@ Route::prefix('v1')->group(function () {
     */
     Route::get(
         '/webhooks/meta/whatsapp',
-        [WhatsAppWebhookRouterController::class, 'verify']
+        [MetaWhatsAppWebhookController::class, 'verify']
     )->name('api.webhooks.meta.whatsapp.verify');
 
     Route::post(
         '/webhooks/meta/whatsapp',
-        [WhatsAppWebhookRouterController::class, 'handle']
+        [MetaWhatsAppWebhookController::class, 'handle']
     )->name('api.webhooks.meta.whatsapp.handle');
 
     /*

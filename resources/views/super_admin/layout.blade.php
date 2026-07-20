@@ -68,7 +68,6 @@
                 <a href="{{ route('super-admin.garages.index') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.garages.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Garages</a>
                 <a href="{{ route('super-admin.logs.messages') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.logs.messages') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Messages</a>
                 <a href="{{ route('super-admin.logs.leads') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.logs.leads') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Leads</a>
-                <a href="{{ route('super-admin.marketing.dashboard') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.marketing.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Marketing</a>
                 <a href="{{ route('super-admin.system.health') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.system.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Health</a>
                 <a href="{{ route('super-admin.audit.index') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.audit.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Audit</a>
             </div>
