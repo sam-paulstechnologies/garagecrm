@@ -4,6 +4,7 @@ use App\Http\Controllers\SuperAdmin\AuditController;
 use App\Http\Controllers\SuperAdmin\DashboardController;
 use App\Http\Controllers\SuperAdmin\GarageController;
 use App\Http\Controllers\SuperAdmin\LogController;
+use App\Http\Controllers\SuperAdmin\OperationsCenterController;
 use App\Http\Controllers\SuperAdmin\SystemHealthController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,4 +28,13 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::get('logs/leads', [LogController::class, 'leads'])->name('logs.leads');
         Route::get('system/health', SystemHealthController::class)->name('system.health');
         Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+
+        Route::prefix('operations-center')->name('operations.')->group(function () {
+            Route::redirect('/', '/super-admin/operations-center/journey-flow')->name('index');
+            Route::get('{view}', [OperationsCenterController::class, 'view'])
+                ->whereIn('view', ['journey-flow', 'mind-map', 'technical-map'])
+                ->name('view');
+            Route::get('api/graph/data', [OperationsCenterController::class, 'data'])->name('data');
+            Route::get('api/graph/node/{id}', [OperationsCenterController::class, 'node'])->name('node');
+        });
     });
