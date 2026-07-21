@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 
 class OperationsCatalogueService
 {
-    private const CACHE_VERSION = 'ops-v1';
+    private const CACHE_VERSION = 'ops-v2';
 
     public function catalogue(string $view = 'journey'): array
     {
@@ -35,6 +35,21 @@ class OperationsCatalogueService
         $payload['metrics']['payload_bytes'] = strlen(json_encode($payload));
 
         return $payload;
+    }
+
+    public function managerCatalogue(): array
+    {
+        $catalogue = $this->catalogue('manager');
+
+        $catalogue['nodes'] = collect($catalogue['nodes'])
+            ->map(fn ($node) => $this->managerSafeNode($node))
+            ->values()
+            ->all();
+
+        $catalogue['metrics']['valid_page_references'] = collect($catalogue['nodes'])->whereNotNull('url')->count();
+        $catalogue['metrics']['payload_bytes'] = strlen(json_encode($catalogue));
+
+        return $catalogue;
     }
 
     public function node(string $id): ?array
@@ -65,6 +80,34 @@ class OperationsCatalogueService
         return $details;
     }
 
+    public function managerNode(string $id): ?array
+    {
+        $catalogue = $this->filterForView($this->buildCatalogue(), 'manager');
+        $node = collect($catalogue['nodes'])->firstWhere('id', $id);
+
+        if (! $node) {
+            return null;
+        }
+
+        $related = collect($catalogue['edges'])
+            ->filter(fn ($edge) => $edge['source'] === $id || $edge['target'] === $id)
+            ->values()
+            ->all();
+
+        $details = [
+            'node' => $this->managerSafeNode($node),
+            'relationships' => $related,
+            'source_excerpt' => [],
+            'payload_bytes' => 0,
+            'query_count' => 0,
+            'access_note' => 'Manager Journey Flow hides platform, source, storage, and route internals.',
+        ];
+
+        $details['payload_bytes'] = strlen(json_encode($details));
+
+        return $details;
+    }
+
     private function buildCatalogue(): array
     {
         $domains = $this->domainNodes();
@@ -86,9 +129,9 @@ class OperationsCatalogueService
         return collect([
             ['id' => 'domain-super-admin', 'label' => 'Super Admin Control Center', 'group' => 'domain', 'views' => ['journey', 'mind', 'technical'], 'summary' => 'Platform owner dashboard, garages, modules, logs, health, and audit controls.'],
             ['id' => 'domain-admin', 'label' => 'Garage Admin Workspace', 'group' => 'domain', 'views' => ['journey', 'mind'], 'summary' => 'Tenant admin operations for leads, opportunities, bookings, jobs, clients, invoices, settings, and WhatsApp.'],
-            ['id' => 'domain-manager', 'label' => 'Manager Operations', 'group' => 'domain', 'views' => ['journey', 'mind'], 'summary' => 'Manager-scoped daily garage work with tenant isolation.'],
-            ['id' => 'domain-whatsapp', 'label' => 'WhatsApp Automation', 'group' => 'workflow', 'views' => ['journey', 'mind', 'technical'], 'summary' => 'Meta/Twilio inbound webhooks, queue job, conversation engine, message logging, and outbound send.'],
-            ['id' => 'domain-lifecycle', 'label' => 'Garage Lifecycle', 'group' => 'workflow', 'views' => ['journey', 'mind'], 'summary' => 'Lead to opportunity, booking, job, invoice, follow-up, and reporting flow.'],
+            ['id' => 'domain-manager', 'label' => 'Manager Operations', 'group' => 'domain', 'views' => ['journey', 'mind', 'manager'], 'summary' => 'Manager-scoped daily garage work with tenant isolation.'],
+            ['id' => 'domain-whatsapp', 'label' => 'WhatsApp Automation', 'group' => 'workflow', 'views' => ['journey', 'mind', 'technical', 'manager'], 'summary' => 'Inbound WhatsApp conversations, deterministic menu response, and logged outbound replies.'],
+            ['id' => 'domain-lifecycle', 'label' => 'Garage Lifecycle', 'group' => 'workflow', 'views' => ['journey', 'mind', 'manager'], 'summary' => 'Lead to opportunity, booking, job, invoice, follow-up, and reporting flow.'],
             ['id' => 'domain-technical', 'label' => 'Technical Architecture', 'group' => 'technical', 'views' => ['technical'], 'summary' => 'Routes, controllers, middleware, services, jobs, models, migrations, and queues.'],
         ])->map(fn ($node) => $this->withDefaults($node))->all();
     }
@@ -102,7 +145,7 @@ class OperationsCatalogueService
                 $methods = array_values(array_diff($route->methods(), ['HEAD']));
                 $action = $route->getActionName();
                 $middleware = $route->gatherMiddleware();
-                $pageUrl = $this->pageUrl($methods, $uri, $name);
+                $pageUrl = $this->pageUrl($methods, $uri, $name, $action);
                 $section = $this->routeSection($uri, $name);
 
                 return $this->withDefaults([
@@ -147,7 +190,7 @@ class OperationsCatalogueService
             'id' => 'workflow-'.$item[0],
             'label' => $item[1],
             'group' => $item[2],
-            'views' => ['journey', 'mind'],
+            'views' => ['journey', 'mind', 'manager'],
             'summary' => $item[3],
             'section' => 'workflow',
         ]))->all();
@@ -252,9 +295,15 @@ class OperationsCatalogueService
 
     private function filterForView(array $catalogue, string $view): array
     {
-        $limit = $view === 'technical' ? 42 : 90;
+        $limit = match ($view) {
+            'technical' => 42,
+            'manager' => 64,
+            default => 90,
+        };
+
         $nodes = collect($catalogue['nodes'])
             ->filter(fn ($node) => in_array($view, $node['views'], true))
+            ->when($view === 'manager', fn ($nodes) => $nodes->filter(fn ($node) => $this->isManagerAllowedNode($node)))
             ->take($limit)
             ->values();
 
@@ -290,6 +339,10 @@ class OperationsCatalogueService
 
     private function routeViews(string $uri, ?string $name): array
     {
+        if (str_starts_with($uri, 'manager')) {
+            return ['journey', 'mind', 'manager'];
+        }
+
         if (str_contains($uri, 'api/') || str_contains($uri, 'webhooks')) {
             return ['technical', 'mind'];
         }
@@ -301,9 +354,17 @@ class OperationsCatalogueService
         return ['journey', 'mind'];
     }
 
-    private function pageUrl(array $methods, string $uri, ?string $name): ?string
+    private function pageUrl(array $methods, string $uri, ?string $name, string $action): ?string
     {
-        if (! in_array('GET', $methods, true) || str_contains($uri, '{') || str_contains($uri, 'api/') || str_contains($uri, 'webhooks')) {
+        if ($methods !== ['GET'] || str_contains($uri, '{') || str_contains($uri, 'api/') || str_contains($uri, 'webhooks')) {
+            return null;
+        }
+
+        if (str_contains($action, 'RedirectController')) {
+            return null;
+        }
+
+        if (Str::endsWith((string) $name, ['.list', '.data', '.node', '.messages'])) {
             return null;
         }
 
@@ -344,6 +405,54 @@ class OperationsCatalogueService
             ->take(24)
             ->values()
             ->all();
+    }
+
+    private function isManagerAllowedNode(array $node): bool
+    {
+        if (in_array($node['id'], ['domain-manager', 'domain-whatsapp', 'domain-lifecycle'], true)) {
+            return true;
+        }
+
+        if ($node['group'] === 'workflow') {
+            return true;
+        }
+
+        if ($node['group'] !== 'route') {
+            return false;
+        }
+
+        $route = (string) ($node['route_name'] ?? '');
+        $uri = (string) ($node['uri'] ?? '');
+
+        if (! str_starts_with($route, 'manager.') || ! str_starts_with($uri, '/manager')) {
+            return false;
+        }
+
+        return $node['permissions'] === 'manager'
+            && ! str_contains($route, 'settings')
+            && ! str_contains($route, 'team');
+    }
+
+    private function managerSafeNode(array $node): array
+    {
+        $safe = $node;
+        $safe['controller'] = null;
+        $safe['middleware'] = [];
+        $safe['file'] = null;
+        $safe['route_name'] = $node['route_name'] ? str_replace('manager.', 'manager workspace: ', $node['route_name']) : null;
+        $safe['permissions'] = $node['permissions'] === 'manager' ? 'Manager only, current garage data only' : 'Operational view';
+        $safe['summary'] = $this->managerSafeSummary((string) ($node['summary'] ?? ''));
+
+        return $safe;
+    }
+
+    private function managerSafeSummary(string $summary): string
+    {
+        return str_replace(
+            ['Database/default queue', 'database', 'GET|POST', 'GET|PATCH', 'GET', 'POST', 'PATCH', 'DELETE', 'PUT', ' /manager/'],
+            ['Automation queue', 'operational storage', 'Operational action', 'Operational update', 'Open manager page', 'Submit manager action', 'Update manager action', 'Manager action', 'Manager action', ' Manager area: '],
+            $summary
+        );
     }
 
     private function withDefaults(array $node): array

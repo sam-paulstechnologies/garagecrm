@@ -9,6 +9,7 @@ use App\Http\Controllers\Manager\InvoiceController as ManagerInvoiceController;
 use App\Http\Controllers\Manager\JobController as ManagerJobController;
 use App\Http\Controllers\Manager\LeadController as ManagerLeadController;
 use App\Http\Controllers\Manager\OpportunityController as ManagerOpportunityController;
+use App\Http\Controllers\Manager\OperationsCenterController as ManagerOperationsCenterController;
 use App\Http\Controllers\Manager\SettingsController as ManagerSettingsController;
 use App\Http\Controllers\Manager\TeamController as ManagerTeamController;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,24 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
         */
         Route::get('dashboard', [DashboardController::class, 'index'])
             ->name('dashboard');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Restricted Journey Flow
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('operations-center')->name('operations.')->group(function () {
+            Route::redirect('/', '/manager/operations-center/journey-flow')->name('index');
+
+            Route::get('journey-flow', [ManagerOperationsCenterController::class, 'view'])
+                ->name('journey-flow');
+
+            Route::get('api/graph/data', [ManagerOperationsCenterController::class, 'data'])
+                ->name('data');
+
+            Route::get('api/graph/node/{id}', [ManagerOperationsCenterController::class, 'node'])
+                ->name('node');
+        });
 
         /*
         |--------------------------------------------------------------------------

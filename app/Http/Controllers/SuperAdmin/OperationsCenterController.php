@@ -45,7 +45,7 @@ class OperationsCenterController extends SuperAdminController
         });
 
         $startedAt = microtime(true);
-        $payload = Cache::remember("operations.catalogue.{$view}.v1", now()->addMinutes(10), fn () => $catalogue->catalogue($view));
+        $payload = Cache::remember("operations.catalogue.{$view}.v2", now()->addMinutes(10), fn () => $catalogue->catalogue($view));
         $payload['metrics']['query_count'] = $queries;
         $payload['metrics']['response_ms'] = round((microtime(true) - $startedAt) * 1000, 2);
         $payload['metrics']['payload_bytes'] = strlen(json_encode($payload));

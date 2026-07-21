@@ -3,15 +3,20 @@
     const root = document.getElementById('ops-root');
     if (!root) return;
 
-    const state = { nodes: [], edges: [], positions: {}, selected: null, scale: 1, hidden: new Set() };
+    const state = { nodes: [], edges: [], positions: {}, selected: null, scale: 1, hidden: new Set(), fullscreen: false, detailsCollapsed: false };
     const canvas = document.getElementById('ops-canvas');
     const edgesSvg = document.getElementById('ops-edges');
     const detail = document.getElementById('ops-detail');
+    const detailPanel = document.getElementById('ops-detail-panel');
     const minimap = document.getElementById('ops-minimap');
     const metrics = document.getElementById('ops-metrics');
     const search = document.getElementById('ops-search');
     const groupFilter = document.getElementById('ops-group-filter');
+    const workspace = document.getElementById('ops-workspace');
+    const fullscreenButton = document.getElementById('ops-fullscreen');
+    const detailToggle = document.getElementById('ops-detail-toggle');
     const storageKey = `ops-graph-layout-${root.dataset.view}`;
+    const selectedStorageKey = `ops-graph-selected-${root.dataset.view}`;
 
     function savedPositions() {
         try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (_) { return {}; }
@@ -19,6 +24,10 @@
 
     function persistPositions() {
         localStorage.setItem(storageKey, JSON.stringify(state.positions));
+    }
+
+    function savedSelected() {
+        try { return localStorage.getItem(selectedStorageKey); } catch (_) { return null; }
     }
 
     function initialPosition(node, index, total) {
@@ -66,7 +75,7 @@
             button.dataset.group = node.group;
             button.style.left = `${pos.x}px`;
             button.style.top = `${pos.y}px`;
-            button.innerHTML = `<small>${escapeHtml(node.group)} · ${escapeHtml(node.section || 'core')}</small><strong>${escapeHtml(node.label)}</strong><span>${escapeHtml(node.summary || '')}</span>`;
+            button.innerHTML = `<small>${escapeHtml(node.group)} &middot; ${escapeHtml(node.section || 'core')}</small><strong>${escapeHtml(node.label)}</strong><span>${escapeHtml(node.summary || '')}</span>`;
             button.addEventListener('click', () => selectNode(node.id));
             makeDraggable(button);
             canvas.appendChild(button);
@@ -76,6 +85,13 @@
     }
 
     function drawEdges() {
+        if (window.matchMedia('(max-width: 900px)').matches) {
+            edgesSvg.innerHTML = '';
+            canvas.style.width = 'auto';
+            canvas.style.height = 'auto';
+            return;
+        }
+
         const width = Math.max(1280, ...state.nodes.map(n => (state.positions[n.id]?.x || 0) + 260));
         const height = Math.max(720, ...state.nodes.map(n => (state.positions[n.id]?.y || 0) + 150));
         edgesSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -132,25 +148,31 @@
 
     async function selectNode(id) {
         state.selected = id;
+        try { localStorage.setItem(selectedStorageKey, id); } catch (_) {}
         document.querySelectorAll('.ops-node').forEach(node => node.classList.toggle('is-selected', node.dataset.id === id));
         detail.innerHTML = 'Loading node details...';
         const response = await fetch(`${root.dataset.nodeUrl}/${encodeURIComponent(id)}`, { headers: { 'Accept': 'application/json' } });
         const data = await response.json();
         const node = data.node;
         const page = node.url ? `<a class="mt-3 inline-flex rounded-2xl bg-emerald-500 px-4 py-2 text-xs font-black text-white" href="${node.url}">Open Page</a>` : '<p class="sa-label mt-3 text-xs font-bold">No direct page link for this node.</p>';
+        const internalRows = root.dataset.detailLevel === 'manager' ? '' : `
+                    ${row('Controller', node.controller || 'n/a')}
+                    ${row('Source', node.file || 'n/a')}`;
+        const sourceBlock = root.dataset.detailLevel === 'manager'
+            ? `<div class="sa-soft rounded-2xl p-3 text-xs font-bold">${escapeHtml(data.access_note || 'Manager view hides source, storage, and platform internals.')}</div>`
+            : `<pre class="sa-soft overflow-auto rounded-2xl p-3 text-xs">${escapeHtml((data.source_excerpt || []).join('\\n'))}</pre>`;
         detail.innerHTML = `
             <div class="space-y-4">
                 <div><p class="text-xs font-black uppercase text-emerald-300">${escapeHtml(node.group)}</p><h3 class="mt-1 text-xl font-black text-white">${escapeHtml(node.label)}</h3><p class="sa-muted mt-2">${escapeHtml(node.summary || '')}</p>${page}</div>
                 <dl class="grid gap-2 text-xs">
                     ${row('Route', node.route_name || node.uri || 'n/a')}
                     ${row('Permissions', node.permissions || 'n/a')}
-                    ${row('Controller', node.controller || 'n/a')}
-                    ${row('Source', node.file || 'n/a')}
+                    ${internalRows}
                     ${row('Relationships', data.relationships.length)}
                     ${row('Expanded payload', `${data.payload_bytes} bytes`)}
                     ${row('Expanded queries', data.query_count)}
                 </dl>
-                <pre class="sa-soft overflow-auto rounded-2xl p-3 text-xs">${escapeHtml((data.source_excerpt || []).join('\\n'))}</pre>
+                ${sourceBlock}
             </div>`;
     }
 
@@ -174,6 +196,23 @@
         canvas.style.transform = `scale(${state.scale})`;
     }
 
+    function setFullscreen(enabled) {
+        state.fullscreen = enabled;
+        workspace.classList.toggle('ops-fullscreen', enabled);
+        document.body.classList.toggle('ops-scroll-lock', enabled);
+        fullscreenButton.textContent = enabled ? 'Exit Fullscreen' : 'Fullscreen';
+        requestAnimationFrame(() => {
+            drawEdges();
+            drawMinimap();
+        });
+    }
+
+    function toggleDetails() {
+        state.detailsCollapsed = !state.detailsCollapsed;
+        detailPanel.hidden = state.detailsCollapsed;
+        detailToggle.textContent = state.detailsCollapsed ? 'Expand Details' : 'Collapse Details';
+    }
+
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
     }
@@ -181,7 +220,13 @@
     search.addEventListener('input', applyFilters);
     groupFilter.addEventListener('change', applyFilters);
     document.getElementById('ops-fit').addEventListener('click', fit);
-    document.getElementById('ops-fullscreen').addEventListener('click', () => document.getElementById('ops-workspace').classList.toggle('ops-fullscreen'));
+    fullscreenButton.addEventListener('click', () => setFullscreen(!state.fullscreen));
+    detailToggle.addEventListener('click', toggleDetails);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && state.fullscreen) {
+            setFullscreen(false);
+        }
+    });
 
     state.positions = savedPositions();
     fetch(`${root.dataset.dataUrl}?view=${root.dataset.view}`, { headers: { 'Accept': 'application/json' } })
@@ -192,6 +237,10 @@
             renderMetrics(data);
             renderFilters(data.filters || {});
             renderNodes();
+            const restored = savedSelected();
+            if (restored && state.nodes.some(node => node.id === restored)) {
+                selectNode(restored);
+            }
         })
         .catch(() => { detail.textContent = 'Could not load Operations Center graph data.'; });
 })();

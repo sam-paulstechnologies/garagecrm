@@ -1135,6 +1135,12 @@
             'safe' => false,
         ],
         [
+            'label' => 'Journey',
+            'route' => 'manager.operations.journey-flow',
+            'active' => 'manager.operations.*',
+            'safe' => false,
+        ],
+        [
             'label' => 'Leads',
             'route' => 'manager.leads.index',
             'active' => 'manager.leads.*',
