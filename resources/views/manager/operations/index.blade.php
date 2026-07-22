@@ -7,7 +7,7 @@
         .ops-shell { min-height: 720px; }
         .ops-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.25rem; align-items: start; }
         .ops-toolbar { position: sticky; top: 0.75rem; z-index: 30; backdrop-filter: blur(14px); }
-        .ops-toolbar-grid { display: grid; grid-template-columns: minmax(260px, 1fr) 190px 90px 130px 150px; gap: .75rem; align-items: center; }
+        .ops-toolbar-grid { display: grid; grid-template-columns: minmax(220px, 1fr) 150px 70px 80px 130px 150px; gap: .75rem; align-items: center; }
         .ops-card, .sa-card { background: var(--sf-surface); border: 1px solid var(--sf-border-light); border-radius: 18px; box-shadow: var(--sf-soft-shadow); color: var(--sf-text); }
         .ops-soft, .sa-soft { background: var(--sf-surface-soft); border: 1px solid var(--sf-border-light); color: var(--sf-text); }
         .sa-muted { color: var(--sf-muted); }
@@ -17,7 +17,7 @@
         .ops-canvas { position: relative; min-height: 680px; transform-origin: 0 0; transition: transform .18s ease; }
         .ops-edge-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
         .ops-node {
-            position: absolute; width: 190px; min-height: 88px; border-radius: 18px;
+            position: absolute; width: 210px; min-height: 72px; border-radius: 18px;
             border: 1px solid rgba(148, 163, 184, .28); background: rgba(15, 23, 42, .88);
             box-shadow: 0 18px 48px rgba(2, 6, 23, .22); color: #f8fafc; cursor: grab;
             text-align: left; padding: 12px; transition: border-color .16s ease, transform .16s ease, opacity .16s ease;
@@ -27,7 +27,9 @@
         .ops-node:hover { transform: translateY(-2px); }
         .ops-node small { color: #94a3b8; display: block; font-weight: 900; text-transform: uppercase; font-size: .66rem; letter-spacing: .06em; }
         .ops-node strong { display: block; margin-top: 5px; font-size: .86rem; line-height: 1.25; }
-        .ops-node span { display: block; margin-top: 7px; color: #cbd5e1; font-size: .72rem; line-height: 1.35; }
+        .ops-node span { display: inline-flex; margin-top: 7px; color: #cbd5e1; font-size: .68rem; line-height: 1.2; }
+        .ops-expand { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, .35); background: rgba(255,255,255,.08); color: inherit; font-weight: 900; cursor: pointer; }
+        .ops-child-count { margin-left: 7px; border-radius: 999px; padding: 2px 7px; background: rgba(52, 211, 153, .12); color: #a7f3d0; font-weight: 900; }
         .ops-node[data-group="domain"] { border-color: rgba(251, 146, 60, .52); }
         .ops-node[data-group="workflow"] { border-color: rgba(52, 211, 153, .52); }
         .ops-node[data-group="route"] { border-color: rgba(96, 165, 250, .48); }
@@ -52,7 +54,7 @@
         }
     </style>
 
-    <div id="ops-root" class="ops-shell" data-view="{{ $graphView }}" data-data-url="{{ route('manager.operations.data', [], false) }}" data-node-url="/manager/operations-center/api/graph/node" data-detail-level="manager">
+    <div id="ops-root" class="ops-shell" data-view="{{ $graphView }}" data-layout-mode="{{ $layoutMode }}" data-data-url="{{ route('manager.operations.data', [], false) }}" data-branch-url="{{ route('manager.operations.branch', [], false) }}" data-search-url="{{ route('manager.operations.search', [], false) }}" data-node-url="/manager/operations-center/api/graph/node" data-detail-level="manager">
         <div class="ops-card mb-4 p-4 p-md-5">
             <p class="manager-eyebrow mb-2">Operations Center</p>
             <div class="d-flex flex-column flex-xl-row gap-3 justify-content-between">
@@ -69,9 +71,18 @@
                 <div class="ops-toolbar ops-toolbar-grid ops-soft mb-3 rounded-4 p-3">
                     <input id="ops-search" class="sa-input rounded-4 px-3 py-2 text-sm" placeholder="Search journey, customer, booking, job, invoice">
                     <select id="ops-group-filter" class="sa-input rounded-4 px-3 py-2 text-sm"><option value="">All groups</option></select>
+                    <select id="ops-reference-mode" class="sa-input rounded-4 px-3 py-2 text-sm"><option value="off">References Off</option><option value="selected">Selected References</option></select>
                     <button id="ops-fit" class="sf-action-button primary" type="button">Fit</button>
+                    <button id="ops-reset" class="sf-action-button secondary" type="button">Reset</button>
                     <button id="ops-fullscreen" class="sf-action-button orange" type="button">Fullscreen</button>
                     <button id="ops-detail-toggle" class="sf-action-button secondary" type="button">Collapse Details</button>
+                </div>
+                <div id="ops-breadcrumbs" class="sa-muted mb-3 text-xs font-bold"></div>
+                <div class="mb-3 d-flex flex-wrap gap-2">
+                    <button id="ops-collapse-branch" class="sf-action-button secondary" type="button">Collapse Branch</button>
+                    <button id="ops-expand-one" class="sf-action-button secondary" type="button">Expand One Level</button>
+                    <button id="ops-collapse-all" class="sf-action-button secondary" type="button">Collapse All</button>
+                    <button id="ops-expand-path" class="sf-action-button secondary" type="button">Expand Selected Path</button>
                 </div>
                 <div id="ops-metrics" class="mb-3 grid gap-2 text-xs font-bold sm:grid-cols-4"></div>
                 <div class="ops-graph-frame rounded-4 border border-secondary-subtle">

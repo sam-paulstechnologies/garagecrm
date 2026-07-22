@@ -5,12 +5,12 @@
         .ops-shell { min-height: 720px; }
         .ops-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.25rem; align-items: start; }
         .ops-toolbar { position: sticky; top: 0.75rem; z-index: 30; backdrop-filter: blur(14px); }
-        .ops-toolbar-grid { display: grid; grid-template-columns: minmax(260px, 1fr) 190px 90px 130px 150px; gap: .75rem; align-items: center; }
+        .ops-toolbar-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 160px 120px 70px 80px 120px 140px; gap: .75rem; align-items: center; }
         .ops-graph-frame { position: relative; min-height: 680px; overflow: hidden; }
         .ops-canvas { position: relative; min-height: 680px; transform-origin: 0 0; transition: transform .18s ease; }
         .ops-edge-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
         .ops-node {
-            position: absolute; width: 190px; min-height: 88px; border-radius: 18px;
+            position: absolute; width: 210px; min-height: 72px; border-radius: 18px;
             border: 1px solid rgba(148, 163, 184, .28); background: rgba(15, 23, 42, .88);
             box-shadow: 0 18px 48px rgba(2, 6, 23, .22); color: #f8fafc; cursor: grab;
             text-align: left; padding: 12px; transition: border-color .16s ease, transform .16s ease, opacity .16s ease;
@@ -20,7 +20,9 @@
         .ops-node:hover { transform: translateY(-2px); }
         .ops-node small { color: #94a3b8; display: block; font-weight: 900; text-transform: uppercase; font-size: .66rem; letter-spacing: .06em; }
         .ops-node strong { display: block; margin-top: 5px; font-size: .86rem; line-height: 1.25; }
-        .ops-node span { display: block; margin-top: 7px; color: #cbd5e1; font-size: .72rem; line-height: 1.35; }
+        .ops-node span { display: inline-flex; margin-top: 7px; color: #cbd5e1; font-size: .68rem; line-height: 1.2; }
+        .ops-expand { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, .35); background: rgba(255,255,255,.08); color: inherit; font-weight: 900; cursor: pointer; }
+        .ops-child-count { margin-left: 7px; border-radius: 999px; padding: 2px 7px; background: rgba(52, 211, 153, .12); color: #a7f3d0; font-weight: 900; }
         .ops-node[data-group="domain"] { border-color: rgba(251, 146, 60, .52); }
         .ops-node[data-group="workflow"] { border-color: rgba(52, 211, 153, .52); }
         .ops-node[data-group="route"] { border-color: rgba(96, 165, 250, .48); }
@@ -46,7 +48,7 @@
         }
     </style>
 
-    <div id="ops-root" class="ops-shell" data-view="{{ $graphView }}" data-data-url="{{ route('super-admin.operations.data', [], false) }}" data-node-url="/super-admin/operations-center/api/graph/node">
+    <div id="ops-root" class="ops-shell" data-view="{{ $graphView }}" data-layout-mode="{{ $layoutMode }}" data-data-url="{{ route('super-admin.operations.data', [], false) }}" data-branch-url="{{ route('super-admin.operations.branch', [], false) }}" data-search-url="{{ route('super-admin.operations.search', [], false) }}" data-trace-url="{{ route('super-admin.operations.trace', [], false) }}" data-node-url="/super-admin/operations-center/api/graph/node">
         <div class="sa-card mb-5 rounded-3xl p-6">
             <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
@@ -67,9 +69,22 @@
                 <div class="ops-toolbar ops-toolbar-grid sa-soft mb-4 rounded-2xl p-3">
                     <input id="ops-search" class="sa-input rounded-2xl px-4 py-3 text-sm" placeholder="Search routes, workflows, controllers, files">
                     <select id="ops-group-filter" class="sa-input rounded-2xl px-4 py-3 text-sm"><option value="">All groups</option></select>
+                    <select id="ops-reference-mode" class="sa-input rounded-2xl px-4 py-3 text-sm"><option value="off">References Off</option><option value="selected">Selected References</option><option value="all">All Visible References</option></select>
                     <button id="ops-fit" class="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black text-white">Fit</button>
+                    <button id="ops-reset" class="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black text-white">Reset</button>
                     <button id="ops-fullscreen" class="rounded-2xl bg-orange-500 px-4 py-3 text-xs font-black text-white">Fullscreen</button>
                     <button id="ops-detail-toggle" class="rounded-2xl bg-white/10 px-4 py-3 text-xs font-black text-white">Collapse Details</button>
+                </div>
+                <div id="ops-breadcrumbs" class="sa-muted mb-3 text-xs font-bold"></div>
+                <div class="mb-3 flex flex-wrap gap-2">
+                    <button id="ops-collapse-branch" class="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">Collapse Branch</button>
+                    <button id="ops-expand-one" class="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">Expand One Level</button>
+                    <button id="ops-collapse-all" class="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">Collapse All</button>
+                    <button id="ops-expand-path" class="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">Expand Selected Path</button>
+                    @if($view === 'technical-map')
+                        <button id="ops-trace-page" class="rounded-2xl bg-emerald-500 px-3 py-2 text-xs font-black text-white">Trace This Page</button>
+                        <button id="ops-return-overview" class="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">Return to Architecture Overview</button>
+                    @endif
                 </div>
                 <div id="ops-metrics" class="mb-3 grid gap-2 text-xs font-bold sm:grid-cols-4"></div>
                 <div class="ops-graph-frame rounded-3xl border border-slate-500/20 bg-slate-950/30">
@@ -81,7 +96,9 @@
             </section>
             <aside id="ops-detail-panel" class="sa-card ops-detail rounded-3xl p-5">
                 <h2 class="text-lg font-black">Selected Node</h2>
-                <div id="ops-detail" class="sa-muted mt-4 text-sm">Select a node to inspect route permissions, source files, page links, and relationships.</div>
+                <div id="ops-detail" class="sa-muted mt-4 text-sm">
+                    {{ $view === 'technical_map' ? 'Select a node to inspect route permissions, source files, page links, and relationships.' : 'Select a node to inspect workflow meaning, responsibilities, page links, and next actions.' }}
+                </div>
             </aside>
         </div>
     </div>

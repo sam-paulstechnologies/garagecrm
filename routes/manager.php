@@ -41,6 +41,12 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
             Route::get('api/graph/data', [ManagerOperationsCenterController::class, 'data'])
                 ->name('data');
 
+            Route::get('api/graph/branch', [ManagerOperationsCenterController::class, 'branch'])
+                ->name('branch');
+
+            Route::get('api/graph/search', [ManagerOperationsCenterController::class, 'search'])
+                ->name('search');
+
             Route::get('api/graph/node/{id}', [ManagerOperationsCenterController::class, 'node'])
                 ->name('node');
         });

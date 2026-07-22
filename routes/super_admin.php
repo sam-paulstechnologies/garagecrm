@@ -35,6 +35,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
                 ->whereIn('view', ['journey-flow', 'mind-map', 'technical-map'])
                 ->name('view');
             Route::get('api/graph/data', [OperationsCenterController::class, 'data'])->name('data');
+            Route::get('api/graph/branch', [OperationsCenterController::class, 'branch'])->name('branch');
+            Route::get('api/graph/search', [OperationsCenterController::class, 'search'])->name('search');
+            Route::get('api/graph/trace', [OperationsCenterController::class, 'trace'])->name('trace');
             Route::get('api/graph/node/{id}', [OperationsCenterController::class, 'node'])->name('node');
         });
     });

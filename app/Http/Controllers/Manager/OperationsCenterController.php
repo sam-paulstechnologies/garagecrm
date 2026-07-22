@@ -15,8 +15,9 @@ class OperationsCenterController extends Controller
         return view('manager.operations.index', [
             'view' => 'journey-flow',
             'title' => 'Manager Journey Flow',
-            'subtitle' => 'A restricted operational map for daily garage work. Platform, source, storage, and configuration details are hidden.',
+            'subtitle' => 'A restricted operational map for daily garage work. Platform, code, storage, and configuration details are hidden.',
             'graphView' => 'manager_journey',
+            'layoutMode' => 'flow-tree',
         ]);
     }
 
@@ -29,12 +30,30 @@ class OperationsCenterController extends Controller
 
         $companyId = auth()->user()?->company_id ?: 'none';
         $startedAt = microtime(true);
-        $payload = Cache::remember("operations.catalogue.manager.{$companyId}.v3", now()->addMinutes(10), fn () => $catalogue->managerCatalogue());
+        $payload = Cache::remember("operations.catalogue.manager.{$companyId}.tree.v1", now()->addMinutes(10), fn () => $catalogue->managerCatalogue());
         $payload['metrics']['query_count'] = $queries;
         $payload['metrics']['response_ms'] = round((microtime(true) - $startedAt) * 1000, 2);
         $payload['metrics']['payload_bytes'] = strlen(json_encode($payload));
 
         return response()->json($payload);
+    }
+
+    public function branch(Request $request, OperationsCatalogueService $catalogue)
+    {
+        $parentId = (string) $request->query('parent_id', '');
+
+        abort_if(blank($parentId), 422);
+
+        $payload = $catalogue->branch('manager', $parentId, true);
+
+        abort_unless($payload, 404);
+
+        return response()->json($payload);
+    }
+
+    public function search(Request $request, OperationsCatalogueService $catalogue)
+    {
+        return response()->json($catalogue->search('manager', (string) $request->query('q', ''), true));
     }
 
     public function node(string $id, OperationsCatalogueService $catalogue)

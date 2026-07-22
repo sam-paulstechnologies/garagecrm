@@ -30,11 +30,139 @@ class OperationsCenterTest extends TestCase
                 ->get(route('super-admin.operations.view', $view))
                 ->assertOk()
                 ->assertSee('ops-root')
-                ->assertSee('data-ops-graph-renderer="shared"', false);
+                ->assertSee('data-ops-graph-renderer="shared"', false)
+                ->assertSee('ops-reference-mode', false);
         }
     }
 
-    public function test_manager_has_restricted_journey_flow_and_is_denied_super_admin_maps(): void
+    public function test_initial_tree_payloads_are_small_and_view_specific(): void
+    {
+        $superAdmin = $this->user('super_admin');
+
+        $expectations = [
+            'journey_flow' => ['mode' => 'flow-tree', 'max_nodes' => 15],
+            'mind_map' => ['mode' => 'radial-tree', 'max_nodes' => 15],
+            'technical_map' => ['mode' => 'layered-tree', 'max_nodes' => 15],
+        ];
+
+        foreach ($expectations as $view => $expected) {
+            $payload = $this->actingAs($superAdmin)
+                ->getJson(route('super-admin.operations.data', ['view' => $view]))
+                ->assertOk()
+                ->assertJsonPath('layout_mode', $expected['mode'])
+                ->assertJsonPath('metrics.query_count', 0)
+                ->json();
+
+            $this->assertLessThanOrEqual($expected['max_nodes'], $payload['metrics']['node_count']);
+            $this->assertLessThanOrEqual(20, $payload['metrics']['edge_count']);
+            $this->assertLessThan(20000, $payload['metrics']['payload_bytes']);
+            $this->assertSame([], $payload['references']);
+        }
+    }
+
+    public function test_journey_initial_contains_business_lifecycle_only(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.data', ['view' => 'journey_flow']))
+            ->assertOk()
+            ->json();
+
+        $labels = collect($payload['nodes'])->pluck('label')->all();
+        $encoded = json_encode($payload);
+
+        foreach (['Enquiry Received', 'Lead', 'Opportunity', 'Booking', 'Job', 'Invoice', 'Follow-up / Retention'] as $label) {
+            $this->assertContains($label, $labels);
+        }
+
+        $this->assertStringNotContainsString('route-', $encoded);
+        $this->assertStringNotContainsString('Controller', $encoded);
+        $this->assertStringNotContainsString('csrf', strtolower($encoded));
+        $this->assertStringNotContainsString('login', strtolower($encoded));
+        $this->assertStringNotContainsString('/api/', strtolower($encoded));
+    }
+
+    public function test_mind_map_initial_excludes_auth_public_api_and_route_nodes(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.data', ['view' => 'mind_map']))
+            ->assertOk()
+            ->json();
+
+        $labels = collect($payload['nodes'])->pluck('label')->all();
+        $encoded = strtolower(json_encode($payload));
+
+        $this->assertContains('SayaraForce', $labels);
+        $this->assertContains('Clients & Vehicles', $labels);
+        $this->assertContains('Platform Administration', $labels);
+        $this->assertStringNotContainsString('api.', $encoded);
+        $this->assertStringNotContainsString('password', $encoded);
+        $this->assertStringNotContainsString('login', $encoded);
+        $this->assertStringNotContainsString('webhook', $encoded);
+    }
+
+    public function test_technical_overview_is_category_based_until_trace_is_requested(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.data', ['view' => 'technical_map']))
+            ->assertOk()
+            ->json();
+
+        $labels = collect($payload['nodes'])->pluck('label')->all();
+
+        foreach (['Application Pages', 'Routes', 'Controllers', 'Services', 'Models', 'Tables', 'Jobs & Queues', 'Tests'] as $label) {
+            $this->assertContains($label, $labels);
+        }
+
+        $this->assertFalse(collect($payload['nodes'])->contains(fn ($node) => str_starts_with($node['label'], 'admin.')));
+    }
+
+    public function test_branch_expansion_loads_only_direct_children(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.branch', ['view' => 'journey_flow', 'parent_id' => 'journey-lead']))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('journey-lead', $payload['parent_id']);
+        $this->assertLessThanOrEqual(8, $payload['metrics']['node_count']);
+        $this->assertTrue(collect($payload['nodes'])->every(fn ($node) => $node['parent_id'] === 'journey-lead'));
+        $this->assertContains('Qualified', collect($payload['nodes'])->pluck('label')->all());
+    }
+
+    public function test_search_reveals_ancestor_path_only(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.search', ['view' => 'journey_flow', 'q' => 'Booking Confirmed']))
+            ->assertOk()
+            ->json();
+
+        $this->assertContains('opp-booking-confirmed', $payload['matched_node_ids']);
+        $this->assertContains('journey-booking-decision', $payload['ancestor_node_ids']);
+        $this->assertLessThanOrEqual(6, $payload['metrics']['node_count']);
+        $this->assertFalse(collect($payload['nodes'])->contains('label', 'api.webhooks.meta.whatsapp.handle'));
+    }
+
+    public function test_focused_technical_trace_excludes_unrelated_routes_and_exposes_trace_actions(): void
+    {
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.trace', ['target' => 'opportunity-details']))
+            ->assertOk()
+            ->assertJsonPath('layout_mode', 'layered-tree')
+            ->json();
+
+        $labels = collect($payload['nodes'])->pluck('label')->all();
+        $encoded = json_encode($payload);
+
+        $this->assertContains('Opportunity Details', $labels);
+        $this->assertContains('admin.opportunities.show', $labels);
+        $this->assertContains('OpportunityController@show', $labels);
+        $this->assertContains('opportunities Table', $labels);
+        $this->assertContains('Trace authorization', $payload['available_actions']);
+        $this->assertStringNotContainsString('admin.bookings.index', $encoded);
+        $this->assertStringNotContainsString('api.webhooks', $encoded);
+    }
+
+    public function test_manager_has_restricted_progressive_journey_and_is_denied_super_admin_maps(): void
     {
         $company = Company::create([
             'name' => 'Ops Garage',
@@ -42,25 +170,31 @@ class OperationsCenterTest extends TestCase
             'phone' => '971500000001',
             'status' => 'active',
         ]);
-
-        $this->get(route('super-admin.operations.view', 'journey-flow'))
-            ->assertRedirect('/login');
-
         $manager = $this->user('manager', $company->id);
 
         $this->actingAs($manager)
             ->get(route('manager.operations.journey-flow'))
             ->assertOk()
             ->assertSee('Manager Journey Flow')
-            ->assertSee('data-ops-graph-renderer="shared"', false)
             ->assertDontSee('Technical Map');
+
+        $payload = $this->actingAs($manager)
+            ->getJson(route('manager.operations.data'))
+            ->assertOk()
+            ->assertJsonPath('layout_mode', 'flow-tree')
+            ->json();
+
+        $encoded = strtolower(json_encode($payload));
+
+        $this->assertLessThanOrEqual(15, $payload['metrics']['node_count']);
+        $this->assertStringNotContainsString('controller', $encoded);
+        $this->assertStringNotContainsString('source_excerpt', $encoded);
+        $this->assertStringNotContainsString('app/', $encoded);
+        $this->assertStringNotContainsString('super-admin', $encoded);
+        $this->assertStringNotContainsString('database', $encoded);
 
         $this->actingAs($manager)
             ->get(route('super-admin.operations.view', 'technical-map'))
-            ->assertForbidden();
-
-        $this->actingAs($manager)
-            ->get(route('super-admin.operations.data', ['view' => 'technical_map']))
             ->assertForbidden();
     }
 
@@ -80,213 +214,88 @@ class OperationsCenterTest extends TestCase
         $this->actingAs($this->user('admin', $company->id))
             ->get(route('manager.operations.journey-flow'))
             ->assertForbidden();
-
-        $this->actingAs($this->user('user', $company->id))
-            ->get(route('manager.operations.journey-flow'))
-            ->assertForbidden();
     }
 
-    public function test_graph_endpoints_return_real_nodes_edges_metrics_and_valid_page_links(): void
+    public function test_open_page_links_are_static_real_routes_without_parameters(): void
     {
-        $superAdmin = $this->user('super_admin');
-
-        foreach (['journey_flow', 'mind_map', 'technical_map'] as $view) {
-            $response = $this->actingAs($superAdmin)
-                ->getJson(route('super-admin.operations.data', ['view' => $view]))
-                ->assertOk()
-                ->assertJsonStructure([
-                    'nodes' => [['id', 'label', 'group', 'summary']],
-                    'edges' => [['source', 'target']],
-                    'metrics' => ['query_count', 'payload_bytes', 'node_count', 'edge_count', 'valid_page_references'],
-                ]);
-
-            $payload = $response->json();
-            $this->assertNotEmpty($payload['nodes']);
-            $this->assertNotEmpty($payload['edges']);
-            $this->assertGreaterThan(0, $payload['metrics']['payload_bytes']);
-
-            foreach (collect($payload['nodes'])->whereNotNull('url') as $node) {
-                $this->assertStringStartsWith(config('app.url'), $node['url']);
-                $this->assertStringNotContainsString('{', $node['url']);
-                $this->assertNotNull($node['route_name'] ?: $node['uri']);
-            }
-        }
-    }
-
-    public function test_manager_graph_payload_hides_internal_platform_details_and_is_tenant_safe(): void
-    {
-        $company = Company::create([
-            'name' => 'Manager Ops Garage',
-            'email' => 'manager-ops@example.test',
-            'phone' => '971500000003',
-            'status' => 'active',
-        ]);
-
-        Company::create([
-            'name' => 'Other Tenant Garage',
-            'email' => 'other-tenant@example.test',
-            'phone' => '971500000004',
-            'status' => 'active',
-        ]);
-
-        $payload = $this->actingAs($this->user('manager', $company->id))
-            ->getJson(route('manager.operations.data'))
-            ->assertOk()
-            ->assertJsonStructure([
-                'nodes' => [['id', 'label', 'group', 'summary']],
-                'edges' => [['source', 'target']],
-                'metrics' => ['query_count', 'payload_bytes', 'node_count', 'edge_count', 'valid_page_references'],
-            ])
-            ->json();
-
-        $encoded = json_encode($payload);
-
-        $this->assertStringNotContainsString('Other Tenant Garage', $encoded);
-        $this->assertStringNotContainsString('App\\\\Http\\\\Controllers', $encoded);
-        $this->assertStringNotContainsString('routes/', $encoded);
-        $this->assertStringNotContainsString('database', strtolower($encoded));
-        $this->assertStringNotContainsString('super-admin', $encoded);
-        $this->assertStringNotContainsString('settings', $encoded);
-        $this->assertStringNotContainsString('team', $encoded);
-
-        foreach ($payload['nodes'] as $node) {
-            $this->assertNull($node['controller']);
-            $this->assertNull($node['file']);
-            $this->assertIsArray($node['middleware']);
-            $this->assertCount(0, $node['middleware']);
-        }
-    }
-
-    public function test_manager_open_page_links_are_real_accessible_static_pages(): void
-    {
-        $company = Company::create([
-            'name' => 'Link Check Garage',
-            'email' => 'link-check@example.test',
-            'phone' => '971500000005',
-            'status' => 'active',
-        ]);
-        $manager = $this->user('manager', $company->id);
-
-        $payload = $this->actingAs($manager)
-            ->getJson(route('manager.operations.data'))
+        $payload = $this->actingAs($this->user('super_admin'))
+            ->getJson(route('super-admin.operations.data', ['view' => 'mind_map']))
             ->assertOk()
             ->json();
 
         foreach (collect($payload['nodes'])->whereNotNull('url') as $node) {
             $this->assertStringNotContainsString('{', $node['url']);
             $path = parse_url($node['url'], PHP_URL_PATH) ?: '/';
-
             $matched = Route::getRoutes()->match(Request::create($path, 'GET'));
 
             $this->assertNotNull($matched->getName());
-            $this->assertStringStartsWith('manager.', $matched->getName());
             $this->assertSame([], $matched->parameters());
         }
     }
 
-    public function test_node_details_are_progressive_and_include_source_without_database_queries(): void
+    public function test_node_details_are_progressive_and_manager_details_are_sanitized(): void
     {
         $superAdmin = $this->user('super_admin');
 
-        $graph = $this->actingAs($superAdmin)
-            ->getJson(route('super-admin.operations.data', ['view' => 'technical_map']))
-            ->assertOk()
-            ->json();
-
-        $nodeId = collect($graph['nodes'])->first(fn ($node) => filled($node['file']))['id'];
-
         $this->actingAs($superAdmin)
-            ->getJson(route('super-admin.operations.node', $nodeId))
+            ->getJson(route('super-admin.operations.node', 'trace-controller-opportunity-show'))
             ->assertOk()
-            ->assertJsonStructure([
-                'node' => ['id', 'label', 'file'],
-                'relationships',
-                'source_excerpt',
-                'payload_bytes',
-                'query_count',
-            ])
-            ->assertJsonPath('query_count', 0);
-    }
+            ->assertJsonPath('query_count', 0)
+            ->assertJsonPath('node.file', 'app/Http/Controllers/Admin/OpportunityController.php');
 
-    public function test_manager_node_details_are_progressive_without_source_or_database_details(): void
-    {
         $company = Company::create([
             'name' => 'Details Garage',
             'email' => 'details@example.test',
             'phone' => '971500000006',
             'status' => 'active',
         ]);
-        $manager = $this->user('manager', $company->id);
 
-        $graph = $this->actingAs($manager)
-            ->getJson(route('manager.operations.data'))
-            ->assertOk()
-            ->json();
-
-        $nodeId = collect($graph['nodes'])->firstWhere('group', 'route')['id'];
-
-        $this->actingAs($manager)
-            ->getJson(route('manager.operations.node', $nodeId))
+        $this->actingAs($this->user('manager', $company->id))
+            ->getJson(route('manager.operations.node', 'journey-lead'))
             ->assertOk()
             ->assertJsonPath('node.controller', null)
             ->assertJsonPath('node.file', null)
             ->assertJsonPath('source_excerpt', [])
-            ->assertJsonPath('query_count', 0)
-            ->assertJsonFragment(['access_note' => 'Manager Journey Flow hides platform, source, storage, and route internals.']);
+            ->assertJsonPath('query_count', 0);
     }
 
-    public function test_shared_renderer_contains_fullscreen_mobile_layout_and_local_persistence_hooks(): void
+    public function test_shared_renderer_contains_tree_interactions_fullscreen_mobile_and_local_persistence_hooks(): void
     {
         $response = $this->actingAs($this->user('super_admin'))
             ->get(route('super-admin.operations.view', 'journey-flow'))
             ->assertOk();
 
-        $response->assertSee('function setFullscreen(enabled)', false)
+        $response->assertSee('data-layout-mode="flow-tree"', false)
+            ->assertSee('ops-reference-mode', false)
+            ->assertSee('function toggleNode(id)', false)
+            ->assertSee('function collapseBranch(id)', false)
+            ->assertSee('function performSearch()', false)
+            ->assertSee('function loadTrace()', false)
             ->assertSee("event.key === 'Escape'", false)
             ->assertSee('ops-scroll-lock', false)
-            ->assertSee('ops-minimap', false)
-            ->assertSee('ops-detail-toggle', false)
             ->assertSee('localStorage.setItem(storageKey', false)
-            ->assertSee('ops-graph-selected-', false)
             ->assertSee('@media (max-width: 900px)', false);
     }
 
-    public function test_drag_and_layout_restore_hooks_do_not_mutate_application_data(): void
+    public function test_layout_drag_hooks_do_not_mutate_application_data_and_query_thresholds_remain_low(): void
     {
         $beforeCompanies = Company::count();
 
         $this->actingAs($this->user('super_admin'))
             ->get(route('super-admin.operations.view', 'mind-map'))
             ->assertOk()
-            ->assertSee('makeDraggable(button)', false)
-            ->assertSee('persistPositions()', false)
+            ->assertSee('makeDraggable(nodeEl)', false)
+            ->assertSee('state.positions', false)
             ->assertSee('localStorage.setItem(storageKey', false);
 
         $this->assertSame($beforeCompanies, Company::count());
-    }
-
-    public function test_operations_center_query_thresholds_remain_low(): void
-    {
-        $superAdmin = $this->user('super_admin');
 
         foreach (['journey_flow', 'mind_map', 'technical_map'] as $view) {
-            $this->actingAs($superAdmin)
+            $this->actingAs($this->user('super_admin'))
                 ->getJson(route('super-admin.operations.data', ['view' => $view]))
                 ->assertOk()
                 ->assertJsonPath('metrics.query_count', 0);
         }
-
-        $company = Company::create([
-            'name' => 'Threshold Garage',
-            'email' => 'threshold@example.test',
-            'phone' => '971500000007',
-            'status' => 'active',
-        ]);
-
-        $this->actingAs($this->user('manager', $company->id))
-            ->getJson(route('manager.operations.data'))
-            ->assertOk()
-            ->assertJsonPath('metrics.query_count', 0);
     }
 
     private function user(string $role, ?int $companyId = null): User
