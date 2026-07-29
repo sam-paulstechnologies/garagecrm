@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title inertia>{{ config('app.name', 'Garage CRM') }}</title>
+    <title inertia>SayaraForce</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ asset('site.webmanifest') }}">
 
     {{-- Prevent theme flash before page loads --}}
     <script>
@@ -21,10 +24,6 @@
         })();
     </script>
 
-    {{-- Fonts --}}
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800,900&display=swap" rel="stylesheet" />
-
     {{-- Scripts --}}
     @routes
     @viteReactRefresh
@@ -39,23 +38,21 @@
         :root {
             color-scheme: dark;
 
-            --sf-page-bg: #050914;
-            --sf-page-text: #f8fafc;
-            --sf-border: rgba(255, 255, 255, 0.10);
-            --sf-toggle-bg: rgba(255, 255, 255, 0.10);
-            --sf-toggle-border: rgba(255, 255, 255, 0.16);
-            --sf-toggle-text: #ffffff;
+            --sf-page-bg: var(--sf-bg);
+            --sf-page-text: var(--sf-text);
+            --sf-toggle-bg: var(--sf-hover);
+            --sf-toggle-border: var(--sf-border-strong);
+            --sf-toggle-text: var(--sf-text-strong);
         }
 
         html[data-theme="light"] {
             color-scheme: light;
 
-            --sf-page-bg: #f4f7fb;
-            --sf-page-text: #0f172a;
-            --sf-border: rgba(15, 23, 42, 0.10);
-            --sf-toggle-bg: #ffffff;
-            --sf-toggle-border: #cbd5e1;
-            --sf-toggle-text: #0f172a;
+            --sf-page-bg: var(--sf-bg);
+            --sf-page-text: var(--sf-text);
+            --sf-toggle-bg: var(--sf-surface);
+            --sf-toggle-border: var(--sf-border-strong);
+            --sf-toggle-text: var(--sf-text-strong);
         }
 
         body.sf-theme-body {
@@ -80,7 +77,7 @@
             padding: 0.6rem 0.9rem;
             color: var(--sf-toggle-text);
             font-size: 0.8rem;
-            font-weight: 800;
+            font-weight: 600;
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
             transition: all 0.2s ease;
         }
@@ -97,7 +94,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f8fafc;
+            background: var(--sf-bg);
             transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
@@ -106,52 +103,21 @@
             visibility: hidden;
         }
 
-        .car {
-            position: relative;
-            width: 120px;
-            height: 60px;
+        .sf-app-loader-logo {
+            width: 72px;
+            height: 72px;
+            object-fit: contain;
+            animation: sf-loader-pulse 1.1s ease-in-out infinite alternate;
         }
 
-        .car-body {
-            position: absolute;
-            top: 14px;
-            width: 120px;
-            height: 34px;
-            border-radius: 6px;
-            background: #2563eb;
-        }
-
-        .car-top {
-            position: absolute;
-            top: 0;
-            left: 30px;
-            width: 60px;
-            height: 20px;
-            border-radius: 6px 6px 0 0;
-            background: #2563eb;
-        }
-
-        .wheel {
-            position: absolute;
-            bottom: -4px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #111827;
-            animation: spin 0.8s linear infinite;
-        }
-
-        .wheel.left { left: 20px; }
-        .wheel.right { right: 20px; }
-
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        @keyframes sf-loader-pulse {
+            from { opacity: 0.72; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
         }
 
         .sf-public-nav {
             border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-            background: rgba(5, 9, 20, 0.88);
+            background: rgba(7, 17, 42, 0.92);
             backdrop-filter: blur(18px);
         }
 
@@ -164,26 +130,27 @@
         }
 
         .sf-public-nav .sf-public-cta {
-            background: #f97316;
+            background: #ff6a00;
             color: #ffffff;
-            box-shadow: 0 14px 30px rgba(249, 115, 22, 0.24);
+            box-shadow: 0 14px 30px rgba(255, 106, 0, 0.24);
         }
 
         .sf-public-nav .sf-public-cta:hover {
-            background: #ea580c;
+            background: #e85f00;
             color: #ffffff;
         }
     </style>
 </head>
 
-<body class="font-sans antialiased sf-theme-body">
+<body class="antialiased sf-theme-body">
     <div id="app-loader">
-        <div class="car">
-            <div class="car-top"></div>
-            <div class="car-body"></div>
-            <div class="wheel left"></div>
-            <div class="wheel right"></div>
-        </div>
+        <img
+            src="{{ asset('images/brand/sayaraforce-app-icon.png') }}"
+            alt=""
+            width="168"
+            height="164"
+            class="sf-app-loader-logo"
+        >
     </div>
 
     <div class="min-h-screen relative overflow-x-hidden sf-app-shell">
@@ -215,16 +182,22 @@
                 @include('layouts.navigation')
             @endif
         @else
+            @unless(request()->routeIs([
+                'login',
+                'register',
+                'password.*',
+                'verification.*',
+            ]))
             <nav class="sf-public-nav sticky top-0 z-40">
                 <div class="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-                    <a href="{{ route('public.home') }}" class="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400">
-                        <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-sm font-extrabold text-white shadow-lg shadow-orange-950/30">
-                            SF
-                        </span>
-
-                        <span class="hidden text-sm font-extrabold tracking-tight text-white sm:block">
-                            SayaraForce
-                        </span>
+                    <a href="{{ route('public.home') }}" class="flex shrink-0 items-center rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400">
+                        <img
+                            src="{{ asset('images/brand/sayaraforce-logo-horizontal.png') }}"
+                            alt="SayaraForce"
+                            width="1153"
+                            height="326"
+                            class="h-9 w-auto object-contain"
+                        >
                     </a>
 
                     <div class="hidden items-center gap-5 text-sm font-bold lg:flex">
@@ -246,6 +219,7 @@
                     </div>
                 </div>
             </nav>
+            @endunless
         @endauth
 
         @inertia

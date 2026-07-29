@@ -12,34 +12,39 @@ import './calendar'
 window.Alpine = Alpine
 Alpine.start()
 
-const appName = import.meta.env.VITE_APP_NAME || 'Garage CRM'
+const appName = 'SayaraForce'
+const inertiaRoot = document.getElementById('app')
 
-createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+// Blade-rendered application screens share this bundle but do not provide an
+// Inertia page payload. Only initialise Inertia when its real root is present.
+if (inertiaRoot?.dataset.page) {
+    createInertiaApp({
+        title: (title) => `${title} - ${appName}`,
 
-    resolve: (name) =>
-        resolvePageComponent(
-            `./Pages/${name}.jsx`,
-            import.meta.glob('./Pages/**/*.jsx')
-        ),
+        resolve: (name) =>
+            resolvePageComponent(
+                `./Pages/${name}.jsx`,
+                import.meta.glob('./Pages/**/*.jsx')
+            ),
 
-    setup({ el, App, props }) {
-        const root = createRoot(el)
+        setup({ el, App, props }) {
+            const root = createRoot(el)
 
-        root.render(<App {...props} />)
+            root.render(<App {...props} />)
 
-        const loader = document.getElementById('app-loader')
+            const loader = document.getElementById('app-loader')
 
-        if (loader) {
-            loader.classList.add('hidden')
-        }
-    },
+            if (loader) {
+                loader.classList.add('hidden')
+            }
+        },
 
-    progress: {
-        color: '#2563eb',
-        showSpinner: true,
-    },
-})
+        progress: {
+            color: '#FF6A00',
+            showSpinner: true,
+        },
+    })
+}
 
 /**
  * --------------------------------------------------------------------------

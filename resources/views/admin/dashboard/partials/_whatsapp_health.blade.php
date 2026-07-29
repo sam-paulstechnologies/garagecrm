@@ -40,8 +40,8 @@
             'label' => 'AI Replies 7d',
             'value' => $aiReplies7d,
             'note' => 'AI-assisted replies',
-            'labelClass' => 'sf-tone-blue text-blue-300',
-            'valueClass' => 'sf-tone-blue text-blue-300',
+            'labelClass' => 'sf-tone-orange text-orange-300',
+            'valueClass' => 'sf-tone-orange text-orange-300',
         ],
     ];
 @endphp

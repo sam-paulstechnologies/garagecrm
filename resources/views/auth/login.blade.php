@@ -3,108 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Login — SayaraForce</title>
-
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ asset('site.webmanifest') }}">
     @vite(['resources/css/app.css', 'resources/js/app.jsx'])
 </head>
 
-<body class="min-h-screen bg-slate-950 text-white antialiased">
-
-<div class="grid min-h-screen lg:grid-cols-2">
-
-    {{-- Left Branding Panel --}}
-    <div class="relative hidden overflow-hidden border-r border-white/10 bg-slate-900 lg:block">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.18),transparent_35%)]"></div>
-
-        <div class="relative flex h-full flex-col justify-between p-12">
-            <a href="{{ route('public.home') }}" class="flex items-center gap-3">
-                <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-lg font-black text-white shadow-lg shadow-orange-500/20">
-                    SF
-                </div>
-
-                <div>
-                    <div class="text-xl font-black tracking-tight text-white">
-                        SayaraForce
-                    </div>
-                    <div class="text-sm text-slate-400">
-                        Garage Growth CRM
-                    </div>
-                </div>
+<body class="sf-auth-shell min-h-screen bg-[#07112A] text-white antialiased">
+<main class="grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
+    <section class="relative hidden overflow-hidden border-r border-white/10 bg-[#0D1B3D] lg:flex lg:min-h-screen lg:flex-col">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,106,0,0.2),transparent_33%),radial-gradient(circle_at_bottom_right,rgba(41,69,121,0.46),transparent_38%)]"></div>
+        <div class="relative flex h-full flex-col justify-between p-10 xl:p-12">
+            <a href="{{ route('public.home') }}" class="inline-flex w-fit items-center" aria-label="SayaraForce home">
+                <img
+                    src="{{ asset('images/brand/sayaraforce-logo-horizontal.png') }}"
+                    alt="SayaraForce"
+                    width="1153"
+                    height="326"
+                    class="h-12 w-auto object-contain"
+                >
             </a>
 
-            <div>
-                <div class="mb-5 inline-flex rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300">
-                    Lead recovery system for garages
-                </div>
+            <div class="max-w-2xl py-12">
+                <p class="mb-5 inline-flex rounded-full border border-[#FF6A00]/35 bg-[#FF6A00]/10 px-4 py-2 text-sm font-semibold text-[#FF9A52]">
+                    Growth Engine for UAE Garages
+                </p>
 
-                <h1 class="max-w-xl text-5xl font-black leading-tight tracking-tight text-white">
+                <h1 class="max-w-2xl text-4xl leading-[1.08] tracking-tight text-white xl:text-5xl">
                     Manage leads, bookings, jobs and WhatsApp follow-ups in one place.
                 </h1>
 
-                <p class="mt-6 max-w-lg text-lg leading-8 text-slate-300">
-                    Built for garages that want to stop losing enquiries and convert more customers into confirmed jobs.
+                <p class="mt-6 max-w-xl text-base leading-7 text-[#D2DAEA] xl:text-lg xl:leading-8">
+                    A clear operational workspace for capturing enquiries, coordinating follow-up and keeping garage teams aligned.
                 </p>
             </div>
 
-            <div class="grid grid-cols-3 gap-4">
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-                    <div class="text-2xl font-black text-white">Leads</div>
-                    <div class="mt-1 text-sm text-slate-400">Capture</div>
-                </div>
-
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-                    <div class="text-2xl font-black text-white">WA</div>
-                    <div class="mt-1 text-sm text-slate-400">Follow-up</div>
-                </div>
-
-                <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-                    <div class="text-2xl font-black text-white">Jobs</div>
-                    <div class="mt-1 text-sm text-slate-400">Track</div>
-                </div>
+            <div class="grid grid-cols-3 gap-3 xl:gap-4">
+                @foreach ([
+                    ['Lead capture', 'Enquiries organised'],
+                    ['Follow-up', 'WhatsApp-enabled'],
+                    ['Workshop flow', 'Bookings to jobs'],
+                ] as [$label, $description])
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.055] p-4 xl:p-5">
+                        <p class="text-sm font-semibold text-white xl:text-base">{{ $label }}</p>
+                        <p class="mt-1 text-xs leading-5 text-[#AEBBD0]">{{ $description }}</p>
+                    </div>
+                @endforeach
             </div>
         </div>
-    </div>
+    </section>
 
-    {{-- Right Login Panel --}}
-    <div class="flex min-h-screen items-center justify-center px-6 py-10">
-        <div class="w-full max-w-md">
-
-            {{-- Mobile Logo --}}
-            <div class="mb-8 text-center lg:hidden">
-                <a href="{{ route('public.home') }}" class="inline-flex items-center justify-center gap-3">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-lg font-black text-white shadow-lg shadow-orange-500/20">
-                        SF
-                    </div>
-
-                    <div class="text-left">
-                        <div class="text-xl font-black tracking-tight text-white">
-                            SayaraForce
-                        </div>
-                        <div class="text-sm text-slate-400">
-                            Garage Growth CRM
-                        </div>
-                    </div>
+    <section class="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-8 sm:px-8">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,106,0,0.12),transparent_32%)] lg:hidden"></div>
+        <div class="relative w-full max-w-md">
+            <div class="mb-8 flex justify-center lg:hidden">
+                <a href="{{ route('public.home') }}" aria-label="SayaraForce home">
+                    <img
+                        src="{{ asset('images/brand/sayaraforce-logo-horizontal.png') }}"
+                        alt="SayaraForce"
+                        width="1153"
+                        height="326"
+                        class="h-11 w-auto max-w-[240px] object-contain"
+                    >
                 </a>
             </div>
 
-            <div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
-                <div class="mb-8">
-                    <h2 class="text-3xl font-black tracking-tight text-white">
-                        Welcome back
-                    </h2>
-                    <p class="mt-2 text-sm text-slate-400">
-                        Login to your garage workspace.
-                    </p>
+            <div class="rounded-[1.75rem] border border-white/10 bg-[#0D1B3D]/90 p-6 shadow-2xl shadow-black/25 backdrop-blur sm:p-8">
+                <div class="mb-7">
+                    <h2 class="text-3xl leading-tight tracking-tight text-white">Welcome back</h2>
+                    <p class="mt-2 text-sm leading-6 text-[#AEBBD0]">Sign in to your SayaraForce workspace.</p>
                 </div>
 
                 @if (session('status'))
-                    <div class="mb-5 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                    <div class="mb-5 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" role="status">
                         {{ session('status') }}
                     </div>
                 @endif
 
                 @if ($errors->any())
-                    <div class="mb-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                    <div class="mb-5 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200" role="alert">
                         {{ $errors->first() }}
                     </div>
                 @endif
@@ -112,12 +91,8 @@
                 <form method="POST" action="{{ route('login') }}" class="space-y-5">
                     @csrf
 
-                    {{-- Email Address --}}
                     <div>
-                        <label for="email" class="mb-2 block text-sm font-semibold text-slate-300">
-                            Email Address
-                        </label>
-
+                        <label for="email" class="mb-2 block text-sm font-semibold text-[#D2DAEA]">Email address</label>
                         <input
                             id="email"
                             type="email"
@@ -126,24 +101,18 @@
                             required
                             autofocus
                             autocomplete="username"
-                            placeholder="admin@garage.com"
-                            class="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-orange-500 placeholder:text-slate-600 focus:ring-2"
+                            placeholder="you@company.com"
+                            class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]"
                         >
                     </div>
 
-                    {{-- Password --}}
                     <div>
-                        <div class="mb-2 flex items-center justify-between">
-                            <label for="password" class="block text-sm font-semibold text-slate-300">
-                                Password
-                            </label>
+                        <div class="mb-2 flex items-center justify-between gap-4">
+                            <label for="password" class="block text-sm font-semibold text-[#D2DAEA]">Password</label>
 
                             @if (Route::has('password.request'))
-                                <a
-                                    href="{{ route('password.request') }}"
-                                    class="text-sm font-semibold text-orange-400 hover:text-orange-300"
-                                >
-                                    Forgot?
+                                <a href="{{ route('password.request') }}" class="rounded text-sm font-semibold text-[#FF8A38] transition hover:text-[#FFB079]">
+                                    Forgot password?
                                 </a>
                             @endif
                         </div>
@@ -155,50 +124,41 @@
                             required
                             autocomplete="current-password"
                             placeholder="Enter your password"
-                            class="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none ring-orange-500 placeholder:text-slate-600 focus:ring-2"
+                            class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]"
                         >
                     </div>
 
-                    {{-- Remember Me --}}
-                    <div class="flex items-center justify-between">
-                        <label for="remember_me" class="flex items-center gap-2 text-sm text-slate-400">
-                            <input
-                                id="remember_me"
-                                type="checkbox"
-                                name="remember"
-                                class="h-4 w-4 rounded border-white/10 bg-slate-950 text-orange-500 focus:ring-orange-500"
-                            >
-
-                            <span>Remember me</span>
-                        </label>
-                    </div>
+                    <label for="remember_me" class="flex w-fit items-center gap-2 text-sm text-[#AEBBD0]">
+                        <input
+                            id="remember_me"
+                            type="checkbox"
+                            name="remember"
+                            class="h-4 w-4 rounded border-white/20 bg-[#09142E] text-[#FF6A00] focus:ring-[#FF6A00]"
+                        >
+                        <span>Remember me</span>
+                    </label>
 
                     <button
                         type="submit"
-                        class="w-full rounded-2xl bg-orange-500 px-6 py-4 text-base font-black text-white shadow-xl shadow-orange-500/20 transition hover:bg-orange-600"
+                        class="w-full rounded-xl bg-[#FF6A00] px-6 py-3.5 text-base font-semibold text-white shadow-xl shadow-[#FF6A00]/20 transition hover:bg-[#E85F00]"
                     >
-                        Login
+                        Log in
                     </button>
                 </form>
 
-                <div class="mt-6 border-t border-white/10 pt-6 text-center text-sm text-slate-400">
+                <div class="mt-6 border-t border-white/10 pt-6 text-center text-sm leading-6 text-[#AEBBD0]">
                     New to SayaraForce?
-
-                    <a
-                        href="{{ route('public.home') }}#audit"
-                        class="font-bold text-orange-400 hover:text-orange-300"
-                    >
-                        Request a free lead recovery audit
+                    <a href="{{ route('public.home') }}#audit" class="font-semibold text-[#FF8A38] transition hover:text-[#FFB079]">
+                        Book a free audit
                     </a>
                 </div>
             </div>
 
-            <div class="mt-6 text-center text-xs text-slate-600">
-                © {{ date('Y') }} SayaraForce. Built for UAE garages.
-            </div>
+            <p class="mt-6 text-center text-xs text-[#75849D]">
+                &copy; {{ date('Y') }} SayaraForce. Built for UAE garages.
+            </p>
         </div>
-    </div>
-</div>
-
+    </section>
+</main>
 </body>
 </html>

@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>@yield('title', config('app.name', 'SayaraForce'))</title>
+    <title>@yield('title', 'SayaraForce')</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ asset('site.webmanifest') }}">
 
     {{-- Prevent theme flash before page loads --}}
     <script>
@@ -19,10 +22,6 @@
         })();
     </script>
 
-    {{-- Fonts --}}
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800,900&display=swap" rel="stylesheet" />
-
     {{-- Vite --}}
     @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.jsx'])
@@ -31,33 +30,31 @@
         :root {
             color-scheme: dark;
 
-            --sf-page-bg: #050914;
-            --sf-page-bg-soft: #0f172a;
-            --sf-page-text: #f8fafc;
-            --sf-page-muted: #cbd5e1;
-            --sf-panel-bg: #ffffff;
-            --sf-panel-text: #020617;
-            --sf-border: rgba(255, 255, 255, 0.10);
-            --sf-header-bg: rgba(15, 23, 42, 0.80);
-            --sf-toggle-bg: rgba(255, 255, 255, 0.10);
-            --sf-toggle-border: rgba(255, 255, 255, 0.16);
-            --sf-toggle-text: #ffffff;
+            --sf-page-bg: var(--sf-bg);
+            --sf-page-bg-soft: var(--sf-bg-soft);
+            --sf-page-text: var(--sf-text);
+            --sf-page-muted: var(--sf-muted);
+            --sf-panel-bg: var(--sf-surface);
+            --sf-panel-text: var(--sf-text-strong);
+            --sf-header-bg: rgba(7, 17, 42, 0.92);
+            --sf-toggle-bg: var(--sf-hover);
+            --sf-toggle-border: var(--sf-border-strong);
+            --sf-toggle-text: var(--sf-text-strong);
         }
 
         html[data-theme="light"] {
             color-scheme: light;
 
-            --sf-page-bg: #f4f7fb;
-            --sf-page-bg-soft: #ffffff;
-            --sf-page-text: #0f172a;
-            --sf-page-muted: #475569;
-            --sf-panel-bg: #ffffff;
-            --sf-panel-text: #020617;
-            --sf-border: rgba(15, 23, 42, 0.10);
-            --sf-header-bg: rgba(255, 255, 255, 0.92);
-            --sf-toggle-bg: #ffffff;
-            --sf-toggle-border: #cbd5e1;
-            --sf-toggle-text: #0f172a;
+            --sf-page-bg: var(--sf-bg);
+            --sf-page-bg-soft: var(--sf-bg-soft);
+            --sf-page-text: var(--sf-text);
+            --sf-page-muted: var(--sf-muted);
+            --sf-panel-bg: var(--sf-surface);
+            --sf-panel-text: var(--sf-text-strong);
+            --sf-header-bg: rgba(255, 255, 255, 0.94);
+            --sf-toggle-bg: var(--sf-surface);
+            --sf-toggle-border: var(--sf-border-strong);
+            --sf-toggle-text: var(--sf-text-strong);
         }
 
         body.sf-theme-body {
@@ -89,7 +86,7 @@
             background: var(--sf-toggle-bg);
             color: var(--sf-toggle-text);
             font-size: 12px;
-            font-weight: 900;
+            font-weight: 600;
             letter-spacing: -0.01em;
             cursor: pointer;
             box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
@@ -110,7 +107,7 @@
             align-items: center;
             border-radius: 999px;
             border: 1px solid rgba(148, 163, 184, 0.24);
-            background: rgba(15, 23, 42, 0.92);
+            background: var(--sf-navy);
             transition: background 0.18s ease, border-color 0.18s ease;
         }
 
@@ -126,7 +123,7 @@
 
         html[data-theme="light"] .sf-theme-switch {
             border-color: rgba(249, 115, 22, 0.36);
-            background: #f97316;
+            background: var(--sf-orange);
         }
 
         html[data-theme="light"] .sf-theme-switch-knob {
@@ -281,9 +278,9 @@
         */
 
         .sf-floating-quick-actions {
-            background-color: rgba(2, 44, 34, 0.96) !important;
-            border-color: rgba(249, 115, 22, 0.24) !important;
-            box-shadow: 0 18px 40px rgba(2, 44, 34, 0.26);
+            background-color: rgba(13, 27, 61, 0.97) !important;
+            border-color: rgba(255, 106, 0, 0.28) !important;
+            box-shadow: 0 18px 40px rgba(7, 17, 42, 0.3);
             transform: translateX(calc(100% - 14px));
             transition: transform 0.22s ease, box-shadow 0.22s ease;
         }
@@ -298,7 +295,7 @@
         .sf-floating-quick-action-shell:focus-within .sf-floating-quick-actions,
         .sf-floating-quick-action-shell:active .sf-floating-quick-actions {
             transform: translateX(0);
-            box-shadow: 0 22px 48px rgba(2, 44, 34, 0.34);
+            box-shadow: 0 22px 48px rgba(7, 17, 42, 0.4);
         }
 
         .sf-floating-quick-actions a {
@@ -313,7 +310,7 @@
         .sf-floating-quick-actions a:hover,
         .sf-floating-quick-actions a:focus-visible,
         .sf-floating-quick-actions a.sf-floating-action-active {
-            background: #f97316 !important;
+            background: var(--sf-orange) !important;
             color: #ffffff !important;
         }
 
@@ -331,11 +328,11 @@
             transform: translateY(-50%) translateX(6px);
             border-radius: 0.875rem;
             border: 1px solid rgba(148, 163, 184, 0.20);
-            background: #0f172a;
+            background: var(--sf-navy);
             color: #f8fafc !important;
             padding: 0.625rem 0.875rem;
             font-size: 0.75rem;
-            font-weight: 900;
+            font-weight: 600;
             line-height: 1;
             white-space: nowrap;
             opacity: 0;
@@ -363,9 +360,9 @@
         }
 
         html[data-theme="light"] .sf-floating-quick-actions {
-            background-color: rgba(2, 44, 34, 0.96) !important;
-            border-color: rgba(249, 115, 22, 0.24) !important;
-            box-shadow: 0 18px 40px rgba(2, 44, 34, 0.18);
+            background-color: rgba(13, 27, 61, 0.97) !important;
+            border-color: rgba(255, 106, 0, 0.28) !important;
+            box-shadow: 0 18px 40px rgba(13, 27, 61, 0.2);
         }
 
         html[data-theme="light"] .sf-floating-quick-actions a {
@@ -431,7 +428,7 @@
     @stack('styles')
 </head>
 
-<body class="font-sans antialiased sf-theme-body">
+<body class="antialiased sf-theme-body">
 
     @php
         $isInboxShellRoute = request()->routeIs('admin.inbox.*')
@@ -452,7 +449,7 @@
         {{-- Background Glow --}}
         <div class="pointer-events-none fixed inset-0 -z-10 sf-dark-glow">
             <div class="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl"></div>
-            <div class="absolute right-[-160px] top-24 h-[360px] w-[360px] rounded-full bg-blue-600/10 blur-3xl"></div>
+            <div class="absolute right-[-160px] top-24 h-[360px] w-[360px] rounded-full bg-[#294579]/20 blur-3xl"></div>
             <div class="absolute bottom-[-220px] left-[-120px] h-[420px] w-[420px] rounded-full bg-orange-600/10 blur-3xl"></div>
         </div>
 

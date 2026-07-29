@@ -42,19 +42,19 @@
 
                 $toneMap = [
                     'blue' => [
-                        'gradient' => 'linear-gradient(135deg, #2563eb, #60a5fa)',
+                        'gradient' => 'linear-gradient(135deg, #0D1B3D, #466394)',
                         'icon' => 'SUM',
                     ],
                     'orange' => [
-                        'gradient' => 'linear-gradient(135deg, #ea580c, #fb923c)',
+                        'gradient' => 'linear-gradient(135deg, #C95200, #FF8A38)',
                         'icon' => 'UP',
                     ],
                     'green' => [
-                        'gradient' => 'linear-gradient(135deg, #16a34a, #86efac)',
+                        'gradient' => 'linear-gradient(135deg, #294579, #8092B2)',
                         'icon' => 'OK',
                     ],
                     'purple' => [
-                        'gradient' => 'linear-gradient(135deg, #9333ea, #c084fc)',
+                        'gradient' => 'linear-gradient(135deg, #FF6A00, #FF9A52)',
                         'icon' => 'MSG',
                     ],
                 ];
@@ -80,7 +80,7 @@
                         </div>
 
                         <div class="growth-card-icon"
-                             style="width: 48px; height: 48px; border-radius: 18px; background: {{ $style['gradient'] }}; font-weight: 900; box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);">
+                             style="width: 48px; height: 48px; border-radius: 18px; background: {{ $style['gradient'] }}; font-weight: 600; box-shadow: 0 14px 28px rgba(13, 27, 61, 0.18);">
                             {{ $style['icon'] }}
                         </div>
                     </div>
@@ -130,7 +130,7 @@
 
                         <div class="d-flex align-items-center justify-content-between">
                             <span class="text-muted fw-bold">Hot Leads</span>
-                            <span class="fw-black" style="color: #ea580c;">
+                            <span class="fw-black" style="color: #FF6A00;">
                                 {{ number_format($leadBreakdown['hot']) }}
                             </span>
                         </div>
@@ -169,7 +169,7 @@
 
                         <div class="d-flex align-items-center justify-content-between">
                             <span class="text-muted fw-bold">Unread Conversations</span>
-                            <span class="fw-black" style="color: #ea580c;">
+                            <span class="fw-black" style="color: #FF6A00;">
                                 {{ number_format($conversationBreakdown['unread']) }}
                             </span>
                         </div>
@@ -193,7 +193,7 @@
 
                         <div class="d-flex align-items-center justify-content-between">
                             <span class="text-muted fw-bold">Human Replies</span>
-                            <span class="fw-black" style="color: #9333ea;">
+                            <span class="fw-black" style="color: #466394;">
                                 {{ number_format($whatsappBreakdown['human_replies_last_30_days']) }}
                             </span>
                         </div>
@@ -307,12 +307,12 @@
         width: max-content;
         margin-bottom: 14px;
         border-radius: 999px;
-        border: 1px solid rgba(249, 115, 22, 0.22);
+        border: 1px solid rgba(255, 106, 0, 0.26);
         padding: 7px 12px;
         background: var(--sf-orange-soft);
         color: var(--sf-orange);
         font-size: 11px;
-        font-weight: 950;
+        font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
     }
@@ -337,7 +337,7 @@
     .growth-progress-fill {
         height: 100%;
         border-radius: 999px;
-        background: linear-gradient(90deg, var(--sf-primary), var(--sf-orange));
+        background: linear-gradient(90deg, #294579, #FF6A00);
     }
 
     .growth-manager-note,

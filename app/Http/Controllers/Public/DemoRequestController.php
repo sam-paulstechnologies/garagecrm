@@ -16,6 +16,10 @@ class DemoRequestController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:150'],
+            'current_management_system' => ['nullable', 'string', 'max:160'],
+            'monthly_leads' => ['nullable', 'string', 'in:under_50,50_100,101_250,250_plus,not_sure'],
+            'main_challenge' => ['nullable', 'string', 'max:1200'],
+            // Retained for older forms and integrations that still post these fields.
             'monthly_cars' => ['nullable', 'string', 'max:40'],
             'message' => ['nullable', 'string', 'max:1200'],
         ]);
@@ -30,6 +34,6 @@ class DemoRequestController extends Controller
 
         return redirect()
             ->route('public.demo.thank-you')
-            ->with('success', 'Your demo request has been received.');
+            ->with('success', 'Your audit request has been received.');
     }
 }

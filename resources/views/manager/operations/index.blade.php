@@ -18,32 +18,32 @@
         .ops-edge-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
         .ops-node {
             position: absolute; width: 210px; min-height: 72px; border-radius: 18px;
-            border: 1px solid rgba(148, 163, 184, .28); background: rgba(15, 23, 42, .88);
-            box-shadow: 0 18px 48px rgba(2, 6, 23, .22); color: #f8fafc; cursor: grab;
+            border: 1px solid rgba(174, 187, 208, .22); background: rgba(13, 27, 61, .92);
+            box-shadow: 0 18px 48px rgba(7, 17, 42, .28); color: #f8fafc; cursor: grab;
             text-align: left; padding: 12px; transition: border-color .16s ease, transform .16s ease, opacity .16s ease;
         }
-        .ops-node:focus, .ops-node.is-selected { border-color: #34d399; outline: 3px solid rgba(52, 211, 153, .18); }
+        .ops-node:focus, .ops-node.is-selected { border-color: var(--sf-orange); outline: 3px solid var(--sf-focus-ring); }
         .ops-node.is-hidden { opacity: .16; pointer-events: none; }
         .ops-node:hover { transform: translateY(-2px); }
-        .ops-node small { color: #94a3b8; display: block; font-weight: 900; text-transform: uppercase; font-size: .66rem; letter-spacing: .06em; }
+        .ops-node small { color: #aebbd0; display: block; font-weight: 600; text-transform: uppercase; font-size: .66rem; letter-spacing: .06em; }
         .ops-node strong { display: block; margin-top: 5px; font-size: .86rem; line-height: 1.25; }
         .ops-node span { display: inline-flex; margin-top: 7px; color: #cbd5e1; font-size: .68rem; line-height: 1.2; }
-        .ops-expand { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, .35); background: rgba(255,255,255,.08); color: inherit; font-weight: 900; cursor: pointer; }
-        .ops-child-count { margin-left: 7px; border-radius: 999px; padding: 2px 7px; background: rgba(52, 211, 153, .12); color: #a7f3d0; font-weight: 900; }
+        .ops-expand { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(174, 187, 208, .30); background: rgba(255,255,255,.08); color: inherit; font-weight: 600; cursor: pointer; }
+        .ops-child-count { margin-left: 7px; border-radius: 999px; padding: 2px 7px; background: var(--sf-orange-soft); color: #ffb079; font-weight: 600; }
         .ops-node[data-group="domain"] { border-color: rgba(251, 146, 60, .52); }
         .ops-node[data-group="workflow"] { border-color: rgba(52, 211, 153, .52); }
         .ops-node[data-group="route"] { border-color: rgba(96, 165, 250, .48); }
         .ops-minimap { position: absolute; right: 1rem; bottom: 1rem; width: 190px; height: 120px; border-radius: 16px; border: 1px solid rgba(148, 163, 184, .25); background: rgba(2, 6, 23, .72); }
-        .ops-mini-dot { position: absolute; width: 5px; height: 5px; border-radius: 999px; background: #34d399; }
+        .ops-mini-dot { position: absolute; width: 5px; height: 5px; border-radius: 999px; background: var(--sf-orange); }
         .ops-detail { max-height: 680px; overflow: auto; }
         body.ops-scroll-lock { overflow: hidden; }
         .ops-fullscreen { position: fixed !important; inset: 0 !important; z-index: 4000; padding: 18px; background: var(--sf-bg); overflow: hidden; grid-template-columns: minmax(0, 1fr) 380px; }
         .ops-fullscreen .ops-detail { max-height: calc(100vh - 36px); overflow: auto; }
         .ops-fullscreen .ops-graph-frame { height: calc(100vh - 168px); }
-        html[data-theme="light"] .ops-node { background: #ffffff; color: #0f172a; border-color: #d9e1ec; box-shadow: 0 16px 42px rgba(15, 23, 42, .10); }
-        html[data-theme="light"] .ops-node span { color: #475569; }
-        html[data-theme="light"] .ops-node small { color: #64748b; }
-        html[data-theme="light"] .ops-minimap { background: rgba(248, 250, 252, .92); }
+        html[data-theme="light"] .ops-node { background: var(--sf-surface); color: var(--sf-text-strong); border-color: var(--sf-border); box-shadow: var(--sf-shadow-soft); }
+        html[data-theme="light"] .ops-node span { color: var(--sf-muted-strong); }
+        html[data-theme="light"] .ops-node small { color: var(--sf-muted); }
+        html[data-theme="light"] .ops-minimap { background: color-mix(in srgb, var(--sf-surface) 92%, transparent); }
         @media (max-width: 900px) {
             .ops-workspace { display: grid; grid-template-columns: 1fr; }
             .ops-toolbar-grid { grid-template-columns: 1fr; }

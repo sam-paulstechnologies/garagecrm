@@ -37,8 +37,8 @@
             'count' => $leadCount,
             'route' => 'admin.leads.index',
             'width' => 78,
-            'bg' => 'bg-blue-500',
-            'dot' => 'bg-blue-500',
+            'bg' => 'bg-[#294579]',
+            'dot' => 'bg-[#294579]',
             'displayRate' => '100%',
         ],
         [
@@ -46,8 +46,8 @@
             'count' => $opportunityCount,
             'route' => 'admin.opportunities.index',
             'width' => 68,
-            'bg' => 'bg-purple-500',
-            'dot' => 'bg-purple-500',
+            'bg' => 'bg-[#FF6A00]',
+            'dot' => 'bg-[#FF6A00]',
             'displayRate' => $conversionRate($opportunityCount, $leadCount) . '%',
         ],
         [
@@ -55,8 +55,8 @@
             'count' => $bookingCount,
             'route' => 'admin.bookings.index',
             'width' => 58,
-            'bg' => 'bg-indigo-500',
-            'dot' => 'bg-indigo-500',
+            'bg' => 'bg-[#466394]',
+            'dot' => 'bg-[#466394]',
             'displayRate' => $conversionRate($bookingCount, $opportunityCount) . '%',
         ],
         [
@@ -64,8 +64,8 @@
             'count' => $jobCount,
             'route' => 'admin.jobs.index',
             'width' => 48,
-            'bg' => 'bg-emerald-500',
-            'dot' => 'bg-emerald-500',
+            'bg' => 'bg-[#FF9A52]',
+            'dot' => 'bg-[#FF9A52]',
             'displayRate' => $conversionRate($jobCount, $bookingCount) . '%',
         ],
         [
@@ -73,8 +73,8 @@
             'count' => $invoiceCount,
             'route' => 'admin.invoices.index',
             'width' => 40,
-            'bg' => 'bg-rose-500',
-            'dot' => 'bg-rose-500',
+            'bg' => 'bg-[#8092B2]',
+            'dot' => 'bg-[#8092B2]',
             'displayRate' => $conversionRate($invoiceCount, $jobCount) . '%',
         ],
     ];
@@ -115,7 +115,7 @@
             </div>
         </div>
 
-        <span class="rounded-full border border-blue-400/30 bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-300">
+        <span class="rounded-full border border-[#466394]/45 bg-[#294579]/25 px-3 py-1 text-xs font-semibold text-[#D2DAEA]">
             Funnel
         </span>
     </div>

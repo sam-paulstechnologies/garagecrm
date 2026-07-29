@@ -10,10 +10,10 @@
         $template = $summary['template'];
 
         $metricCards = [
-            ['label' => 'Bookings Today', 'value' => $sections['operations']['bookings_today'] ?? 0, 'class' => 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-400/20 dark:bg-indigo-500/10 dark:text-indigo-200'],
-            ['label' => 'Bookings Tomorrow', 'value' => $sections['operations']['bookings_tomorrow'] ?? 0, 'class' => 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200'],
-            ['label' => 'New Leads', 'value' => $sections['leads']['new_leads'] ?? 0, 'class' => 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200'],
-            ['label' => 'Open Opportunities', 'value' => $sections['opportunities']['open_opportunities'] ?? 0, 'class' => 'border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-400/20 dark:bg-purple-500/10 dark:text-purple-200'],
+            ['label' => 'Bookings Today', 'value' => $sections['operations']['bookings_today'] ?? 0, 'class' => 'border-[#294579]/25 bg-[#294579]/10 text-[#294579] dark:border-[#466394]/35 dark:bg-[#294579]/25 dark:text-[#D2DAEA]'],
+            ['label' => 'Bookings Tomorrow', 'value' => $sections['operations']['bookings_tomorrow'] ?? 0, 'class' => 'border-[#466394]/25 bg-[#466394]/10 text-[#294579] dark:border-[#8092B2]/30 dark:bg-[#466394]/20 dark:text-[#D2DAEA]'],
+            ['label' => 'New Leads', 'value' => $sections['leads']['new_leads'] ?? 0, 'class' => 'border-[#0D1B3D]/20 bg-[#0D1B3D]/5 text-[#0D1B3D] dark:border-[#466394]/30 dark:bg-[#0D1B3D] dark:text-[#D2DAEA]'],
+            ['label' => 'Open Opportunities', 'value' => $sections['opportunities']['open_opportunities'] ?? 0, 'class' => 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-400/25 dark:bg-orange-500/10 dark:text-orange-200'],
             ['label' => 'Jobs In Progress', 'value' => $sections['jobs']['in_progress'] ?? 0, 'class' => 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200'],
             ['label' => 'Unpaid Invoices', 'value' => $sections['invoices']['unpaid'] ?? 0, 'class' => 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200'],
             ['label' => 'Paid Revenue', 'value' => 'AED ' . number_format((float) ($sections['invoices']['revenue_paid'] ?? 0), 2), 'class' => 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-400/20 dark:bg-orange-500/10 dark:text-orange-200'],
@@ -40,7 +40,7 @@
 
                 <a
                     href="{{ route('admin.retention-actions.report') }}"
-                    class="inline-flex h-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-extrabold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
+                    class="inline-flex h-10 items-center justify-center rounded-xl border border-[#294579]/25 bg-[#294579]/10 px-4 text-sm font-semibold text-[#0D1B3D] transition hover:bg-[#294579]/15 dark:border-[#466394]/35 dark:bg-[#294579]/25 dark:text-[#D2DAEA] dark:hover:bg-[#294579]/40"
                 >
                     Retention Report
                 </a>
@@ -119,11 +119,11 @@
                 <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60">
                         <div class="text-xs font-black uppercase tracking-wide text-slate-500">New Leads</div>
-                        <div class="mt-1 text-xl font-black text-sky-700 dark:text-sky-200">{{ $sections['leads']['new_leads'] ?? 0 }}</div>
+                        <div class="mt-1 text-xl font-black text-[#294579] dark:text-[#D2DAEA]">{{ $sections['leads']['new_leads'] ?? 0 }}</div>
                     </div>
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60">
                         <div class="text-xs font-black uppercase tracking-wide text-slate-500">Open Opportunities</div>
-                        <div class="mt-1 text-xl font-black text-purple-700 dark:text-purple-200">{{ $sections['opportunities']['open_opportunities'] ?? 0 }}</div>
+                        <div class="mt-1 text-xl font-black text-orange-700 dark:text-orange-200">{{ $sections['opportunities']['open_opportunities'] ?? 0 }}</div>
                     </div>
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60">
                         <div class="text-xs font-black uppercase tracking-wide text-slate-500">Closed Won</div>
@@ -142,7 +142,7 @@
                             @forelse(($sections['leads']['by_status'] ?? []) as $status => $count)
                                 <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950/60">
                                     <span class="font-bold text-slate-700 dark:text-slate-300">{{ $statusLabel($status) }}</span>
-                                    <span class="font-black text-sky-700 dark:text-sky-200">{{ $count }}</span>
+                                    <span class="font-black text-[#294579] dark:text-[#D2DAEA]">{{ $count }}</span>
                                 </div>
                             @empty
                                 <div class="text-sm font-bold text-slate-500 dark:text-slate-500">No lead status data yet.</div>
@@ -156,7 +156,7 @@
                             @forelse(($sections['opportunities']['by_stage'] ?? []) as $stage => $count)
                                 <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950/60">
                                     <span class="font-bold text-slate-700 dark:text-slate-300">{{ $statusLabel($stage) }}</span>
-                                    <span class="font-black text-purple-700 dark:text-purple-200">{{ $count }}</span>
+                                    <span class="font-black text-orange-700 dark:text-orange-200">{{ $count }}</span>
                                 </div>
                             @empty
                                 <div class="text-sm font-bold text-slate-500">No opportunity stage data yet.</div>
@@ -217,7 +217,7 @@
                     @foreach(['messages_sent', 'failed_messages', 'inbound_replies', 'unread_conversations'] as $key)
                         <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60">
                             <div class="text-xs font-black uppercase tracking-wide text-slate-500">{{ $statusLabel($key) }}</div>
-                            <div class="mt-1 text-xl font-black text-blue-700 dark:text-blue-200">{{ $sections['whatsapp'][$key] ?? 'N/A' }}</div>
+                            <div class="mt-1 text-xl font-black text-[#294579] dark:text-[#D2DAEA]">{{ $sections['whatsapp'][$key] ?? 'N/A' }}</div>
                         </div>
                     @endforeach
                 </div>

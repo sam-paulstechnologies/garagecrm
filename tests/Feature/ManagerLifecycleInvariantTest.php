@@ -310,6 +310,111 @@ class ManagerLifecycleInvariantTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_admin_and_manager_invoice_details_render_every_supported_status(): void
+    {
+        $expectedPresentations = [
+            'pending' => ['Pending', 'sf-badge-yellow', 'badge-soft-warning'],
+            'paid' => ['Paid', 'sf-badge-green', 'badge-soft-success'],
+            'overdue' => ['Overdue', 'sf-badge-red', 'badge-soft-danger'],
+        ];
+
+        foreach ($expectedPresentations as $status => [$label, $adminClass, $managerClass]) {
+            $invoice = Invoice::create([
+                'company_id' => $this->companyId,
+                'client_id' => $this->clientId,
+                'source' => 'generated',
+                'amount' => 250,
+                'status' => $status,
+                'number' => 'INV-STATUS-' . strtoupper($status),
+                'invoice_date' => now()->toDateString(),
+                'currency' => 'AED',
+                'due_date' => now()->addWeek()->toDateString(),
+            ]);
+
+            $this->actingAs($this->admin)
+                ->get(route('admin.invoices.show', $invoice))
+                ->assertOk()
+                ->assertSee($invoice->number)
+                ->assertSee($label)
+                ->assertSee('class="' . $adminClass . '"', false);
+
+            $this->actingAs($this->manager)
+                ->get(route('manager.invoices.show', $invoice->id))
+                ->assertOk()
+                ->assertSee($invoice->number)
+                ->assertSee($label)
+                ->assertSee($managerClass, false);
+        }
+    }
+
+    public function test_invoice_detail_permissions_and_company_isolation_remain_enforced(): void
+    {
+        $ownInvoice = Invoice::create([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'source' => 'generated',
+            'amount' => 300,
+            'status' => 'pending',
+            'number' => 'INV-PERMISSIONS',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+        ]);
+
+        $otherCompanyId = (int) DB::table('companies')->insertGetId([
+            'name' => 'Isolated Invoice Company',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $otherInvoice = Invoice::create([
+            'company_id' => $otherCompanyId,
+            'source' => 'generated',
+            'amount' => 999,
+            'status' => 'paid',
+            'number' => 'INV-ISOLATED',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+        ]);
+
+        $this->actingAs($this->manager)
+            ->get(route('admin.invoices.show', $ownInvoice))
+            ->assertForbidden();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.invoices.show', $otherInvoice))
+            ->assertNotFound();
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.show', $otherInvoice->id))
+            ->assertNotFound();
+    }
+
+    public function test_unknown_legacy_invoice_status_renders_neutrally_without_view_errors(): void
+    {
+        $invoice = Invoice::create([
+            'company_id' => $this->companyId,
+            'client_id' => $this->clientId,
+            'source' => 'generated',
+            'amount' => 175,
+            'status' => 'provider_hold',
+            'number' => 'INV-LEGACY-STATUS',
+            'invoice_date' => now()->toDateString(),
+            'currency' => 'AED',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.invoices.show', $invoice))
+            ->assertOk()
+            ->assertSee('Provider Hold')
+            ->assertSee('class="sf-badge-slate"', false);
+
+        $this->actingAs($this->manager)
+            ->get(route('manager.invoices.show', $invoice->id))
+            ->assertOk()
+            ->assertSee('Provider Hold')
+            ->assertSee('badge-soft-muted', false);
+    }
+
     public function test_manager_inbox_renders_demo_safe_inertia_shell(): void
     {
         $this->actingAs($this->manager)

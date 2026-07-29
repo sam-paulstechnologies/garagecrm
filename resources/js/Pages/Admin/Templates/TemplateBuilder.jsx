@@ -99,7 +99,7 @@ const TemplateBuilder = () => {
 
         <button
           type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+          className="rounded-xl bg-[#FF6A00] px-4 py-2 font-semibold text-white transition hover:bg-[#E85F00]"
         >
           Save Template
         </button>

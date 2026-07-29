@@ -5,7 +5,7 @@ export default function ConversationItem({ conv, active }) {
         <a
             href={`/admin/chat/${conv.id}`}
             className={`block p-4 cursor-pointer ${
-                active ? "bg-blue-50" : "hover:bg-gray-100"
+                active ? "bg-orange-50" : "hover:bg-[#0D1B3D]/5"
             }`}
         >
             <div className="flex justify-between">

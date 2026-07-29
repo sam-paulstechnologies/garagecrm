@@ -96,32 +96,32 @@
 
     $moduleTone = [
         'blue' => [
-            'accent' => 'text-blue-400',
-            'iconBg' => 'bg-blue-500/15 ring-blue-400/20',
-            'iconText' => 'text-blue-300',
-            'border' => 'border-blue-500/25',
-            'hover' => 'hover:border-blue-400/50',
+            'accent' => 'text-[#AEBBD0]',
+            'iconBg' => 'bg-[#294579]/30 ring-[#466394]/30',
+            'iconText' => 'text-[#AEBBD0]',
+            'border' => 'border-[#294579]/55',
+            'hover' => 'hover:border-[#FF6A00]/50',
         ],
         'purple' => [
-            'accent' => 'text-purple-400',
-            'iconBg' => 'bg-purple-500/15 ring-purple-400/20',
-            'iconText' => 'text-purple-300',
-            'border' => 'border-purple-500/25',
-            'hover' => 'hover:border-purple-400/50',
+            'accent' => 'text-orange-400',
+            'iconBg' => 'bg-orange-500/15 ring-orange-400/25',
+            'iconText' => 'text-orange-300',
+            'border' => 'border-orange-500/25',
+            'hover' => 'hover:border-orange-400/50',
         ],
         'indigo' => [
-            'accent' => 'text-indigo-400',
-            'iconBg' => 'bg-indigo-500/15 ring-indigo-400/20',
-            'iconText' => 'text-indigo-300',
-            'border' => 'border-indigo-500/25',
-            'hover' => 'hover:border-indigo-400/50',
+            'accent' => 'text-[#8092B2]',
+            'iconBg' => 'bg-[#1A315F]/35 ring-[#466394]/25',
+            'iconText' => 'text-[#AEBBD0]',
+            'border' => 'border-[#1A315F]/60',
+            'hover' => 'hover:border-orange-400/50',
         ],
         'emerald' => [
-            'accent' => 'text-emerald-400',
-            'iconBg' => 'bg-emerald-500/15 ring-emerald-400/20',
-            'iconText' => 'text-emerald-300',
-            'border' => 'border-emerald-500/25',
-            'hover' => 'hover:border-emerald-400/50',
+            'accent' => 'text-[#D2DAEA]',
+            'iconBg' => 'bg-[#466394]/25 ring-[#8092B2]/25',
+            'iconText' => 'text-[#D2DAEA]',
+            'border' => 'border-[#466394]/45',
+            'hover' => 'hover:border-orange-400/50',
         ],
         'rose' => [
             'accent' => 'text-rose-400',
@@ -208,52 +208,52 @@
 
 <style>
     .sf-dashboard-kpi-card {
-        background: rgba(15, 23, 42, 0.70);
-        color: #ffffff;
+        background: var(--sf-surface);
+        color: var(--sf-text-strong);
     }
 
     .sf-dashboard-kpi-label {
-        color: #cbd5e1;
+        color: var(--sf-muted-strong);
     }
 
     .sf-dashboard-kpi-subtext,
     .sf-dashboard-kpi-link {
-        color: #94a3b8;
+        color: var(--sf-muted);
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-card {
         background: #ffffff !important;
-        border-color: #d9e1ec !important;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+        border-color: var(--sf-border) !important;
+        box-shadow: var(--sf-shadow-soft) !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-label {
-        color: #475569 !important;
+        color: var(--sf-muted-strong) !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-subtext,
     html[data-theme="light"] .sf-dashboard-kpi-link {
-        color: #64748b !important;
+        color: var(--sf-muted) !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-blue .sf-dashboard-kpi-value,
     html[data-theme="light"] .sf-dashboard-kpi-blue .sf-dashboard-kpi-icon {
-        color: #2563eb !important;
+        color: #294579 !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-purple .sf-dashboard-kpi-value,
     html[data-theme="light"] .sf-dashboard-kpi-purple .sf-dashboard-kpi-icon {
-        color: #7c3aed !important;
+        color: #c95200 !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-indigo .sf-dashboard-kpi-value,
     html[data-theme="light"] .sf-dashboard-kpi-indigo .sf-dashboard-kpi-icon {
-        color: #4f46e5 !important;
+        color: #466394 !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-emerald .sf-dashboard-kpi-value,
     html[data-theme="light"] .sf-dashboard-kpi-emerald .sf-dashboard-kpi-icon {
-        color: #059669 !important;
+        color: #294579 !important;
     }
 
     html[data-theme="light"] .sf-dashboard-kpi-rose .sf-dashboard-kpi-value,
@@ -263,7 +263,7 @@
 
     html[data-theme="light"] .sf-dashboard-kpi-orange .sf-dashboard-kpi-value,
     html[data-theme="light"] .sf-dashboard-kpi-orange .sf-dashboard-kpi-icon {
-        color: #ea580c !important;
+        color: #c95200 !important;
     }
 </style>
 

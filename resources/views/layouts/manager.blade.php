@@ -6,6 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>@yield('title', 'Manager Dashboard') - SayaraForce</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ asset('site.webmanifest') }}">
 
     {{-- Prevent theme flash before page loads. Uses the same key as the Admin layout. --}}
     <script>
@@ -36,61 +39,23 @@
 
     <style>
         :root {
-            color-scheme: dark;
-
-            --sf-bg: #050914;
-            --sf-bg-soft: #0f172a;
-            --sf-surface: #111827;
-            --sf-surface-soft: #172033;
-            --sf-surface-strong: #1e293b;
-            --sf-border: rgba(148, 163, 184, 0.20);
-            --sf-border-light: rgba(148, 163, 184, 0.24);
-            --sf-text: #f8fafc;
-            --sf-text-strong: #ffffff;
-            --sf-muted: #94a3b8;
-            --sf-muted-strong: #cbd5e1;
-            --sf-primary: #2563eb;
-            --sf-primary-dark: #1d4ed8;
-            --sf-orange: #ea580c;
-            --sf-orange-dark: #c2410c;
-            --sf-danger: #dc2626;
+            --sf-surface-strong: var(--sf-surface-raised);
+            --sf-border-light: var(--sf-border-strong);
+            --sf-primary: var(--sf-orange);
+            --sf-primary-dark: var(--sf-orange-hover);
+            --sf-orange-dark: var(--sf-orange-hover);
             --sf-danger-dark: #b91c1c;
-            --sf-success: #16a34a;
-            --sf-warning: #f59e0b;
-            --sf-header: rgba(6, 11, 22, 0.94);
-            --sf-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
-            --sf-soft-shadow: 0 16px 40px rgba(0, 0, 0, 0.20);
-            --sf-input-bg: #0f172a;
-            --sf-input-text: #f8fafc;
-            --sf-row-hover: rgba(148, 163, 184, 0.10);
-            --sf-orange-soft: rgba(249, 115, 22, 0.14);
-            --sf-theme-toggle-bg: rgba(255, 255, 255, 0.08);
-            --sf-theme-toggle-border: rgba(255, 255, 255, 0.14);
+            --sf-header: rgba(7, 17, 42, 0.94);
+            --sf-soft-shadow: var(--sf-shadow-soft);
+            --sf-row-hover: var(--sf-hover);
+            --sf-theme-toggle-bg: var(--sf-hover);
+            --sf-theme-toggle-border: var(--sf-border);
         }
 
         html[data-theme="light"] {
-            color-scheme: light;
-
-            --sf-bg: #f4f7fb;
-            --sf-bg-soft: #eef3f9;
-            --sf-surface: #ffffff;
-            --sf-surface-soft: #f8fafc;
-            --sf-surface-strong: #ffffff;
-            --sf-border: rgba(15, 23, 42, 0.10);
-            --sf-border-light: #d9e1ec;
-            --sf-text: #0f172a;
-            --sf-text-strong: #020617;
-            --sf-muted: #64748b;
-            --sf-muted-strong: #475569;
             --sf-header: rgba(255, 255, 255, 0.94);
-            --sf-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
-            --sf-soft-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
-            --sf-input-bg: #ffffff;
-            --sf-input-text: #0f172a;
-            --sf-row-hover: #f8fafc;
-            --sf-orange-soft: rgba(249, 115, 22, 0.10);
-            --sf-theme-toggle-bg: #ffffff;
-            --sf-theme-toggle-border: #d9e1ec;
+            --sf-theme-toggle-bg: var(--sf-surface);
+            --sf-theme-toggle-border: var(--sf-border);
         }
 
         * {
@@ -105,11 +70,11 @@
         body.manager-theme-body {
             margin: 0;
             background:
-                radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
-                radial-gradient(circle at top right, rgba(234, 88, 12, 0.11), transparent 28%),
+                radial-gradient(circle at top left, rgba(41, 69, 121, 0.22), transparent 34%),
+                radial-gradient(circle at top right, rgba(255, 106, 0, 0.11), transparent 28%),
                 var(--sf-bg);
             color: var(--sf-text);
-            font-family: Figtree, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family: var(--sf-font-body);
             font-size: 14px;
         }
 
@@ -205,7 +170,7 @@
             align-items: center;
             gap: 10px;
             color: var(--sf-text-strong);
-            font-weight: 800;
+            font-weight: 600;
             text-decoration: none;
             white-space: nowrap;
             line-height: 1;
@@ -215,19 +180,19 @@
             color: var(--sf-text-strong);
         }
 
-        .manager-logo {
-            width: 42px;
-            height: 42px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: #ffffff;
-            font-size: 14px;
-            font-weight: 900;
-            letter-spacing: 0.02em;
-            background: linear-gradient(135deg, var(--sf-orange), #f97316);
-            box-shadow: 0 10px 24px rgba(234, 88, 12, 0.25);
+        .manager-logo-full {
+            display: block;
+            width: auto;
+            height: 34px;
+            object-fit: contain;
+            flex: 0 0 auto;
+        }
+
+        .manager-logo-icon {
+            display: none;
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
             flex: 0 0 auto;
         }
 
@@ -237,13 +202,6 @@
             gap: 4px;
         }
 
-        .manager-brand-name {
-            font-size: 15px;
-            font-weight: 900;
-            letter-spacing: -0.02em;
-            color: var(--sf-text-strong);
-        }
-
         .manager-brand-badge {
             width: max-content;
             display: inline-flex;
@@ -251,12 +209,12 @@
             border-radius: 999px;
             padding: 3px 8px;
             font-size: 9px;
-            font-weight: 900;
+            font-weight: 600;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: #fbbf24;
-            background: rgba(234, 88, 12, 0.15);
-            border: 1px solid rgba(251, 191, 36, 0.22);
+            color: #ff9a52;
+            background: rgba(255, 106, 0, 0.14);
+            border: 1px solid rgba(255, 106, 0, 0.26);
         }
 
         .manager-nav-wrap {
@@ -287,7 +245,7 @@
             border-radius: 12px;
             color: var(--sf-muted-strong);
             font-size: 14px;
-            font-weight: 800;
+            font-weight: 600;
             text-decoration: none;
             white-space: nowrap;
             transition: all 0.15s ease;
@@ -330,9 +288,9 @@
             border-radius: 16px;
             padding: 8px 12px;
             color: #ffffff;
-            background: linear-gradient(135deg, var(--sf-orange), #f97316);
-            box-shadow: 0 10px 24px rgba(234, 88, 12, 0.24);
-            font-weight: 900;
+            background: var(--sf-orange);
+            box-shadow: 0 10px 24px rgba(255, 106, 0, 0.24);
+            font-weight: 600;
             font-size: 13px;
         }
 
@@ -343,7 +301,7 @@
             width: 18px;
             height: 18px;
             font-size: 11px;
-            font-weight: 900;
+            font-weight: 600;
             color: #ffffff;
         }
 
@@ -368,7 +326,7 @@
         }
 
         .manager-dropdown-name {
-            font-weight: 900;
+            font-weight: 600;
             font-size: 13px;
             color: var(--sf-text-strong);
             margin: 0;
@@ -450,12 +408,12 @@
             background: var(--sf-surface);
             border-bottom: 1px solid var(--sf-border-light);
             border-radius: 18px 18px 0 0 !important;
-            font-weight: 900;
+            font-weight: 600;
         }
 
         .btn {
             border-radius: 10px;
-            font-weight: 800;
+            font-weight: 600;
             font-size: 13px;
             padding: 8px 13px;
         }
@@ -495,7 +453,7 @@
 
         .btn-outline-primary {
             color: var(--sf-primary);
-            border-color: rgba(37, 99, 235, 0.35);
+            border-color: rgba(255, 106, 0, 0.42);
         }
 
         .btn-outline-primary:hover {
@@ -515,8 +473,8 @@
 
         .form-control:focus,
         .form-select:focus {
-            border-color: rgba(37, 99, 235, 0.65);
-            box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.12);
+            border-color: rgba(255, 106, 0, 0.78);
+            box-shadow: 0 0 0 0.2rem rgba(255, 106, 0, 0.16);
         }
 
         .table {
@@ -527,7 +485,7 @@
         .table thead th {
             font-size: 12px;
             color: var(--sf-muted-strong);
-            font-weight: 900;
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             background: var(--sf-surface-soft);
@@ -545,7 +503,7 @@
 
         .badge {
             border-radius: 999px;
-            font-weight: 900;
+            font-weight: 600;
             padding: 6px 9px;
         }
 
@@ -562,7 +520,8 @@
         */
         .sf-page-title {
             color: var(--sf-text-strong);
-            font-weight: 950;
+            font-family: var(--sf-font-heading);
+            font-weight: 600;
             letter-spacing: -0.04em;
             margin: 0;
         }
@@ -594,7 +553,8 @@
             margin: 0;
             color: var(--sf-text-strong);
             font-size: 16px;
-            font-weight: 950;
+            font-family: var(--sf-font-heading);
+            font-weight: 600;
             letter-spacing: -0.02em;
         }
 
@@ -628,7 +588,7 @@
         .sf-stat-label {
             margin: 0 0 12px;
             color: var(--sf-muted);
-            font-weight: 800;
+            font-weight: 600;
             font-size: 13px;
         }
 
@@ -637,7 +597,8 @@
             color: var(--sf-text-strong);
             font-size: 28px;
             line-height: 1;
-            font-weight: 950;
+            font-family: var(--sf-font-heading);
+            font-weight: 600;
             letter-spacing: -0.04em;
         }
 
@@ -656,7 +617,7 @@
             min-height: 38px;
             border-radius: 10px;
             padding: 0 14px;
-            font-weight: 900;
+            font-weight: 600;
             font-size: 13px;
             text-decoration: none;
             border: 0;
@@ -716,7 +677,7 @@
             color: var(--sf-muted-strong);
             text-align: left;
             font-size: 13px;
-            font-weight: 800;
+            font-weight: 600;
         }
 
         .manager-theme-toggle:hover,
@@ -728,7 +689,7 @@
         .manager-theme-label {
             display: block;
             color: var(--sf-text-strong);
-            font-weight: 900;
+            font-weight: 600;
         }
 
         .manager-theme-state {
@@ -764,8 +725,8 @@
         }
 
         html[data-theme="light"] .manager-theme-switch {
-            background: #f97316;
-            border-color: rgba(249, 115, 22, 0.40);
+            background: var(--sf-orange);
+            border-color: rgba(255, 106, 0, 0.40);
         }
 
         html[data-theme="light"] .manager-theme-switch::after {
@@ -774,6 +735,7 @@
         }
 
         .manager-mobile-menu {
+            visibility: visible;
             border-top: 1px solid var(--sf-border-light);
             background: var(--sf-header);
         }
@@ -798,7 +760,7 @@
             color: var(--sf-muted-strong);
             background: var(--sf-surface);
             border: 1px solid var(--sf-border-light);
-            font-weight: 900;
+            font-weight: 600;
         }
 
         .manager-mobile-nav a.active {
@@ -883,10 +845,12 @@
         }
 
         @media (max-width: 576px) {
-            .manager-logo {
-                width: 38px;
-                height: 38px;
-                font-size: 13px;
+            .manager-logo-full {
+                display: none;
+            }
+
+            .manager-logo-icon {
+                display: block;
             }
 
             .manager-nav a {
@@ -1087,6 +1051,26 @@
             color: var(--sf-text-strong) !important;
         }
 
+        body.manager-theme-body .btn,
+        body.manager-theme-body .manager-nav a,
+        body.manager-theme-body .manager-brand,
+        body.manager-theme-body .manager-brand-badge,
+        body.manager-theme-body .manager-dropdown-name,
+        body.manager-theme-body .manager-dropdown-item,
+        body.manager-theme-body .manager-user-pill {
+            font-family: var(--sf-font-body) !important;
+            font-weight: 600 !important;
+        }
+
+        body.manager-theme-body h1,
+        body.manager-theme-body h2,
+        body.manager-theme-body h3,
+        body.manager-theme-body .sf-page-title,
+        body.manager-theme-body .sf-panel-title {
+            font-family: var(--sf-font-heading) !important;
+            font-weight: 600 !important;
+        }
+
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.warning,
         html[data-theme="dark"] body.manager-theme-body .job-stat-card.warning,
         html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.warning,
@@ -1099,7 +1083,7 @@
         html[data-theme="dark"] body.manager-theme-body .invoice-stat-card.primary,
         html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.primary,
         html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.info {
-            background: rgba(37, 99, 235, 0.14) !important;
+            background: rgba(41, 69, 121, 0.22) !important;
         }
 
         html[data-theme="dark"] body.manager-theme-body .booking-stat-card.success,
@@ -1117,7 +1101,7 @@
         }
 
         html[data-theme="dark"] body.manager-theme-body .opportunity-stat-card.purple {
-            background: rgba(147, 51, 234, 0.12) !important;
+            background: rgba(255, 106, 0, 0.12) !important;
         }
     </style>
 </head>
@@ -1236,10 +1220,23 @@
             <div class="manager-header-left">
                 <a href="{{ Route::has('manager.dashboard') ? route('manager.dashboard') : url('/') }}"
                    class="manager-brand">
-                    <span class="manager-logo">SF</span>
+                    <img
+                        src="{{ asset('images/brand/sayaraforce-logo-horizontal.png') }}"
+                        alt="SayaraForce"
+                        width="1153"
+                        height="326"
+                        class="manager-logo-full"
+                    >
+
+                    <img
+                        src="{{ asset('images/brand/sayaraforce-icon.png') }}"
+                        alt="SayaraForce"
+                        width="208"
+                        height="195"
+                        class="manager-logo-icon"
+                    >
 
                     <span class="manager-brand-text">
-                        <span class="manager-brand-name">SayaraForce</span>
                         <span class="manager-brand-badge">Growth Plan</span>
                     </span>
                 </a>

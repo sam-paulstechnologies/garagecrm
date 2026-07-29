@@ -72,7 +72,7 @@ export default function AiSettings({ initial }) {
                 type="button"
                 onClick={() => setTab(key)}
                 className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${
-                  tab === key ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  tab === key ? "border-[#FF6A00] text-[#0D1B3D]" : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
               >
                 {label}

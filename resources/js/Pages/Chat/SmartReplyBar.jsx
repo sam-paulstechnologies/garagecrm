@@ -24,7 +24,7 @@ export default function SmartReplyBar({ replies, onSelect, onLoad }) {
                 <button
                     key={idx}
                     type="button"
-                    className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 transition"
+                    className="rounded-lg bg-[#294579]/10 px-3 py-1 text-sm text-[#0D1B3D] transition hover:bg-[#294579]/20"
                     onClick={() => onSelect(s.text)}
                 >
                     {s.text}

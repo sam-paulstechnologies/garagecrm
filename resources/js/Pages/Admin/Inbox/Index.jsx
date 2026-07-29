@@ -189,21 +189,21 @@ export default function Index({ whatsappChannel = null }) {
             <style>{`
                 .sf-inbox-page {
                     --sf-inbox-page-bg:
-                        radial-gradient(circle at top right, rgba(255, 122, 26, 0.10), transparent 30%),
-                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
-                        #050914;
-                    --sf-inbox-panel: rgba(11, 18, 32, 0.96);
-                    --sf-inbox-panel-soft: rgba(8, 17, 31, 0.78);
-                    --sf-inbox-panel-deep: #08111f;
-                    --sf-inbox-border: #1e293b;
+                        radial-gradient(circle at top right, rgba(255, 106, 0, 0.10), transparent 30%),
+                        radial-gradient(circle at top left, rgba(41, 69, 121, 0.14), transparent 32%),
+                        var(--sf-navy-950);
+                    --sf-inbox-panel: rgba(13, 27, 61, 0.96);
+                    --sf-inbox-panel-soft: rgba(10, 22, 50, 0.82);
+                    --sf-inbox-panel-deep: var(--sf-navy-900);
+                    --sf-inbox-border: rgba(174, 187, 208, 0.18);
                     --sf-inbox-border-soft: rgba(148, 163, 184, 0.14);
                     --sf-inbox-text: #f1f5f9;
                     --sf-inbox-heading: #ffffff;
                     --sf-inbox-muted: #94a3b8;
                     --sf-inbox-muted-strong: #cbd5e1;
-                    --sf-inbox-orange: #ff7a1a;
-                    --sf-inbox-orange-hover: #ea6508;
-                    --sf-inbox-blue-soft: rgba(59, 130, 246, 0.16);
+                    --sf-inbox-orange: var(--sf-orange);
+                    --sf-inbox-orange-hover: var(--sf-orange-hover);
+                    --sf-inbox-blue-soft: rgba(41, 69, 121, 0.22);
                     --sf-inbox-green-soft: rgba(34, 197, 94, 0.14);
                     --sf-inbox-danger-soft: rgba(239, 68, 68, 0.10);
                     --sf-inbox-shadow: 0 24px 45px rgba(0, 0, 0, 0.28);
@@ -216,19 +216,19 @@ export default function Index({ whatsappChannel = null }) {
 
                 html[data-theme="light"] .sf-inbox-page {
                     --sf-inbox-page-bg:
-                        radial-gradient(circle at top right, rgba(255, 122, 26, 0.11), transparent 30%),
-                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34%),
-                        #f3f6fb;
+                        radial-gradient(circle at top right, rgba(255, 106, 0, 0.10), transparent 30%),
+                        radial-gradient(circle at top left, rgba(13, 27, 61, 0.07), transparent 34%),
+                        var(--sf-bg);
                     --sf-inbox-panel: #ffffff;
-                    --sf-inbox-panel-soft: #f8fafc;
-                    --sf-inbox-panel-deep: #eef4fb;
-                    --sf-inbox-border: #dbe3ef;
-                    --sf-inbox-border-soft: #e5edf7;
-                    --sf-inbox-text: #0f172a;
-                    --sf-inbox-heading: #020617;
-                    --sf-inbox-muted: #64748b;
-                    --sf-inbox-muted-strong: #334155;
-                    --sf-inbox-blue-soft: #eff6ff;
+                    --sf-inbox-panel-soft: var(--sf-surface-soft);
+                    --sf-inbox-panel-deep: var(--sf-bg-soft);
+                    --sf-inbox-border: var(--sf-border);
+                    --sf-inbox-border-soft: var(--sf-border-soft);
+                    --sf-inbox-text: var(--sf-text);
+                    --sf-inbox-heading: var(--sf-text-strong);
+                    --sf-inbox-muted: var(--sf-muted);
+                    --sf-inbox-muted-strong: var(--sf-muted-strong);
+                    --sf-inbox-blue-soft: rgba(13, 27, 61, 0.07);
                     --sf-inbox-green-soft: #ecfdf5;
                     --sf-inbox-danger-soft: #fef2f2;
                     --sf-inbox-shadow: 0 20px 45px rgba(15, 23, 42, 0.10);

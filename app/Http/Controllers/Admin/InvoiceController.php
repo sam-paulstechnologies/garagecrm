@@ -7,6 +7,7 @@ use App\Models\Client\Client;
 use App\Models\Job\Invoice;
 use App\Models\Job\Job;
 use App\Models\User;
+use App\Support\InvoiceDetailPresenter;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -234,7 +235,7 @@ class InvoiceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function show(Invoice $invoice)
+    public function show(Invoice $invoice, InvoiceDetailPresenter $presenter)
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
@@ -245,7 +246,10 @@ class InvoiceController extends Controller
             'job' => fn ($jobQuery) => $jobQuery->where('company_id', $companyId),
         ]);
 
-        return view('admin.invoices.show', compact('invoice'));
+        return view('admin.invoices.show', [
+            'invoice' => $invoice,
+            'invoiceContext' => $presenter->present($invoice),
+        ]);
     }
 
     /*
@@ -254,7 +258,7 @@ class InvoiceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function edit(Invoice $invoice)
+    public function edit(Invoice $invoice, InvoiceDetailPresenter $presenter)
     {
         $this->guardCompanyOrAbort($invoice->company_id);
 
@@ -276,7 +280,12 @@ class InvoiceController extends Controller
             ->latest('id')
             ->get(['id', 'client_id', 'job_code', 'status', 'description']);
 
-        return view('admin.invoices.edit', compact('invoice', 'clients', 'jobs'));
+        return view('admin.invoices.edit', [
+            'invoice' => $invoice,
+            'clients' => $clients,
+            'jobs' => $jobs,
+            'invoiceContext' => $presenter->present($invoice),
+        ]);
     }
 
     /*

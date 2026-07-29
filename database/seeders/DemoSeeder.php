@@ -14,8 +14,8 @@ class DemoSeeder extends Seeder
         // Plan
         $planId = DB::table('plans')->insertGetId([
             'name' => 'Starter',
-            'price_monthly' => 499,
-            'price_yearly' => 4990,
+            'price_monthly' => 999,
+            'price_yearly' => 0,
             'features' => json_encode(['Jobs','Invoices','WhatsApp updates']),
             'max_users' => 10,
             'created_at' => now(), 'updated_at' => now(),

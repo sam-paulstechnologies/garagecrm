@@ -23,7 +23,7 @@ export default function MessageBubble({ msg }) {
         <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-2`}>
             <div
                 className={`max-w-[75%] px-3 py-2 rounded-lg shadow-sm animate-fade-in 
-                ${isOut ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-900"}`}
+                ${isOut ? "bg-[#0D1B3D] text-white" : "bg-white border border-[#0D1B3D]/15 text-[#0D1B3D]"}`}
             >
                 <div className="whitespace-pre-wrap text-sm">{msg.body}</div>
 

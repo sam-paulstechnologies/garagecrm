@@ -175,10 +175,10 @@ $profilePct = max(0, min(100, (int) $kpis['profile_pct']));
         </div>
 
         {{-- Profile Completion --}}
-        <div class="rounded-2xl border border-purple-400/20 bg-purple-500/10 p-5 shadow-lg shadow-black/10">
+        <div class="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-5 shadow-lg shadow-black/10">
             <div class="flex items-start justify-between gap-3">
                 <div class="w-full">
-                    <div class="text-xs font-extrabold uppercase tracking-wide text-purple-300">
+                    <div class="text-xs font-extrabold uppercase tracking-wide text-orange-300">
                         Profile Completion
                     </div>
 
@@ -194,12 +194,12 @@ $profilePct = max(0, min(100, (int) $kpis['profile_pct']));
 
                     <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-950/70 ring-1 ring-white/10">
                         <div
-                            class="h-full rounded-full bg-gradient-to-r from-orange-500 to-purple-400 transition-all"
+                            class="h-full rounded-full bg-gradient-to-r from-[#294579] to-[#FF6A00] transition-all"
                             style="width: {{ $profilePct }}%;"
                         ></div>
                     </div>
 
-                    <div class="mt-2 text-xs font-medium text-purple-100/70">
+                    <div class="mt-2 text-xs font-medium text-orange-100/70">
                         Based on available client data
                     </div>
                 </div>

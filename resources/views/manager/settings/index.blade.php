@@ -9,7 +9,7 @@
         <div class="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
             <div>
                 <div class="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill mb-3"
-                     style="background: rgba(37, 99, 235, 0.14); color: #93c5fd; font-size: 12px; font-weight: 900;">
+                     style="background: var(--sf-orange-soft); color: var(--sf-orange); font-size: 12px; font-weight: 600;">
                     Manager View · Safe Operational Settings
                 </div>
 
@@ -42,7 +42,7 @@
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-4">
                 <div class="d-flex align-items-center gap-3">
                     <div class="d-flex align-items-center justify-content-center text-white"
-                         style="width: 58px; height: 58px; border-radius: 22px; background: linear-gradient(135deg, #2563eb, #ea580c); font-weight: 950; box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);">
+                         style="width: 58px; height: 58px; border-radius: 22px; background: linear-gradient(135deg, var(--sf-navy), var(--sf-orange)); font-weight: 600; box-shadow: 0 16px 32px rgba(13, 27, 61, 0.16);">
                         {{ strtoupper(substr($user->name ?? 'M', 0, 1)) }}
                     </div>
 
@@ -69,7 +69,7 @@
                     </span>
 
                     <span class="badge"
-                          style="background: rgba(37, 99, 235, 0.12); color: #2563eb;">
+                          style="background: rgba(13, 27, 61, 0.10); color: var(--sf-text-strong);">
                         Operational Access
                     </span>
                 </div>
@@ -86,19 +86,19 @@
                 $toneMap = [
                     'blue' => [
                         'icon' => '⏰',
-                        'gradient' => 'linear-gradient(135deg, #2563eb, #60a5fa)',
-                        'badgeBg' => 'rgba(37, 99, 235, 0.12)',
-                        'badgeColor' => '#2563eb',
-                        'buttonBg' => 'rgba(37, 99, 235, 0.08)',
-                        'buttonColor' => '#2563eb',
+                        'gradient' => 'linear-gradient(135deg, var(--sf-navy), var(--sf-navy-600))',
+                        'badgeBg' => 'rgba(13, 27, 61, 0.10)',
+                        'badgeColor' => 'var(--sf-text-strong)',
+                        'buttonBg' => 'rgba(13, 27, 61, 0.08)',
+                        'buttonColor' => 'var(--sf-text-strong)',
                     ],
                     'orange' => [
                         'icon' => '🛠',
-                        'gradient' => 'linear-gradient(135deg, #ea580c, #fb923c)',
-                        'badgeBg' => 'rgba(234, 88, 12, 0.12)',
-                        'badgeColor' => '#ea580c',
-                        'buttonBg' => 'rgba(234, 88, 12, 0.08)',
-                        'buttonColor' => '#ea580c',
+                        'gradient' => 'linear-gradient(135deg, var(--sf-orange), var(--sf-orange-hover))',
+                        'badgeBg' => 'var(--sf-orange-soft)',
+                        'badgeColor' => 'var(--sf-orange)',
+                        'buttonBg' => 'var(--sf-orange-soft)',
+                        'buttonColor' => 'var(--sf-orange)',
                     ],
                     'green' => [
                         'icon' => '🔔',
@@ -110,11 +110,11 @@
                     ],
                     'purple' => [
                         'icon' => '💬',
-                        'gradient' => 'linear-gradient(135deg, #9333ea, #c084fc)',
-                        'badgeBg' => 'rgba(147, 51, 234, 0.12)',
-                        'badgeColor' => '#9333ea',
-                        'buttonBg' => 'rgba(147, 51, 234, 0.08)',
-                        'buttonColor' => '#9333ea',
+                        'gradient' => 'linear-gradient(135deg, var(--sf-navy-600), var(--sf-orange))',
+                        'badgeBg' => 'rgba(41, 69, 121, 0.12)',
+                        'badgeColor' => 'var(--sf-navy-600)',
+                        'buttonBg' => 'rgba(41, 69, 121, 0.08)',
+                        'buttonColor' => 'var(--sf-navy-600)',
                     ],
                 ];
 
@@ -174,7 +174,7 @@
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
                             <div class="p-3 rounded-4 h-100"
-                                 style="background: #f8fafc; border: 1px solid #e5e7eb;">
+                                 style="background: var(--sf-surface-soft); border: 1px solid var(--sf-border);">
                                 <div class="fw-black text-dark mb-2">
                                     Business Hours
                                 </div>
@@ -187,7 +187,7 @@
 
                         <div class="col-12 col-md-6">
                             <div class="p-3 rounded-4 h-100"
-                                 style="background: #f8fafc; border: 1px solid #e5e7eb;">
+                                 style="background: var(--sf-surface-soft); border: 1px solid var(--sf-border);">
                                 <div class="fw-black text-dark mb-2">
                                     Service Availability
                                 </div>
@@ -200,7 +200,7 @@
 
                         <div class="col-12 col-md-6">
                             <div class="p-3 rounded-4 h-100"
-                                 style="background: #f8fafc; border: 1px solid #e5e7eb;">
+                                 style="background: var(--sf-surface-soft); border: 1px solid var(--sf-border);">
                                 <div class="fw-black text-dark mb-2">
                                     Notification Preferences
                                 </div>
@@ -213,7 +213,7 @@
 
                         <div class="col-12 col-md-6">
                             <div class="p-3 rounded-4 h-100"
-                                 style="background: #f8fafc; border: 1px solid #e5e7eb;">
+                                 style="background: var(--sf-surface-soft); border: 1px solid var(--sf-border);">
                                 <div class="fw-black text-dark mb-2">
                                     Quick Replies
                                 </div>
@@ -231,7 +231,7 @@
         {{-- Restricted Settings --}}
         <div class="col-12 col-xl-4">
             <div class="h-100 rounded-4 overflow-hidden"
-                 style="background: #0f172a; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16);">
+                 style="background: var(--sf-navy); box-shadow: 0 18px 50px rgba(13, 27, 61, 0.16);">
                 <div class="p-4 border-bottom" style="border-color: rgba(255, 255, 255, 0.08) !important;">
                     <h2 class="text-white fw-black mb-1">
                         Admin-only Settings

@@ -35,6 +35,8 @@
 </head>
 
 <body>
+    @php($invoiceStatuses = app(\App\Support\InvoiceStatusPresenter::class))
+
     <h2>Invoices</h2>
 
     <table>
@@ -54,7 +56,7 @@
                     <td>{{ $invoice->client->name ?? 'N/A' }}</td>
                     <td>{{ $invoice->job->description ?? 'N/A' }}</td>
                     <td>{{ number_format((float) ($invoice->amount ?? 0), 2) }}</td>
-                    <td>{{ ucfirst($invoice->status ?? 'pending') }}</td>
+                    <td>{{ $invoiceStatuses->present($invoice->status ?? 'pending')['label'] }}</td>
                     <td>{{ $invoice->due_date ?? '—' }}</td>
                 </tr>
             @endforeach

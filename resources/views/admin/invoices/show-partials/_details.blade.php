@@ -10,7 +10,7 @@
             @foreach([
                 'Invoice Number' => $invoiceNumber,
                 'Amount' => $currency . ' ' . number_format($amount, 2),
-                'Status' => $statusLabels[$statusValue] ?? ucwords($statusValue),
+                'Status' => $statusLabel,
                 'Source' => $sourceLabel,
                 'Invoice Date' => $invoice->invoice_date?->format('d M Y') ?? 'Not set',
                 'Due Date' => $invoice->due_date?->format('d M Y') ?? 'Not set',

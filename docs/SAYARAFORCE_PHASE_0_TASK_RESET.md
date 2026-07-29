@@ -78,7 +78,7 @@ Phase 3 tasks:
 - Final landing page
 - Hero section final
 - Feature sections final
-- Founder offer/pricing section
+- Approved pricing section
 - Book demo form creates CRM lead
 - Thank-you page
 - WhatsApp click-to-chat CTA
@@ -94,7 +94,7 @@ Phase 3 tasks:
 Phase 4 tasks:
 
 - Final pricing
-- Founder offer
+- Approved commercial pricing
 - 1-page brochure PDF
 - Pricing PDF
 - Demo script
@@ -126,7 +126,7 @@ Phase 6 backlog tasks:
 - Reels/short scripts
 - Founder story post
 - Launch announcement campaign
-- Founder offer campaign
+- Approved commercial campaign
 - Missed lead campaign
 - Retention campaign
 - LinkedIn/Instagram/Facebook/TikTok setup unless already active

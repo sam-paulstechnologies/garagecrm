@@ -4,23 +4,34 @@
     <meta charset="UTF-8">
     <title>Confirm Booking</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0D1B3D">
+    <link rel="stylesheet" href="/css/sayaraforce-brand.css">
 
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background: #f5f7fb;
+            background: var(--paper);
             margin: 0;
             padding: 24px;
-            color: #111827;
+            color: var(--text-on-light);
         }
 
         .card {
             max-width: 560px;
             margin: 0 auto;
-            background: #ffffff;
+            background: var(--brand-white);
+            border: 1px solid var(--line-light);
             border-radius: 14px;
             padding: 24px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--shadow-light);
+        }
+
+        .logo {
+            width: min(280px, 75vw);
+            height: auto;
+            margin-bottom: 24px;
         }
 
         h2 {
@@ -30,13 +41,13 @@
         }
 
         .subtitle {
-            color: #6b7280;
+            color: var(--muted-on-light);
             margin-bottom: 24px;
         }
 
         .info-box {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: var(--paper);
+            border: 1px solid var(--line-light);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 20px;
@@ -60,9 +71,9 @@
         select {
             width: 100%;
             padding: 11px 12px;
-            border: 1px solid #d1d5db;
+            border: 1px solid var(--line-light);
             border-radius: 10px;
-            font-size: 15px;
+            font-size: 16px;
             box-sizing: border-box;
         }
 
@@ -71,9 +82,9 @@
         }
 
         .error {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #991b1b;
+            background: #FFF0E6;
+            border: 1px solid var(--brand-orange);
+            color: var(--brand-navy);
             padding: 12px;
             border-radius: 10px;
             margin-bottom: 18px;
@@ -81,23 +92,30 @@
 
         button {
             width: 100%;
-            background: #16a34a;
-            color: #ffffff;
+            background: var(--brand-orange);
+            color: var(--brand-navy);
             border: none;
             border-radius: 10px;
             padding: 13px 16px;
             font-size: 16px;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
         }
 
         button:hover {
-            background: #15803d;
+            background: var(--orange-hover);
+        }
+
+        input:focus,
+        select:focus,
+        button:focus-visible {
+            outline: 3px solid var(--brand-orange);
+            outline-offset: 3px;
         }
 
         .hint {
             font-size: 13px;
-            color: #6b7280;
+            color: var(--muted-on-light);
             margin-top: 6px;
         }
     </style>
@@ -131,6 +149,7 @@
 @endphp
 
 <div class="card">
+    <img class="logo" src="/images/brand/sayaraforce-logo-horizontal.png" width="1153" height="326" alt="SayaraForce">
     <h2>Confirm Booking</h2>
     <div class="subtitle">
         Review the customer request and confirm the booking slot.

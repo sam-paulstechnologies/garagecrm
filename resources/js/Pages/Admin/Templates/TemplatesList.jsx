@@ -29,7 +29,7 @@ const TemplateList = () => {
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-md p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-semibold text-gray-800">📦 Templates</h1>
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+          <button className="rounded-xl bg-[#FF6A00] px-4 py-2 font-semibold text-white transition hover:bg-[#E85F00]">
             + Create Template
           </button>
         </div>
@@ -55,7 +55,7 @@ const TemplateList = () => {
                       <td className="px-4 py-2 border">{template.category || '-'}</td>
                       <td className="px-4 py-2 border capitalize">{template.type}</td>
                       <td className="px-4 py-2 border text-center">
-                        <button className="text-indigo-600 hover:underline mr-3">View</button>
+                        <button className="mr-3 font-semibold text-[#FF6A00] hover:underline">View</button>
                         <button className="text-red-600 hover:underline">Delete</button>
                       </td>
                     </tr>

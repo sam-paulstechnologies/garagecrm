@@ -1180,37 +1180,37 @@ export default function Index({ selectedConversationId = null, whatsappChannel =
                 }
 
                 .sf-inbox-page {
-                    --inbox-bg: #070b16;
-                    --inbox-panel: rgba(15, 23, 42, 0.92);
-                    --inbox-panel-soft: rgba(2, 6, 23, 0.40);
-                    --inbox-chat-bg: #0b1220;
+                    --inbox-bg: var(--sf-navy-950);
+                    --inbox-panel: rgba(13, 27, 61, 0.94);
+                    --inbox-panel-soft: rgba(10, 22, 50, 0.62);
+                    --inbox-chat-bg: var(--sf-navy-900);
                     --inbox-border: rgba(255, 255, 255, 0.08);
                     --inbox-text: #e5e7eb;
                     --inbox-strong: #ffffff;
                     --inbox-muted: #94a3b8;
                     --inbox-input: rgba(2, 6, 23, 0.72);
                     --inbox-hover: rgba(255, 255, 255, 0.05);
-                    --inbox-accent-soft: rgba(249, 115, 22, 0.14);
+                    --inbox-accent-soft: var(--sf-orange-soft);
                 }
 
                 html[data-theme="light"] .sf-inbox-page {
-                    --inbox-bg: #f4f7fb;
-                    --inbox-panel: #ffffff;
-                    --inbox-panel-soft: #f8fafc;
-                    --inbox-chat-bg: #eef3f9;
-                    --inbox-border: #d9e1ec;
-                    --inbox-text: #0f172a;
-                    --inbox-strong: #020617;
-                    --inbox-muted: #64748b;
-                    --inbox-input: #ffffff;
-                    --inbox-hover: #f1f5f9;
-                    --inbox-accent-soft: rgba(249, 115, 22, 0.10);
+                    --inbox-bg: var(--sf-bg);
+                    --inbox-panel: var(--sf-surface);
+                    --inbox-panel-soft: var(--sf-surface-soft);
+                    --inbox-chat-bg: var(--sf-bg-soft);
+                    --inbox-border: var(--sf-border);
+                    --inbox-text: var(--sf-text);
+                    --inbox-strong: var(--sf-text-strong);
+                    --inbox-muted: var(--sf-muted);
+                    --inbox-input: var(--sf-input-bg);
+                    --inbox-hover: var(--sf-hover);
+                    --inbox-accent-soft: var(--sf-orange-soft);
                 }
 
                 .sf-inbox-page {
                     background:
-                        radial-gradient(circle at top right, rgba(249, 115, 22, 0.10), transparent 30%),
-                        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+                        radial-gradient(circle at top right, rgba(255, 106, 0, 0.10), transparent 30%),
+                        radial-gradient(circle at top left, rgba(41, 69, 121, 0.14), transparent 32%),
                         var(--inbox-bg);
                     color: var(--inbox-text);
                 }

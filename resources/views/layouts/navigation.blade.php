@@ -212,168 +212,168 @@
 
 <style>
     .sf-nav {
-        border-color: rgba(255, 255, 255, 0.10) !important;
-        background: rgba(5, 9, 20, 0.95) !important;
-        color: #f8fafc !important;
+        border-color: var(--sf-border) !important;
+        background: rgba(7, 17, 42, 0.95) !important;
+        color: var(--sf-text) !important;
     }
 
     .sf-nav-brand-name {
-        color: #ffffff !important;
+        color: var(--sf-text-strong) !important;
     }
 
     .sf-nav-link-idle,
     .sf-nav-dropdown-button-idle {
-        color: #94a3b8 !important;
+        color: var(--sf-muted) !important;
     }
 
     .sf-nav-link-idle:hover,
     .sf-nav-dropdown-button-idle:hover {
-        background: rgba(255, 255, 255, 0.05) !important;
-        color: #ffffff !important;
+        background: var(--sf-hover) !important;
+        color: var(--sf-text-strong) !important;
     }
 
     .sf-nav-link-active {
-        background: rgba(255, 255, 255, 0.10) !important;
-        color: #ffffff !important;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+        background: var(--sf-orange-soft) !important;
+        color: #ff9a52 !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 106, 0, 0.28);
     }
 
     .sf-nav-menu {
-        background: #020617 !important;
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        background: var(--sf-surface) !important;
+        border-color: var(--sf-border) !important;
     }
 
     .sf-nav-menu-item:hover {
-        background: rgba(255, 255, 255, 0.05) !important;
+        background: var(--sf-hover) !important;
     }
 
     .sf-nav-menu-title {
-        color: #ffffff !important;
+        color: var(--sf-text-strong) !important;
     }
 
     .sf-nav-menu-desc {
-        color: #94a3b8 !important;
+        color: var(--sf-muted) !important;
     }
 
     .sf-nav-user-card,
     .sf-nav-mobile-menu {
-        background: #050914 !important;
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        background: var(--sf-bg-soft) !important;
+        border-color: var(--sf-border) !important;
     }
 
     .sf-nav-mobile-card {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        background: var(--sf-hover) !important;
+        border-color: var(--sf-border) !important;
     }
 
     .sf-nav-mobile-link-idle {
-        background: rgba(255, 255, 255, 0.05) !important;
-        color: #cbd5e1 !important;
+        background: var(--sf-hover) !important;
+        color: var(--sf-muted-strong) !important;
     }
 
     .sf-nav-mobile-link-idle:hover {
-        background: rgba(255, 255, 255, 0.10) !important;
-        color: #ffffff !important;
+        background: var(--sf-selected) !important;
+        color: var(--sf-text-strong) !important;
     }
 
     .sf-nav-muted {
-        color: #94a3b8 !important;
+        color: var(--sf-muted) !important;
     }
 
     .sf-nav-section-label {
-        color: #64748b !important;
+        color: var(--sf-muted) !important;
     }
 
     .sf-nav-burger {
-        background: rgba(255, 255, 255, 0.10) !important;
-        border-color: rgba(255, 255, 255, 0.12) !important;
-        color: #ffffff !important;
+        background: var(--sf-hover) !important;
+        border-color: var(--sf-border-strong) !important;
+        color: var(--sf-text-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav {
         background: rgba(255, 255, 255, 0.96) !important;
-        border-color: #d9e1ec !important;
-        color: #0f172a !important;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06) !important;
+        border-color: var(--sf-border) !important;
+        color: var(--sf-text) !important;
+        box-shadow: var(--sf-shadow-soft) !important;
     }
 
     html[data-theme="light"] .sf-nav-brand-name {
-        color: #0f172a !important;
+        color: var(--sf-text-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-link-idle,
     html[data-theme="light"] .sf-nav-dropdown-button-idle {
-        color: #475569 !important;
+        color: var(--sf-muted-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-link-idle:hover,
     html[data-theme="light"] .sf-nav-dropdown-button-idle:hover {
-        background: #f1f5f9 !important;
-        color: #0f172a !important;
+        background: var(--sf-hover) !important;
+        color: var(--sf-text-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-link-active {
-        background: #e2e8f0 !important;
-        color: #0f172a !important;
-        box-shadow: inset 0 0 0 1px #cbd5e1;
+        background: var(--sf-orange-soft) !important;
+        color: #b94d00 !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 106, 0, 0.25);
     }
 
     html[data-theme="light"] .sf-nav-menu {
         background: #ffffff !important;
-        border-color: #d9e1ec !important;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16) !important;
+        border-color: var(--sf-border) !important;
+        box-shadow: var(--sf-shadow) !important;
     }
 
     html[data-theme="light"] .sf-nav-menu-item:hover {
-        background: #f8fafc !important;
+        background: var(--sf-hover) !important;
     }
 
     html[data-theme="light"] .sf-nav-menu-title {
-        color: #0f172a !important;
+        color: var(--sf-text-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-menu-desc {
-        color: #64748b !important;
+        color: var(--sf-muted) !important;
     }
 
     html[data-theme="light"] .sf-nav-user-card,
     html[data-theme="light"] .sf-nav-mobile-menu {
         background: #ffffff !important;
-        border-color: #d9e1ec !important;
+        border-color: var(--sf-border) !important;
     }
 
     html[data-theme="light"] .sf-nav-mobile-card {
-        background: #f8fafc !important;
-        border-color: #d9e1ec !important;
+        background: var(--sf-surface-soft) !important;
+        border-color: var(--sf-border) !important;
     }
 
     html[data-theme="light"] .sf-nav-mobile-link-idle {
-        background: #f8fafc !important;
-        color: #334155 !important;
+        background: var(--sf-surface-soft) !important;
+        color: var(--sf-muted-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-mobile-link-idle:hover {
-        background: #e2e8f0 !important;
-        color: #0f172a !important;
+        background: var(--sf-selected) !important;
+        color: var(--sf-text-strong) !important;
     }
 
     html[data-theme="light"] .sf-nav-muted {
-        color: #64748b !important;
+        color: var(--sf-muted) !important;
     }
 
     html[data-theme="light"] .sf-nav-section-label {
-        color: #64748b !important;
+        color: var(--sf-muted) !important;
     }
 
     html[data-theme="light"] .sf-nav-burger {
         background: #ffffff !important;
-        border-color: #cbd5e1 !important;
-        color: #0f172a !important;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+        border-color: var(--sf-border-strong) !important;
+        color: var(--sf-text-strong) !important;
+        box-shadow: var(--sf-shadow-soft);
     }
 
     html[data-theme="light"] .sf-nav-divider {
-        border-color: #e2e8f0 !important;
+        border-color: var(--sf-border) !important;
     }
 </style>
 
@@ -440,16 +440,24 @@
                     href="{{ $brandUrl }}"
                     class="flex shrink-0 items-center gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400"
                 >
-                    <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-sm font-extrabold text-white shadow-lg shadow-orange-950/40">
-                        SF
-                    </span>
+                    <img
+                        src="{{ asset('images/brand/sayaraforce-icon.png') }}"
+                        alt="SayaraForce"
+                        width="208"
+                        height="195"
+                        class="h-10 w-10 object-contain sm:hidden"
+                    >
 
-                    <span class="hidden leading-tight sm:block">
-                        <span class="sf-nav-brand-name block text-sm font-extrabold tracking-tight">
-                            SayaraForce
-                        </span>
+                    <img
+                        src="{{ asset('images/brand/sayaraforce-logo-horizontal.png') }}"
+                        alt="SayaraForce"
+                        width="1153"
+                        height="326"
+                        class="hidden h-9 w-auto object-contain sm:block"
+                    >
 
-                        <span class="mt-0.5 inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-orange-500 ring-1 ring-orange-400/20">
+                    <span class="hidden leading-tight md:block">
+                        <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-500 ring-1 ring-orange-400/20">
                             {{ $activePackageName }}
                         </span>
                     </span>

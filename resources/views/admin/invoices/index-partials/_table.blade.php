@@ -88,7 +88,7 @@
 
                         <td data-label="Status">
                             <span class="{{ $statusBadgeClass($statusValue) }}">
-                                {{ ucwords($statusValue) }}
+                                {{ $statusLabel($statusValue) }}
                             </span>
                         </td>
 

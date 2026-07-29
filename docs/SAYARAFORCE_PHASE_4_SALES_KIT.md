@@ -4,22 +4,16 @@ Status: sales kit draft complete under `docs/sales-kit/`.
 
 ## Pricing Status
 
-Draft pricing:
+Approved pricing:
 
-- Starter: AED 499-699/month.
-- Growth: AED 999/month.
-- Pro: AED 1,499/month.
-- WhatsApp/Meta usage and provider charges are separate where applicable.
+- Starter: AED 999/month.
+- Growth: AED 1,499/month.
+- Pro: AED 1,999/month.
+- WhatsApp, Meta and provider usage fees are charged separately where applicable.
 
-FOUNDER ACTION REQUIRED: final pricing approval.
+## Commercial Offer Status
 
-## Founder Offer Status
-
-Draft founder offer:
-
-First 10 UAE garages get 50% off for the first 3 months, setup included.
-
-FOUNDER ACTION REQUIRED: founder offer approval.
+No founder discount or introductory discount is approved for public use.
 
 ## Brochure Status
 

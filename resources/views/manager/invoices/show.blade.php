@@ -63,12 +63,9 @@
         }
     };
 
-    $statusClass = match(strtolower((string) $status)) {
-        'paid' => 'badge-soft-success',
-        'unpaid', 'issued', 'open' => 'badge-soft-warning',
-        'cancelled', 'canceled', 'void' => 'badge-soft-danger',
-        default => 'badge-soft-muted',
-    };
+    $statusPresentation = app(\App\Support\InvoiceStatusPresenter::class)->present($status);
+    $statusClass = $statusPresentation['manager_badge_class'];
+    $statusLabel = $statusPresentation['label'];
 @endphp
 
 <div class="manager-invoice-show-page">
@@ -142,7 +139,7 @@
                     </div>
 
                     <span class="manager-badge {{ $statusClass }}">
-                        {{ ucfirst(str_replace('_', ' ', $status)) }}
+                        {{ $statusLabel }}
                     </span>
                 </div>
 
@@ -638,9 +635,9 @@
     }
 
     .sf-action-button.primary {
-        color: #ffffff;
-        background: #2563eb;
-        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+        color: var(--sf-navy);
+        background: var(--sf-orange);
+        box-shadow: 0 10px 22px rgba(255, 106, 0, 0.22);
     }
 
     .sf-action-button.light {
@@ -673,8 +670,8 @@
     }
 
     .timeline-dot.active {
-        background: #2563eb;
-        box-shadow: 0 0 0 3px #bfdbfe;
+        background: var(--sf-orange);
+        box-shadow: 0 0 0 3px var(--sf-focus-ring);
     }
 
     .timeline-label {

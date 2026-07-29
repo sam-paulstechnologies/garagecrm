@@ -169,7 +169,7 @@
                             </p>
                         </div>
 
-                        <span class="sf-tone-blue inline-flex min-w-8 items-center justify-center rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-black text-blue-300">
+                        <span class="sf-tone-blue inline-flex min-w-8 items-center justify-center rounded-full bg-[#294579]/25 px-2.5 py-1 text-xs font-semibold text-[#D2DAEA]">
                             {{ $count }}
                         </span>
                     </div>
@@ -240,14 +240,14 @@
     </div>
 
     {{-- Revenue Snapshot --}}
-    <div class="rounded-2xl border border-blue-400/30 bg-gradient-to-br from-blue-700 via-blue-600 to-orange-500 p-4 shadow-sm">
+    <div class="rounded-2xl border border-orange-400/30 bg-gradient-to-br from-[#0D1B3D] via-[#294579] to-[#C95200] p-4 shadow-sm">
         <div class="mb-3 flex items-start justify-between gap-3">
             <div>
                 <h2 class="text-base font-extrabold tracking-tight text-white">
                     Revenue Snapshot
                 </h2>
 
-                <p class="mt-1 text-xs font-medium text-blue-100/80">
+                <p class="mt-1 text-xs font-medium text-white/75">
                     Invoice and payment summary
                 </p>
             </div>

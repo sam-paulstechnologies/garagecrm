@@ -1,25 +1,164 @@
+@font-face {
+    font-family: "Inter";
+    src: url("/fonts/inter-latin-400-600.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400 600;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Exo 2";
+    src: url("/fonts/exo-2-latin-600.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
 |--------------------------------------------------------------------------
-| SayaraForce UI System — Dark Premium Theme
+| SayaraForce application brand system
 |--------------------------------------------------------------------------
-| Matches the public home page direction:
-| dark navy, orange CTA, premium cards, strong typography.
+| One token layer shared by authenticated, manager, platform and guest shells.
+| Semantic status colours remain intentionally separate from the brand palette.
 |--------------------------------------------------------------------------
 */
+
+:root {
+    color-scheme: dark;
+
+    --sf-navy: #0d1b3d;
+    --sf-navy-950: #07112a;
+    --sf-navy-900: #0a1632;
+    --sf-navy-800: #12234a;
+    --sf-navy-700: #1a315f;
+    --sf-navy-600: #294579;
+    --sf-orange: #ff6a00;
+    --sf-orange-hover: #e85f00;
+    --sf-orange-soft: rgba(255, 106, 0, 0.14);
+    --sf-white: #ffffff;
+
+    --sf-font-heading: "Exo 2", "Segoe UI", sans-serif;
+    --sf-font-body: "Inter", "Segoe UI", sans-serif;
+
+    --sf-bg: var(--sf-navy-950);
+    --sf-bg-soft: var(--sf-navy-900);
+    --sf-surface: var(--sf-navy);
+    --sf-surface-soft: var(--sf-navy-800);
+    --sf-surface-raised: #152750;
+    --sf-text: #f7f9fc;
+    --sf-text-strong: var(--sf-white);
+    --sf-muted: #aebbd0;
+    --sf-muted-strong: #d2daea;
+    --sf-border: rgba(174, 187, 208, 0.18);
+    --sf-border-strong: rgba(174, 187, 208, 0.32);
+    --sf-hover: rgba(255, 255, 255, 0.07);
+    --sf-selected: var(--sf-orange-soft);
+    --sf-input-bg: #09142e;
+    --sf-input-text: var(--sf-white);
+    --sf-input-placeholder: #75849d;
+    --sf-disabled-bg: rgba(174, 187, 208, 0.08);
+    --sf-disabled-text: #75849d;
+    --sf-focus-ring: rgba(255, 106, 0, 0.42);
+    --sf-shadow: 0 18px 48px rgba(3, 9, 24, 0.28);
+    --sf-shadow-soft: 0 10px 28px rgba(3, 9, 24, 0.2);
+
+    --sf-success: #168a50;
+    --sf-success-soft: rgba(22, 138, 80, 0.14);
+    --sf-danger: #dc3545;
+    --sf-danger-soft: rgba(220, 53, 69, 0.14);
+    --sf-warning: #d88a00;
+    --sf-warning-soft: rgba(216, 138, 0, 0.14);
+    --sf-info: #2f6fb2;
+    --sf-info-soft: rgba(47, 111, 178, 0.14);
+
+    --sf-chart-1: #ff6a00;
+    --sf-chart-2: #294579;
+    --sf-chart-3: #466394;
+    --sf-chart-4: #ff9a52;
+    --sf-chart-5: #8092b2;
+    --sf-chart-6: #d8dfeb;
+}
+
+html[data-theme="light"] {
+    color-scheme: light;
+
+    --sf-bg: #f4f6fa;
+    --sf-bg-soft: #eef2f7;
+    --sf-surface: #ffffff;
+    --sf-surface-soft: #f8f9fc;
+    --sf-surface-raised: #ffffff;
+    --sf-text: #172442;
+    --sf-text-strong: var(--sf-navy);
+    --sf-muted: #5c6b85;
+    --sf-muted-strong: #344563;
+    --sf-border: rgba(13, 27, 61, 0.12);
+    --sf-border-strong: rgba(13, 27, 61, 0.22);
+    --sf-hover: rgba(13, 27, 61, 0.055);
+    --sf-selected: rgba(255, 106, 0, 0.1);
+    --sf-input-bg: #ffffff;
+    --sf-input-text: var(--sf-navy);
+    --sf-input-placeholder: #7b889f;
+    --sf-disabled-bg: rgba(13, 27, 61, 0.06);
+    --sf-disabled-text: #7b889f;
+    --sf-focus-ring: rgba(255, 106, 0, 0.34);
+    --sf-shadow: 0 18px 48px rgba(13, 27, 61, 0.1);
+    --sf-shadow-soft: 0 10px 28px rgba(13, 27, 61, 0.075);
+}
 
 @layer base {
     html {
         scroll-behavior: smooth;
+        font-family: var(--sf-font-body);
     }
 
     body {
-        font-family: Figtree, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #050914;
-        color: #f8fafc;
+        min-width: 320px;
+        font-family: var(--sf-font-body);
+        font-weight: 400;
+        background: var(--sf-bg);
+        color: var(--sf-text);
+        text-rendering: optimizeLegibility;
+    }
+
+    h1,
+    h2,
+    h3,
+    .sf-page-title,
+    .sf-section-title,
+    .sf-heading {
+        font-family: var(--sf-font-heading);
+        font-weight: 600;
+    }
+
+    h4,
+    h5,
+    h6,
+    button,
+    input,
+    select,
+    textarea {
+        font-family: var(--sf-font-body);
+    }
+
+    button,
+    [type="button"],
+    [type="submit"],
+    [role="button"] {
+        font-weight: 600;
+    }
+
+    :focus-visible {
+        outline: 3px solid var(--sf-focus-ring);
+        outline-offset: 2px;
+    }
+
+    ::selection {
+        background: rgba(255, 106, 0, 0.28);
+        color: var(--sf-text-strong);
     }
 
     [x-cloak] {
@@ -28,200 +167,281 @@
 }
 
 @layer components {
-    /*
-    |--------------------------------------------------------------------------
-    | Page Containers
-    |--------------------------------------------------------------------------
-    */
-
     .sf-page {
-        @apply mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8;
+        @apply mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8;
+        color: var(--sf-text);
     }
 
     .sf-page-wide {
-        @apply mx-auto w-full px-4 py-8 sm:px-6 lg:px-8;
+        @apply mx-auto w-full px-4 py-7 sm:px-6 lg:px-8;
+        color: var(--sf-text);
     }
 
     .sf-page-header {
-        @apply mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between;
+        @apply mb-7 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between;
     }
 
     .sf-page-title {
-        @apply text-3xl font-extrabold tracking-tight text-white sm:text-4xl;
+        @apply text-3xl tracking-tight sm:text-4xl;
+        color: var(--sf-text-strong);
     }
 
     .sf-page-subtitle {
-        @apply mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-400;
+        @apply mt-2 max-w-3xl text-sm font-medium leading-6;
+        color: var(--sf-muted);
     }
 
     .sf-section-title {
-        @apply text-base font-extrabold text-white;
+        @apply text-lg tracking-tight;
+        color: var(--sf-text-strong);
     }
 
     .sf-section-subtitle {
-        @apply mt-1 text-xs font-medium leading-5 text-slate-400;
+        @apply mt-1 text-xs font-medium leading-5;
+        color: var(--sf-muted);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Cards
-    |--------------------------------------------------------------------------
-    */
-
-    .sf-card {
-        @apply rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20 backdrop-blur;
+    .sf-card,
+    .sf-stat-card,
+    .sf-table-wrap,
+    .sf-dark-surface {
+        border: 1px solid var(--sf-border);
+        background: var(--sf-surface);
+        color: var(--sf-text);
+        box-shadow: var(--sf-shadow-soft);
     }
 
-    .sf-card-hover {
-        @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-orange-400/30 hover:shadow-2xl hover:shadow-orange-950/30;
+    .sf-card,
+    .sf-table-wrap,
+    .sf-dark-surface {
+        @apply rounded-3xl;
+    }
+
+    .sf-stat-card {
+        @apply rounded-3xl p-5 transition-all duration-200;
+    }
+
+    .sf-card-hover,
+    .sf-stat-card {
+        @apply transition-all duration-200 hover:-translate-y-0.5;
+    }
+
+    .sf-card-hover:hover,
+    .sf-stat-card:hover {
+        border-color: rgba(255, 106, 0, 0.34);
+        box-shadow: var(--sf-shadow);
     }
 
     .sf-card-body {
         @apply p-5 sm:p-6;
     }
 
+    .sf-card-header,
+    .sf-card-footer {
+        @apply px-5 py-4 sm:px-6;
+        border-color: var(--sf-border);
+    }
+
     .sf-card-header {
-        @apply border-b border-white/10 px-5 py-4 sm:px-6;
+        border-bottom-width: 1px;
     }
 
     .sf-card-footer {
-        @apply border-t border-white/10 px-5 py-4 sm:px-6;
-    }
-
-    .sf-stat-card {
-        @apply rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-black/20 backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-orange-400/30 hover:shadow-2xl hover:shadow-orange-950/30;
+        border-top-width: 1px;
     }
 
     .sf-stat-label {
-        @apply text-sm font-bold text-slate-400;
+        @apply text-sm font-semibold;
+        color: var(--sf-muted);
     }
 
     .sf-stat-value {
-        @apply mt-2 text-3xl font-extrabold tracking-tight text-white;
+        @apply mt-2 text-3xl tracking-tight;
+        font-family: var(--sf-font-heading);
+        font-weight: 600;
+        color: var(--sf-text-strong);
     }
 
     .sf-stat-note {
-        @apply mt-1 text-xs font-medium text-slate-500;
+        @apply mt-1 text-xs font-medium;
+        color: var(--sf-muted);
     }
 
-    .sf-mini-card {
-        @apply rounded-2xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-orange-400/30 hover:bg-slate-900;
+    .sf-mini-card,
+    .sf-dark-tile,
+    .sf-empty {
+        border: 1px solid var(--sf-border);
+        background: var(--sf-surface-soft);
+        color: var(--sf-muted);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Buttons / Links
-    |--------------------------------------------------------------------------
-    */
-
-    .sf-btn {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950;
+    .sf-mini-card,
+    .sf-dark-tile {
+        @apply rounded-2xl p-4 transition;
     }
 
-    .sf-btn-primary {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-orange-950/30 transition hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-slate-950;
+    .sf-mini-card:hover,
+    .sf-dark-tile:hover {
+        border-color: rgba(255, 106, 0, 0.32);
+        background: var(--sf-hover);
     }
 
-    .sf-btn-secondary {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-extrabold text-slate-100 transition hover:border-orange-400/40 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-slate-950;
+    .sf-btn,
+    .sf-btn-primary,
+    .sf-btn-secondary,
+    .sf-btn-orange,
+    .sf-btn-dark,
+    .sf-btn-danger,
+    .sf-btn-soft-blue,
+    .sf-btn-soft-orange {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm transition;
+        min-height: 40px;
+        font-family: var(--sf-font-body);
+        font-weight: 600;
     }
 
+    .sf-btn-primary,
     .sf-btn-orange {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-orange-950/30 transition hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-slate-950;
+        background: var(--sf-orange);
+        color: var(--sf-white);
+        box-shadow: 0 10px 24px rgba(255, 106, 0, 0.22);
     }
 
+    .sf-btn-primary:hover,
+    .sf-btn-orange:hover {
+        background: var(--sf-orange-hover);
+    }
+
+    .sf-btn-secondary,
     .sf-btn-dark {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-950;
+        border: 1px solid var(--sf-border-strong);
+        background: var(--sf-surface-soft);
+        color: var(--sf-text-strong);
+    }
+
+    .sf-btn-secondary:hover,
+    .sf-btn-dark:hover {
+        border-color: rgba(255, 106, 0, 0.42);
+        background: var(--sf-hover);
     }
 
     .sf-btn-danger {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-red-950/30 transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-950;
+        background: var(--sf-danger);
+        color: var(--sf-white);
     }
 
     .sf-btn-soft-blue {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-sm font-extrabold text-blue-200 transition hover:border-blue-400/40 hover:bg-blue-500/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-slate-950;
+        border: 1px solid var(--sf-border-strong);
+        background: rgba(41, 69, 121, 0.16);
+        color: var(--sf-muted-strong);
     }
 
     .sf-btn-soft-orange {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl border border-orange-400/20 bg-orange-500/10 px-4 py-2 text-sm font-extrabold text-orange-200 transition hover:border-orange-400/40 hover:bg-orange-500/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-slate-950;
+        border: 1px solid rgba(255, 106, 0, 0.3);
+        background: var(--sf-orange-soft);
+        color: #ff9a52;
+    }
+
+    html[data-theme="light"] .sf-btn-soft-orange {
+        color: #b94d00;
     }
 
     .sf-link {
-        @apply text-sm font-extrabold text-orange-400 transition hover:text-orange-300 hover:underline;
+        @apply text-sm transition hover:underline;
+        font-weight: 600;
+        color: var(--sf-orange);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Badges
-    |--------------------------------------------------------------------------
-    */
+    .sf-badge,
+    .sf-badge-blue,
+    .sf-badge-orange,
+    .sf-badge-green,
+    .sf-badge-red,
+    .sf-badge-yellow,
+    .sf-badge-slate {
+        @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs ring-1;
+        font-weight: 600;
+    }
 
-    .sf-badge {
-        @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-extrabold ring-1;
+    .sf-badge,
+    .sf-badge-slate {
+        background: var(--sf-hover);
+        color: var(--sf-muted-strong);
+        --tw-ring-color: var(--sf-border);
     }
 
     .sf-badge-blue {
-        @apply inline-flex items-center rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-extrabold text-blue-200 ring-1 ring-blue-400/20;
+        background: var(--sf-info-soft);
+        color: #82b6ea;
+        --tw-ring-color: rgba(47, 111, 178, 0.3);
     }
 
     .sf-badge-orange {
-        @apply inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-extrabold text-orange-300 ring-1 ring-orange-400/30;
+        background: var(--sf-orange-soft);
+        color: #ff9a52;
+        --tw-ring-color: rgba(255, 106, 0, 0.32);
     }
 
     .sf-badge-green {
-        @apply inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-extrabold text-green-300 ring-1 ring-green-400/20;
+        background: var(--sf-success-soft);
+        color: #66d59b;
+        --tw-ring-color: rgba(22, 138, 80, 0.3);
     }
 
     .sf-badge-red {
-        @apply inline-flex items-center rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-extrabold text-red-300 ring-1 ring-red-400/20;
+        background: var(--sf-danger-soft);
+        color: #ff8f99;
+        --tw-ring-color: rgba(220, 53, 69, 0.3);
     }
 
     .sf-badge-yellow {
-        @apply inline-flex items-center rounded-full bg-yellow-500/10 px-2.5 py-1 text-xs font-extrabold text-yellow-300 ring-1 ring-yellow-400/20;
+        background: var(--sf-warning-soft);
+        color: #f4c568;
+        --tw-ring-color: rgba(216, 138, 0, 0.3);
     }
 
-    .sf-badge-slate {
-        @apply inline-flex items-center rounded-full bg-white/5 px-2.5 py-1 text-xs font-extrabold text-slate-300 ring-1 ring-white/10;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Forms
-    |--------------------------------------------------------------------------
-    */
+    html[data-theme="light"] .sf-badge-blue { color: #245a91; }
+    html[data-theme="light"] .sf-badge-orange { color: #b94d00; }
+    html[data-theme="light"] .sf-badge-green { color: #11683e; }
+    html[data-theme="light"] .sf-badge-red { color: #a72532; }
+    html[data-theme="light"] .sf-badge-yellow { color: #805100; }
 
     .sf-label {
-        @apply mb-1 block text-sm font-extrabold text-slate-200;
+        @apply mb-1 block text-sm;
+        font-weight: 600;
+        color: var(--sf-muted-strong);
     }
 
-    .sf-input {
-        @apply block w-full rounded-xl border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white shadow-sm transition placeholder:text-slate-500 focus:border-orange-400 focus:ring-orange-400;
-    }
-
-    .sf-select {
-        @apply block w-full rounded-xl border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white shadow-sm transition focus:border-orange-400 focus:ring-orange-400;
-    }
-
+    .sf-input,
+    .sf-select,
     .sf-textarea {
-        @apply block w-full rounded-xl border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white shadow-sm transition placeholder:text-slate-500 focus:border-orange-400 focus:ring-orange-400;
+        @apply block w-full rounded-xl px-3 py-2 text-sm shadow-sm transition;
+        border: 1px solid var(--sf-border-strong);
+        background: var(--sf-input-bg);
+        color: var(--sf-input-text);
+    }
+
+    .sf-input::placeholder,
+    .sf-textarea::placeholder {
+        color: var(--sf-disabled-text);
+    }
+
+    .sf-input:focus,
+    .sf-select:focus,
+    .sf-textarea:focus {
+        border-color: var(--sf-orange);
+        box-shadow: 0 0 0 3px var(--sf-focus-ring);
     }
 
     .sf-error {
-        @apply mt-1 text-sm font-bold text-red-300;
+        @apply mt-1 text-sm;
+        font-weight: 600;
+        color: #ff8f99;
     }
 
     .sf-help {
-        @apply mt-1 text-xs font-medium text-slate-500;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Tables
-    |--------------------------------------------------------------------------
-    */
-
-    .sf-table-wrap {
-        @apply overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20 backdrop-blur;
+        @apply mt-1 text-xs font-medium;
+        color: var(--sf-muted);
     }
 
     .sf-table-scroll {
@@ -229,99 +449,402 @@
     }
 
     .sf-table {
-        @apply min-w-full divide-y divide-white/10;
+        @apply min-w-full;
     }
 
     .sf-table thead {
-        @apply bg-white/5;
+        background: var(--sf-surface-soft);
     }
 
     .sf-table thead th {
-        @apply px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-slate-400;
+        @apply px-4 py-3 text-left text-xs uppercase tracking-wide;
+        border-color: var(--sf-border);
+        color: var(--sf-muted);
+        font-weight: 600;
     }
 
     .sf-table tbody {
-        @apply divide-y divide-white/10 bg-slate-900/70;
+        background: var(--sf-surface);
     }
 
     .sf-table tbody td {
-        @apply px-4 py-3 text-sm text-slate-300;
+        @apply px-4 py-3 text-sm;
+        border-color: var(--sf-border);
+        color: var(--sf-text);
     }
 
     .sf-table tbody tr {
-        @apply transition hover:bg-white/5;
+        @apply transition;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Alerts / Empty States
-    |--------------------------------------------------------------------------
-    */
+    .sf-table tbody tr:hover {
+        background: var(--sf-hover);
+    }
 
-    .sf-alert {
-        @apply rounded-2xl border px-4 py-3 text-sm font-bold;
+    .sf-alert,
+    .sf-alert-info,
+    .sf-alert-warning,
+    .sf-alert-danger,
+    .sf-alert-success {
+        @apply rounded-2xl border px-4 py-3 text-sm;
+        font-weight: 600;
     }
 
     .sf-alert-info {
-        @apply rounded-2xl border border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-200;
+        border-color: rgba(47, 111, 178, 0.32);
+        background: var(--sf-info-soft);
+        color: #82b6ea;
     }
 
     .sf-alert-warning {
-        @apply rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-4 py-3 text-sm font-bold text-yellow-200;
+        border-color: rgba(216, 138, 0, 0.32);
+        background: var(--sf-warning-soft);
+        color: #f4c568;
     }
 
     .sf-alert-danger {
-        @apply rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200;
+        border-color: rgba(220, 53, 69, 0.32);
+        background: var(--sf-danger-soft);
+        color: #ff8f99;
     }
 
     .sf-alert-success {
-        @apply rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm font-bold text-green-200;
+        border-color: rgba(22, 138, 80, 0.32);
+        background: var(--sf-success-soft);
+        color: #66d59b;
     }
+
+    html[data-theme="light"] .sf-alert-info { color: #245a91; }
+    html[data-theme="light"] .sf-alert-warning { color: #805100; }
+    html[data-theme="light"] .sf-alert-danger { color: #a72532; }
+    html[data-theme="light"] .sf-alert-success { color: #11683e; }
 
     .sf-empty {
-        @apply rounded-2xl border border-dashed border-white/10 bg-slate-950/50 px-5 py-8 text-center text-sm font-medium text-slate-500;
+        @apply rounded-2xl border-dashed px-5 py-8 text-center text-sm font-medium;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Utility Blocks
-    |--------------------------------------------------------------------------
-    */
 
     .sf-gradient-panel {
-        @apply rounded-3xl border border-orange-400/20 bg-gradient-to-br from-blue-700 via-blue-800 to-orange-500 p-6 text-white shadow-2xl shadow-orange-950/30;
+        @apply rounded-3xl p-6 text-white;
+        border: 1px solid rgba(255, 106, 0, 0.28);
+        background: linear-gradient(135deg, var(--sf-navy) 0%, var(--sf-navy-700) 58%, #c95505 100%);
+        box-shadow: var(--sf-shadow);
     }
 
-    .sf-soft-panel {
-        @apply rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 p-6 shadow-xl shadow-black/20;
-    }
-
+    .sf-soft-panel,
     .sf-hero-panel {
-        @apply rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-orange-950/40 p-6 shadow-2xl shadow-black/30;
+        @apply rounded-3xl p-6;
+        border: 1px solid var(--sf-border);
+        background: linear-gradient(135deg, var(--sf-surface) 0%, var(--sf-surface-soft) 100%);
+        box-shadow: var(--sf-shadow-soft);
     }
 
     .sf-divider {
-        @apply border-t border-white/10;
+        border-color: var(--sf-border);
     }
 
     .sf-kicker {
-        @apply inline-flex items-center rounded-full bg-orange-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-300 ring-1 ring-orange-400/20;
+        @apply inline-flex items-center rounded-full px-3 py-1 text-xs uppercase tracking-wide ring-1;
+        background: var(--sf-orange-soft);
+        color: #ff9a52;
+        font-weight: 600;
+        --tw-ring-color: rgba(255, 106, 0, 0.28);
     }
 
-    .sf-dark-surface {
-        @apply rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20;
+    .sf-brand-logo {
+        display: block;
+        width: auto;
+        max-width: 100%;
+        object-fit: contain;
     }
 
-    .sf-dark-tile {
-        @apply rounded-2xl border border-white/10 bg-slate-950/50 p-4 transition hover:border-orange-400/30 hover:bg-slate-900;
+    .sf-brand-logo--horizontal {
+        height: 38px;
+    }
+
+    .sf-brand-logo--compact {
+        height: 34px;
+    }
+
+    .sf-brand-logo--icon {
+        width: 38px;
+        height: 38px;
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| Animations
+| Cross-layout theme bridge
+|--------------------------------------------------------------------------
+| These rules deliberately target app shells so the public brand pass remains
+| independent while legacy Blade and Bootstrap components inherit one system.
 |--------------------------------------------------------------------------
 */
+
+.sf-theme-body,
+.sf-app-shell,
+.manager-theme-body,
+.manager-app-shell,
+.sf-auth-shell,
+.sf-legacy-shell {
+    font-family: var(--sf-font-body) !important;
+    color: var(--sf-text);
+}
+
+.sf-theme-body,
+.sf-app-shell,
+.manager-theme-body,
+.manager-app-shell,
+.sf-legacy-shell {
+    background-color: var(--sf-bg) !important;
+}
+
+.sf-theme-body h1,
+.sf-theme-body h2,
+.sf-theme-body h3,
+.manager-theme-body h1,
+.manager-theme-body h2,
+.manager-theme-body h3,
+.sf-auth-shell h1,
+.sf-auth-shell h2,
+.sf-auth-shell h3,
+.sf-legacy-shell h1,
+.sf-legacy-shell h2,
+.sf-legacy-shell h3 {
+    font-family: var(--sf-font-heading) !important;
+    font-weight: 600 !important;
+}
+
+.sf-theme-body .font-bold,
+.sf-theme-body .font-extrabold,
+.sf-theme-body .font-black,
+.manager-theme-body .font-bold,
+.manager-theme-body .font-extrabold,
+.manager-theme-body .font-black,
+.sf-auth-shell .font-bold,
+.sf-auth-shell .font-extrabold,
+.sf-auth-shell .font-black,
+.sf-legacy-shell .font-bold,
+.sf-legacy-shell .font-extrabold,
+.sf-legacy-shell .font-black,
+.manager-theme-body .fw-bold,
+.manager-theme-body .fw-bolder,
+.manager-theme-body .fw-black,
+.sf-theme-body .fw-bold,
+.sf-theme-body .fw-bolder,
+.sf-theme-body .fw-black,
+.sf-legacy-shell .fw-bold,
+.sf-legacy-shell .fw-bolder,
+.sf-legacy-shell .fw-black {
+    font-weight: 600 !important;
+}
+
+.sf-theme-body [style*="font-weight: 800"],
+.sf-theme-body [style*="font-weight:800"],
+.sf-theme-body [style*="font-weight: 900"],
+.sf-theme-body [style*="font-weight:900"],
+.sf-theme-body [style*="font-weight: 950"],
+.sf-theme-body [style*="font-weight:950"],
+.manager-theme-body [style*="font-weight: 800"],
+.manager-theme-body [style*="font-weight:800"],
+.manager-theme-body [style*="font-weight: 900"],
+.manager-theme-body [style*="font-weight:900"],
+.manager-theme-body [style*="font-weight: 950"],
+.manager-theme-body [style*="font-weight:950"],
+.sf-auth-shell [style*="font-weight: 800"],
+.sf-auth-shell [style*="font-weight:800"],
+.sf-auth-shell [style*="font-weight: 900"],
+.sf-auth-shell [style*="font-weight:900"],
+.sf-auth-shell [style*="font-weight: 950"],
+.sf-auth-shell [style*="font-weight:950"],
+.sf-legacy-shell [style*="font-weight: 800"],
+.sf-legacy-shell [style*="font-weight:800"],
+.sf-legacy-shell [style*="font-weight: 900"],
+.sf-legacy-shell [style*="font-weight:900"],
+.sf-legacy-shell [style*="font-weight: 950"],
+.sf-legacy-shell [style*="font-weight:950"] {
+    font-weight: 600 !important;
+}
+
+.sf-theme-body input,
+.sf-theme-body select,
+.sf-theme-body textarea,
+.manager-theme-body input,
+.manager-theme-body select,
+.manager-theme-body textarea,
+.sf-auth-shell input,
+.sf-auth-shell select,
+.sf-auth-shell textarea,
+.sf-legacy-shell input,
+.sf-legacy-shell select,
+.sf-legacy-shell textarea {
+    font-family: var(--sf-font-body) !important;
+}
+
+.sf-theme-body input,
+.sf-theme-body select,
+.sf-theme-body textarea,
+.manager-theme-body input,
+.manager-theme-body select,
+.manager-theme-body textarea,
+.sf-legacy-shell input,
+.sf-legacy-shell select,
+.sf-legacy-shell textarea {
+    border-color: var(--sf-border-strong) !important;
+    background-color: var(--sf-input-bg) !important;
+    color: var(--sf-input-text) !important;
+}
+
+.sf-theme-body input::placeholder,
+.sf-theme-body textarea::placeholder,
+.manager-theme-body input::placeholder,
+.manager-theme-body textarea::placeholder,
+.sf-legacy-shell input::placeholder,
+.sf-legacy-shell textarea::placeholder {
+    color: var(--sf-input-placeholder) !important;
+}
+
+.sf-theme-body input:focus,
+.sf-theme-body select:focus,
+.sf-theme-body textarea:focus,
+.manager-theme-body input:focus,
+.manager-theme-body select:focus,
+.manager-theme-body textarea:focus,
+.sf-auth-shell input:focus,
+.sf-auth-shell select:focus,
+.sf-auth-shell textarea:focus,
+.sf-legacy-shell input:focus,
+.sf-legacy-shell select:focus,
+.sf-legacy-shell textarea:focus {
+    border-color: var(--sf-orange) !important;
+    box-shadow: 0 0 0 3px var(--sf-focus-ring) !important;
+    outline: none !important;
+}
+
+.sf-theme-body .sf-panel,
+.sf-theme-body .sf-dashboard-card,
+.manager-theme-body .sf-panel,
+.manager-theme-body .card,
+.sf-legacy-shell .card {
+    border-color: var(--sf-border) !important;
+    background-color: var(--sf-surface) !important;
+    color: var(--sf-text) !important;
+    box-shadow: var(--sf-shadow-soft);
+}
+
+.sf-theme-body .sf-panel-header,
+.manager-theme-body .card-header,
+.manager-theme-body .card-footer,
+.sf-legacy-shell .card-header,
+.sf-legacy-shell .card-footer {
+    border-color: var(--sf-border) !important;
+    background: var(--sf-surface-soft) !important;
+    color: var(--sf-text-strong) !important;
+}
+
+.sf-theme-body .sf-tone-blue,
+.manager-theme-body .sf-tone-blue {
+    border-color: rgba(41, 69, 121, 0.34) !important;
+    background-color: rgba(41, 69, 121, 0.18) !important;
+    color: var(--sf-muted-strong) !important;
+}
+
+.sf-theme-body .sf-tone-orange,
+.manager-theme-body .sf-tone-orange {
+    border-color: rgba(255, 106, 0, 0.35) !important;
+    background-color: var(--sf-orange-soft) !important;
+    color: #ff9a52 !important;
+}
+
+html[data-theme="light"] .sf-theme-body .sf-tone-blue,
+html[data-theme="light"] .manager-theme-body .sf-tone-blue {
+    color: var(--sf-navy-700) !important;
+}
+
+html[data-theme="light"] .sf-theme-body .sf-tone-orange,
+html[data-theme="light"] .manager-theme-body .sf-tone-orange {
+    color: #b94d00 !important;
+}
+
+.sf-theme-body [disabled],
+.manager-theme-body [disabled],
+.sf-auth-shell [disabled],
+.sf-legacy-shell [disabled] {
+    cursor: not-allowed;
+    background-color: var(--sf-disabled-bg);
+    color: var(--sf-disabled-text);
+}
+
+/* Legacy Tailwind action utilities are visually mapped to the brand system. */
+.sf-theme-body .bg-indigo-600,
+.sf-theme-body .bg-purple-500 {
+    background-color: var(--sf-orange) !important;
+    color: var(--sf-navy) !important;
+}
+
+.sf-theme-body .hover\:bg-indigo-700:hover,
+.sf-theme-body .hover\:bg-purple-600:hover {
+    background-color: var(--sf-orange-hover) !important;
+    color: var(--sf-navy) !important;
+}
+
+.sf-theme-body .focus\:ring-indigo-500:focus,
+.sf-theme-body .focus\:ring-purple-400:focus {
+    --tw-ring-color: var(--sf-focus-ring) !important;
+}
+
+@media (max-width: 640px) {
+    .sf-theme-body .sf-dashboard-filter-summary-pill,
+    .sf-theme-body .sf-leads-filter-pill {
+        min-height: 36px;
+        align-items: center;
+    }
+
+    .sf-theme-body .sf-dashboard-card a,
+    .sf-theme-body .sf-leads-action-pill {
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .sf-auth-shell a,
+    .sf-auth-shell label {
+        min-height: 32px;
+        align-items: center;
+    }
+
+    .sf-auth-shell a {
+        display: inline-flex;
+    }
+}
+
+@media (max-width: 640px) {
+    .sf-page,
+    .sf-page-wide {
+        padding-top: 1.25rem;
+        padding-bottom: 1.5rem;
+    }
+
+    .sf-page-title {
+        font-size: clamp(1.75rem, 8vw, 2.2rem);
+        line-height: 1.12;
+        text-wrap: balance;
+    }
+
+    .sf-brand-logo--horizontal {
+        height: 32px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
 
 @keyframes fade-in {
     from {
@@ -339,14 +862,12 @@
 }
 
 @keyframes pulse-soft {
-    0% {
+    0%,
+    100% {
         background-color: rgba(255, 255, 255, 0);
     }
     50% {
         background-color: rgba(255, 255, 255, 0.06);
-    }
-    100% {
-        background-color: rgba(255, 255, 255, 0);
     }
 }
 

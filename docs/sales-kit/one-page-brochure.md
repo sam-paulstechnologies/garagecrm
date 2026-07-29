@@ -33,8 +33,12 @@ Customer enquiry -> Lead -> Conversation -> Opportunity -> Booking -> Job -> Inv
 - Track job and invoice progress.
 - Identify old customers who should come back.
 
-## Founder Offer
+## Pricing
 
-First 10 UAE garages get 50% off for the first 3 months, setup included.
+- Starter: AED 999/month.
+- Growth: AED 1,499/month (Recommended).
+- Pro: AED 1,999/month.
+
+WhatsApp, Meta and provider usage fees are charged separately where applicable.
 
 FOUNDER ACTION REQUIRED: final brochure approval before sending to garages.

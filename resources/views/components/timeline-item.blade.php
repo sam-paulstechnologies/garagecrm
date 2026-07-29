@@ -104,7 +104,7 @@
 .sl-ti-text {
     margin-top: 6px;
     white-space: pre-wrap;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial;
+    font-family: var(--sf-font-body);
 }
 
 .sl-collapse {

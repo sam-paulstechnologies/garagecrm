@@ -32,13 +32,13 @@ Selected plan: [Starter/Growth/Pro]
 
 Monthly fee: AED [amount]
 
-WhatsApp/Meta/provider usage: billed separately where applicable.
+Approved plan pricing:
 
-## Founder Offer
+- Starter: AED 999/month.
+- Growth: AED 1,499/month.
+- Pro: AED 1,999/month.
 
-If approved:
-
-50% off for the first 3 months for selected first 10 UAE garages, setup included.
+WhatsApp, Meta and provider usage fees are charged separately where applicable.
 
 ## Timeline
 

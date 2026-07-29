@@ -13,7 +13,7 @@ class PlanSeeder extends Seeder
             ["name" => "Starter"],
             [
                 "name" => "Starter",
-                "price" => 499,
+                "price" => 999,
                 "currency" => "AED",
                 "whatsapp_limit" => 500,
                 "user_limit" => 5,
@@ -28,7 +28,7 @@ class PlanSeeder extends Seeder
             ["name" => "Growth"],
             [
                 "name" => "Growth",
-                "price" => 999,
+                "price" => 1499,
                 "currency" => "AED",
                 "whatsapp_limit" => 2000,
                 "user_limit" => 15,

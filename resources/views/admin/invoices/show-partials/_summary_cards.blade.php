@@ -19,7 +19,7 @@
         </div>
 
         <div class="mt-2 text-2xl font-extrabold text-white">
-            {{ ucwords($statusValue) }}
+            {{ $statusLabel }}
         </div>
 
         <div class="sf-stat-note">

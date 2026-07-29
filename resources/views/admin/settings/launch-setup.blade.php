@@ -90,7 +90,7 @@
 
     {{-- Top Readiness Strip --}}
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5 shadow-xl shadow-black/20 lg:col-span-2">
+        <div class="rounded-3xl border border-[#466394]/35 bg-[#294579]/20 p-5 shadow-xl shadow-black/20 lg:col-span-2">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-extrabold text-white">Launch Readiness</h2>
@@ -99,13 +99,13 @@
                     </p>
                 </div>
 
-                <div class="text-4xl font-black text-blue-300">
+                <div class="text-4xl font-black text-[#D2DAEA]">
                     {{ $completion }}%
                 </div>
             </div>
 
             <div class="mt-5 h-3 overflow-hidden rounded-full bg-slate-950/70 ring-1 ring-white/10">
-                <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-orange-500"
+                <div class="h-full rounded-full bg-gradient-to-r from-[#294579] to-[#FF6A00]"
                      style="width: {{ $completion }}%">
                 </div>
             </div>
@@ -452,12 +452,12 @@
                     Launch Readiness
                 </h2>
 
-                <div class="mt-4 text-5xl font-black text-blue-300">
+                <div class="mt-4 text-5xl font-black text-[#D2DAEA]">
                     {{ $completion }}%
                 </div>
 
                 <div class="mt-5 h-3 overflow-hidden rounded-full bg-slate-950/70 ring-1 ring-white/10">
-                    <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-orange-500"
+                    <div class="h-full rounded-full bg-gradient-to-r from-[#294579] to-[#FF6A00]"
                          style="width: {{ $completion }}%">
                     </div>
                 </div>

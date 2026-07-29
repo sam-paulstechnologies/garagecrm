@@ -25,8 +25,8 @@ Every item below needs founder approval or manual test before live outreach/camp
 
 ## Business Approval
 
-- FOUNDER ACTION REQUIRED: final pricing.
-- FOUNDER ACTION REQUIRED: founder offer.
+- Use the approved Starter, Growth and Pro pricing in all commercial materials.
+- Do not publish introductory or founder discounts without separate approval.
 - FOUNDER ACTION REQUIRED: what to show in the demo.
 - FOUNDER ACTION REQUIRED: what not to show in the demo.
 - FOUNDER ACTION REQUIRED: first pilot garage.

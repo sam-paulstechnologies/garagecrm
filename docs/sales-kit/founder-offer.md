@@ -1,10 +1,14 @@
-# SayaraForce Founder Offer
+# SayaraForce Commercial Terms
 
-## Offer
+## Approved Pricing
 
-First 10 UAE garages get 50% off for the first 3 months, setup included.
+- Starter: AED 999/month.
+- Growth: AED 1,499/month.
+- Pro: AED 1,999/month.
 
-## Why This Offer Exists
+No founder discount or introductory discount is approved for public use.
+
+## Positioning
 
 SayaraForce is launching with selected UAE garages that want to recover missed leads, improve WhatsApp follow-up, and build repeat service revenue.
 
@@ -24,4 +28,4 @@ SayaraForce is launching with selected UAE garages that want to recover missed l
 - Custom integrations.
 - Large historical data migration.
 
-FOUNDER ACTION REQUIRED: approve founder offer before public use.
+WhatsApp, Meta and provider usage fees are charged separately where applicable.

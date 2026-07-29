@@ -862,10 +862,10 @@
     }
 
     .action-primary {
-        color: #ffffff;
-        background: #2563eb;
-        border-color: #2563eb;
-        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+        color: var(--sf-navy);
+        background: var(--sf-orange);
+        border-color: var(--sf-orange);
+        box-shadow: 0 10px 22px rgba(255, 106, 0, 0.22);
     }
 
     .action-primary:hover {
@@ -982,8 +982,8 @@
 
     .form-control:focus,
     .form-select:focus {
-        border-color: #2563eb;
-        box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.15);
+        border-color: var(--sf-orange);
+        box-shadow: 0 0 0 0.2rem var(--sf-focus-ring);
     }
 
     .timeline-list {
@@ -1011,8 +1011,8 @@
     }
 
     .timeline-dot.active {
-        background: #2563eb;
-        box-shadow: 0 0 0 3px #bfdbfe;
+        background: var(--sf-orange);
+        box-shadow: 0 0 0 3px var(--sf-focus-ring);
     }
 
     .timeline-label {

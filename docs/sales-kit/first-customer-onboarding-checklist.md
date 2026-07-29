@@ -4,7 +4,7 @@
 
 - Confirm garage name and contact person.
 - Confirm selected plan.
-- Confirm founder offer eligibility.
+- Confirm the selected plan uses approved pricing.
 - Confirm payment terms.
 - Confirm WhatsApp/WABA approach.
 - Confirm first pilot workflow.

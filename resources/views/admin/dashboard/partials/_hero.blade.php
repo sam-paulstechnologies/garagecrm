@@ -6,7 +6,7 @@
 
 <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-sm">
     <div class="min-w-0">
-        <h1 class="text-3xl font-extrabold tracking-tight text-white">
+        <h1 class="text-3xl font-semibold tracking-tight text-white">
             Admin Dashboard
         </h1>
 

@@ -17,7 +17,7 @@ const sampleValues = {
   name: 'John Doe',
   date: '2025-10-12',
   time: '10:00 AM',
-  garage_name: 'GarageCRM',
+        garage_name: 'SayaraForce',
   booking_ref: 'ABC123',
   amount: '250.00',
   otp: '493216',
@@ -265,7 +265,7 @@ export default function WhatsAppTemplateEditor({ initial = {}, onSave, onPreview
         <div className="flex gap-2">
           <button
             type="button"
-            className="px-4 py-2 rounded bg-indigo-600 text-white"
+            className="rounded-xl bg-[#FF6A00] px-4 py-2 font-semibold text-white hover:bg-[#E85F00]"
             onClick={handleSave}
           >
             Save

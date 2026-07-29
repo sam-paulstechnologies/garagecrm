@@ -24,7 +24,7 @@
 
             <div class="sf-invoice-field-card">
                 <div class="sf-invoice-field-label">Payment Status</div>
-                <div class="sf-invoice-field-value">{{ $statusLabels[$statusValue] ?? ucwords($statusValue) }}</div>
+                <div class="sf-invoice-field-value">{{ $statusLabel }}</div>
             </div>
         </div>
 

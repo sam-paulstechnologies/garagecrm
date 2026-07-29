@@ -4,57 +4,57 @@
     <div class="sf-page mx-auto w-full max-w-[1680px] px-4 sm:px-6 lg:px-8">
         <style>
             .sa-card {
-                border: 1px solid rgba(148, 163, 184, 0.22);
-                background: rgba(15, 23, 42, 0.72);
-                color: #f8fafc;
-                box-shadow: 0 18px 45px rgba(2, 6, 23, 0.18);
+                border: 1px solid var(--sf-border);
+                background: var(--sf-surface);
+                color: var(--sf-text);
+                box-shadow: var(--sf-shadow-soft);
             }
             .sa-soft {
-                border: 1px solid rgba(148, 163, 184, 0.18);
-                background: rgba(15, 23, 42, 0.52);
+                border: 1px solid var(--sf-border);
+                background: var(--sf-surface-soft);
             }
-            .sa-label { color: #94a3b8; }
-            .sa-muted { color: #cbd5e1; }
+            .sa-label { color: var(--sf-muted); }
+            .sa-muted { color: var(--sf-muted-strong); }
             .sa-input {
-                border: 1px solid rgba(148, 163, 184, 0.28);
-                background: rgba(2, 6, 23, 0.28);
-                color: #f8fafc;
+                border: 1px solid var(--sf-border-strong);
+                background: var(--sf-input-bg);
+                color: var(--sf-input-text);
             }
             .sa-input:focus {
-                border-color: #fb923c;
-                outline: 2px solid rgba(249, 115, 22, 0.22);
+                border-color: var(--sf-orange);
+                outline: 2px solid var(--sf-focus-ring);
             }
             .sa-table th {
                 color: #94a3b8;
                 font-size: 0.72rem;
-                font-weight: 900;
+                font-weight: 600;
                 letter-spacing: 0.04em;
                 text-transform: uppercase;
             }
             .sa-table td {
                 border-top: 1px solid rgba(148, 163, 184, 0.14);
-                color: #e2e8f0;
+                color: var(--sf-text);
             }
             html[data-theme="light"] .sa-card {
                 background: #ffffff;
-                color: #0f172a;
-                border-color: #d9e1ec;
-                box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+                color: var(--sf-text);
+                border-color: var(--sf-border);
+                box-shadow: var(--sf-shadow-soft);
             }
             html[data-theme="light"] .sa-soft {
-                background: #f8fafc;
-                border-color: #d9e1ec;
+                background: var(--sf-surface-soft);
+                border-color: var(--sf-border);
             }
-            html[data-theme="light"] .sa-label { color: #64748b; }
-            html[data-theme="light"] .sa-muted { color: #475569; }
+            html[data-theme="light"] .sa-label { color: var(--sf-muted); }
+            html[data-theme="light"] .sa-muted { color: var(--sf-muted-strong); }
             html[data-theme="light"] .sa-input {
                 background: #ffffff;
-                color: #0f172a;
-                border-color: #cbd5e1;
+                color: var(--sf-input-text);
+                border-color: var(--sf-border-strong);
             }
             html[data-theme="light"] .sa-table td {
-                border-color: #e5eaf1;
-                color: #0f172a;
+                border-color: var(--sf-border);
+                color: var(--sf-text);
             }
         </style>
 

@@ -35,7 +35,7 @@ const Templates = () => {
               </p>
             </div>
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+              className="rounded-xl bg-[#FF6A00] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E85F00]"
               onClick={() => alert("Create Template clicked")}
             >
               + Create Template
@@ -55,7 +55,7 @@ const Templates = () => {
                 <span
                   className={`text-sm px-2 py-1 rounded-full ${
                     template.type === 'email'
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-orange-100 text-[#0D1B3D]'
                       : template.type === 'whatsapp'
                       ? 'bg-green-100 text-green-700'
                       : 'bg-gray-200 text-gray-700'

@@ -45,7 +45,7 @@ const TemplateShow = () => {
         </div>
       </div>
 
-      <Link to="/admin/templates" className="mt-6 inline-block text-blue-600 hover:underline">
+      <Link to="/admin/templates" className="mt-6 inline-block font-semibold text-[#FF6A00] hover:underline">
         ← Back to list
       </Link>
     </div>

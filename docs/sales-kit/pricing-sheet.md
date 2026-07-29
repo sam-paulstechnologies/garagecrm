@@ -1,10 +1,10 @@
 # SayaraForce Pricing Sheet
 
-Draft pricing for founder approval.
+Approved monthly pricing.
 
 ## Starter
 
-AED 499-699/month
+AED 999/month
 
 Best for small garages starting with lead capture and follow-up.
 
@@ -18,7 +18,7 @@ Includes:
 
 ## Growth
 
-AED 999/month
+AED 1,499/month
 
 Best for garages that want WhatsApp-first lead recovery and team follow-up.
 
@@ -33,7 +33,7 @@ Includes:
 
 ## Pro
 
-AED 1,499/month
+AED 1,999/month
 
 Best for larger garages that need full operational visibility.
 
@@ -47,6 +47,4 @@ Includes:
 
 ## WhatsApp / Meta Usage
 
-WhatsApp/Meta conversation charges, template charges, provider fees, and phone/WABA setup costs are separate where applicable.
-
-FOUNDER ACTION REQUIRED: final pricing approval.
+WhatsApp, Meta and provider usage fees are charged separately where applicable.

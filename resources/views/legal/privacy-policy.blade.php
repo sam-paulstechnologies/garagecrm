@@ -7,26 +7,28 @@
 
     <meta name="description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://sayaraforce.com/privacy">
+    <link rel="canonical" href="https://sayaraforce.com/privacy-policy">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SayaraForce">
     <meta property="og:title" content="Privacy Policy - SayaraForce">
     <meta property="og:description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
-    <meta property="og:url" content="https://sayaraforce.com/privacy">
-    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:url" content="https://sayaraforce.com/privacy-policy">
+    <meta property="og:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Privacy Policy - SayaraForce">
     <meta name="twitter:description" content="Privacy Policy for SayaraForce, a CRM and WhatsApp communication platform for auto garages.">
-    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0D1B3D">
+    <link rel="stylesheet" href="/css/sayaraforce-brand.css">
 
     <style>
         body {
             margin: 0;
-            background: #f8fafc;
-            color: #1f2937;
-            font-family: Arial, Helvetica, sans-serif;
+            background: var(--paper);
+            color: var(--text-on-light);
             line-height: 1.7;
         }
 
@@ -37,23 +39,23 @@
         }
 
         .card {
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
+            background: var(--brand-white);
+            border: 1px solid var(--line-light);
             border-radius: 18px;
             padding: 36px;
-            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--shadow-light);
         }
 
         h1 {
             margin-top: 0;
-            color: #0f172a;
+            color: var(--brand-navy);
             font-size: 34px;
             line-height: 1.2;
         }
 
         h2 {
             margin-top: 34px;
-            color: #0f172a;
+            color: var(--brand-navy);
             font-size: 22px;
         }
 
@@ -66,32 +68,28 @@
         }
 
         .brand {
-            display: inline-block;
+            width: min(300px, 78vw);
+            height: auto;
+            display: block;
             margin-bottom: 18px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: #ecfdf5;
-            color: #047857;
-            font-weight: 700;
-            font-size: 13px;
         }
 
         .muted {
-            color: #64748b;
+            color: var(--muted-on-light);
         }
 
         .footer {
             margin-top: 34px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            color: #64748b;
+            border-top: 1px solid var(--line-light);
+            color: var(--muted-on-light);
             font-size: 14px;
         }
 
         a {
-            color: #047857;
+            color: var(--brand-navy);
             text-decoration: none;
-            font-weight: 700;
+            font-weight: 600;
         }
 
         a:hover {
@@ -102,7 +100,7 @@
 <body>
 <div class="page">
     <div class="card">
-        <div class="brand">SayaraForce</div>
+        <img class="brand" src="/images/brand/sayaraforce-logo-horizontal.png" width="1153" height="326" alt="SayaraForce">
 
         <h1>Privacy Policy</h1>
 

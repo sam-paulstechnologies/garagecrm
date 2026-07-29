@@ -7,7 +7,7 @@
                 </div>
 
                 <span class="{{ $statusBadge }}">
-                    {{ ucwords($statusValue) }}
+                    {{ $statusLabel }}
                 </span>
 
                 @if($roiReady)

@@ -21,13 +21,9 @@
     $currentStatus = $status ?? request('status', '');
     $currentSearch = $q ?? request('q', request('search', ''));
 
-    $statusBadgeClass = function ($statusValue) {
-        return match($statusValue) {
-            'paid' => 'sf-badge-green',
-            'overdue' => 'sf-badge-red',
-            default => 'sf-badge-yellow',
-        };
-    };
+    $invoiceStatuses = app(\App\Support\InvoiceStatusPresenter::class);
+    $statusBadgeClass = fn ($statusValue) => $invoiceStatuses->present($statusValue)['admin_badge_class'];
+    $statusLabel = fn ($statusValue) => $invoiceStatuses->present($statusValue)['label'];
 @endphp
 
 <div class="sf-page sf-invoices-page mx-auto max-w-7xl px-4 py-6 space-y-6">

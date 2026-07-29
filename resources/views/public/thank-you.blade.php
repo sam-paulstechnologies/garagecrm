@@ -12,13 +12,16 @@
     <meta property="og:title" content="Thank You - SayaraForce">
     <meta property="og:description" content="Thank you for requesting a SayaraForce demo or lead recovery audit.">
     <meta property="og:url" content="https://sayaraforce.com/thank-you">
-    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Thank You - SayaraForce">
     <meta name="twitter:description" content="Thank you for requesting a SayaraForce demo or lead recovery audit.">
-    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0D1B3D">
+    <link rel="stylesheet" href="/css/sayaraforce-brand.css">
     @if(config('services.sayaraforce.ga4_measurement_id'))
         <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.sayaraforce.ga4_measurement_id') }}"></script>
         <script>
@@ -38,28 +41,33 @@
             min-height: 100vh;
             display: grid;
             place-items: center;
-            background: #f4f7fb;
-            color: #111827;
-            font-family: Arial, Helvetica, sans-serif;
+            background: var(--paper);
+            color: var(--text-on-light);
         }
 
         .card {
             width: min(680px, calc(100% - 32px));
-            border: 1px solid #d9e1ec;
+            border: 1px solid var(--line-light);
             border-radius: 24px;
-            background: #ffffff;
+            background: var(--brand-white);
             padding: 38px;
-            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.10);
+            box-shadow: var(--shadow-light);
+        }
+
+        .logo {
+            width: min(320px, 78vw);
+            height: auto;
+            margin-bottom: 24px;
         }
 
         .eyebrow {
             display: inline-flex;
             border-radius: 999px;
             padding: 8px 12px;
-            background: #fff7ed;
-            color: #9a3412;
+            background: #FFF0E6;
+            color: var(--brand-navy);
             font-size: 12px;
-            font-weight: 800;
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.08em;
         }
@@ -68,12 +76,13 @@
             margin: 20px 0 10px;
             font-size: clamp(34px, 6vw, 54px);
             line-height: 1;
-            letter-spacing: -0.05em;
+            font-weight: 600;
+            letter-spacing: -0.025em;
         }
 
         p {
             margin: 0;
-            color: #475569;
+            color: var(--muted-on-light);
             font-size: 17px;
             line-height: 1.7;
         }
@@ -92,22 +101,28 @@
             justify-content: center;
             border-radius: 14px;
             padding: 0 18px;
-            color: #111827;
-            border: 1px solid #cbd5e1;
-            font-weight: 800;
+            color: var(--brand-navy);
+            border: 1px solid var(--line-light);
+            font-weight: 600;
             text-decoration: none;
         }
 
         a.primary {
-            border-color: #ea580c;
-            background: #f97316;
-            color: #111827;
-            box-shadow: 0 14px 30px rgba(234, 88, 12, 0.25);
+            border-color: var(--brand-orange);
+            background: var(--brand-orange);
+            color: var(--brand-navy);
+            box-shadow: 0 14px 30px rgba(255, 106, 0, 0.24);
+        }
+
+        a:focus-visible {
+            outline: 3px solid var(--brand-orange);
+            outline-offset: 3px;
         }
     </style>
 </head>
 <body>
     <main class="card">
+        <img class="logo" src="/images/brand/sayaraforce-logo-horizontal.png" width="1153" height="326" alt="SayaraForce">
         <span class="eyebrow">Request received</span>
         <h1>Thank you.</h1>
         <p>

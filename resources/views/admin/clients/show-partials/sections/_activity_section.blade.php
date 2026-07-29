@@ -97,11 +97,11 @@
     }
 
     .sf-activity-dot-blue {
-        background: #3b82f6;
+        background: #294579;
     }
 
     .sf-activity-dot-orange {
-        background: #f97316;
+        background: #ff6a00;
     }
 
     .sf-activity-dot-green {
@@ -109,7 +109,7 @@
     }
 
     .sf-activity-dot-purple {
-        background: #8b5cf6;
+        background: #8092b2;
     }
 
     html[data-theme="light"] .sf-activity-shell {

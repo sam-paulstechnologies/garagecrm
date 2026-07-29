@@ -13,7 +13,7 @@
             [
                 'label' => 'Add Lead',
                 'route' => 'admin.leads.create',
-                'classes' => 'sf-tone-blue border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20',
+                'classes' => 'sf-tone-blue border-[#466394]/40 bg-[#294579]/25 text-[#D2DAEA] hover:bg-[#294579]/40',
             ],
             [
                 'label' => 'Add Client',

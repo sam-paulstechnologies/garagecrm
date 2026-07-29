@@ -4,27 +4,29 @@
     <meta charset="UTF-8">
     <title>Terms - SayaraForce</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
+    <meta name="description" content="Terms for SayaraForce demos, pilots and customer service discussions.">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://sayaraforce.com/terms">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SayaraForce">
     <meta property="og:title" content="Terms - SayaraForce">
-    <meta property="og:description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
+    <meta property="og:description" content="Terms for SayaraForce demos, pilots and customer service discussions.">
     <meta property="og:url" content="https://sayaraforce.com/terms">
-    <meta property="og:image" content="https://sayaraforce.com/apple-touch-icon.png">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Terms - SayaraForce">
-    <meta name="twitter:description" content="Basic terms for SayaraForce demo, pilot, and founder offer conversations.">
-    <meta name="twitter:image" content="https://sayaraforce.com/apple-touch-icon.png">
+    <meta name="twitter:description" content="Terms for SayaraForce demos, pilots and customer service discussions.">
+    <meta name="twitter:image" content="https://sayaraforce.com/images/sayaraforce-social-card.png">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0D1B3D">
+    <link rel="stylesheet" href="/css/sayaraforce-brand.css">
     <style>
         body {
             margin: 0;
-            background: #f8fafc;
-            color: #1f2937;
-            font-family: Arial, Helvetica, sans-serif;
+            background: var(--paper);
+            color: var(--text-on-light);
             line-height: 1.7;
         }
 
@@ -35,15 +37,15 @@
         }
 
         .card {
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
+            background: var(--brand-white);
+            border: 1px solid var(--line-light);
             border-radius: 18px;
             padding: 36px;
-            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+            box-shadow: var(--shadow-light);
         }
 
         h1, h2 {
-            color: #0f172a;
+            color: var(--brand-navy);
         }
 
         h1 {
@@ -62,39 +64,35 @@
         }
 
         .brand {
-            display: inline-block;
+            width: min(300px, 78vw);
+            height: auto;
+            display: block;
             margin-bottom: 18px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: #fff7ed;
-            color: #9a3412;
-            font-weight: 700;
-            font-size: 13px;
         }
 
         .footer {
             margin-top: 34px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            color: #64748b;
+            border-top: 1px solid var(--line-light);
+            color: var(--muted-on-light);
             font-size: 14px;
         }
 
         a {
-            color: #9a3412;
+            color: var(--brand-navy);
             text-decoration: none;
-            font-weight: 700;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <main class="page">
         <section class="card">
-            <span class="brand">SayaraForce</span>
+            <img class="brand" src="/images/brand/sayaraforce-logo-horizontal.png" width="1153" height="326" alt="SayaraForce">
             <h1>Terms</h1>
             <p>
                 These basic terms describe the demo, pilot, and early customer discussions for SayaraForce,
-                a WhatsApp-first CRM for UAE garages. A final service agreement must be approved before a paid rollout.
+                an AI-assisted growth and communication platform for UAE garages. A final service agreement must be approved before a paid rollout.
             </p>
 
             <h2>1. Demo and Pilot Use</h2>
@@ -115,9 +113,11 @@
                 is collected and used lawfully.
             </p>
 
-            <h2>4. Pricing and Founder Offer</h2>
+            <h2>4. Pricing</h2>
             <p>
-                Any pricing or founder offer shown on the website or sales documents is subject to final written approval.
+                Approved monthly plan pricing is AED 999 for Starter, AED 1,499 for Growth, and AED 1,999 for Pro.
+                WhatsApp, Meta, AI usage and provider fees may be charged separately where applicable. The selected plan and
+                implementation scope must be confirmed in the final service agreement.
             </p>
 
             <h2>5. No Guaranteed Results</h2>

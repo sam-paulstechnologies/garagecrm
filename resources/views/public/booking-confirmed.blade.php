@@ -4,44 +4,64 @@
     <meta charset="UTF-8">
     <title>Booking Confirmed</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0D1B3D">
+    <link rel="stylesheet" href="/css/sayaraforce-brand.css">
 
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background: #f8fafc;
+            background: var(--paper);
             margin: 0;
             padding: 0;
-            color: #111827;
+            color: var(--text-on-light);
         }
 
         .wrap {
             max-width: 640px;
             margin: 60px auto;
-            background: #ffffff;
+            background: var(--brand-white);
+            border: 1px solid var(--line-light);
             border-radius: 14px;
             padding: 32px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            box-shadow: var(--shadow-light);
             text-align: center;
         }
 
+        .logo {
+            width: min(300px, 78vw);
+            height: auto;
+            margin: 0 auto 24px;
+        }
+
         .icon {
-            font-size: 52px;
-            margin-bottom: 16px;
+            width: 54px;
+            height: 54px;
+            display: grid;
+            place-items: center;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: var(--brand-orange);
+            color: var(--brand-navy);
+            font-size: 30px;
+            font-weight: 600;
         }
 
         h1 {
             margin-bottom: 10px;
-            color: #065f46;
+            color: var(--brand-navy);
         }
 
         p {
-            color: #4b5563;
+            color: var(--muted-on-light);
             line-height: 1.6;
         }
 
         .details {
             margin-top: 24px;
-            background: #f9fafb;
+            background: var(--paper);
+            border: 1px solid var(--line-light);
             border-radius: 10px;
             padding: 16px;
             text-align: left;
@@ -52,14 +72,15 @@
         }
 
         .label {
-            font-weight: bold;
-            color: #374151;
+            font-weight: 600;
+            color: var(--brand-navy);
         }
     </style>
 </head>
 <body>
     <div class="wrap">
-        <div class="icon">✅</div>
+        <img class="logo" src="/images/brand/sayaraforce-logo-horizontal.png" width="1153" height="326" alt="SayaraForce">
+        <div class="icon" aria-hidden="true">&#10003;</div>
 
         <h1>Booking Confirmed</h1>
 

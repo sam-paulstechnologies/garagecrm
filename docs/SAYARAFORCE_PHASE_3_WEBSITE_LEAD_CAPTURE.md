@@ -22,7 +22,7 @@ The landing page includes:
 - WhatsApp-first follow-up positioning.
 - Lead capture / demo request form.
 - Booking, job, invoice, and retention narrative.
-- Founder pricing/launch offer copy.
+- Approved three-plan pricing and provider-fee clarification.
 - CTA sections.
 
 ## Book Demo Form Status
@@ -33,8 +33,9 @@ The Book Demo / Request Free Audit form captures:
 - Contact name.
 - WhatsApp phone.
 - Email.
-- Monthly vehicle volume.
-- Review request/message.
+- Current management system.
+- Approximate monthly lead volume.
+- Main challenge.
 
 Validation is server-side and required contact fields are enforced.
 

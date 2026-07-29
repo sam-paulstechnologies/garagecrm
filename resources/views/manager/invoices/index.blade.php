@@ -43,16 +43,9 @@
         }
     };
 
-    $statusClass = function ($status) {
-        $status = strtolower((string) $status);
-
-        return match ($status) {
-            'paid' => 'badge-soft-success',
-            'unpaid', 'issued', 'open' => 'badge-soft-warning',
-            'cancelled', 'canceled', 'void' => 'badge-soft-danger',
-            default => 'badge-soft-muted',
-        };
-    };
+    $invoiceStatuses = app(\App\Support\InvoiceStatusPresenter::class);
+    $statusClass = fn ($status) => $invoiceStatuses->present($status)['manager_badge_class'];
+    $statusLabel = fn ($status) => $invoiceStatuses->present($status)['label'];
 
     $clientName = function ($invoice) use ($clients) {
         if (! empty($invoice->client_id) && isset($clients[$invoice->client_id])) {
@@ -320,7 +313,7 @@
 
                                 <td>
                                     <span class="manager-badge {{ $statusClass($currentStatus) }}">
-                                        {{ ucfirst(str_replace('_', ' ', $currentStatus)) }}
+                                        {{ $statusLabel($currentStatus) }}
                                     </span>
                                 </td>
 
@@ -462,9 +455,9 @@
     }
 
     .sf-action-button.primary {
-        color: #ffffff;
-        background: #2563eb;
-        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+        color: var(--sf-navy);
+        background: var(--sf-orange);
+        box-shadow: 0 10px 22px rgba(255, 106, 0, 0.22);
     }
 
     .sf-action-button.light {
@@ -695,9 +688,9 @@
     }
 
     .invoice-actions .btn-primary {
-        color: #ffffff;
-        background: #2563eb;
-        border-color: #2563eb;
+        color: var(--sf-navy);
+        background: var(--sf-orange);
+        border-color: var(--sf-orange);
     }
 
     .sf-empty {
