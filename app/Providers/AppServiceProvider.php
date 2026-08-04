@@ -32,6 +32,20 @@ class AppServiceProvider extends ServiceProvider
     {
         /*
         |--------------------------------------------------------------------------
+        | Keep Vite assets on the current request host
+        |--------------------------------------------------------------------------
+        | SayaraForce serves the public site and authenticated application from
+        | separate hostnames. Absolute Vite URLs derived from APP_URL cause ES
+        | modules requested by sayaraforce.com to cross into app.sayaraforce.com,
+        | where static files are not CORS-enabled. Root-relative build paths keep
+        | each request on its own origin while still using the same manifest.
+        */
+        Vite::createAssetPathsUsing(
+            static fn (string $path, ?bool $secure = null): string => '/'.ltrim($path, '/')
+        );
+
+        /*
+        |--------------------------------------------------------------------------
         | Force HTTPS in production
         |--------------------------------------------------------------------------
         | Azure terminates SSL before the request reaches Laravel.
