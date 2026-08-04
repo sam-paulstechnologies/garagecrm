@@ -25,6 +25,7 @@ class WhatsAppEmbeddedSignupTest extends TestCase
             'services.meta.app_id' => '925717083333434',
             'services.meta.app_secret' => 'test-app-secret',
             'services.meta.api_version' => 'v25.0',
+            'services.meta.whatsapp_verify_token' => 'global-webhook-test-token',
             'services.meta.whatsapp_embedded_signup.version' => 'v4',
             'services.meta.whatsapp_embedded_signup.session_info_version' => '3',
             'services.meta.whatsapp_embedded_signup.business_app_config_id' => 'business-app-config',
@@ -99,6 +100,102 @@ class WhatsAppEmbeddedSignupTest extends TestCase
             ->assertDontSee('bg-slate-950/45', false);
     }
 
+    public function test_diagnostics_treats_missing_waba_as_pending_onboarding_without_calling_meta(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'legacy-phone-id',
+            'meta_access_token' => Crypt::encryptString('legacy-encrypted-token'),
+            'meta_waba_id' => null,
+            'is_whatsapp_active' => true,
+        ])->save();
+        Http::fake();
+
+        $this->actingAs($user)
+            ->post(route('admin.whatsapp.connect.diagnostics'))
+            ->assertRedirect()
+            ->assertSessionHas('success', 'WABA subscription will be verified after onboarding');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('companies', [
+            'id' => $company->id,
+            'whatsapp_webhook_subscription_status' => 'pending_onboarding',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.whatsapp.connect'))
+            ->assertOk()
+            ->assertSee('App-level callback URL verification')
+            ->assertSee('Ready for Meta verification')
+            ->assertSee('WABA subscription will be verified after onboarding')
+            ->assertDontSee('global-webhook-test-token');
+    }
+
+    public function test_diagnostics_confirms_successful_waba_subscribed_apps_check(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'phone-100',
+            'meta_access_token' => Crypt::encryptString('diagnostic-token'),
+            'meta_waba_id' => 'waba-100',
+            'is_whatsapp_active' => true,
+            'whatsapp_connection_mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+        ])->save();
+
+        Http::fake(function (Request $request) {
+            return match (true) {
+                str_contains($request->url(), '/phone-100') => Http::response([
+                    'id' => 'phone-100',
+                    'status' => 'CONNECTED',
+                    'quality_rating' => 'GREEN',
+                    'is_on_biz_app' => true,
+                ]),
+                $request->method() === 'GET' && str_contains($request->url(), '/waba-100/subscribed_apps') => Http::response([
+                    'data' => [['id' => '925717083333434']],
+                ]),
+                default => Http::response([], 404),
+            };
+        });
+
+        $this->actingAs($user)
+            ->postJson(route('admin.whatsapp.connect.diagnostics'))
+            ->assertOk()
+            ->assertJsonPath('diagnostics.callback_verification', 'ready')
+            ->assertJsonPath('diagnostics.webhook_subscription', 'subscribed');
+
+        $this->assertDatabaseHas('companies', [
+            'id' => $company->id,
+            'whatsapp_webhook_subscription_status' => 'subscribed',
+        ]);
+        Http::assertSent(fn (Request $request) => $request->method() === 'GET'
+            && str_contains($request->url(), '/waba-100/subscribed_apps'));
+    }
+
+    public function test_diagnostics_reports_failed_waba_subscribed_apps_check_without_provider_details(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'phone-100',
+            'meta_access_token' => Crypt::encryptString('diagnostic-token'),
+            'meta_waba_id' => 'waba-100',
+            'is_whatsapp_active' => true,
+            'whatsapp_connection_mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+        ])->save();
+
+        Http::fake(function (Request $request) {
+            return str_contains($request->url(), '/phone-100')
+                ? Http::response(['id' => 'phone-100', 'status' => 'CONNECTED'])
+                : Http::response(['error' => ['message' => 'private-provider-detail']], 500);
+        });
+
+        $this->actingAs($user)
+            ->postJson(route('admin.whatsapp.connect.diagnostics'))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Meta could not verify the WABA app subscription.')
+            ->assertDontSee('private-provider-detail')
+            ->assertDontSee('diagnostic-token');
+    }
+
     public function test_authorization_completion_validates_assets_subscribes_and_encrypts_tenant_credentials(): void
     {
         [$company, $user] = $this->tenant();
@@ -120,6 +217,8 @@ class WhatsAppEmbeddedSignupTest extends TestCase
         $this->assertDatabaseHas('whatsapp_connection_audits', ['company_id' => $company->id, 'event' => 'signup_completed']);
 
         Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/waba-100/subscribed_apps'));
+        Http::assertSent(fn (Request $request) => $request->method() === 'GET'
             && str_contains($request->url(), '/waba-100/subscribed_apps'));
         Http::assertSent(fn (Request $request) => $request->method() === 'POST'
             && str_contains($request->url(), '/phone-100/smb_app_data'));
@@ -278,7 +377,10 @@ class WhatsAppEmbeddedSignupTest extends TestCase
                     'id' => 'phone-100', 'display_phone_number' => '+971 50 000 0000',
                     'status' => 'CONNECTED', 'is_on_biz_app' => $isOnBusinessApp,
                 ]),
-                str_contains($url, '/waba-100/subscribed_apps') => Http::response(['success' => true]),
+                $request->method() === 'POST' && str_contains($url, '/waba-100/subscribed_apps') => Http::response(['success' => true]),
+                $request->method() === 'GET' && str_contains($url, '/waba-100/subscribed_apps') => Http::response([
+                    'data' => [['id' => '925717083333434']],
+                ]),
                 default => Http::response([], 404),
             };
         });

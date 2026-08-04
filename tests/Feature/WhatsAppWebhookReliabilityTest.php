@@ -9,6 +9,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -25,10 +26,48 @@ class WhatsAppWebhookReliabilityTest extends TestCase
         config([
             'services.meta.app_secret' => 'test-meta-app-secret',
             'services.meta_leads.app_secret' => 'test-meta-app-secret',
+            'services.meta.whatsapp_verify_token' => null,
+            'services.whatsapp.meta.verify_token' => null,
         ]);
     }
 
-    public function test_meta_whatsapp_webhook_verification_uses_company_verify_token(): void
+    public function test_meta_whatsapp_webhook_verification_uses_global_verify_token(): void
+    {
+        config(['services.meta.whatsapp_verify_token' => 'global-test-verify-token']);
+
+        $this->get(route('api.webhooks.meta.whatsapp.verify', [
+            'hub.mode' => 'subscribe',
+            'hub.verify_token' => 'global-test-verify-token',
+            'hub.challenge' => 'global-challenge-ok',
+        ]))
+            ->assertOk()
+            ->assertContent('global-challenge-ok');
+    }
+
+    public function test_meta_whatsapp_webhook_verification_rejects_invalid_token_without_logging_it(): void
+    {
+        config(['services.meta.whatsapp_verify_token' => 'global-test-verify-token']);
+        Log::spy();
+
+        $invalidToken = 'invalid-secret-token-value';
+
+        $this->get(route('api.webhooks.meta.whatsapp.verify', [
+            'hub.mode' => 'subscribe',
+            'hub.verify_token' => $invalidToken,
+            'hub.challenge' => 'challenge-no',
+        ]))
+            ->assertForbidden()
+            ->assertDontSee($invalidToken);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context) use ($invalidToken): bool {
+                return str_contains($message, 'Webhook verification rejected')
+                    && ! str_contains((string) json_encode($context), $invalidToken);
+            });
+    }
+
+    public function test_meta_whatsapp_webhook_verification_preserves_company_token_support(): void
     {
         $this->company([
             'meta_verify_token' => 'test-verify-token',
@@ -42,14 +81,7 @@ class WhatsAppWebhookReliabilityTest extends TestCase
             'hub.challenge' => 'challenge-ok',
         ]))
             ->assertOk()
-            ->assertSee('challenge-ok');
-
-        $this->get(route('api.webhooks.meta.whatsapp.verify', [
-            'hub.mode' => 'subscribe',
-            'hub.verify_token' => 'wrong-token',
-            'hub.challenge' => 'challenge-no',
-        ]))
-            ->assertForbidden();
+            ->assertContent('challenge-ok');
     }
 
     public function test_meta_whatsapp_invalid_payload_is_safely_ignored_without_dispatch(): void

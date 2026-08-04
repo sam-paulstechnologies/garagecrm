@@ -334,6 +334,13 @@ class MetaEmbeddedSignupService
         if (! filter_var($data['success'] ?? false, FILTER_VALIDATE_BOOL)) {
             throw new WhatsAppOnboardingException('subscription_not_confirmed', 'Meta did not confirm the WhatsApp webhook subscription.');
         }
+
+        if (! $this->isAppSubscribedToWaba($wabaId, $accessToken)) {
+            throw new WhatsAppOnboardingException(
+                'subscription_not_confirmed',
+                'Meta did not confirm the WhatsApp webhook subscription.'
+            );
+        }
     }
 
     public function requestSync(Company $company, string $syncType, ?int $userId = null): array
@@ -385,15 +392,45 @@ class MetaEmbeddedSignupService
 
     public function diagnostics(Company $company, ?int $userId = null): array
     {
+        $callbackVerification = $this->callbackVerificationStatus();
+        $wabaId = trim((string) $company->meta_waba_id);
+
+        if ($wabaId === '') {
+            $company->forceFill([
+                'whatsapp_webhook_subscription_status' => 'pending_onboarding',
+                'whatsapp_webhook_subscription_checked_at' => null,
+            ])->save();
+
+            $this->audit(
+                (int) $company->id,
+                $userId,
+                'diagnostics_checked',
+                'info',
+                $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null),
+                null,
+                $company->meta_phone_number_id,
+                [
+                    'callback_verification' => $callbackVerification,
+                    'subscription' => 'pending_onboarding',
+                ]
+            );
+
+            return [
+                'callback_verification' => $callbackVerification,
+                'phone_status' => 'not_checked',
+                'quality_rating' => 'not_checked',
+                'is_on_business_app' => null,
+                'webhook_subscription' => 'pending_onboarding',
+                'message' => 'WABA subscription will be verified after onboarding',
+            ];
+        }
+
         $accessToken = $this->decryptStoredAccessToken($company);
-        $phone = $this->fetchPhoneNumber((string) $company->meta_phone_number_id, $accessToken);
-        $response = Http::timeout(30)
-            ->withToken($accessToken)
-            ->acceptJson()
-            ->get($this->graphUrl($company->meta_waba_id.'/subscribed_apps'));
-        $subscriptions = $this->successfulJson($response, 'subscription_check_failed', 'Meta could not verify the webhook subscription.');
-        $subscribed = collect((array) ($subscriptions['data'] ?? []))
-            ->contains(fn ($app) => is_array($app) && (string) ($app['id'] ?? '') === (string) $this->appId);
+        $phoneNumberId = trim((string) $company->meta_phone_number_id);
+        $phone = $phoneNumberId !== ''
+            ? $this->fetchPhoneNumber($phoneNumberId, $accessToken)
+            : [];
+        $subscribed = $this->isAppSubscribedToWaba($wabaId, $accessToken);
 
         $company->forceFill([
             'whatsapp_webhook_subscription_status' => $subscribed ? 'subscribed' : 'missing',
@@ -408,14 +445,21 @@ class MetaEmbeddedSignupService
             $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null),
             $company->meta_waba_id,
             $company->meta_phone_number_id,
-            ['subscription' => $subscribed ? 'subscribed' : 'missing']
+            [
+                'callback_verification' => $callbackVerification,
+                'subscription' => $subscribed ? 'subscribed' : 'missing',
+            ]
         );
 
         return [
+            'callback_verification' => $callbackVerification,
             'phone_status' => $phone['status'] ?? 'unknown',
             'quality_rating' => $phone['quality_rating'] ?? 'unknown',
             'is_on_business_app' => $this->asBoolean($phone['is_on_biz_app'] ?? null),
             'webhook_subscription' => $subscribed ? 'subscribed' : 'missing',
+            'message' => $subscribed
+                ? 'The WABA app subscription is active.'
+                : 'The WABA app subscription is missing.',
         ];
     }
 
@@ -441,6 +485,14 @@ class MetaEmbeddedSignupService
     public function connectionStatus(Company $company): array
     {
         $mode = $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null, allowManual: true);
+        $callbackVerification = $this->callbackVerificationStatus();
+        $wabaSubscription = blank($company->meta_waba_id)
+            ? 'WABA subscription will be verified after onboarding'
+            : match ((string) $company->whatsapp_webhook_subscription_status) {
+                'subscribed' => 'Subscribed',
+                'missing' => 'Not subscribed',
+                default => 'Not checked',
+            };
         $lastApiOutbound = null;
         if (Schema::hasTable('message_logs')) {
             $lastApiQuery = MessageLog::query()
@@ -471,6 +523,10 @@ class MetaEmbeddedSignupService
             'connection_status' => $company->whatsapp_coexistence_status,
             'onboarding_source' => $company->whatsapp_onboarding_source,
             'connected_at' => $company->whatsapp_connected_at,
+            'callback_verification_status' => $callbackVerification === 'ready'
+                ? 'Ready for Meta verification'
+                : 'Verification token is not configured',
+            'waba_subscription_status' => $wabaSubscription,
             'webhook_subscription_status' => $company->whatsapp_webhook_subscription_status,
             'webhook_subscription_checked_at' => $company->whatsapp_webhook_subscription_checked_at,
             'last_webhook_at' => $company->whatsapp_last_webhook_at,
@@ -480,6 +536,31 @@ class MetaEmbeddedSignupService
             'contact_sync_status' => $company->whatsapp_contact_sync_status,
             'history_sync_status' => $company->whatsapp_history_sync_status,
         ];
+    }
+
+    private function callbackVerificationStatus(): string
+    {
+        return filled(
+            config('services.meta.whatsapp_verify_token')
+            ?: config('services.whatsapp.meta.verify_token')
+        ) ? 'ready' : 'not_configured';
+    }
+
+    private function isAppSubscribedToWaba(string $wabaId, string $accessToken): bool
+    {
+        $response = Http::timeout(30)
+            ->withToken($accessToken)
+            ->acceptJson()
+            ->get($this->graphUrl($wabaId.'/subscribed_apps'));
+        $subscriptions = $this->successfulJson(
+            $response,
+            'subscription_check_failed',
+            'Meta could not verify the WABA app subscription.'
+        );
+
+        return collect((array) ($subscriptions['data'] ?? []))
+            ->contains(fn ($app) => is_array($app)
+                && (string) ($app['id'] ?? '') === (string) $this->appId);
     }
 
     public function normalizeConnectionMode(?string $mode, bool $allowManual = false): string

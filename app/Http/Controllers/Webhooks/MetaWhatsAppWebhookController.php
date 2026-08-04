@@ -35,11 +35,28 @@ class MetaWhatsAppWebhookController extends Controller
             return response('Forbidden', 403);
         }
 
-        $matches = Company::query()->where('meta_verify_token', $token)->limit(2)->get();
-        if ($matches->count() !== 1) {
+        $globalToken = trim((string) (
+            config('services.meta.whatsapp_verify_token')
+            ?: config('services.whatsapp.meta.verify_token')
+        ));
+        $matchesGlobalToken = $globalToken !== ''
+            && hash_equals($globalToken, (string) $token);
+
+        $tenantMatchCount = 0;
+        if (! $matchesGlobalToken
+            && Schema::hasTable('companies')
+            && Schema::hasColumn('companies', 'meta_verify_token')) {
+            $tenantMatchCount = Company::query()
+                ->where('meta_verify_token', $token)
+                ->limit(2)
+                ->count();
+        }
+
+        if (! $matchesGlobalToken && $tenantMatchCount !== 1) {
             Log::warning('[SF-WA Connect] Webhook verification rejected', [
                 'token_present' => true,
-                'match_count' => $matches->count(),
+                'global_token_configured' => $globalToken !== '',
+                'tenant_match_count' => $tenantMatchCount,
             ]);
 
             return response('Forbidden', 403);

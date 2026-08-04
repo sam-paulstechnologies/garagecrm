@@ -125,7 +125,10 @@ class WhatsAppEmbeddedSignupController extends Controller
                 return response()->json(['ok' => true, 'diagnostics' => $diagnostics]);
             }
 
-            return back()->with('success', 'WhatsApp diagnostics completed.');
+            return back()->with(
+                'success',
+                $diagnostics['message'] ?? 'WhatsApp diagnostics completed.'
+            );
         } catch (WhatsAppOnboardingException $exception) {
             return $this->failureResponse($request, $exception->getMessage(), 422);
         }
