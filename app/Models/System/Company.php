@@ -56,8 +56,26 @@ class Company extends Model
         'meta_access_token',
         'meta_verify_token',
         'meta_waba_id',
+        'meta_business_id',
+        'meta_display_phone_number',
         'is_whatsapp_active',
         'meta_token_expires_at',
+        'whatsapp_connection_mode',
+        'whatsapp_coexistence_enabled',
+        'whatsapp_coexistence_status',
+        'whatsapp_onboarding_source',
+        'whatsapp_connected_at',
+        'whatsapp_last_webhook_at',
+        'whatsapp_last_inbound_at',
+        'whatsapp_last_echo_at',
+        'whatsapp_webhook_subscription_status',
+        'whatsapp_webhook_subscription_checked_at',
+        'whatsapp_contact_sync_status',
+        'whatsapp_contact_sync_requested_at',
+        'whatsapp_contact_sync_completed_at',
+        'whatsapp_history_sync_status',
+        'whatsapp_history_sync_requested_at',
+        'whatsapp_history_sync_completed_at',
     ];
 
     protected $casts = [
@@ -80,7 +98,17 @@ class Company extends Model
         |--------------------------------------------------------------------------
         */
         'is_whatsapp_active' => 'boolean',
+        'whatsapp_coexistence_enabled' => 'boolean',
         'meta_token_expires_at' => 'datetime',
+        'whatsapp_connected_at' => 'datetime',
+        'whatsapp_last_webhook_at' => 'datetime',
+        'whatsapp_last_inbound_at' => 'datetime',
+        'whatsapp_last_echo_at' => 'datetime',
+        'whatsapp_webhook_subscription_checked_at' => 'datetime',
+        'whatsapp_contact_sync_requested_at' => 'datetime',
+        'whatsapp_contact_sync_completed_at' => 'datetime',
+        'whatsapp_history_sync_requested_at' => 'datetime',
+        'whatsapp_history_sync_completed_at' => 'datetime',
     ];
 
     protected $hidden = [

@@ -13,12 +13,21 @@
     {{-- Prevent theme flash before page loads --}}
     <script>
         (function () {
+            var preference = 'system';
+
             try {
-                var savedTheme = localStorage.getItem('sayaraforce_theme') || 'dark';
-                document.documentElement.setAttribute('data-theme', savedTheme);
-            } catch (e) {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
+                var savedTheme = localStorage.getItem('sayaraforce_theme');
+                if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+                    preference = savedTheme;
+                }
+            } catch (e) {}
+
+            var resolvedTheme = preference === 'system'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : preference;
+
+            document.documentElement.setAttribute('data-theme-preference', preference);
+            document.documentElement.setAttribute('data-theme', resolvedTheme);
         })();
     </script>
 
@@ -528,6 +537,7 @@
             var toggles = document.querySelectorAll('[data-sf-theme-toggle]');
             var icons = document.querySelectorAll('[data-sf-theme-icon]');
             var labels = document.querySelectorAll('[data-sf-theme-label]');
+            var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
 
             try {
                 localStorage.removeItem('sayaraforce_admin_sidebar_collapsed');
@@ -535,36 +545,64 @@
                 localStorage.removeItem('sidebarCollapsed');
             } catch (e) {}
 
-            function applyTheme(theme) {
+            function resolveTheme(preference) {
+                return preference === 'system'
+                    ? (systemTheme.matches ? 'dark' : 'light')
+                    : preference;
+            }
+
+            function applyTheme(preference, persistPreference) {
+                var theme = resolveTheme(preference);
+
+                document.documentElement.setAttribute('data-theme-preference', preference);
                 document.documentElement.setAttribute('data-theme', theme);
 
                 icons.forEach(function (icon) {
-                    icon.textContent = theme === 'light' ? '☀️' : '🌙';
+                    icon.textContent = preference === 'system' ? '◐' : (theme === 'light' ? '☀️' : '🌙');
                 });
 
                 labels.forEach(function (label) {
-                    label.textContent = theme === 'light' ? 'Light mode' : 'Dark mode';
+                    label.textContent = preference === 'system'
+                        ? 'System mode'
+                        : (theme === 'light' ? 'Light mode' : 'Dark mode');
                 });
 
                 toggles.forEach(function (toggle) {
                     toggle.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+                    toggle.setAttribute('data-theme-preference', preference);
                 });
 
-                try {
-                    localStorage.setItem('sayaraforce_theme', theme);
-                } catch (e) {}
+                if (persistPreference !== false) {
+                    try {
+                        localStorage.setItem('sayaraforce_theme', preference);
+                    } catch (e) {}
+                }
             }
 
-            var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-            applyTheme(currentTheme);
+            var currentPreference = document.documentElement.getAttribute('data-theme-preference') || 'system';
+            applyTheme(currentPreference, false);
+
+            function applySystemThemeChange() {
+                if (document.documentElement.getAttribute('data-theme-preference') === 'system') {
+                    applyTheme('system', false);
+                }
+            }
+
+            if (typeof systemTheme.addEventListener === 'function') {
+                systemTheme.addEventListener('change', applySystemThemeChange);
+            } else if (typeof systemTheme.addListener === 'function') {
+                systemTheme.addListener(applySystemThemeChange);
+            }
 
             if (toggles.length) {
                 toggles.forEach(function (toggle) {
                     toggle.addEventListener('click', function () {
-                        var activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-                        var nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
+                        var activePreference = document.documentElement.getAttribute('data-theme-preference') || 'system';
+                        var nextPreference = activePreference === 'dark'
+                            ? 'light'
+                            : (activePreference === 'light' ? 'system' : 'dark');
 
-                        applyTheme(nextTheme);
+                        applyTheme(nextPreference);
                     });
                 });
             }

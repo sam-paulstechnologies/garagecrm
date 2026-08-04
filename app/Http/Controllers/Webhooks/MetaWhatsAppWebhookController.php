@@ -4,8 +4,12 @@ namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessInboundWhatsApp;
+use App\Jobs\ProcessWhatsAppCoexistenceWebhook;
+use App\Models\Client\Lead;
+use App\Models\Conversation;
 use App\Models\MessageLog;
 use App\Models\System\Company;
+use App\Models\WhatsApp\WhatsAppWebhookEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -13,585 +17,412 @@ use Illuminate\Support\Facades\Schema;
 
 class MetaWhatsAppWebhookController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | META WEBHOOK VERIFICATION (GET)
-    |--------------------------------------------------------------------------
-    */
+    private const STATUS_RANK = [
+        'accepted' => 1,
+        'sent' => 2,
+        'delivered' => 3,
+        'read' => 4,
+        'failed' => 5,
+    ];
+
     public function verify(Request $request)
     {
         $mode = $request->query('hub_mode') ?? $request->query('hub.mode');
         $token = $request->query('hub_verify_token') ?? $request->query('hub.verify_token');
         $challenge = $request->query('hub_challenge') ?? $request->query('hub.challenge');
 
-        Log::info('[SF-WA Connect][META] Verification attempt', [
-            'mode' => $mode,
-            'token_present' => filled($token),
-        ]);
-
-        if ($mode !== 'subscribe') {
-            Log::warning('[SF-WA Connect][META] Invalid verify mode');
+        if ($mode !== 'subscribe' || blank($token)) {
             return response('Forbidden', 403);
         }
 
-        if (! $token) {
-            Log::warning('[SF-WA Connect][META] Missing verify token');
+        $matches = Company::query()->where('meta_verify_token', $token)->limit(2)->get();
+        if ($matches->count() !== 1) {
+            Log::warning('[SF-WA Connect] Webhook verification rejected', [
+                'token_present' => true,
+                'match_count' => $matches->count(),
+            ]);
+
             return response('Forbidden', 403);
         }
 
-        $company = Company::query()
-            ->where('meta_verify_token', $token)
-            ->first();
-
-        if (! $company) {
-            Log::warning('[SF-WA Connect][META] Verify token not matched');
-            return response('Forbidden', 403);
-        }
-
-        Log::info('[SF-WA Connect][META] Verification successful', [
-            'company_id' => $company->id,
-        ]);
-
-        return response($challenge, 200);
+        return response((string) $challenge, 200);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | META WEBHOOK RECEIVER (POST)
-    |--------------------------------------------------------------------------
-    */
     public function handle(Request $request)
     {
-        // TEMPORARY DIAGNOSTIC: remove after Meta webhook delivery is confirmed in production.
-        Log::info('[SF-WA Connect][META][RAW WEBHOOK DIAGNOSTIC] Incoming POST received', [
-            'method' => $request->method(),
-            'url' => $request->fullUrl(),
-            'ip' => $request->ip(),
-            'content_type' => $request->header('content-type'),
-            'user_agent' => $request->userAgent(),
-            'signature_present' => $request->headers->has('X-Hub-Signature-256'),
-            'content_length' => strlen($request->getContent()),
-            'query' => $request->query(),
-            'raw_body' => $request->getContent(),
-        ]);
-
-        Log::info('[SF-WA Connect][META] Webhook hit');
-
-        $signatureResponse = $this->validateSignature($request);
-
-        if ($signatureResponse) {
-            return $signatureResponse;
+        if ($response = $this->validateSignature($request)) {
+            return $response;
         }
 
-        $payload = $request->all();
-        $value = $request->input('entry.0.changes.0.value');
-
-        if (! $value) {
-            Log::info('[SF-WA Connect][META] Empty payload structure');
+        $payload = $request->json()->all();
+        if (($payload['object'] ?? null) !== 'whatsapp_business_account') {
             return response()->noContent();
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Status updates
-        |--------------------------------------------------------------------------
-        | Status payloads can arrive separately or alongside other webhook changes.
-        | We process them but do not let them block echo/inbound detection.
-        */
-        if (! empty($value['statuses'])) {
-            $this->handleStatuses($value);
+        foreach ((array) ($payload['entry'] ?? []) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
 
-            if (empty($value['smb_message_echoes']) && empty($value['messages'][0])) {
-                return response()->noContent();
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
+                if (! is_array($change) || ! is_array($change['value'] ?? null)) {
+                    continue;
+                }
+
+                $this->handleChange(
+                    (string) ($entry['id'] ?? ''),
+                    (string) ($change['field'] ?? 'unknown'),
+                    $change['value']
+                );
             }
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | WhatsApp Business App Coexistence Echoes
-        |--------------------------------------------------------------------------
-        | Messages sent by the garage from the WhatsApp Business mobile app arrive
-        | as smb_message_echoes. These must be logged as outbound/manual messages.
-        |
-        | IMPORTANT:
-        | Do not dispatch ProcessInboundWhatsApp here.
-        | Do not create/reuse leads here.
-        | Do not trigger bot replies here.
-        */
-        if (! empty($value['smb_message_echoes'])) {
-            return $this->handleSmbMessageEchoes($payload, $value);
-        }
-
-        if (empty($value['messages'][0])) {
-            Log::info('[SF-WA Connect][META] No inbound message found');
-            return response()->noContent();
-        }
-
-        return $this->handleInboundMessage($payload, $value);
+        return response()->noContent();
     }
 
-    protected function validateSignature(Request $request)
+    private function validateSignature(Request $request)
     {
-        $signature = $request->header('X-Hub-Signature-256');
+        $signature = (string) $request->header('X-Hub-Signature-256', '');
+        $appSecret = (string) (config('services.meta_leads.app_secret') ?: config('services.meta.app_secret'));
 
-        if (! $signature) {
-            Log::warning('[SF-WA Connect][META] Missing signature header');
-            return response('Missing signature', 403);
+        if ($signature === '' || $appSecret === '') {
+            Log::warning('[SF-WA Connect] Webhook signature prerequisites missing', [
+                'signature_present' => $signature !== '',
+                'secret_configured' => $appSecret !== '',
+            ]);
+
+            return response('Forbidden', 403);
         }
 
-        $appSecret = config('services.meta_leads.app_secret')
-            ?: config('services.meta.app_secret')
-            ?: env('META_APP_SECRET');
-
-        if (! $appSecret) {
-            Log::error('[SF-WA Connect][META] META_APP_SECRET not configured');
-            return response('Server misconfigured', 500);
-        }
-
-        $expected = 'sha256='.hash_hmac(
-            'sha256',
-            $request->getContent(),
-            $appSecret
-        );
-
+        $expected = 'sha256='.hash_hmac('sha256', $request->getContent(), $appSecret);
         if (! hash_equals($expected, $signature)) {
-            Log::warning('[SF-WA Connect][META] Signature mismatch');
+            Log::warning('[SF-WA Connect] Webhook signature rejected');
+
             return response('Invalid signature', 403);
         }
-
-        Log::info('[SF-WA Connect][META] Signature validated');
 
         return null;
     }
 
-    protected function handleStatuses(array $value)
+    private function handleChange(string $entryWabaId, string $field, array $value): void
     {
-        $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
-
-        if (! $phoneNumberId) {
-            Log::warning('[SF-WA Connect][META] Status update missing phone_number_id');
-            return response()->noContent();
-        }
-
-        $company = $this->resolveCompanyByPhoneNumberId($phoneNumberId);
-
+        $company = $this->resolveCompany($entryWabaId, (string) data_get($value, 'metadata.phone_number_id', ''));
         if (! $company) {
-            Log::warning('[SF-WA Connect][META] Status company not resolved', [
-                'phone_number_id' => $phoneNumberId,
+            Log::warning('[SF-WA Connect] Webhook tenant could not be resolved uniquely', [
+                'field' => $field,
+                'has_waba_id' => $entryWabaId !== '',
+                'has_phone_number_id' => filled(data_get($value, 'metadata.phone_number_id')),
             ]);
 
-            return response()->noContent();
+            return;
         }
 
-        foreach ($value['statuses'] as $status) {
-            $messageId = $status['id'] ?? null;
-            $providerStatus = $status['status'] ?? null;
+        $company->forceFill(['whatsapp_last_webhook_at' => now()])->save();
 
-            if (! $messageId) {
-                Log::warning('[SF-WA Connect][META] Status update missing message id', [
-                    'company_id' => $company->id,
-                    'provider_status' => $providerStatus,
-                    'recipient_id' => $this->maskPhone($status['recipient_id'] ?? null),
-                    'status_keys' => array_keys($status),
-                ]);
-
-                continue;
-            }
-
-            $messageLog = MessageLog::query()
-                ->where('company_id', $company->id)
-                ->where('provider_message_id', $messageId)
-                ->latest('id')
-                ->first();
-
-            if (! $messageLog) {
-                Log::warning('[SF-WA Connect][META] Status update message log not found', [
-                    'company_id' => $company->id,
-                    'provider_message_id' => $messageId,
-                    'provider_status' => $providerStatus,
-                    'recipient_id' => $this->maskPhone($status['recipient_id'] ?? null),
-                    'status_keys' => array_keys($status),
-                ]);
-
-                $this->storeUsageLogIfAvailable($company, null, $messageId, $phoneNumberId, $status);
-
-                continue;
-            }
-
-            $existingMeta = $messageLog->meta ?? [];
-
-            if (is_string($existingMeta)) {
-                $decoded = json_decode($existingMeta, true);
-                $existingMeta = is_array($decoded) ? $decoded : [];
-            }
-
-            if (! is_array($existingMeta)) {
-                $existingMeta = [];
-            }
-
-            $errors = $status['errors'] ?? [];
-
-            $messageLog->update([
-                'provider_status' => $providerStatus,
-                'meta' => array_merge($existingMeta, [
-                    'last_webhook_status' => $status,
-                    'last_webhook_value' => $value,
-                    'last_webhook_received_at' => now()->toIso8601String(),
-
-                    'wa_status' => $providerStatus,
-                    'wa_timestamp' => $status['timestamp'] ?? null,
-                    'wa_recipient_id' => $status['recipient_id'] ?? null,
-                    'wa_conversation' => $status['conversation'] ?? null,
-                    'wa_pricing' => $status['pricing'] ?? null,
-
-                    'wa_errors' => $errors,
-                    'wa_error_code' => $errors[0]['code'] ?? null,
-                    'wa_error_title' => $errors[0]['title'] ?? null,
-                    'wa_error_message' => $errors[0]['message'] ?? null,
-                    'wa_error_details' => $errors[0]['error_data']['details'] ?? null,
-                ]),
-            ]);
-
-            $this->storeUsageLogIfAvailable($company, $messageLog, $messageId, $phoneNumberId, $status);
-
-            Log::info('[SF-WA Connect][META] Status update processed', [
-                'company_id' => $company->id,
-                'message_log_id' => $messageLog->id,
-                'provider_message_id' => $messageId,
-                'provider_status' => $providerStatus,
-                'error_code' => $errors[0]['code'] ?? null,
-                'error_title' => $errors[0]['title'] ?? null,
-                'error_details' => $errors[0]['error_data']['details'] ?? null,
-            ]);
-        }
-
-        return response()->noContent();
-    }
-
-    protected function handleSmbMessageEchoes(array $payload, array $value)
-    {
-        $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
-        $displayPhoneNumber = $value['metadata']['display_phone_number'] ?? null;
-
-        if (! $phoneNumberId) {
-            Log::warning('[SF-WA Connect][META][COEXISTENCE] Echo missing phone_number_id');
-            return response()->noContent();
-        }
-
-        $company = $this->resolveCompanyByPhoneNumberId($phoneNumberId);
-
-        if (! $company) {
-            Log::warning('[SF-WA Connect][META][COEXISTENCE] Echo company not resolved', [
-                'phone_number_id' => $phoneNumberId,
-            ]);
-
-            return response()->noContent();
-        }
-
-        if (! (bool) ($company->is_whatsapp_active ?? false)) {
-            Log::warning('[SF-WA Connect][META][COEXISTENCE] Company WhatsApp inactive; echo ignored', [
-                'company_id' => $company->id,
-                'phone_number_id' => $phoneNumberId,
-            ]);
-
-            return response()->noContent();
-        }
-
-        foreach ($value['smb_message_echoes'] as $echo) {
-            $providerMessageId = $echo['id'] ?? null;
-
-            if ($providerMessageId) {
-                $alreadyLogged = MessageLog::query()
-                    ->where('company_id', $company->id)
-                    ->where('provider_message_id', $providerMessageId)
-                    ->exists();
-
-                if ($alreadyLogged) {
-                    Log::info('[SF-WA Connect][META][COEXISTENCE] Echo already logged', [
-                        'company_id' => $company->id,
-                        'provider_message_id' => $providerMessageId,
-                    ]);
-
-                    continue;
+        if (in_array($field, ['smb_app_state_sync', 'history'], true)) {
+            $event = $this->recordEvent($company, $field, null, $value, $field);
+            if ($event?->wasRecentlyCreated) {
+                try {
+                    ProcessWhatsAppCoexistenceWebhook::dispatch($event->id);
+                } catch (\Throwable $exception) {
+                    $event->delete();
+                    throw $exception;
                 }
             }
 
-            $body = $this->extractMessageBody($echo);
+            return;
+        }
 
-            if ($body === '') {
-                $body = '[WhatsApp Business App message]';
+        foreach ((array) ($value['statuses'] ?? []) as $status) {
+            if (is_array($status)) {
+                $this->handleStatus($company, $status);
+            }
+        }
+
+        $echoes = (array) ($value['smb_message_echoes'] ?? []);
+        if ($field === 'smb_message_echoes' && $echoes === []) {
+            $echoes = (array) ($value['messages'] ?? []);
+        }
+        foreach ($echoes as $echo) {
+            if (is_array($echo)) {
+                $this->handleEcho($company, $value, $echo);
+            }
+        }
+
+        if ($field !== 'messages') {
+            if ($field !== 'smb_message_echoes') {
+                $this->recordEvent($company, $field, null, ['keys' => array_keys($value)], 'unsupported');
             }
 
-            $customerNumber = $this->extractEchoCustomerNumber($echo);
-
-            DB::table('message_logs')->insert([
-                'company_id' => $company->id,
-                'lead_id' => null,
-                'conversation_id' => null,
-                'direction' => 'out',
-                'source' => 'whatsapp_business_app',
-                'is_ai' => 0,
-                'channel' => 'whatsapp',
-                'to_number' => $customerNumber,
-                'from_number' => $displayPhoneNumber,
-                'template' => null,
-                'template_id' => null,
-                'body' => $body,
-                'provider_message_id' => $providerMessageId,
-                'provider_status' => 'sent_from_business_app',
-                'meta' => json_encode([
-                    'provider' => 'meta',
-                    'provider_message_type' => 'smb_message_echoes',
-                    'is_echo' => true,
-                    'echo_payload' => $echo,
-                    'webhook_value' => $value,
-                    'webhook_payload' => $payload,
-                    'received_at' => now()->toIso8601String(),
-                ]),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $this->updateCompanyLastEchoAt($company);
-
-            Log::info('[SF-WA Connect][META][COEXISTENCE] Business App echo logged', [
-                'company_id' => $company->id,
-                'provider_message_id' => $providerMessageId,
-                'from_number' => $this->maskPhone($displayPhoneNumber),
-                'to_number' => $this->maskPhone($customerNumber),
-                'body_length' => mb_strlen($body),
-            ]);
+            return;
         }
 
-        return response()->noContent();
+        foreach ((array) ($value['messages'] ?? []) as $message) {
+            if (is_array($message)) {
+                $this->handleInbound($company, $value, $message);
+            }
+        }
     }
 
-    protected function handleInboundMessage(array $payload, array $value)
+    private function handleInbound(Company $company, array $value, array $message): void
     {
-        $msg = $value['messages'][0];
-        $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
+        $messageId = (string) ($message['id'] ?? '');
+        $event = $this->recordEvent($company, 'messages', $messageId, [
+            'message_type' => $message['type'] ?? 'unknown',
+            'timestamp' => $message['timestamp'] ?? null,
+        ], 'customer_inbound');
 
-        if (! $phoneNumberId) {
-            Log::warning('[SF-WA Connect][META] Missing phone_number_id');
-            return response()->noContent();
+        if (! $event?->wasRecentlyCreated) {
+            return;
         }
 
-        $company = $this->resolveCompanyByPhoneNumberId($phoneNumberId);
-
-        if (! $company) {
-            Log::warning('[SF-WA Connect][META] No company mapped', [
-                'phone_number_id' => $phoneNumberId,
-            ]);
-
-            return response()->noContent();
+        $from = $this->digits($message['from'] ?? null);
+        if ($from === '') {
+            $event->forceFill(['status' => 'ignored', 'error_code' => 'missing_sender', 'processed_at' => now()])->save();
+            return;
         }
 
-        if (! (bool) ($company->is_whatsapp_active ?? false)) {
-            Log::warning('[SF-WA Connect][META] Company WhatsApp inactive; inbound ignored', [
-                'company_id' => $company->id,
-                'phone_number_id' => $phoneNumberId,
-            ]);
-
-            return response()->noContent();
+        $type = (string) ($message['type'] ?? 'unknown');
+        $body = $this->messageBody($message);
+        $hasMedia = in_array($type, ['image', 'document', 'audio', 'video', 'sticker'], true);
+        if ($body === '' && $hasMedia) {
+            $body = '['.ucfirst($type).']';
         }
-
-        Log::info('[SF-WA Connect][META] Company resolved', [
-            'company_id' => $company->id,
-            'phone_number_id' => $phoneNumberId,
-        ]);
-
-        $body = $this->extractMessageBody($msg);
-
         if ($body === '') {
-            $body = '[Non-text message received]';
+            $body = '[Unsupported WhatsApp message]';
         }
 
-        $profileName = $value['contacts'][0]['profile']['name'] ?? null;
+        $profile = collect((array) ($value['contacts'] ?? []))
+            ->first(fn ($contact) => is_array($contact) && $this->digits($contact['wa_id'] ?? null) === $from);
 
-        ProcessInboundWhatsApp::dispatch(
-            from: $msg['from'] ?? null,
-            to: $value['metadata']['display_phone_number'] ?? null,
-            body: $body,
-            sid: $msg['id'] ?? null,
-            profileName: $profileName,
-            provider: 'meta',
-            payload: $payload,
-            companyId: $company->id
-        );
+        try {
+            ProcessInboundWhatsApp::dispatch(
+                from: $from,
+                to: $this->digits(data_get($value, 'metadata.display_phone_number')),
+                body: $body,
+                sid: $messageId !== '' ? $messageId : null,
+                numMedia: $hasMedia ? 1 : 0,
+                profileName: is_array($profile) ? data_get($profile, 'profile.name') : null,
+                provider: 'meta',
+                payload: [
+                    'source_kind' => 'customer_inbound',
+                    'message_type' => $type,
+                    'provider_timestamp' => $message['timestamp'] ?? null,
+                    'media_id' => data_get($message, $type.'.id'),
+                    'media_mime_type' => data_get($message, $type.'.mime_type'),
+                ],
+                companyId: (int) $company->id
+            );
+        } catch (\Throwable $exception) {
+            // Release the receipt so Meta's retry can durably enqueue the message.
+            $event->delete();
+            throw $exception;
+        }
 
-        Log::info('[SF-WA Connect][META] Inbound message dispatched', [
-            'company_id' => $company->id,
-            'type' => $msg['type'] ?? null,
-            'from_number' => $this->maskPhone($msg['from'] ?? null),
-            'body_length' => mb_strlen($body),
-        ]);
-
-        return response()->noContent();
+        $company->forceFill(['whatsapp_last_inbound_at' => now()])->save();
+        $event->forceFill(['status' => 'dispatched', 'processed_at' => now()])->save();
     }
 
-    protected function resolveCompanyByPhoneNumberId(?string $phoneNumberId): ?Company
+    private function handleEcho(Company $company, array $value, array $echo): void
     {
-        if (blank($phoneNumberId)) {
+        $messageId = (string) ($echo['id'] ?? '');
+        $event = $this->recordEvent($company, 'smb_message_echoes', $messageId, [
+            'message_type' => $echo['type'] ?? 'unknown',
+            'timestamp' => $echo['timestamp'] ?? null,
+        ], 'business_app_outbound');
+
+        if (! $event?->wasRecentlyCreated) {
+            return;
+        }
+
+        $customer = $this->digits($echo['to'] ?? $echo['recipient_id'] ?? $echo['from'] ?? null);
+        $lead = $customer === '' || ! Schema::hasTable('leads') ? null : Lead::query()
+            ->where('company_id', $company->id)
+            ->where('phone_norm', $customer)
+            ->latest('id')
+            ->first();
+        $conversation = $lead && Schema::hasTable('conversations') ? Conversation::query()
+            ->where('company_id', $company->id)
+            ->where('lead_id', $lead->id)
+            ->latest('id')
+            ->first() : null;
+        $type = (string) ($echo['type'] ?? 'unknown');
+        $body = $this->messageBody($echo) ?: '['.ucfirst($type).']';
+
+        MessageLog::query()->firstOrCreate([
+            'company_id' => $company->id,
+            'provider_message_id' => $messageId !== '' ? $messageId : 'echo-'.$event->event_key,
+        ], [
+            'lead_id' => $lead?->id,
+            'conversation_id' => $conversation?->id,
+            'direction' => 'out',
+            'channel' => 'whatsapp',
+            'source' => 'whatsapp_business_app',
+            'from_number' => $this->digits(data_get($value, 'metadata.display_phone_number')),
+            'to_number' => $customer !== '' ? $customer : null,
+            'body' => $body,
+            'provider_status' => 'sent',
+            'meta' => [
+                'source_kind' => 'business_app_outbound',
+                'message_type' => $type,
+                'provider_timestamp' => $echo['timestamp'] ?? null,
+                'media_id' => data_get($echo, $type.'.id'),
+            ],
+        ]);
+
+        $company->forceFill(['whatsapp_last_echo_at' => now()])->save();
+        $event->forceFill(['status' => 'processed', 'processed_at' => now()])->save();
+    }
+
+    private function handleStatus(Company $company, array $status): void
+    {
+        $messageId = (string) ($status['id'] ?? '');
+        $providerStatus = strtolower((string) ($status['status'] ?? ''));
+        if ($messageId === '' || $providerStatus === '') {
+            return;
+        }
+
+        $event = $this->recordEvent($company, 'messages', $messageId.'|'.$providerStatus.'|'.($status['timestamp'] ?? ''), [
+            'provider_status' => $providerStatus,
+            'timestamp' => $status['timestamp'] ?? null,
+        ], 'message_status');
+        if (! $event?->wasRecentlyCreated) {
+            return;
+        }
+
+        $message = MessageLog::query()
+            ->where('company_id', $company->id)
+            ->where('provider_message_id', $messageId)
+            ->latest('id')
+            ->first();
+        if (! $message) {
+            $event->forceFill(['status' => 'ignored', 'error_code' => 'message_not_found', 'processed_at' => now()])->save();
+            return;
+        }
+
+        $current = strtolower((string) $message->provider_status);
+        $incomingRank = self::STATUS_RANK[$providerStatus] ?? 0;
+        $currentRank = self::STATUS_RANK[$current] ?? 0;
+        if ($providerStatus !== 'failed' && $incomingRank < $currentRank) {
+            $event->forceFill(['status' => 'ignored', 'error_code' => 'stale_status', 'processed_at' => now()])->save();
+            return;
+        }
+
+        $errors = (array) ($status['errors'] ?? []);
+        $meta = is_array($message->meta) ? $message->meta : [];
+        $message->forceFill([
+            'provider_status' => $providerStatus,
+            'meta' => array_merge($meta, [
+                'wa_status' => $providerStatus,
+                'wa_timestamp' => $status['timestamp'] ?? null,
+                'wa_error_code' => data_get($errors, '0.code'),
+                'wa_error_title' => data_get($errors, '0.title'),
+                'wa_error_message' => data_get($errors, '0.message'),
+                'last_webhook_received_at' => now()->toIso8601String(),
+            ]),
+        ])->save();
+
+        $this->storeUsageLogIfAvailable($company, $message, $messageId, $status);
+        $event->forceFill(['status' => 'processed', 'processed_at' => now()])->save();
+    }
+
+    private function recordEvent(
+        Company $company,
+        string $field,
+        ?string $providerEventId,
+        array $payload,
+        string $eventType
+    ): ?WhatsAppWebhookEvent {
+        $canonical = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $payloadHash = hash('sha256', (string) $canonical);
+        $eventKey = hash('sha256', implode('|', [$company->id, $field, $providerEventId ?: $payloadHash]));
+
+        return WhatsAppWebhookEvent::query()->firstOrCreate([
+            'event_key' => $eventKey,
+        ], [
+            'company_id' => $company->id,
+            'field' => $field,
+            'event_type' => $eventType,
+            'provider_event_id' => $providerEventId,
+            'payload_hash' => $payloadHash,
+            'payload' => $payload,
+            'status' => 'pending',
+            'occurred_at' => now(),
+        ]);
+    }
+
+    private function resolveCompany(string $wabaId, string $phoneNumberId): ?Company
+    {
+        $query = Company::query()->where('is_whatsapp_active', true);
+        if ($phoneNumberId !== '') {
+            $query->where('meta_phone_number_id', $phoneNumberId);
+        } elseif ($wabaId !== '') {
+            $query->where('meta_waba_id', $wabaId);
+        }
+        if ($phoneNumberId === '' && $wabaId === '') {
             return null;
         }
 
-        return Company::query()
-            ->where('meta_phone_number_id', trim((string) $phoneNumberId))
-            ->first();
+        $matches = $query->limit(2)->get()->filter(function (Company $company) use ($wabaId) {
+            return $wabaId === ''
+                || blank($company->meta_waba_id)
+                || hash_equals((string) $company->meta_waba_id, $wabaId);
+        })->values();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
-    protected function updateCompanyLastEchoAt(Company $company): void
+    private function storeUsageLogIfAvailable(Company $company, MessageLog $message, string $messageId, array $status): void
     {
-        if (! Schema::hasColumn('companies', 'whatsapp_last_echo_at')) {
+        if (! DB::getSchemaBuilder()->hasTable('whatsapp_usage_logs')) {
             return;
         }
 
         try {
-            $updates = [
-                'whatsapp_last_echo_at' => now(),
-                'updated_at' => now(),
-            ];
-
-            if (Schema::hasColumn('companies', 'whatsapp_coexistence_status')) {
-                $updates['whatsapp_coexistence_status'] = 'active';
-            }
-
-            DB::table('companies')
-                ->where('id', $company->id)
-                ->update($updates);
-        } catch (\Throwable $e) {
-            Log::warning('[SF-WA Connect][META][COEXISTENCE] Failed to update last echo timestamp', [
-                'company_id' => $company->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    protected function extractEchoCustomerNumber(array $echo): ?string
-    {
-        return $echo['to']
-            ?? $echo['recipient_id']
-            ?? $echo['customer']
-            ?? $echo['wa_id']
-            ?? $echo['contacts'][0]['wa_id']
-            ?? null;
-    }
-
-    protected function storeUsageLogIfAvailable(
-        Company $company,
-        ?MessageLog $messageLog,
-        ?string $providerMessageId,
-        ?string $phoneNumberId,
-        array $status
-    ): void {
-        if (! Schema::hasTable('whatsapp_usage_logs')) {
-            return;
-        }
-
-        try {
-            $pricing = $status['pricing'] ?? [];
-            $conversation = $status['conversation'] ?? [];
-
             DB::table('whatsapp_usage_logs')->insert([
                 'company_id' => $company->id,
-                'message_log_id' => $messageLog?->id,
+                'message_log_id' => $message->id,
                 'whatsapp_message_id' => null,
-                'provider_message_id' => $providerMessageId,
-                'phone_number_id' => $phoneNumberId,
+                'provider_message_id' => $messageId,
+                'phone_number_id' => $company->meta_phone_number_id,
                 'direction' => 'out',
-                'conversation_category' => $pricing['category'] ?? $conversation['origin']['type'] ?? null,
-                'billable' => isset($pricing['billable']) ? (int) (bool) $pricing['billable'] : 0,
-                'currency' => $pricing['currency'] ?? 'AED',
-                'meta_cost' => $pricing['cost'] ?? null,
+                'conversation_category' => data_get($status, 'pricing.category')
+                    ?? data_get($status, 'conversation.origin.type'),
+                'billable' => (int) (bool) data_get($status, 'pricing.billable', false),
+                'currency' => data_get($status, 'pricing.currency', 'AED'),
+                'meta_cost' => data_get($status, 'pricing.cost'),
                 'sayaraforce_charge' => null,
                 'pricing_payload' => json_encode([
-                    'status' => $status,
-                    'pricing' => $pricing,
-                    'conversation' => $conversation,
+                    'provider_status' => $status['status'] ?? null,
+                    'error_code' => data_get($status, 'errors.0.code'),
+                    'conversation_id_present' => filled(data_get($status, 'conversation.id')),
                 ]),
-                'occurred_at' => isset($status['timestamp'])
+                'occurred_at' => is_numeric($status['timestamp'] ?? null)
                     ? date('Y-m-d H:i:s', (int) $status['timestamp'])
                     : now(),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable $e) {
-            Log::warning('[SF-WA Connect][META] Failed to store usage log', [
+        } catch (\Throwable $exception) {
+            Log::warning('[SF-WA Connect] Usage audit write failed safely', [
                 'company_id' => $company->id,
-                'provider_message_id' => $providerMessageId,
-                'error' => $e->getMessage(),
+                'exception' => $exception::class,
             ]);
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Extract Meta inbound / echo body
-    |--------------------------------------------------------------------------
-    */
-    protected function extractMessageBody(array $msg): string
+    private function messageBody(array $message): string
     {
-        $type = $msg['type'] ?? null;
-
-        if ($type === 'text') {
-            return trim((string) ($msg['text']['body'] ?? ''));
-        }
-
-        if ($type === 'button') {
-            return trim((string) (
-                $msg['button']['text']
-                ?? $msg['button']['payload']
-                ?? ''
-            ));
-        }
-
-        if ($type === 'interactive') {
-            $interactiveType = $msg['interactive']['type'] ?? null;
-
-            if ($interactiveType === 'button_reply') {
-                return trim((string) (
-                    $msg['interactive']['button_reply']['title']
-                    ?? $msg['interactive']['button_reply']['id']
-                    ?? ''
-                ));
-            }
-
-            if ($interactiveType === 'list_reply') {
-                return trim((string) (
-                    $msg['interactive']['list_reply']['title']
-                    ?? $msg['interactive']['list_reply']['id']
-                    ?? ''
-                ));
-            }
-        }
-
-        if ($type === 'image') {
-            return '[Image message sent from WhatsApp Business App]';
-        }
-
-        if ($type === 'document') {
-            return '[Document message sent from WhatsApp Business App]';
-        }
-
-        if ($type === 'audio') {
-            return '[Audio message sent from WhatsApp Business App]';
-        }
-
-        if ($type === 'video') {
-            return '[Video message sent from WhatsApp Business App]';
-        }
-
-        return '';
+        return trim((string) ($message['text']['body']
+            ?? $message['button']['text']
+            ?? $message['interactive']['button_reply']['title']
+            ?? $message['interactive']['list_reply']['title']
+            ?? data_get($message, ($message['type'] ?? '').'.caption')
+            ?? ''));
     }
 
-    protected function maskPhone(?string $value): ?string
+    private function digits(mixed $value): string
     {
-        $digits = preg_replace('/\D+/', '', (string) $value);
-
-        if ($digits === '') {
-            return null;
-        }
-
-        return str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
+        return preg_replace('/\D+/', '', (string) $value) ?: '';
     }
 }

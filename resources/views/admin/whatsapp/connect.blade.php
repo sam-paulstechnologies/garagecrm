@@ -1,770 +1,429 @@
 @extends('layouts.app')
 
-@section('title', 'SF-WA Connect')
+@section('title', 'Connect WhatsApp')
 
 @section('content')
-
 @php
-    use Illuminate\Support\Facades\Route;
+    use App\Services\WhatsApp\MetaEmbeddedSignupService;
 
+    $businessAppMode = MetaEmbeddedSignupService::MODE_BUSINESS_APP;
+    $cloudApiMode = MetaEmbeddedSignupService::MODE_CLOUD_API;
+    $isBusinessAppMode = $connectionMode === $businessAppMode;
     $isConnected = (bool) ($status['is_connected'] ?? false);
-    $isActive = (bool) ($status['is_active'] ?? false);
-
-    $currentConnectionMode = $status['connection_mode'] ?? 'manual';
-    $selectedConnectionMode = $connectionMode ?? request('mode', 'coexistence');
-
-    if (! in_array($selectedConnectionMode, ['coexistence', 'cloud_api', 'manual'], true)) {
-        $selectedConnectionMode = 'coexistence';
-    }
-
-    $connectionModeLabel = match ($currentConnectionMode) {
-        'coexistence' => 'Coexistence',
-        'cloud_api' => 'Cloud API',
-        default => 'Manual / Not connected',
+    $modeLabel = match ($status['connection_mode'] ?? 'manual') {
+        $businessAppMode => 'Existing WhatsApp Business app',
+        $cloudApiMode => 'Dedicated Cloud API number',
+        default => 'Not connected',
     };
-
-    $callbackUrl = Route::has('admin.whatsapp.connect.callback')
-        ? route('admin.whatsapp.connect.callback')
-        : url('/admin/whatsapp/embedded-signup/callback');
-
-    $statusUrl = Route::has('admin.whatsapp.connect.status')
-        ? route('admin.whatsapp.connect.status')
-        : url('/admin/whatsapp/connect/status');
-
-    $disconnectUrl = Route::has('admin.whatsapp.connect.disconnect')
-        ? route('admin.whatsapp.connect.disconnect')
-        : url('/admin/whatsapp/disconnect');
-
-    $settingsUrl = Route::has('admin.whatsapp.settings.edit')
-        ? route('admin.whatsapp.settings.edit')
-        : url('/admin/whatsapp/settings');
-
-    $connectBaseUrl = Route::has('admin.whatsapp.connect')
-        ? route('admin.whatsapp.connect')
-        : url('/admin/whatsapp/connect');
-
-    $embeddedSignupConfigId = config('services.meta.whatsapp_embedded_signup_config_id')
-        ?: config('services.whatsapp.embedded_signup_config_id')
-        ?: env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID');
-
-    $metaAppIdValue = $metaAppId ?? config('services.meta.app_id') ?? env('META_APP_ID');
-    $graphVersionValue = $graphVersion ?? 'v21.0';
-
-    $panelClass = 'rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20 overflow-hidden';
-    $panelHeaderClass = 'border-b border-white/10 px-6 py-4 bg-slate-950/35';
-    $panelBodyClass = 'px-6 py-6';
+    $callbackUrl = route('admin.whatsapp.connect.callback');
+    $statusUrl = route('admin.whatsapp.connect.status');
+    $canLaunch = (bool) ($signupConfiguration['is_configured'] ?? false);
 @endphp
 
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-
-    {{-- Alerts --}}
+<div class="sf-page">
     @if(session('success'))
-        <div class="mb-5 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm font-bold text-green-300">
+        <div class="sf-alert-success mb-5">
             {{ session('success') }}
         </div>
     @endif
 
     @if(session('error'))
-        <div class="mb-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+        <div class="sf-alert-danger mb-5">
             {{ session('error') }}
         </div>
     @endif
 
-    <div id="sfwaBrowserAlert" class="mb-5 hidden rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300"></div>
+    <div id="sfwaBrowserAlert" role="alert" class="sf-alert-danger mb-5 hidden"></div>
+    <div id="sfwaBrowserStatus" aria-live="polite" class="sf-alert-info mb-5 hidden"></div>
 
-    @if(blank($metaAppIdValue) || blank($embeddedSignupConfigId))
-        <div class="mb-5 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-4 py-3 text-sm font-bold text-yellow-200">
-            Meta App ID or Embedded Signup Config ID is missing.
-            Please set <span class="text-yellow-100">META_APP_ID</span> and
-            <span class="text-yellow-100">META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID</span>
-            before testing SF-WA Connect.
-        </div>
-    @endif
-
-    {{-- Header --}}
-    <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <header class="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-            <div class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-300">
-                SF-WA Connect · Garage WhatsApp Onboarding
+            <div class="sf-badge-orange uppercase tracking-[0.12em]">
+                SayaraForce WhatsApp connection
             </div>
-
-            <h1 class="mt-4 text-3xl font-black tracking-tight text-white md:text-4xl">
-                Connect this garage’s WhatsApp number
+            <h1 class="sf-page-title mt-4">
+                Connect this garage's WhatsApp
             </h1>
-
-            <p class="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-400">
-                Each garage can connect its own WhatsApp Business number. With coexistence, the garage can continue using
-                the WhatsApp Business app while SayaraForce captures leads, logs conversations, sends approved templates,
-                and routes replies into the CRM.
+            <p class="sf-page-subtitle">
+                Choose the path that matches the number today. Existing Business app numbers must use Meta's Business App onboarding flow; dedicated API numbers use the standard Cloud API flow.
             </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ $settingsUrl }}"
-               class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-sm font-extrabold text-slate-200 transition hover:border-orange-400/30 hover:text-white">
-                Back to WhatsApp Settings
-            </a>
+        <a href="{{ route('admin.whatsapp.settings.edit') }}" class="sf-btn-secondary min-h-11">
+            WhatsApp settings
+        </a>
+    </header>
+
+    @unless($canLaunch)
+        <div class="sf-alert-warning mb-6 leading-6">
+            <strong>This onboarding path is not configured.</strong>
+            @if($isBusinessAppMode)
+                An explicit Meta v4 Business App onboarding configuration is required. SayaraForce will not fall back to the standard migration flow.
+            @else
+                Configure the dedicated Cloud API Embedded Signup configuration before connecting a number.
+            @endif
         </div>
-    </div>
+    @endunless
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
-        {{-- LEFT --}}
-        <div class="space-y-6 lg:col-span-2">
-
-            {{-- Main Connection Card --}}
-            <div class="{{ $panelClass }}">
-                <div class="{{ $panelHeaderClass }}">
-                    <div class="flex items-center justify-between gap-4">
-                        <div>
-                            <h2 class="text-lg font-extrabold text-white">
-                                Connection
-                            </h2>
-
-                            <p class="mt-1 text-sm font-medium text-slate-500">
-                                Choose how this garage should connect WhatsApp to SayaraForce.
-                            </p>
-                        </div>
-
-                        @if($isConnected)
-                            <span class="inline-flex rounded-full border border-green-400/20 bg-green-500/10 px-3 py-1 text-xs font-extrabold text-green-300">
-                                Connected · {{ $connectionModeLabel }}
-                            </span>
-                        @else
-                            <span class="inline-flex rounded-full border border-yellow-400/20 bg-yellow-500/10 px-3 py-1 text-xs font-extrabold text-yellow-300">
-                                Not Connected
-                            </span>
-                        @endif
-                    </div>
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,.75fr)]">
+        <main class="space-y-6">
+            <section class="sf-card overflow-hidden">
+                <div class="sf-card-header py-5">
+                    <h2 class="sf-section-title text-xl">Choose one onboarding path</h2>
+                    <p class="sf-section-subtitle text-sm leading-6">The two flows are intentionally separate and use separate server configuration.</p>
                 </div>
 
-                <div class="{{ $panelBodyClass }}">
-                    <div class="rounded-3xl border border-orange-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-orange-950/30 p-6 shadow-xl shadow-black/20">
-                        <div class="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-orange-300">
-                            24/7 Lead Desk
-                        </div>
+                <div class="grid gap-4 p-6 md:grid-cols-2">
+                    <article class="sf-mini-card p-5 {{ $isBusinessAppMode ? 'border-[color:var(--sf-orange)] bg-[color:var(--sf-selected)]' : '' }}">
+                        <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--sf-orange)]">Existing number</div>
+                        <h3 class="mt-3 font-heading text-xl font-semibold text-[color:var(--sf-text-strong)]">Connect an existing WhatsApp Business app number</h3>
+                        <p class="mt-2 text-sm leading-6 text-[color:var(--sf-muted)]">Keep using the WhatsApp Business mobile app while connecting the same number to SayaraForce through Meta's Business App onboarding flow.</p>
+                        <ul class="mt-4 space-y-2 text-sm text-[color:var(--sf-muted)]">
+                            <li>Mobile app remains available after successful coexistence onboarding.</li>
+                            <li>New customer messages can enter the SayaraForce inbox.</li>
+                            <li>Mobile-app replies are captured as manual outbound echoes.</li>
+                        </ul>
 
-                        <h2 class="mt-4 text-2xl font-black tracking-tight text-white md:text-3xl">
-                            Keep WhatsApp simple. Let SayaraForce do the follow-up work.
-                        </h2>
-
-                        <p class="mt-3 max-w-2xl text-sm font-semibold leading-7 text-slate-300">
-                            Connect WhatsApp so SayaraForce can capture enquiries, send approved templates,
-                            receive inbound replies, and route conversations to the correct garage inbox.
-                        </p>
-
-                        <div class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
-                            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                                <div class="text-lg font-black text-green-300">✓</div>
-                                <div class="mt-2 text-sm font-extrabold text-white">Garage Number</div>
-                                <p class="mt-1 text-xs font-medium leading-5 text-slate-500">
-                                    Messages are sent from the garage’s own WhatsApp number.
-                                </p>
-                            </div>
-
-                            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                                <div class="text-lg font-black text-blue-300">✓</div>
-                                <div class="mt-2 text-sm font-extrabold text-white">Auto Routing</div>
-                                <p class="mt-1 text-xs font-medium leading-5 text-slate-500">
-                                    Inbound messages map using Meta phone number ID.
-                                </p>
-                            </div>
-
-                            <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                                <div class="text-lg font-black text-orange-300">✓</div>
-                                <div class="mt-2 text-sm font-extrabold text-white">Usage Billing</div>
-                                <p class="mt-1 text-xs font-medium leading-5 text-slate-500">
-                                    Meta charges SayaraForce. SayaraForce bills the garage.
-                                </p>
-                            </div>
-                        </div>
-
-                        {{-- Connection Mode Cards --}}
-                        <div class="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                            {{-- Coexistence --}}
-                            <div class="rounded-3xl border {{ $selectedConnectionMode === 'coexistence' ? 'border-green-400/40 bg-green-500/10' : 'border-white/10 bg-slate-950/60' }} p-5">
-                                <div class="flex items-start justify-between gap-4">
-                                    <div>
-                                        <div class="inline-flex rounded-full border border-green-400/20 bg-green-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-green-300">
-                                            Recommended
-                                        </div>
-
-                                        <h3 class="mt-4 text-lg font-black text-white">
-                                            Connect existing WhatsApp Business App
-                                        </h3>
-
-                                        <p class="mt-2 text-sm font-medium leading-6 text-slate-400">
-                                            The garage keeps using the WhatsApp Business mobile app. SayaraForce connects in parallel
-                                            to capture leads, log conversations, send templates, and manage follow-ups.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                                    <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                                        Best for
-                                    </div>
-                                    <p class="mt-2 text-sm font-bold leading-6 text-slate-300">
-                                        Small garages who already use WhatsApp Business daily and do not want to lose app access.
-                                    </p>
-                                </div>
-
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        class="sfwaConnectModeButton inline-flex items-center justify-center rounded-xl bg-green-500 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-green-500/20 transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                        data-mode="coexistence"
-                                        @if(blank($metaAppIdValue) || blank($embeddedSignupConfigId)) disabled @endif
-                                    >
-                                        Connect with Coexistence
-                                    </button>
-
-                                    @if($selectedConnectionMode !== 'coexistence')
-                                        <a href="{{ $connectBaseUrl }}?mode=coexistence"
-                                           class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-4 py-2.5 text-sm font-extrabold text-slate-200 transition hover:border-green-400/30 hover:text-white">
-                                            Select
-                                        </a>
-                                    @endif
-                                </div>
-                            </div>
-
-                            {{-- Cloud API --}}
-                            <div class="rounded-3xl border {{ $selectedConnectionMode === 'cloud_api' ? 'border-blue-400/40 bg-blue-500/10' : 'border-white/10 bg-slate-950/60' }} p-5">
-                                <div class="flex items-start justify-between gap-4">
-                                    <div>
-                                        <div class="inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-blue-300">
-                                            Advanced
-                                        </div>
-
-                                        <h3 class="mt-4 text-lg font-black text-white">
-                                            Use WhatsApp Cloud API only
-                                        </h3>
-
-                                        <p class="mt-2 text-sm font-medium leading-6 text-slate-400">
-                                            Use SayaraForce as the main WhatsApp automation and inbox system. This is better when
-                                            the garage wants the CRM to control most WhatsApp communication.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                                    <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                                        Best for
-                                    </div>
-                                    <p class="mt-2 text-sm font-bold leading-6 text-slate-300">
-                                        Larger garages, teams, or branches that want a CRM-first WhatsApp operating model.
-                                    </p>
-                                </div>
-
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        class="sfwaConnectModeButton inline-flex items-center justify-center rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                        data-mode="cloud_api"
-                                        @if(blank($metaAppIdValue) || blank($embeddedSignupConfigId)) disabled @endif
-                                    >
-                                        Connect Cloud API
-                                    </button>
-
-                                    @if($selectedConnectionMode !== 'cloud_api')
-                                        <a href="{{ $connectBaseUrl }}?mode=cloud_api"
-                                           class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-4 py-2.5 text-sm font-extrabold text-slate-200 transition hover:border-blue-400/30 hover:text-white">
-                                            Select
-                                        </a>
-                                    @endif
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mt-6 flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                id="sfwaRefreshStatusButton"
-                                class="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-slate-200 transition hover:border-orange-400/30 hover:text-white"
-                            >
-                                Refresh Status
+                        @if($isBusinessAppMode)
+                            <label class="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-[color:var(--sf-border)] bg-[color:var(--sf-surface-soft)] p-3 text-sm leading-5 text-[color:var(--sf-text)]">
+                                <input id="sfwaBusinessAppAcknowledgement" type="checkbox" class="mt-0.5 rounded border-[color:var(--sf-border-strong)] bg-[color:var(--sf-input-bg)] text-[color:var(--sf-orange)] focus:ring-[color:var(--sf-focus-ring)]">
+                                <span>Only continue if Meta confirms that your WhatsApp Business app will remain active. Cancel the setup if Meta asks to remove, transfer or migrate the number away from the app.</span>
+                            </label>
+                            <button id="sfwaLaunchButton" type="button" @disabled(!$canLaunch) class="sf-btn-primary mt-4 min-h-11 w-full px-5 py-2.5 disabled:cursor-not-allowed disabled:opacity-45">
+                                Connect existing Business app number
                             </button>
+                        @else
+                            <a href="{{ route('admin.whatsapp.connect', ['mode' => $businessAppMode]) }}" class="sf-btn-secondary mt-4 min-h-11 w-full px-5 py-2.5">
+                                Select existing-number path
+                            </a>
+                        @endif
+                    </article>
 
-                            @if($isConnected)
-                                <form method="POST"
-                                      action="{{ $disconnectUrl }}"
-                                      onsubmit="return confirm('Disconnect WhatsApp for this garage? Messages will stop using this connected number.');">
-                                    @csrf
+                    <article class="sf-mini-card p-5 {{ !$isBusinessAppMode ? 'border-[color:var(--sf-orange)] bg-[color:var(--sf-selected)]' : '' }}">
+                        <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--sf-muted-strong)]">Dedicated API number</div>
+                        <h3 class="mt-3 font-heading text-xl font-semibold text-[color:var(--sf-text-strong)]">Connect a new or dedicated Cloud API number</h3>
+                        <p class="mt-2 text-sm leading-6 text-[color:var(--sf-muted)]">Use standard Embedded Signup when SayaraForce will operate a number that is not being retained in the WhatsApp Business mobile app.</p>
+                        <ul class="mt-4 space-y-2 text-sm text-[color:var(--sf-muted)]">
+                            <li>Standard Cloud API onboarding remains supported.</li>
+                            <li>SayaraForce validates the returned WABA and number server-side.</li>
+                            <li>The app subscribes to the selected WABA after validation.</li>
+                        </ul>
 
-                                    <button type="submit"
-                                            class="inline-flex items-center justify-center rounded-xl bg-red-600 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-red-500/20 transition hover:bg-red-700">
-                                        Disconnect WhatsApp
-                                    </button>
-                                </form>
-                            @endif
+                        @if(!$isBusinessAppMode)
+                            <button id="sfwaLaunchButton" type="button" @disabled(!$canLaunch) class="sf-btn-primary mt-4 min-h-11 w-full px-5 py-2.5 disabled:cursor-not-allowed disabled:opacity-45">
+                                Connect dedicated API number
+                            </button>
+                        @else
+                            <a href="{{ route('admin.whatsapp.connect', ['mode' => $cloudApiMode]) }}" class="sf-btn-secondary mt-4 min-h-11 w-full px-5 py-2.5">
+                                Select dedicated-number path
+                            </a>
+                        @endif
+                    </article>
+                </div>
+            </section>
+
+            <section class="sf-card p-6">
+                <h2 class="sf-section-title text-xl">Before using an existing number</h2>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    @foreach([
+                        'Back up chats in the WhatsApp Business app.',
+                        'Confirm the number is on WhatsApp Business, not personal WhatsApp.',
+                        'Keep the phone available to scan Meta\'s QR code.',
+                        'Cancel immediately if the flow says the app number will be removed or migrated.',
+                    ] as $item)
+                        <div class="sf-mini-card rounded-xl p-4 text-sm leading-6">{{ $item }}</div>
+                    @endforeach
+                </div>
+            </section>
+
+            @if($isConnected)
+                <section class="sf-card p-6">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="sf-section-title text-xl">Diagnostics and synchronization</h2>
+                            <p class="sf-section-subtitle text-sm leading-6">These actions use the securely stored company credential. Tokens are never displayed.</p>
                         </div>
                     </div>
 
-                    <div class="mt-5 rounded-2xl border border-white/10 bg-slate-950 p-4">
-                        <div class="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                            Connect Log
-                        </div>
+                    <div class="mt-5 flex flex-wrap gap-3">
+                        <form method="POST" action="{{ route('admin.whatsapp.connect.diagnostics') }}">
+                            @csrf
+                            <button class="sf-btn-primary min-h-11">Run diagnostics</button>
+                        </form>
 
-                        <pre id="sfwaLog" class="min-h-[110px] whitespace-pre-wrap break-words text-xs font-bold leading-6 text-slate-300">Ready.</pre>
+                        @if(($status['business_app_onboarding'] ?? false))
+                            <form method="POST" action="{{ route('admin.whatsapp.connect.sync.contacts') }}">
+                                @csrf
+                                <button class="sf-btn-secondary min-h-11">Retry contact sync</button>
+                            </form>
+                            <form method="POST" action="{{ route('admin.whatsapp.connect.sync.history') }}" onsubmit="return confirm('Request chat-history synchronization only if the business approved sharing history during onboarding. Continue?');">
+                                @csrf
+                                <button class="sf-btn-secondary min-h-11">Request approved history sync</button>
+                            </form>
+                        @endif
+
+                        <form method="POST" action="{{ route('admin.whatsapp.connect.disconnect') }}" onsubmit="return confirm('Disable this WhatsApp connection in SayaraForce? This does not remove the number from Meta or the mobile app.');">
+                            @csrf
+                            <button class="sf-btn-danger min-h-11">Disable locally</button>
+                        </form>
                     </div>
-                </div>
-            </div>
+                </section>
+            @endif
+        </main>
 
-            {{-- Steps --}}
-            <div class="{{ $panelClass }}">
-                <div class="{{ $panelHeaderClass }}">
-                    <h2 class="text-lg font-extrabold text-white">
-                        What happens after connection?
-                    </h2>
-
-                    <p class="mt-1 text-sm font-medium text-slate-500">
-                        SF-WA Connect saves the garage’s Meta WhatsApp details and routes messages by company.
-                    </p>
-                </div>
-
-                <div class="{{ $panelBodyClass }}">
-                    <div class="space-y-4">
-                        <div class="flex gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-sm font-black text-blue-300">1</span>
-                            <div>
-                                <h3 class="text-sm font-extrabold text-white">Garage completes Meta Embedded Signup</h3>
-                                <p class="mt-1 text-sm font-medium leading-6 text-slate-500">
-                                    The owner/admin logs into Facebook, selects or creates their business,
-                                    connects a WhatsApp Business Account, and verifies a number.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="flex gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-green-500/10 text-sm font-black text-green-300">2</span>
-                            <div>
-                                <h3 class="text-sm font-extrabold text-white">Coexistence keeps the app usable</h3>
-                                <p class="mt-1 text-sm font-medium leading-6 text-slate-500">
-                                    If coexistence is selected, the garage can keep replying from WhatsApp Business app.
-                                    SayaraForce logs those app replies as manual outbound messages.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="flex gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-sm font-black text-orange-300">3</span>
-                            <div>
-                                <h3 class="text-sm font-extrabold text-white">SayaraForce saves the connected number</h3>
-                                <p class="mt-1 text-sm font-medium leading-6 text-slate-500">
-                                    WABA ID, phone number ID, encrypted access token, verify token, mode, and active flag are saved against the company.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="flex gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 text-sm font-black text-purple-300">4</span>
-                            <div>
-                                <h3 class="text-sm font-extrabold text-white">Messages route by company</h3>
-                                <p class="mt-1 text-sm font-medium leading-6 text-slate-500">
-                                    Outbound messages use that company’s Meta credentials. Inbound webhooks map back using the phone number ID.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- RIGHT --}}
         <aside class="space-y-6">
-
-            {{-- Current Status --}}
-            <div class="{{ $panelClass }}">
-                <div class="{{ $panelHeaderClass }}">
-                    <h3 class="text-lg font-extrabold text-white">
-                        Current Status
-                    </h3>
-
-                    <p class="mt-1 text-sm font-medium text-slate-500">
-                        Saved against this company record.
-                    </p>
+            <section class="sf-card p-6">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="sf-section-title">Connection status</h2>
+                    <span class="{{ $isConnected ? 'sf-badge-green' : 'sf-badge-yellow' }}">
+                        {{ $isConnected ? 'Connected' : 'Not connected' }}
+                    </span>
                 </div>
 
-                <div class="{{ $panelBodyClass }}">
-                    <div class="space-y-3">
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Company</div>
-                            <div class="mt-2 break-words text-sm font-black text-white">
-                                {{ $company->name ?? ('Company #'.$company->id) }}
-                            </div>
+                <dl class="mt-5 space-y-4 text-sm">
+                    @foreach([
+                        'Mode' => $modeLabel,
+                        'WABA' => $status['waba_id'] ?? 'Not available',
+                        'Phone' => $status['masked_display_phone_number'] ?? 'Not available',
+                        'Phone number ID' => $status['masked_phone_number_id'] ?? 'Not available',
+                        'Webhook subscription' => $status['webhook_subscription_status'] ?? 'Not checked',
+                        'Last inbound webhook' => $status['last_inbound_at'] ?? 'Not received',
+                        'Last mobile-app echo' => $status['last_mobile_app_echo_at'] ?? 'Not received',
+                        'Last API outbound' => $status['last_api_outbound_at'] ?? 'Not sent',
+                        'Contact sync' => $status['contact_sync_status'] ?? 'Not requested',
+                        'History sync' => $status['history_sync_status'] ?? 'Not requested',
+                    ] as $label => $value)
+                        <div class="sf-mini-card rounded-xl p-3">
+                            <dt class="text-xs font-semibold uppercase tracking-[0.1em] text-[color:var(--sf-muted)]">{{ $label }}</dt>
+                            <dd class="mt-1 break-words font-medium text-[color:var(--sf-text-strong)]">{{ $value }}</dd>
                         </div>
+                    @endforeach
+                </dl>
+            </section>
 
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Active</div>
-                            <div class="mt-2 text-sm font-black {{ $isActive ? 'text-green-300' : 'text-yellow-300' }}">
-                                {{ $isActive ? 'Yes' : 'No' }}
-                            </div>
+            <section class="sf-card p-6">
+                <h2 class="sf-section-title">Recent connection activity</h2>
+                <div class="mt-4 space-y-3">
+                    @forelse($recentAudits as $audit)
+                        <div class="sf-mini-card rounded-xl p-3">
+                            <div class="text-sm font-semibold text-[color:var(--sf-text-strong)]">{{ str($audit->event)->replace('_', ' ')->title() }}</div>
+                            <div class="mt-1 text-xs text-[color:var(--sf-muted)]">{{ $audit->status }} · {{ optional($audit->occurred_at)->toDayDateTimeString() }}</div>
                         </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Connection Mode</div>
-                            <div class="mt-2 text-sm font-black {{ $currentConnectionMode === 'coexistence' ? 'text-green-300' : ($currentConnectionMode === 'cloud_api' ? 'text-blue-300' : 'text-yellow-300') }}">
-                                {{ $connectionModeLabel }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Coexistence</div>
-                            <div class="mt-2 text-sm font-black {{ ($status['coexistence_enabled'] ?? false) ? 'text-green-300' : 'text-slate-300' }}">
-                                {{ ($status['coexistence_enabled'] ?? false) ? 'Enabled' : 'Not enabled' }}
-                            </div>
-
-                            <div class="mt-1 text-xs font-bold text-slate-500">
-                                Status: {{ $status['coexistence_status'] ?? 'N/A' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Business ID</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['business_id'] ?? 'Not available' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Display Phone</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['display_phone_number'] ?? 'Not available' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">WABA ID</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['waba_id'] ?? 'Not connected' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Phone Number ID</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['phone_number_id'] ?? 'Not connected' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Verify Token</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['verify_token'] ?? 'Not generated yet' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Connected At</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['connected_at'] ?? 'Not available' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Last App Reply Synced</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['last_echo_at'] ?? 'Not synced yet' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                            <div class="text-xs font-extrabold uppercase tracking-wide text-slate-500">Token Expiry</div>
-                            <div class="mt-2 break-all text-sm font-bold text-slate-300">
-                                {{ $status['token_expires_at'] ?? 'Not available' }}
-                            </div>
-                        </div>
-                    </div>
+                    @empty
+                        <p class="text-sm leading-6 text-[color:var(--sf-muted)]">No connection activity recorded yet.</p>
+                    @endforelse
                 </div>
-            </div>
-
-            {{-- Coexistence Note --}}
-            <div class="rounded-3xl border border-green-400/20 bg-green-500/10 p-6">
-                <h3 class="text-lg font-extrabold text-green-100">
-                    Coexistence Advantage
-                </h3>
-
-                <p class="mt-2 text-sm font-medium leading-6 text-green-100/80">
-                    Recommended for first 10 garages. They can keep using WhatsApp Business app while SayaraForce captures,
-                    tracks, and automates around the same number.
-                </p>
-            </div>
-
-            {{-- Webhook Note --}}
-            <div class="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-6">
-                <h3 class="text-lg font-extrabold text-blue-100">
-                    Webhook Routing
-                </h3>
-
-                <p class="mt-2 text-sm font-medium leading-6 text-blue-100/80">
-                    Webhook URL remains the shared SayaraForce Meta webhook. The system resolves the correct garage using Meta
-                    <span class="font-black text-blue-100">phone_number_id</span>. App replies in coexistence are stored as
-                    <span class="font-black text-blue-100">whatsapp_business_app</span> messages.
-                </p>
-            </div>
-
-            {{-- Config Note --}}
-            <div class="rounded-3xl border border-yellow-400/20 bg-yellow-500/10 p-6">
-                <h3 class="text-lg font-extrabold text-yellow-100">
-                    Required Meta Config
-                </h3>
-
-                <div class="mt-3 space-y-2 text-xs font-bold leading-6 text-yellow-100/80">
-                    <div>META_APP_ID</div>
-                    <div>META_APP_SECRET</div>
-                    <div>META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID</div>
-                    <div>META_APP_SECRET for webhook signature</div>
-                </div>
-            </div>
-
+            </section>
         </aside>
     </div>
 </div>
 
 <script>
-    window.fbAsyncInit = function () {
-        FB.init({
-            appId: @json($metaAppIdValue),
-            autoLogAppEvents: true,
-            xfbml: true,
-            version: @json($graphVersionValue),
-        });
-
-        sfwaLog('Facebook SDK loaded.');
-    };
-
-    (function (d, s, id) {
-        if (d.getElementById(id)) {
-            return;
-        }
-
-        const js = d.createElement(s);
-        js.id = id;
-        js.src = 'https://connect.facebook.net/en_US/sdk.js';
-
-        const fjs = d.getElementsByTagName(s)[0];
-        fjs.parentNode.insertBefore(js, fjs);
-    }(document, 'script', 'facebook-jssdk'));
-
+    const sfwaConfig = @json($signupConfiguration);
     const sfwaState = @json($state);
     const sfwaCallbackUrl = @json($callbackUrl);
     const sfwaStatusUrl = @json($statusUrl);
-    const sfwaConfigId = @json($embeddedSignupConfigId);
     const sfwaCsrf = @json(csrf_token());
-    let sfwaSelectedConnectionMode = @json($selectedConnectionMode);
+    const sfwaExpectedBusinessAppEvent = 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING';
+    const sfwaLaunchButton = document.getElementById('sfwaLaunchButton');
+    const sfwaAlert = document.getElementById('sfwaBrowserAlert');
+    const sfwaStatus = document.getElementById('sfwaBrowserStatus');
+    const sfwaAcknowledgement = document.getElementById('sfwaBusinessAppAcknowledgement');
+    let sfwaAuthorizationCode = null;
+    let sfwaSession = null;
+    let sfwaSubmitted = false;
+    let sfwaCompletionTimer = null;
 
-    let sfwaSignupPayload = {
-        business_id: null,
-        waba_id: null,
-        phone_number_id: null,
-        display_phone_number: null,
-    };
-
-    const sfwaConnectModeButtons = document.querySelectorAll('.sfwaConnectModeButton');
-    const sfwaRefreshStatusButton = document.getElementById('sfwaRefreshStatusButton');
-    const sfwaLogBox = document.getElementById('sfwaLog');
-    const sfwaBrowserAlert = document.getElementById('sfwaBrowserAlert');
-
-    function sfwaLog(message, data = null) {
-        if (! sfwaLogBox) {
-            return;
+    function sfwaShowStatus(message) {
+        sfwaAlert?.classList.add('hidden');
+        if (sfwaStatus) {
+            sfwaStatus.textContent = message;
+            sfwaStatus.classList.remove('hidden');
         }
-
-        const timestamp = new Date().toLocaleTimeString();
-        let line = `[${timestamp}] ${message}`;
-
-        if (data) {
-            line += "\n" + JSON.stringify(data, null, 2);
-        }
-
-        sfwaLogBox.textContent = `${line}\n\n${sfwaLogBox.textContent || ''}`;
     }
 
     function sfwaShowError(message) {
-        if (sfwaBrowserAlert) {
-            sfwaBrowserAlert.classList.remove('hidden');
-            sfwaBrowserAlert.textContent = message;
+        sfwaStatus?.classList.add('hidden');
+        if (sfwaAlert) {
+            sfwaAlert.textContent = message;
+            sfwaAlert.classList.remove('hidden');
         }
-
-        sfwaLog(message);
     }
 
-    function sfwaModeLabel(mode) {
-        if (mode === 'coexistence') {
-            return 'Coexistence';
+    function sfwaIsTrustedOrigin(origin) {
+        try {
+            const url = new URL(origin);
+            return url.protocol === 'https:' && (url.hostname === 'facebook.com' || url.hostname.endsWith('.facebook.com'));
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function sfwaExpectedEvent(eventName) {
+        if (sfwaConfig.connection_mode === @json($businessAppMode)) {
+            return eventName === sfwaExpectedBusinessAppEvent;
         }
 
-        if (mode === 'cloud_api') {
-            return 'Cloud API';
+        return eventName === 'FINISH' || eventName === 'FINISH_ONLY_WABA';
+    }
+
+    async function sfwaTryComplete() {
+        if (sfwaSubmitted || !sfwaAuthorizationCode || !sfwaSession) {
+            return;
         }
 
-        return 'WhatsApp';
+        sfwaSubmitted = true;
+        window.clearTimeout(sfwaCompletionTimer);
+        sfwaShowStatus('Validating the Meta account and subscribing webhooks…');
+
+        try {
+            const response = await fetch(sfwaCallbackUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': sfwaCsrf,
+                },
+                body: JSON.stringify({
+                    code: sfwaAuthorizationCode,
+                    state: sfwaState,
+                    session_event: sfwaSession.event,
+                    business_id: sfwaSession.data.business_id || null,
+                    waba_id: sfwaSession.data.waba_id || null,
+                    phone_number_id: sfwaSession.data.phone_number_id || null,
+                }),
+            });
+
+            const json = await response.json().catch(() => ({}));
+            if (!response.ok || !json.ok) {
+                throw new Error(json.message || 'WhatsApp connection could not be completed. Restart the flow.');
+            }
+
+            sfwaShowStatus(json.warnings?.length ? json.warnings.join(' ') : json.message);
+            window.setTimeout(() => window.location.reload(), 900);
+        } catch (error) {
+            sfwaSubmitted = false;
+            sfwaAuthorizationCode = null;
+            sfwaSession = null;
+            sfwaShowError(error.message || 'WhatsApp connection could not be completed. Restart the flow.');
+        }
     }
 
     window.addEventListener('message', function (event) {
-        if (! event.origin.includes('facebook.com')) {
+        if (!sfwaIsTrustedOrigin(event.origin)) {
             return;
         }
 
-        let data = event.data;
-
+        let message = event.data;
         try {
-            if (typeof data === 'string') {
-                data = JSON.parse(data);
+            if (typeof message === 'string') {
+                message = JSON.parse(message);
             }
-        } catch (error) {
+        } catch (_) {
             return;
         }
 
-        const eventName = data.event || data.type || null;
-        const eventData = data.data || data.payload || data;
-
-        if (! eventName) {
+        if (!message || message.type !== 'WA_EMBEDDED_SIGNUP') {
             return;
         }
 
-        if (
-            eventName === 'WA_EMBEDDED_SIGNUP' ||
-            eventName === 'whatsapp_embedded_signup' ||
-            String(eventName).includes('WHATSAPP')
-        ) {
-            sfwaSignupPayload.business_id =
-                eventData.business_id ||
-                eventData.businessID ||
-                eventData.business?.id ||
-                sfwaSignupPayload.business_id;
+        const eventName = String(message.event || '');
+        const data = message.data && typeof message.data === 'object' ? message.data : {};
 
-            sfwaSignupPayload.waba_id =
-                eventData.waba_id ||
-                eventData.wabaID ||
-                eventData.whatsapp_business_account_id ||
-                eventData.whatsappBusinessAccountId ||
-                eventData.waba?.id ||
-                sfwaSignupPayload.waba_id;
-
-            sfwaSignupPayload.phone_number_id =
-                eventData.phone_number_id ||
-                eventData.phoneNumberId ||
-                eventData.phone_number?.id ||
-                eventData.phone?.id ||
-                sfwaSignupPayload.phone_number_id;
-
-            sfwaSignupPayload.display_phone_number =
-                eventData.display_phone_number ||
-                eventData.displayPhoneNumber ||
-                eventData.phone_number?.display_phone_number ||
-                sfwaSignupPayload.display_phone_number;
-
-            sfwaLog('Received Embedded Signup message from Meta.', {
-                connection_mode: sfwaSelectedConnectionMode,
-                ...sfwaSignupPayload,
-            });
+        if (eventName === 'CANCEL') {
+            window.clearTimeout(sfwaCompletionTimer);
+            sfwaAuthorizationCode = null;
+            sfwaSession = null;
+            sfwaShowError('Meta onboarding was cancelled. No WhatsApp connection was saved.');
+            return;
         }
+
+        if (eventName === 'ERROR') {
+            window.clearTimeout(sfwaCompletionTimer);
+            sfwaShowError('Meta reported an onboarding error. No WhatsApp connection was saved; restart the flow.');
+            return;
+        }
+
+        if (!sfwaExpectedEvent(eventName)) {
+            if (sfwaConfig.connection_mode === @json($businessAppMode) && (eventName === 'FINISH' || eventName === 'FINISH_ONLY_WABA')) {
+                window.clearTimeout(sfwaCompletionTimer);
+                sfwaAuthorizationCode = null;
+                sfwaSession = null;
+                sfwaShowError('Meta returned the standard API flow instead of Business App onboarding. Nothing was connected. Cancel if Meta asks to migrate the mobile-app number.');
+            }
+            return;
+        }
+
+        sfwaSession = { event: eventName, data };
+        sfwaShowStatus('Meta onboarding completed. Waiting for secure server validation…');
+        sfwaTryComplete();
     });
 
-    async function sfwaPostCallback(payload) {
-        sfwaLog('Saving WhatsApp connection...', {
-            connection_mode: payload.connection_mode,
+    window.fbAsyncInit = function () {
+        FB.init({
+            appId: sfwaConfig.app_id,
+            autoLogAppEvents: false,
+            xfbml: true,
+            version: sfwaConfig.graph_version,
         });
+    };
 
-        const response = await fetch(sfwaCallbackUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': sfwaCsrf,
-            },
-            body: JSON.stringify(payload),
-        });
+    (function (document, tagName, id) {
+        if (document.getElementById(id)) return;
+        const script = document.createElement(tagName);
+        script.id = id;
+        script.async = true;
+        script.defer = true;
+        script.crossOrigin = 'anonymous';
+        script.src = 'https://connect.facebook.net/en_US/sdk.js';
+        const firstScript = document.getElementsByTagName(tagName)[0];
+        firstScript.parentNode.insertBefore(script, firstScript);
+    }(document, 'script', 'facebook-jssdk'));
 
-        const json = await response.json();
-
-        if (! response.ok || ! json.ok) {
-            throw new Error(json.message || 'Unable to save WhatsApp connection.');
-        }
-
-        sfwaLog('WhatsApp connected successfully.', json.status || json);
-
-        window.location.reload();
-    }
-
-    function sfwaStartEmbeddedSignup(connectionMode = 'coexistence') {
-        sfwaSelectedConnectionMode = connectionMode;
-
-        if (! window.FB) {
-            sfwaShowError('Facebook SDK is not loaded yet. Wait a few seconds and try again.');
+    sfwaLaunchButton?.addEventListener('click', function () {
+        if (!sfwaConfig.is_configured) {
+            sfwaShowError('This onboarding path is not configured.');
             return;
         }
 
-        if (! sfwaConfigId) {
-            sfwaShowError('Missing META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID.');
+        if (sfwaConfig.connection_mode === @json($businessAppMode) && !sfwaAcknowledgement?.checked) {
+            sfwaShowError('Confirm the backup and migration warning before opening Meta onboarding.');
             return;
         }
 
-        sfwaLog(`Opening Meta Embedded Signup for ${sfwaModeLabel(connectionMode)} mode...`);
+        if (!window.FB) {
+            sfwaShowError('The Meta signup library has not loaded. Check browser privacy controls and try again.');
+            return;
+        }
+
+        sfwaAuthorizationCode = null;
+        sfwaSession = null;
+        sfwaSubmitted = false;
+        sfwaShowStatus('Opening Meta Embedded Signup…');
+
+        sfwaCompletionTimer = window.setTimeout(function () {
+            if (!sfwaSubmitted) {
+                sfwaAuthorizationCode = null;
+                sfwaSession = null;
+                sfwaShowError('Meta did not return complete session information. Nothing was connected; restart the flow.');
+            }
+        }, 120000);
 
         FB.login(function (response) {
-            sfwaLog('Meta login response received.', response);
-
-            if (! response.authResponse || ! response.authResponse.code) {
-                sfwaShowError('Meta Embedded Signup did not return an authorization code.');
+            if (!response?.authResponse?.code) {
+                window.clearTimeout(sfwaCompletionTimer);
+                sfwaShowError('Meta did not grant an authorization code. Nothing was connected.');
                 return;
             }
 
-            sfwaPostCallback({
-                code: response.authResponse.code,
-                state: sfwaState,
-                connection_mode: connectionMode,
-                business_id: sfwaSignupPayload.business_id,
-                waba_id: sfwaSignupPayload.waba_id,
-                phone_number_id: sfwaSignupPayload.phone_number_id,
-                display_phone_number: sfwaSignupPayload.display_phone_number,
-            }).catch(function (error) {
-                sfwaShowError(error.message);
-            });
+            sfwaAuthorizationCode = response.authResponse.code;
+            sfwaTryComplete();
         }, {
-            config_id: sfwaConfigId,
+            config_id: sfwaConfig.config_id,
             response_type: 'code',
             override_default_response_type: true,
-            extras: {
-                setup: {},
-                featureType: 'whatsapp_embedded_signup',
-                sessionInfoVersion: '3',
-            },
+            extras: sfwaConfig.extras,
         });
-    }
-
-    async function sfwaRefreshStatus() {
-        sfwaLog('Refreshing connection status...');
-
-        try {
-            const response = await fetch(sfwaStatusUrl, {
-                headers: {
-                    'Accept': 'application/json',
-                },
-            });
-
-            const json = await response.json();
-
-            sfwaLog('Current connection status.', json.status || json);
-        } catch (error) {
-            sfwaShowError(error.message);
-        }
-    }
-
-    if (sfwaConnectModeButtons && sfwaConnectModeButtons.length) {
-        sfwaConnectModeButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
-                const mode = button.dataset.mode || 'coexistence';
-                sfwaStartEmbeddedSignup(mode);
-            });
-        });
-    }
-
-    if (sfwaRefreshStatusButton) {
-        sfwaRefreshStatusButton.addEventListener('click', sfwaRefreshStatus);
-    }
+    });
 </script>
-
 @endsection

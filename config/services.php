@@ -64,8 +64,8 @@ return [
         | Keep both names because different parts of the app may read either.
         |--------------------------------------------------------------------------
         */
-        'api_version'   => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v20.0')),
-        'graph_version' => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v20.0')),
+        'api_version'   => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0')),
+        'graph_version' => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0')),
 
         /*
         |--------------------------------------------------------------------------
@@ -74,6 +74,20 @@ return [
         */
         'whatsapp_embedded_signup_config_id' => env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
         'whatsapp_verify_token'              => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
+
+        'whatsapp_embedded_signup' => [
+            'version' => env('META_WHATSAPP_EMBEDDED_SIGNUP_VERSION', 'v4'),
+            'session_info_version' => env('META_WHATSAPP_SESSION_INFO_VERSION', '3'),
+            'cloud_api_config_id' => env(
+                'META_WHATSAPP_CLOUD_API_CONFIG_ID',
+                env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID')
+            ),
+            // Deliberately has no generic fallback: an explicitly configured
+            // Business App onboarding flow prevents accidental number migration.
+            'business_app_config_id' => env('META_WHATSAPP_BUSINESS_APP_CONFIG_ID'),
+            'business_app_feature_type' => 'whatsapp_business_app_onboarding',
+            'session_ttl_minutes' => (int) env('META_WHATSAPP_SIGNUP_SESSION_TTL', 15),
+        ],
     ],
 
     /*
@@ -89,7 +103,7 @@ return [
 
         'meta' => [
             'graph_base'  => env('WHATSAPP_META_GRAPH_BASE', env('META_GRAPH_BASE', 'https://graph.facebook.com')),
-            'api_version' => env('WHATSAPP_META_API_VERSION', env('META_GRAPH_VERSION', 'v20.0')),
+            'api_version' => env('WHATSAPP_META_API_VERSION', env('META_GRAPH_VERSION', 'v25.0')),
 
             /*
             |--------------------------------------------------------------------------
@@ -123,7 +137,7 @@ return [
         'app_secret'    => env('META_APP_SECRET'),
         'verify_token'  => env('META_VERIFY_TOKEN'),
         'graph_base'    => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
-        'graph_version' => env('META_GRAPH_VERSION', 'v20.0'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v25.0'),
     ],
 
     /*

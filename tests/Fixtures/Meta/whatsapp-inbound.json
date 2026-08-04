@@ -1,0 +1,14 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "100200300",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "metadata": {"phone_number_id": "400500600", "display_phone_number": "971500000000"},
+        "contacts": [{"wa_id": "971511111111", "profile": {"name": "Demo Customer"}}],
+        "messages": [{"id": "wamid.inbound.fixture", "from": "971511111111", "timestamp": "1780000000", "type": "text", "text": {"body": "Please inspect my brakes"}}]
+      }
+    }]
+  }]
+}

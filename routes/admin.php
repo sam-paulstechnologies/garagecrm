@@ -298,7 +298,20 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('whatsapp.connect.status');
 
         Route::post('whatsapp/embedded-signup/callback', [WhatsAppEmbeddedSignupController::class, 'callback'])
+            ->middleware('throttle:10,1')
             ->name('whatsapp.connect.callback');
+
+        Route::post('whatsapp/connect/diagnostics', [WhatsAppEmbeddedSignupController::class, 'diagnostics'])
+            ->middleware('throttle:10,1')
+            ->name('whatsapp.connect.diagnostics');
+
+        Route::post('whatsapp/connect/sync/contacts', [WhatsAppEmbeddedSignupController::class, 'requestContactSync'])
+            ->middleware('throttle:3,1')
+            ->name('whatsapp.connect.sync.contacts');
+
+        Route::post('whatsapp/connect/sync/history', [WhatsAppEmbeddedSignupController::class, 'requestHistorySync'])
+            ->middleware('throttle:2,1')
+            ->name('whatsapp.connect.sync.history');
 
         Route::post('whatsapp/disconnect', [WhatsAppEmbeddedSignupController::class, 'disconnect'])
             ->name('whatsapp.connect.disconnect');

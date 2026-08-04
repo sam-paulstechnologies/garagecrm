@@ -1,0 +1,13 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "100200300",
+    "changes": [{
+      "field": "smb_message_echoes",
+      "value": {
+        "metadata": {"phone_number_id": "400500600", "display_phone_number": "971500000000"},
+        "smb_message_echoes": [{"id": "wamid.echo.fixture", "to": "971511111111", "timestamp": "1780000010", "type": "text", "text": {"body": "A staff-written mobile app reply"}}]
+      }
+    }]
+  }]
+}

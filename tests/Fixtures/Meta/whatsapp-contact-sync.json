@@ -1,0 +1,13 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "100200300",
+    "changes": [{
+      "field": "smb_app_state_sync",
+      "value": {
+        "metadata": {"phone_number_id": "400500600"},
+        "state_sync": {"contacts": [{"action": "add", "timestamp": "1780000020", "contact": {"wa_id": "971522222222", "full_name": "Synchronized Contact", "first_name": "Synchronized"}}]}
+      }
+    }]
+  }]
+}

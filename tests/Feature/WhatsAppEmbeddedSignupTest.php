@@ -1,0 +1,311 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Exceptions\WhatsAppOnboardingException;
+use App\Models\System\Company;
+use App\Models\User;
+use App\Services\WhatsApp\MetaEmbeddedSignupService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class WhatsAppEmbeddedSignupTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'services.meta.app_id' => '925717083333434',
+            'services.meta.app_secret' => 'test-app-secret',
+            'services.meta.api_version' => 'v25.0',
+            'services.meta.whatsapp_embedded_signup.version' => 'v4',
+            'services.meta.whatsapp_embedded_signup.session_info_version' => '3',
+            'services.meta.whatsapp_embedded_signup.business_app_config_id' => 'business-app-config',
+            'services.meta.whatsapp_embedded_signup.cloud_api_config_id' => 'cloud-api-config',
+        ]);
+    }
+
+    public function test_business_app_page_uses_v4_current_feature_mode_and_never_deprecated_modes(): void
+    {
+        [$company, $user] = $this->tenant();
+
+        $response = $this->actingAs($user)->get(route('admin.whatsapp.connect', [
+            'mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+        ]));
+
+        $response->assertOk()
+            ->assertSee('whatsapp_business_app_onboarding', false)
+            ->assertSee('sessionInfoVersion', false)
+            ->assertSee('override_default_response_type', false)
+            ->assertDontSee('featureType&quot;:&quot;coexistence', false)
+            ->assertDontSee('featureType&quot;:&quot;whatsapp_embedded_signup', false)
+            ->assertDontSee('test-app-secret', false);
+
+        $this->assertDatabaseHas('whatsapp_connect_sessions', [
+            'company_id' => $company->id,
+            'user_id' => $user->id,
+            'connection_mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+            'status' => 'started',
+        ]);
+    }
+
+    public function test_business_app_configuration_does_not_fall_back_to_cloud_configuration(): void
+    {
+        config(['services.meta.whatsapp_embedded_signup.business_app_config_id' => null]);
+
+        $config = app(MetaEmbeddedSignupService::class)
+            ->signupConfiguration(MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        $this->assertFalse($config['is_configured']);
+        $this->assertNull($config['config_id']);
+        $this->assertSame('whatsapp_business_app_onboarding', $config['extras']['featureType']);
+    }
+
+    public function test_connection_page_uses_semantic_theme_components_and_safe_coexistence_wording(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'phone-theme-test',
+            'meta_access_token' => Crypt::encryptString('theme-test-token'),
+            'is_whatsapp_active' => true,
+        ])->save();
+        config(['services.meta.whatsapp_embedded_signup.business_app_config_id' => null]);
+
+        $response = $this->actingAs($user)->get(route('admin.whatsapp.connect', [
+            'mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+        ]));
+
+        $response->assertOk()
+            ->assertSee('class="sf-page"', false)
+            ->assertSee('class="sf-card overflow-hidden"', false)
+            ->assertSee('sf-mini-card', false)
+            ->assertSee('sf-alert-warning', false)
+            ->assertSee('sf-btn-primary', false)
+            ->assertSee('Diagnostics and synchronization')
+            ->assertSee('sf-btn-danger', false)
+            ->assertSee('data-theme-preference', false)
+            ->assertSee('prefers-color-scheme: dark', false)
+            ->assertSee(
+                'Only continue if Meta confirms that your WhatsApp Business app will remain active. Cancel the setup if Meta asks to remove, transfer or migrate the number away from the app.'
+            )
+            ->assertDontSee('sf-surface-elevated,#101a2b', false)
+            ->assertDontSee('bg-slate-950/45', false);
+    }
+
+    public function test_authorization_completion_validates_assets_subscribes_and_encrypts_tenant_credentials(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(isOnBusinessApp: true);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        $result = $service->complete($company, $user->id, $this->completionPayload($state));
+
+        $company->refresh();
+        $this->assertFalse($result['idempotent']);
+        $this->assertSame('business_app_onboarding', $company->whatsapp_connection_mode);
+        $this->assertTrue($company->whatsapp_coexistence_enabled);
+        $this->assertSame('waba-100', $company->meta_waba_id);
+        $this->assertSame('phone-100', $company->meta_phone_number_id);
+        $this->assertNotSame('short-lived-token', $company->meta_access_token);
+        $this->assertSame('short-lived-token', Crypt::decryptString($company->meta_access_token));
+        $this->assertDatabaseHas('whatsapp_connect_sessions', ['state' => $state, 'status' => 'completed']);
+        $this->assertDatabaseHas('whatsapp_connection_audits', ['company_id' => $company->id, 'event' => 'signup_completed']);
+
+        Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/waba-100/subscribed_apps'));
+        Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/phone-100/smb_app_data'));
+    }
+
+    public function test_failed_code_exchange_is_safe_and_does_not_persist_credentials(): void
+    {
+        [$company, $user] = $this->tenant();
+        Http::fake(['*oauth/access_token*' => Http::response(['error' => ['message' => 'sensitive provider detail']], 400)]);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        try {
+            $service->complete($company, $user->id, $this->completionPayload($state));
+            $this->fail('Expected onboarding to be rejected.');
+        } catch (WhatsAppOnboardingException $exception) {
+            $this->assertSame('code_exchange_failed', $exception->reason);
+            $this->assertStringNotContainsString('sensitive provider detail', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('whatsapp_connect_sessions', ['state' => $state, 'status' => 'failed']);
+        $this->assertNull($company->fresh()->meta_access_token);
+    }
+
+    public function test_wrong_or_missing_business_app_session_information_is_rejected_before_meta_calls(): void
+    {
+        [$company, $user] = $this->tenant();
+        Http::fake();
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        $this->expectException(WhatsAppOnboardingException::class);
+        try {
+            $service->complete($company, $user->id, array_merge($this->completionPayload($state), [
+                'session_event' => 'FINISH',
+            ]));
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_phone_must_belong_to_validated_waba_and_cannot_be_claimed_cross_tenant(): void
+    {
+        [$company, $user] = $this->tenant();
+        $other = Company::query()->create(['name' => 'Other Tenant']);
+        $other->forceFill(['meta_phone_number_id' => 'phone-100'])->save();
+        $this->fakeMetaCompletion(isOnBusinessApp: true);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        $this->expectException(WhatsAppOnboardingException::class);
+        $this->expectExceptionMessage('already connected to another SayaraForce company');
+        $service->complete($company, $user->id, $this->completionPayload($state));
+    }
+
+    public function test_repeated_completed_callback_is_idempotent_and_does_not_repeat_meta_calls(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(isOnBusinessApp: true);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+        $payload = $this->completionPayload($state);
+
+        $service->complete($company, $user->id, $payload);
+        $requestCount = count(Http::recorded());
+        $second = $service->complete($company->fresh(), $user->id, $payload);
+
+        $this->assertTrue($second['idempotent']);
+        $this->assertCount($requestCount, Http::recorded());
+        $this->assertSame(1, Company::query()->where('meta_phone_number_id', 'phone-100')->count());
+    }
+
+    public function test_standard_cloud_api_flow_remains_separate_and_operational(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(isOnBusinessApp: false);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_CLOUD_API);
+        $payload = array_merge($this->completionPayload($state), ['session_event' => 'FINISH']);
+
+        $service->complete($company, $user->id, $payload);
+
+        $company->refresh();
+        $this->assertSame('cloud_api', $company->whatsapp_connection_mode);
+        $this->assertFalse($company->whatsapp_coexistence_enabled);
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/smb_app_data'));
+    }
+
+    public function test_callback_validation_rejects_malformed_session_assets_without_meta_calls(): void
+    {
+        [, $user] = $this->tenant();
+        Http::fake();
+
+        $this->actingAs($user)->postJson(route('admin.whatsapp.connect.callback'), [
+            'code' => 'one-time-code',
+            'state' => 'too-short',
+            'session_event' => MetaEmbeddedSignupService::EVENT_BUSINESS_APP_FINISH,
+            'waba_id' => 'not-a-meta-id',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['state', 'waba_id']);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_authorization_code_and_tokens_are_absent_from_logs_and_failure_response(): void
+    {
+        [$company, $user] = $this->tenant();
+        $records = [];
+        \Illuminate\Support\Facades\Log::listen(function (MessageLogged $event) use (&$records) {
+            $records[] = ['message' => $event->message, 'context' => $event->context];
+        });
+        Http::fake();
+        $state = app(MetaEmbeddedSignupService::class)->createState(
+            $company->id,
+            $user->id,
+            MetaEmbeddedSignupService::MODE_BUSINESS_APP
+        );
+
+        $response = $this->actingAs($user)->postJson(route('admin.whatsapp.connect.callback'), [
+            'code' => 'private-one-time-code',
+            'state' => $state,
+            'session_event' => 'FINISH',
+            'waba_id' => '100200300',
+            'phone_number_id' => '400500600',
+        ])->assertUnprocessable();
+
+        $serialized = json_encode(['response' => $response->json(), 'logs' => $records]);
+        $this->assertStringNotContainsString('private-one-time-code', (string) $serialized);
+        $this->assertStringNotContainsString('short-lived-token', (string) $serialized);
+        Http::assertNothingSent();
+    }
+
+    private function fakeMetaCompletion(bool $isOnBusinessApp): void
+    {
+        Http::fake(function (Request $request) use ($isOnBusinessApp) {
+            $url = $request->url();
+
+            return match (true) {
+                str_contains($url, '/oauth/access_token') => Http::response([
+                    'access_token' => 'short-lived-token', 'token_type' => 'bearer', 'expires_in' => 3600,
+                ]),
+                str_contains($url, '/debug_token') => Http::response(['data' => [
+                    'is_valid' => true,
+                    'app_id' => '925717083333434',
+                    'scopes' => ['whatsapp_business_management', 'whatsapp_business_messaging'],
+                    'granular_scopes' => [[
+                        'scope' => 'whatsapp_business_management', 'target_ids' => ['waba-100'],
+                    ]],
+                ]]),
+                str_contains($url, '/waba-100/phone_numbers') => Http::response(['data' => [[
+                    'id' => 'phone-100', 'display_phone_number' => '+971 50 000 0000',
+                    'status' => 'CONNECTED', 'is_on_biz_app' => $isOnBusinessApp,
+                ]]]),
+                str_contains($url, '/phone-100/smb_app_data') => Http::response(['success' => true, 'data' => ['request_id' => 'request-1']]),
+                str_contains($url, '/phone-100') => Http::response([
+                    'id' => 'phone-100', 'display_phone_number' => '+971 50 000 0000',
+                    'status' => 'CONNECTED', 'is_on_biz_app' => $isOnBusinessApp,
+                ]),
+                str_contains($url, '/waba-100/subscribed_apps') => Http::response(['success' => true]),
+                default => Http::response([], 404),
+            };
+        });
+    }
+
+    private function completionPayload(string $state): array
+    {
+        return [
+            'state' => $state,
+            'code' => 'one-time-authorization-code',
+            'session_event' => MetaEmbeddedSignupService::EVENT_BUSINESS_APP_FINISH,
+            'waba_id' => 'waba-100',
+            'phone_number_id' => 'phone-100',
+            'business_id' => null,
+        ];
+    }
+
+    private function tenant(): array
+    {
+        $company = Company::query()->create(['name' => 'Coexistence Test Garage']);
+        $user = User::factory()->create([
+            'company_id' => $company->id,
+            'role' => 'admin',
+            'status' => true,
+            'must_change_password' => false,
+        ]);
+
+        return [$company, $user];
+    }
+}

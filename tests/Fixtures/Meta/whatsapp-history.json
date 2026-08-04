@@ -1,0 +1,14 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "100200300",
+    "changes": [{
+      "field": "history",
+      "value": {
+        "metadata": {"phone_number_id": "400500600"},
+        "status": "complete",
+        "history": [{"threads": [{"wa_id": "971533333333", "messages": [{"id": "wamid.history.fixture", "timestamp": "1770000000", "type": "text", "direction": "inbound", "text": {"body": "An older synchronized message"}}]}]}]
+      }
+    }]
+  }]
+}
