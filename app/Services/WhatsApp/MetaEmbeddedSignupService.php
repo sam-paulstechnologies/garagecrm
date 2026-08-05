@@ -361,8 +361,107 @@ class MetaEmbeddedSignupService
             'status' => ($verification['readable'] && $verification['subscribed'])
                 ? 'subscribed'
                 : 'pending_verification',
+            'post' => $this->metaResponseContext(
+                $response,
+                'Meta accepted the WABA app subscription request.'
+            ),
             'verification' => $verification['context'],
         ];
+    }
+
+    public function repairWabaSubscription(
+        Company $company,
+        ?int $userId = null,
+        int $maxAttempts = 4,
+        int $backoffMilliseconds = 750
+    ): array {
+        $wabaId = trim((string) $company->meta_waba_id);
+        if ($wabaId === '') {
+            throw new WhatsAppOnboardingException(
+                'missing_waba',
+                'The connected WhatsApp Business Account is unavailable.'
+            );
+        }
+
+        $accessToken = $this->decryptStoredAccessToken($company);
+
+        try {
+            $postResponse = Http::timeout(30)
+                ->withToken($accessToken)
+                ->acceptJson()
+                ->post($this->graphUrl($wabaId.'/subscribed_apps'));
+
+            $postData = $this->successfulJson(
+                $postResponse,
+                'subscription_failed',
+                'Meta did not accept the WABA app subscription request.'
+            );
+
+            if (! filter_var($postData['success'] ?? false, FILTER_VALIDATE_BOOL)) {
+                throw new WhatsAppOnboardingException(
+                    'subscription_not_confirmed',
+                    'Meta did not confirm the WABA app subscription request.',
+                    safeContext: $this->metaResponseContext(
+                        $postResponse,
+                        'Meta returned a successful response without confirming the subscription.'
+                    )
+                );
+            }
+
+            $verification = $this->readAppSubscriptionWithRetry(
+                $wabaId,
+                $accessToken,
+                $maxAttempts,
+                $backoffMilliseconds
+            );
+            $confirmed = $verification['readable'] && $verification['subscribed'];
+
+            $company->forceFill([
+                'whatsapp_webhook_subscription_status' => $confirmed
+                    ? 'subscribed'
+                    : 'pending_verification',
+                'whatsapp_webhook_subscription_checked_at' => now(),
+            ])->save();
+
+            $result = [
+                'status' => $confirmed ? 'subscribed' : 'pending_verification',
+                'post' => $this->metaResponseContext(
+                    $postResponse,
+                    'Meta accepted the WABA app subscription request.'
+                ),
+                'verification' => $verification['context'],
+                'attempts' => $verification['attempts'],
+            ];
+
+            $this->audit(
+                (int) $company->id,
+                $userId,
+                'waba_subscription_repaired',
+                $confirmed ? 'success' : 'warning',
+                $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null),
+                $company->meta_waba_id,
+                $company->meta_phone_number_id,
+                $result
+            );
+
+            return $result;
+        } catch (WhatsAppOnboardingException $exception) {
+            $this->audit(
+                (int) $company->id,
+                $userId,
+                'waba_subscription_repair_failed',
+                'failed',
+                $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null),
+                $company->meta_waba_id,
+                $company->meta_phone_number_id,
+                [
+                    'reason' => $exception->reason,
+                    'provider' => $exception->safeContext,
+                ]
+            );
+
+            throw $exception;
+        }
     }
 
     public function requestSync(Company $company, string $syncType, ?int $userId = null): array
@@ -604,8 +703,16 @@ class MetaEmbeddedSignupService
 
         $subscriptions = $response->json();
         $subscribed = collect((array) ($subscriptions['data'] ?? []))
-            ->contains(fn ($app) => is_array($app)
-                && (string) ($app['id'] ?? '') === (string) $this->appId);
+            ->contains(function ($app): bool {
+                if (! is_array($app)) {
+                    return false;
+                }
+
+                $subscribedAppId = data_get($app, 'whatsapp_business_api_data.id')
+                    ?? ($app['id'] ?? null);
+
+                return (string) $subscribedAppId === (string) $this->appId;
+            });
 
         return [
             'readable' => true,
@@ -617,6 +724,32 @@ class MetaEmbeddedSignupService
                     : 'Meta accepted the subscription but it is not yet visible in the read-back response.'
             ),
         ];
+    }
+
+    private function readAppSubscriptionWithRetry(
+        string $wabaId,
+        string $accessToken,
+        int $maxAttempts,
+        int $backoffMilliseconds
+    ): array {
+        $maxAttempts = min(max($maxAttempts, 1), 5);
+        $backoffMilliseconds = min(max($backoffMilliseconds, 0), 5000);
+        $verification = [];
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $verification = $this->readAppSubscription($wabaId, $accessToken);
+            $verification['attempts'] = $attempt;
+
+            if ($verification['readable'] && $verification['subscribed']) {
+                return $verification;
+            }
+
+            if ($attempt < $maxAttempts && $backoffMilliseconds > 0) {
+                usleep($backoffMilliseconds * $attempt * 1000);
+            }
+        }
+
+        return $verification;
     }
 
     public function normalizeConnectionMode(?string $mode, bool $allowManual = false): string

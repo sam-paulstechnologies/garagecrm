@@ -151,7 +151,12 @@ class WhatsAppEmbeddedSignupTest extends TestCase
                     'is_on_biz_app' => true,
                 ]),
                 $request->method() === 'GET' && str_contains($request->url(), '/waba-100/subscribed_apps') => Http::response([
-                    'data' => [['id' => '925717083333434']],
+                    'data' => [[
+                        'whatsapp_business_api_data' => [
+                            'id' => '925717083333434',
+                            'name' => 'SayaraForce',
+                        ],
+                    ]],
                 ]),
                 default => Http::response([], 404),
             };
@@ -169,6 +174,86 @@ class WhatsAppEmbeddedSignupTest extends TestCase
         ]);
         Http::assertSent(fn (Request $request) => $request->method() === 'GET'
             && str_contains($request->url(), '/waba-100/subscribed_apps'));
+    }
+
+    public function test_subscription_repair_retries_until_meta_nested_app_id_is_confirmed(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'phone-100',
+            'meta_access_token' => Crypt::encryptString('repair-token'),
+            'meta_waba_id' => 'waba-100',
+            'is_whatsapp_active' => true,
+            'whatsapp_connection_mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+            'whatsapp_webhook_subscription_status' => 'missing',
+        ])->save();
+
+        $readAttempts = 0;
+        Http::fake(function (Request $request) use (&$readAttempts) {
+            if ($request->method() === 'POST' && str_contains($request->url(), '/waba-100/subscribed_apps')) {
+                return Http::response(['success' => true]);
+            }
+
+            if ($request->method() === 'GET' && str_contains($request->url(), '/waba-100/subscribed_apps')) {
+                $readAttempts++;
+
+                return Http::response($readAttempts === 1 ? ['data' => []] : [
+                    'data' => [[
+                        'whatsapp_business_api_data' => [
+                            'id' => '925717083333434',
+                            'name' => 'SayaraForce',
+                        ],
+                    ]],
+                ]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $result = app(MetaEmbeddedSignupService::class)
+            ->repairWabaSubscription($company, $user->id, maxAttempts: 3, backoffMilliseconds: 0);
+
+        $this->assertSame('subscribed', $result['status']);
+        $this->assertSame(200, data_get($result, 'post.http_status'));
+        $this->assertSame(200, data_get($result, 'verification.http_status'));
+        $this->assertSame(2, $result['attempts']);
+        $this->assertSame('subscribed', $company->fresh()->whatsapp_webhook_subscription_status);
+        $this->assertDatabaseHas('whatsapp_connection_audits', [
+            'company_id' => $company->id,
+            'event' => 'waba_subscription_repaired',
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_subscription_repair_never_marks_subscribed_without_meta_readback_confirmation(): void
+    {
+        [$company, $user] = $this->tenant();
+        $company->forceFill([
+            'meta_phone_number_id' => 'phone-100',
+            'meta_access_token' => Crypt::encryptString('repair-token'),
+            'meta_waba_id' => 'waba-100',
+            'is_whatsapp_active' => true,
+            'whatsapp_connection_mode' => MetaEmbeddedSignupService::MODE_BUSINESS_APP,
+            'whatsapp_webhook_subscription_status' => 'missing',
+        ])->save();
+
+        Http::fake(function (Request $request) {
+            return $request->method() === 'POST'
+                ? Http::response(['success' => true])
+                : Http::response(['data' => []]);
+        });
+
+        $result = app(MetaEmbeddedSignupService::class)
+            ->repairWabaSubscription($company, $user->id, maxAttempts: 2, backoffMilliseconds: 0);
+
+        $this->assertSame('pending_verification', $result['status']);
+        $this->assertSame(2, $result['attempts']);
+        $this->assertSame('pending_verification', $company->fresh()->whatsapp_webhook_subscription_status);
+        $this->assertDatabaseHas('whatsapp_connection_audits', [
+            'company_id' => $company->id,
+            'event' => 'waba_subscription_repaired',
+            'status' => 'warning',
+        ]);
     }
 
     public function test_diagnostics_reports_failed_waba_subscribed_apps_check_without_provider_details(): void
