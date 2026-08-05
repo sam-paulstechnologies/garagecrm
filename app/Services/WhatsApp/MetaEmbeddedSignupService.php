@@ -140,7 +140,7 @@ class MetaEmbeddedSignupService
             );
 
             $this->assertTenantAssetIsAvailable($company, (string) $phone['id']);
-            $this->subscribeAppToWaba($wabaId, $accessToken);
+            $subscription = $this->subscribeAppToWaba($wabaId, $accessToken);
 
             $encryptedToken = Crypt::encryptString($accessToken);
 
@@ -154,7 +154,8 @@ class MetaEmbeddedSignupService
                 $encryptedToken,
                 $wabaId,
                 $businessId,
-                $phone
+                $phone,
+                $subscription
             ): Company {
                 $lockedCompany = Company::query()->lockForUpdate()->findOrFail($company->id);
 
@@ -173,7 +174,7 @@ class MetaEmbeddedSignupService
                         ? 'embedded_signup_business_app_onboarding'
                         : 'embedded_signup_cloud_api',
                     'whatsapp_connected_at' => now(),
-                    'whatsapp_webhook_subscription_status' => 'subscribed',
+                    'whatsapp_webhook_subscription_status' => $subscription['status'],
                     'whatsapp_webhook_subscription_checked_at' => now(),
                 ])->save();
 
@@ -191,7 +192,8 @@ class MetaEmbeddedSignupService
                             'connection_mode' => $mode,
                             'token_type' => $tokenPayload['token_type'] ?? null,
                             'has_expiry' => filled($tokenPayload['expires_in'] ?? null),
-                            'webhook_subscription' => 'subscribed',
+                            'webhook_subscription' => $subscription['status'],
+                            'webhook_subscription_check' => $subscription['verification'],
                         ]),
                         'completed_at' => now(),
                         'updated_at' => now(),
@@ -205,13 +207,21 @@ class MetaEmbeddedSignupService
                     $mode,
                     $wabaId,
                     (string) $phone['id'],
-                    ['session_event' => $sessionEvent, 'subscription' => 'subscribed']
+                    [
+                        'session_event' => $sessionEvent,
+                        'subscription' => $subscription['status'],
+                        'subscription_verification' => $subscription['verification'],
+                    ]
                 );
 
                 return $lockedCompany->fresh();
             });
 
             $warnings = [];
+
+            if ($subscription['status'] !== 'subscribed') {
+                $warnings[] = 'WhatsApp connected. Meta subscription verification is pending; run diagnostics shortly.';
+            }
 
             if ($mode === self::MODE_BUSINESS_APP) {
                 try {
@@ -243,7 +253,10 @@ class MetaEmbeddedSignupService
                 'signup_failed',
                 'failed',
                 $mode,
-                context: ['reason' => $safe->reason]
+                context: array_filter([
+                    'reason' => $safe->reason,
+                    'provider' => $safe->safeContext ?: null,
+                ], fn ($value) => $value !== null)
             );
 
             throw $safe;
@@ -322,7 +335,7 @@ class MetaEmbeddedSignupService
         return $this->successfulJson($response, 'phone_validation_failed', 'Meta could not validate the WhatsApp number.');
     }
 
-    public function subscribeAppToWaba(string $wabaId, string $accessToken): void
+    public function subscribeAppToWaba(string $wabaId, string $accessToken): array
     {
         $response = Http::timeout(30)
             ->withToken($accessToken)
@@ -332,15 +345,24 @@ class MetaEmbeddedSignupService
         $data = $this->successfulJson($response, 'subscription_failed', 'The WhatsApp account was validated, but webhook subscription failed.');
 
         if (! filter_var($data['success'] ?? false, FILTER_VALIDATE_BOOL)) {
-            throw new WhatsAppOnboardingException('subscription_not_confirmed', 'Meta did not confirm the WhatsApp webhook subscription.');
-        }
-
-        if (! $this->isAppSubscribedToWaba($wabaId, $accessToken)) {
             throw new WhatsAppOnboardingException(
                 'subscription_not_confirmed',
-                'Meta did not confirm the WhatsApp webhook subscription.'
+                'Meta did not confirm the WhatsApp webhook subscription.',
+                safeContext: $this->metaResponseContext(
+                    $response,
+                    'Meta returned a successful response without confirming the subscription.'
+                )
             );
         }
+
+        $verification = $this->readAppSubscription($wabaId, $accessToken);
+
+        return [
+            'status' => ($verification['readable'] && $verification['subscribed'])
+                ? 'subscribed'
+                : 'pending_verification',
+            'verification' => $verification['context'],
+        ];
     }
 
     public function requestSync(Company $company, string $syncType, ?int $userId = null): array
@@ -490,6 +512,7 @@ class MetaEmbeddedSignupService
             ? 'WABA subscription will be verified after onboarding'
             : match ((string) $company->whatsapp_webhook_subscription_status) {
                 'subscribed' => 'Subscribed',
+                'pending_verification' => 'Pending verification',
                 'missing' => 'Not subscribed',
                 default => 'Not checked',
             };
@@ -548,19 +571,52 @@ class MetaEmbeddedSignupService
 
     private function isAppSubscribedToWaba(string $wabaId, string $accessToken): bool
     {
+        $verification = $this->readAppSubscription($wabaId, $accessToken);
+
+        if (! $verification['readable']) {
+            throw new WhatsAppOnboardingException(
+                'subscription_check_failed',
+                'Meta could not verify the WABA app subscription.',
+                safeContext: $verification['context']
+            );
+        }
+
+        return $verification['subscribed'];
+    }
+
+    private function readAppSubscription(string $wabaId, string $accessToken): array
+    {
         $response = Http::timeout(30)
             ->withToken($accessToken)
             ->acceptJson()
             ->get($this->graphUrl($wabaId.'/subscribed_apps'));
-        $subscriptions = $this->successfulJson(
-            $response,
-            'subscription_check_failed',
-            'Meta could not verify the WABA app subscription.'
-        );
 
-        return collect((array) ($subscriptions['data'] ?? []))
+        if (! $response->successful() || ! is_array($response->json())) {
+            return [
+                'readable' => false,
+                'subscribed' => false,
+                'context' => $this->metaResponseContext(
+                    $response,
+                    'Meta did not return a readable subscription status.'
+                ),
+            ];
+        }
+
+        $subscriptions = $response->json();
+        $subscribed = collect((array) ($subscriptions['data'] ?? []))
             ->contains(fn ($app) => is_array($app)
                 && (string) ($app['id'] ?? '') === (string) $this->appId);
+
+        return [
+            'readable' => true,
+            'subscribed' => $subscribed,
+            'context' => $this->metaResponseContext(
+                $response,
+                $subscribed
+                    ? 'Meta confirmed the SayaraForce app subscription.'
+                    : 'Meta accepted the subscription but it is not yet visible in the read-back response.'
+            ),
+        ];
     }
 
     public function normalizeConnectionMode(?string $mode, bool $allowManual = false): string
@@ -747,10 +803,20 @@ class MetaEmbeddedSignupService
 
     private function markSessionFailed(int $sessionId, WhatsAppOnboardingException $exception): void
     {
+        $session = DB::table('whatsapp_connect_sessions')->where('id', $sessionId)->first();
+        $payload = is_array($decoded = json_decode((string) ($session->payload ?? ''), true))
+            ? $decoded
+            : [];
+        $payload['failure'] = array_filter([
+            'reason' => $exception->reason,
+            'provider' => $exception->safeContext ?: null,
+        ], fn ($value) => $value !== null);
+
         DB::table('whatsapp_connect_sessions')->where('id', $sessionId)->update([
             'status' => 'failed',
             'error_code' => $exception->reason,
             'error_message' => $exception->getMessage(),
+            'payload' => json_encode($payload),
             'updated_at' => now(),
         ]);
     }
@@ -811,16 +877,49 @@ class MetaEmbeddedSignupService
     private function successfulJson(Response $response, string $reason, string $safeMessage): array
     {
         if (! $response->successful()) {
-            throw new WhatsAppOnboardingException($reason, $safeMessage);
+            throw new WhatsAppOnboardingException(
+                $reason,
+                $safeMessage,
+                safeContext: $this->metaResponseContext($response, $safeMessage)
+            );
         }
 
         $data = $response->json();
 
         if (! is_array($data)) {
-            throw new WhatsAppOnboardingException($reason, $safeMessage);
+            throw new WhatsAppOnboardingException(
+                $reason,
+                $safeMessage,
+                safeContext: $this->metaResponseContext($response, 'Meta returned an unreadable response.')
+            );
         }
 
         return $data;
+    }
+
+    private function metaResponseContext(Response $response, string $fallbackMessage): array
+    {
+        $message = data_get($response->json(), 'error.message');
+
+        return array_filter([
+            'http_status' => $response->status(),
+            'meta_error_code' => data_get($response->json(), 'error.code'),
+            'meta_error_type' => $this->sanitizeMetaValue(data_get($response->json(), 'error.type')),
+            'message' => $this->sanitizeMetaValue(is_string($message) ? $message : $fallbackMessage),
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function sanitizeMetaValue(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $sanitized = strip_tags((string) $value);
+        $sanitized = preg_replace('/(?:EA[A-Za-z0-9_-]{20,}|[A-Za-z0-9_-]{40,})/', '[redacted credential]', $sanitized);
+        $sanitized = preg_replace('/\+?\d[\d\s().-]{6,}\d/', '[redacted identifier]', (string) $sanitized);
+
+        return Str::limit(trim((string) $sanitized), 240, '…');
     }
 
     private function graphUrl(string $path): string

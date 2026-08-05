@@ -11,6 +11,7 @@ class WhatsAppOnboardingException extends RuntimeException
         string $safeMessage,
         int $code = 0,
         ?\Throwable $previous = null,
+        public readonly array $safeContext = [],
     ) {
         parent::__construct($safeMessage, $code, $previous);
     }

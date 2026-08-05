@@ -291,6 +291,144 @@ class WhatsAppEmbeddedSignupTest extends TestCase
         $this->assertSame(1, Company::query()->where('meta_phone_number_id', 'phone-100')->count());
     }
 
+    public function test_delayed_subscription_readback_completes_connection_as_pending_and_remains_idempotent(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(isOnBusinessApp: true, subscriptionReadback: ['data' => []]);
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+        $payload = $this->completionPayload($state);
+
+        $result = $service->complete($company, $user->id, $payload);
+
+        $company->refresh();
+        $this->assertFalse($result['idempotent']);
+        $this->assertSame('pending_verification', $company->whatsapp_webhook_subscription_status);
+        $this->assertSame('business_app_onboarding', $company->whatsapp_connection_mode);
+        $this->assertSame('waba-100', $company->meta_waba_id);
+        $this->assertSame('phone-100', $company->meta_phone_number_id);
+        $this->assertContains(
+            'WhatsApp connected. Meta subscription verification is pending; run diagnostics shortly.',
+            $result['warnings']
+        );
+        $this->assertDatabaseHas('whatsapp_connect_sessions', [
+            'state' => $state,
+            'status' => 'completed',
+        ]);
+
+        $requestCount = count(Http::recorded());
+        $second = $service->complete($company, $user->id, $payload);
+        $this->assertTrue($second['idempotent']);
+        $this->assertCount($requestCount, Http::recorded());
+        $this->assertSame(1, Company::query()->where('meta_phone_number_id', 'phone-100')->count());
+    }
+
+    public function test_fresh_session_recovers_a_prior_subscription_failure_without_duplicate_tenant_assets(): void
+    {
+        [$company, $user] = $this->tenant();
+        $service = app(MetaEmbeddedSignupService::class);
+        $failedState = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+        \Illuminate\Support\Facades\DB::table('whatsapp_connect_sessions')
+            ->where('state', $failedState)
+            ->update([
+                'status' => 'failed',
+                'error_code' => 'subscription_not_confirmed',
+                'error_message' => 'Meta did not confirm the WhatsApp webhook subscription.',
+            ]);
+
+        $this->fakeMetaCompletion(isOnBusinessApp: true, subscriptionReadback: ['data' => []]);
+        $recoveryState = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+        $service->complete($company, $user->id, $this->completionPayload($recoveryState));
+
+        $this->assertDatabaseHas('whatsapp_connect_sessions', [
+            'state' => $failedState,
+            'status' => 'failed',
+        ]);
+        $this->assertDatabaseHas('whatsapp_connect_sessions', [
+            'state' => $recoveryState,
+            'status' => 'completed',
+        ]);
+        $this->assertSame(1, Company::query()->where('meta_waba_id', 'waba-100')->count());
+        $this->assertSame(1, Company::query()->where('meta_phone_number_id', 'phone-100')->count());
+    }
+
+    public function test_subscription_readback_failure_is_audited_safely_without_rolling_back_connection(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(
+            isOnBusinessApp: true,
+            subscriptionReadback: [
+                'error' => [
+                    'code' => 4,
+                    'type' => 'OAuthException',
+                    'message' => 'Temporary failure for +971 50 123 4567 using EA'.str_repeat('A', 32),
+                ],
+            ],
+            subscriptionReadbackStatus: 503
+        );
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        $result = $service->complete($company, $user->id, $this->completionPayload($state));
+
+        $company->refresh();
+        $this->assertSame('pending_verification', $company->whatsapp_webhook_subscription_status);
+        $this->assertNotNull($company->meta_access_token);
+        $this->assertNotEmpty($result['warnings']);
+
+        $audit = \App\Models\WhatsApp\WhatsAppConnectionAudit::query()
+            ->where('company_id', $company->id)
+            ->where('event', 'signup_completed')
+            ->latest('id')
+            ->firstOrFail();
+        $serialized = json_encode($audit->context);
+        $this->assertSame(503, data_get($audit->context, 'subscription_verification.http_status'));
+        $this->assertSame(4, data_get($audit->context, 'subscription_verification.meta_error_code'));
+        $this->assertStringContainsString('[redacted identifier]', (string) $serialized);
+        $this->assertStringContainsString('[redacted credential]', (string) $serialized);
+        $this->assertStringNotContainsString('+971 50 123 4567', (string) $serialized);
+        $this->assertStringNotContainsString('EA'.str_repeat('A', 32), (string) $serialized);
+    }
+
+    public function test_failed_subscription_post_records_sanitized_provider_status_and_does_not_persist_assets(): void
+    {
+        [$company, $user] = $this->tenant();
+        $this->fakeMetaCompletion(
+            isOnBusinessApp: true,
+            subscriptionPost: [
+                'error' => [
+                    'code' => 200,
+                    'type' => 'OAuthException',
+                    'message' => 'Permission failed for 123456789012345 and token EA'.str_repeat('B', 32),
+                ],
+            ],
+            subscriptionPostStatus: 403
+        );
+        $service = app(MetaEmbeddedSignupService::class);
+        $state = $service->createState($company->id, $user->id, MetaEmbeddedSignupService::MODE_BUSINESS_APP);
+
+        try {
+            $service->complete($company, $user->id, $this->completionPayload($state));
+            $this->fail('Expected subscription failure.');
+        } catch (WhatsAppOnboardingException $exception) {
+            $this->assertSame('subscription_failed', $exception->reason);
+            $this->assertSame(403, $exception->safeContext['http_status']);
+            $this->assertSame(200, $exception->safeContext['meta_error_code']);
+        }
+
+        $session = \Illuminate\Support\Facades\DB::table('whatsapp_connect_sessions')
+            ->where('state', $state)
+            ->first();
+        $serialized = (string) $session->payload;
+        $this->assertSame('failed', $session->status);
+        $this->assertStringContainsString('[redacted identifier]', $serialized);
+        $this->assertStringContainsString('[redacted credential]', $serialized);
+        $this->assertStringNotContainsString('123456789012345', $serialized);
+        $this->assertStringNotContainsString('EA'.str_repeat('B', 32), $serialized);
+        $this->assertNull($company->fresh()->meta_waba_id);
+        $this->assertNull($company->fresh()->meta_access_token);
+    }
+
     public function test_standard_cloud_api_flow_remains_separate_and_operational(): void
     {
         [$company, $user] = $this->tenant();
@@ -351,9 +489,21 @@ class WhatsAppEmbeddedSignupTest extends TestCase
         Http::assertNothingSent();
     }
 
-    private function fakeMetaCompletion(bool $isOnBusinessApp): void
+    private function fakeMetaCompletion(
+        bool $isOnBusinessApp,
+        array $subscriptionReadback = ['data' => [['id' => '925717083333434']]],
+        int $subscriptionReadbackStatus = 200,
+        array $subscriptionPost = ['success' => true],
+        int $subscriptionPostStatus = 200,
+    ): void
     {
-        Http::fake(function (Request $request) use ($isOnBusinessApp) {
+        Http::fake(function (Request $request) use (
+            $isOnBusinessApp,
+            $subscriptionReadback,
+            $subscriptionReadbackStatus,
+            $subscriptionPost,
+            $subscriptionPostStatus
+        ) {
             $url = $request->url();
 
             return match (true) {
@@ -377,10 +527,14 @@ class WhatsAppEmbeddedSignupTest extends TestCase
                     'id' => 'phone-100', 'display_phone_number' => '+971 50 000 0000',
                     'status' => 'CONNECTED', 'is_on_biz_app' => $isOnBusinessApp,
                 ]),
-                $request->method() === 'POST' && str_contains($url, '/waba-100/subscribed_apps') => Http::response(['success' => true]),
-                $request->method() === 'GET' && str_contains($url, '/waba-100/subscribed_apps') => Http::response([
-                    'data' => [['id' => '925717083333434']],
-                ]),
+                $request->method() === 'POST' && str_contains($url, '/waba-100/subscribed_apps') => Http::response(
+                    $subscriptionPost,
+                    $subscriptionPostStatus
+                ),
+                $request->method() === 'GET' && str_contains($url, '/waba-100/subscribed_apps') => Http::response(
+                    $subscriptionReadback,
+                    $subscriptionReadbackStatus
+                ),
                 default => Http::response([], 404),
             };
         });

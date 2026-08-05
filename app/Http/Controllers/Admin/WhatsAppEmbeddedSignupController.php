@@ -77,9 +77,12 @@ class WhatsAppEmbeddedSignupController extends Controller
                 $request->validated()
             );
 
+            $subscriptionPending = ($result['status']['webhook_subscription_status'] ?? null) === 'pending_verification';
             $message = $result['idempotent']
                 ? 'This WhatsApp connection was already completed.'
-                : 'WhatsApp connected and webhook subscription confirmed.';
+                : ($subscriptionPending
+                    ? 'WhatsApp connected. Meta subscription verification is pending; run diagnostics shortly.'
+                    : 'WhatsApp connected and webhook subscription confirmed.');
 
             if ($request->expectsJson()) {
                 return response()->json([
