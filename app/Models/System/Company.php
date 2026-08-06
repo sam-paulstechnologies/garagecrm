@@ -145,6 +145,11 @@ class Company extends Model
         return $this->hasMany(\App\Models\SuperAdminAuditLog::class, 'company_id');
     }
 
+    public function messagingConnections()
+    {
+        return $this->hasMany(\App\Messaging\Models\MessagingConnection::class, 'company_id');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Plan Helpers

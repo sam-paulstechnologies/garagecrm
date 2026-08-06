@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ProcessInboundWhatsApp;
 use App\Jobs\ProcessWhatsAppCoexistenceWebhook;
+use App\Messaging\Data\NormalizedIncomingMessage;
+use App\Messaging\Models\MessagingConnection;
+use App\Messaging\Services\ProductAdapterRegistry;
+use App\Messaging\WhatsApp\WebhookRouter;
 use App\Models\Client\Lead;
 use App\Models\Conversation;
 use App\Models\MessageLog;
@@ -123,8 +126,10 @@ class MetaWhatsAppWebhookController extends Controller
 
     private function handleChange(string $entryWabaId, string $field, array $value): void
     {
-        $company = $this->resolveCompany($entryWabaId, (string) data_get($value, 'metadata.phone_number_id', ''));
-        if (! $company) {
+        $phoneNumberId = (string) data_get($value, 'metadata.phone_number_id', '');
+        $context = app(WebhookRouter::class)->resolve($entryWabaId, $phoneNumberId);
+        if (! $context) {
+            app(WebhookRouter::class)->quarantine($entryWabaId, $phoneNumberId, $field, $value);
             Log::warning('[SF-WA Connect] Webhook tenant could not be resolved uniquely', [
                 'field' => $field,
                 'has_waba_id' => $entryWabaId !== '',
@@ -133,6 +138,8 @@ class MetaWhatsAppWebhookController extends Controller
 
             return;
         }
+
+        $company = $context->company;
 
         $company->forceFill(['whatsapp_last_webhook_at' => now()])->save();
 
@@ -213,23 +220,27 @@ class MetaWhatsAppWebhookController extends Controller
             ->first(fn ($contact) => is_array($contact) && $this->digits($contact['wa_id'] ?? null) === $from);
 
         try {
-            ProcessInboundWhatsApp::dispatch(
+            $connection = MessagingConnection::query()
+                ->where('company_id', $company->id)
+                ->where('provider', 'meta_whatsapp')
+                ->first();
+            $productKey = $connection?->product_key ?: (string) config('messaging.default_product', 'sayaraforce');
+
+            app(ProductAdapterRegistry::class)->for($productKey)->handleIncoming(new NormalizedIncomingMessage(
+                companyId: (int) $company->id,
+                connectionId: (int) ($connection?->id ?? 0),
+                productKey: $productKey,
+                provider: 'meta_whatsapp',
+                providerMessageId: $messageId,
                 from: $from,
                 to: $this->digits(data_get($value, 'metadata.display_phone_number')),
+                type: $type,
                 body: $body,
-                sid: $messageId !== '' ? $messageId : null,
-                numMedia: $hasMedia ? 1 : 0,
                 profileName: is_array($profile) ? data_get($profile, 'profile.name') : null,
-                provider: 'meta',
-                payload: [
-                    'source_kind' => 'customer_inbound',
-                    'message_type' => $type,
-                    'provider_timestamp' => $message['timestamp'] ?? null,
-                    'media_id' => data_get($message, $type.'.id'),
-                    'media_mime_type' => data_get($message, $type.'.mime_type'),
-                ],
-                companyId: (int) $company->id
-            );
+                mediaId: data_get($message, $type.'.id'),
+                mediaMimeType: data_get($message, $type.'.mime_type'),
+                providerTimestamp: filled($message['timestamp'] ?? null) ? (int) $message['timestamp'] : null,
+            ));
         } catch (\Throwable $exception) {
             // Release the receipt so Meta's retry can durably enqueue the message.
             $event->delete();
@@ -366,27 +377,6 @@ class MetaWhatsAppWebhookController extends Controller
             'status' => 'pending',
             'occurred_at' => now(),
         ]);
-    }
-
-    private function resolveCompany(string $wabaId, string $phoneNumberId): ?Company
-    {
-        $query = Company::query()->where('is_whatsapp_active', true);
-        if ($phoneNumberId !== '') {
-            $query->where('meta_phone_number_id', $phoneNumberId);
-        } elseif ($wabaId !== '') {
-            $query->where('meta_waba_id', $wabaId);
-        }
-        if ($phoneNumberId === '' && $wabaId === '') {
-            return null;
-        }
-
-        $matches = $query->limit(2)->get()->filter(function (Company $company) use ($wabaId) {
-            return $wabaId === ''
-                || blank($company->meta_waba_id)
-                || hash_equals((string) $company->meta_waba_id, $wabaId);
-        })->values();
-
-        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function storeUsageLogIfAvailable(Company $company, MessageLog $message, string $messageId, array $status): void

@@ -9,6 +9,8 @@ use Illuminate\Support\ServiceProvider;
 // ✅ R2 Observer wiring
 use App\Models\MessageLog;
 use App\Observers\MessageLogObserver;
+use App\Messaging\Services\ProductAdapterRegistry;
+use App\SayaraForce\Messaging\SayaraForceMessagingAdapter;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,6 +25,13 @@ class AppServiceProvider extends ServiceProvider
         if (class_exists(\App\Services\Ai\ActionSuggestService::class)) {
             $this->app->singleton(\App\Services\Ai\ActionSuggestService::class);
         }
+
+        $this->app->singleton(ProductAdapterRegistry::class, function (): ProductAdapterRegistry {
+            $registry = new ProductAdapterRegistry();
+            $registry->register('sayaraforce', SayaraForceMessagingAdapter::class);
+
+            return $registry;
+        });
     }
 
     /**

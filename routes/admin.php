@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\{
     WhatsAppPerformanceController,
     WhatsAppSettingController,
     WhatsAppEmbeddedSignupController,
+    MessagingWhatsAppOnboardingController,
     InboxController,
     ConversationController,
     SmartReplyController,
@@ -315,6 +316,33 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         Route::post('whatsapp/disconnect', [WhatsAppEmbeddedSignupController::class, 'disconnect'])
             ->name('whatsapp.connect.disconnect');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Product-neutral self-service messaging onboarding
+        |--------------------------------------------------------------------------
+        | Admin-only. The legacy SF-WA Connect routes above remain available for
+        | existing production connections and coexistence diagnostics.
+        |--------------------------------------------------------------------------
+        */
+        Route::middleware('role:admin')->prefix('messaging/whatsapp')->name('messaging.whatsapp.')->group(function () {
+            Route::get('/', [MessagingWhatsAppOnboardingController::class, 'index'])->name('index');
+            Route::post('onboarding/session', [MessagingWhatsAppOnboardingController::class, 'start'])
+                ->middleware('throttle:5,1')
+                ->name('start');
+            Route::post('onboarding/complete', [MessagingWhatsAppOnboardingController::class, 'complete'])
+                ->middleware('throttle:10,1')
+                ->name('complete');
+            Route::post('health', [MessagingWhatsAppOnboardingController::class, 'health'])
+                ->middleware('throttle:10,1')
+                ->name('health');
+            Route::post('retry', [MessagingWhatsAppOnboardingController::class, 'retry'])
+                ->middleware('throttle:5,1')
+                ->name('retry');
+            Route::post('disconnect', [MessagingWhatsAppOnboardingController::class, 'disconnect'])
+                ->middleware('throttle:3,1')
+                ->name('disconnect');
+        });
 
         /*
         |--------------------------------------------------------------------------

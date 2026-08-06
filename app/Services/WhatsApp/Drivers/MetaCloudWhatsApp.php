@@ -63,8 +63,8 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
         Log::info('[SF-WA Connect][META] sendText', [
             'company_id' => $this->company->id,
-            'phone_number_id' => $this->phoneNumberId,
-            'to' => $toE164,
+            'phone_number_ref' => $this->safeReference($this->phoneNumberId),
+            'recipient_ref' => $this->safeReference($toE164),
             'status' => $resp->status(),
             'message_id' => $body['messages'][0]['id'] ?? null,
         ]);
@@ -72,13 +72,12 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
         if (! $resp->successful()) {
             Log::error('[SF-WA Connect][META] sendText failed', [
                 'company_id' => $this->company->id,
-                'phone_number_id' => $this->phoneNumberId,
-                'to' => $toE164,
+                'phone_number_ref' => $this->safeReference($this->phoneNumberId),
+                'recipient_ref' => $this->safeReference($toE164),
                 'status' => $resp->status(),
-                'body' => $body,
-            ]);
+            ] + $this->providerErrorContext($body));
 
-            throw new \Exception('[META] sendText failed: '.json_encode($body));
+            throw new \RuntimeException('[META] sendText failed with provider code '.($this->providerErrorContext($body)['provider_error_code'] ?? 'unknown').'.');
         }
 
         return $this->normalizeMetaResponse($body, $resp->status());
@@ -127,8 +126,8 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
 
         Log::info('[SF-WA Connect][META] sendTemplate', [
             'company_id' => $this->company->id,
-            'phone_number_id' => $this->phoneNumberId,
-            'to' => $toE164,
+            'phone_number_ref' => $this->safeReference($this->phoneNumberId),
+            'recipient_ref' => $this->safeReference($toE164),
             'template' => $template,
             'status' => $resp->status(),
             'message_id' => $body['messages'][0]['id'] ?? null,
@@ -137,14 +136,13 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
         if (! $resp->successful()) {
             Log::error('[SF-WA Connect][META] sendTemplate failed', [
                 'company_id' => $this->company->id,
-                'phone_number_id' => $this->phoneNumberId,
-                'to' => $toE164,
+                'phone_number_ref' => $this->safeReference($this->phoneNumberId),
+                'recipient_ref' => $this->safeReference($toE164),
                 'template' => $template,
                 'status' => $resp->status(),
-                'body' => $body,
-            ]);
+            ] + $this->providerErrorContext($body));
 
-            throw new \Exception('[META] sendTemplate failed: '.json_encode($body));
+            throw new \RuntimeException('[META] sendTemplate failed with provider code '.($this->providerErrorContext($body)['provider_error_code'] ?? 'unknown').'.');
         }
 
         return $this->normalizeMetaResponse($body, $resp->status());
@@ -235,6 +233,22 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
             'company_id' => $this->company->id,
             'raw' => $body,
         ];
+    }
+
+    private function safeReference(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : substr(hash('sha256', $value), 0, 16);
+    }
+
+    private function providerErrorContext(array $body): array
+    {
+        return array_filter([
+            'provider_error_code' => data_get($body, 'error.code'),
+            'provider_error_subcode' => data_get($body, 'error.error_subcode'),
+            'provider_error_type' => data_get($body, 'error.type'),
+        ], static fn ($value): bool => $value !== null && $value !== '');
     }
 
     protected function normalizeNumber(?string $number): string

@@ -4,6 +4,7 @@ use App\Http\Controllers\SuperAdmin\AuditController;
 use App\Http\Controllers\SuperAdmin\DashboardController;
 use App\Http\Controllers\SuperAdmin\GarageController;
 use App\Http\Controllers\SuperAdmin\LogController;
+use App\Http\Controllers\SuperAdmin\MessagingConnectionController;
 use App\Http\Controllers\SuperAdmin\OperationsCenterController;
 use App\Http\Controllers\SuperAdmin\SystemHealthController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,11 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::get('logs/leads', [LogController::class, 'leads'])->name('logs.leads');
         Route::get('system/health', SystemHealthController::class)->name('system.health');
         Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+        Route::get('messaging-connections', [MessagingConnectionController::class, 'index'])->name('messaging-connections.index');
+        Route::get('messaging-connections/{messagingConnection}', [MessagingConnectionController::class, 'show'])->name('messaging-connections.show');
+        Route::post('messaging-connections/{messagingConnection}/retry', [MessagingConnectionController::class, 'retry'])
+            ->middleware('throttle:3,1')
+            ->name('messaging-connections.retry');
 
         Route::prefix('operations-center')->name('operations.')->group(function () {
             Route::redirect('/', '/super-admin/operations-center/journey-flow')->name('index');

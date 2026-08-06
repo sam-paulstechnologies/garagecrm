@@ -21,9 +21,9 @@
 
     $waIsConnected = filled($waPhoneNumberId) && filled($company?->meta_access_token ?? null) && $waIsActive;
 
-    $connectUrl = Route::has('admin.whatsapp.connect')
-        ? route('admin.whatsapp.connect')
-        : url('/admin/whatsapp/connect');
+    $connectUrl = Route::has('admin.messaging.whatsapp.index')
+        ? route('admin.messaging.whatsapp.index')
+        : (Route::has('admin.whatsapp.connect') ? route('admin.whatsapp.connect') : url('/admin/whatsapp/connect'));
 @endphp
 
 @include('admin.whatsapp.settings.edit-partials._styles')
@@ -47,8 +47,8 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            @if(Route::has('admin.whatsapp.connect'))
-                <a href="{{ route('admin.whatsapp.connect') }}"
+            @if($connectUrl)
+                <a href="{{ $connectUrl }}"
                    class="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">
                     SF-WA Connect
                 </a>
