@@ -27,7 +27,19 @@ class StagingSafety
             throw new RuntimeException('Staging operation refused: the database identity is not the approved staging database.');
         }
 
-        if ($host === '' || in_array($host, ['127.0.0.1', 'localhost', '::1'], true) || ! str_contains($host, 'staging')) {
+        $localHost = in_array($host, ['127.0.0.1', 'localhost', '::1'], true);
+        $schemaValidationMode = (bool) config('staging.schema_validation_mode');
+        $localSchemaValidation = $schemaValidationMode
+            && app()->runningInConsole()
+            && $localHost
+            && str_contains(strtolower($database), 'staging_validation')
+            && (bool) config('staging.schema_baseline_approved');
+
+        if ($schemaValidationMode && ! $localSchemaValidation) {
+            throw new RuntimeException('Staging schema validation refused: the local validation safety contract is incomplete.');
+        }
+
+        if (! $localSchemaValidation && ($host === '' || $localHost || ! str_contains($host, 'staging'))) {
             throw new RuntimeException('Staging operation refused: the database host is not staging-specific.');
         }
 

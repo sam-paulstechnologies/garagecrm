@@ -15,6 +15,7 @@ fi
 
 php artisan staging:assert-safe --require-schema --no-interaction
 php artisan migrate --force --no-interaction
+php artisan staging:schema-fingerprint --verify --no-interaction
 php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache

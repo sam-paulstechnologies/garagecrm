@@ -57,6 +57,7 @@ try {
 
     composer install --prefer-dist --no-interaction --optimize-autoloader
     php artisan config:clear
+    & (Join-Path $PSScriptRoot 'validate-schema-baseline.ps1')
     php artisan test tests/Feature/SelfServiceWhatsAppOnboardingTest.php tests/Feature/StagingSafetyTest.php --no-ansi
     php artisan test --no-ansi
     npm ci --no-audit --no-fund

@@ -113,4 +113,27 @@ class StagingSafetyTest extends TestCase
         $this->expectExceptionMessage('APP_ENV must be staging');
         app(StagingSafety::class)->assertRuntimeIsolated(destructive: true);
     }
+
+    public function test_local_schema_validation_mode_requires_the_complete_disposable_database_contract(): void
+    {
+        config([
+            'app.url' => 'http://localhost',
+            'staging.expected_host' => 'localhost',
+            'staging.expected_database' => 'sayaraforce_staging_validation',
+            'staging.schema_baseline_approved' => true,
+            'staging.schema_validation_mode' => true,
+            'database.default' => 'mysql',
+            'database.connections.mysql.host' => '127.0.0.1',
+            'database.connections.mysql.database' => 'sayaraforce_staging_validation',
+        ]);
+
+        app(StagingSafety::class)->assertRuntimeIsolated();
+        $this->addToAssertionCount(1);
+
+        config(['database.connections.mysql.host' => 'mysql-sayaraforce-staging.example.test']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('local validation safety contract is incomplete');
+        app(StagingSafety::class)->assertRuntimeIsolated();
+    }
 }

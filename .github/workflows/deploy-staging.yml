@@ -56,6 +56,10 @@ jobs:
           printf 'APP_KEY=%s\n' "$test_key" >> "$GITHUB_ENV"
           unset test_key
 
+      - name: Validate canonical schema baseline
+        shell: pwsh
+        run: ./ops/azure/staging/validate-schema-baseline.ps1
+
       - name: PHP lint
         shell: bash
         run: find app config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l

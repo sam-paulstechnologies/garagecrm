@@ -2,9 +2,9 @@
 
 ## Status and safety boundary
 
-This runbook defines a permanent, production-isolated staging environment for SayaraForce. At the time this document was prepared, Azure CLI was not installed on the workstation, so no Azure resource, DNS record, Meta asset, database, callback, application setting, certificate, deployment, restart, migration, slot, or production application was changed.
+This runbook defines a permanent, production-isolated staging environment for SayaraForce. Azure and the production MySQL structure have now been independently audited through read-only paths. The verified production app is `app-sayaraforce` in `rg-garagecrm-prod`, UAE North, and the verified database service is MySQL Flexible Server 8.0. No Azure resource, DNS record, Meta asset, callback, application setting, certificate, deployment, restart, migration, slot, production view, or production application was changed during that audit.
 
-The production application is identified by the requested name `app-sayaraforce`, but its subscription, resource group, region, plan, runtime, settings, domains, deployment state, and database host have not yet been independently confirmed from Azure. `provision-staging.ps1` performs that read-only confirmation and stops before any write when the subscription, production resource group, exact production app, or region is ambiguous.
+Azure staging remains unprovisioned. `provision-staging.ps1` still performs an independent read-only confirmation and stops before any write when the subscription, production resource group, exact production app, or region is ambiguous.
 
 Never use this runbook to alter `app-sayaraforce`. Never create a deployment slot or swap. Never load Smart Matrix credentials or assets into staging.
 
@@ -61,29 +61,25 @@ Repository baseline recorded before changes:
 - Session default: database
 - Filesystem default: local
 - Mail default: log (local `.env` used SMTP)
-- Azure CLI: not installed; Azure subscription/resource group/region/plan/runtime/startup/domains/settings were not available for confirmation
+- Verified production resource group/region: `rg-garagecrm-prod`, UAE North
+- Verified production App Service Plan: `ASP-rggaragecrmprod-9976`
+- Verified database service: MySQL Flexible Server 8.0 family
+- Verified queue split: operational `jobs`, database queue `queue_jobs`, failed queue `failed_jobs`
+- Web requests use `QUEUE_CONNECTION=sync`; the existing continuous `sayaraforce-queue` WebJob explicitly runs `queue:work database`
 
 The existing production workflow has been prepared locally as manual `workflow_dispatch` only. That change has not been pushed and therefore has not changed production.
 
 The original working tree also contained unrelated website, public-enquiry, registration, and generated frontend work. The WhatsApp implementation was selectively committed without those paths; the unrelated work remains uncommitted.
 
-## Database strategy and current release blocker
+## Database strategy and approved canonical baseline
 
 Staging must be built from a schema-only, reviewed source plus Laravel migrations and synthetic seeders. It must never be cloned from a production connection and must never contain production messages, clients, leads, vehicles, credentials, or other personal information.
 
-The current repository does not contain creation migrations for several business tables used by the application, including `leads`, `conversations`, and other operational records. A safe local schema-only dump was investigated, but the local database also lacks the complete operational schema and contains invalid legacy views. The failed generated dump was removed; no data dump was retained or committed.
+The repository now contains the reviewed canonical source at `database/schema/mysql-schema.sql`. It was derived from a strictly structure-only production audit, contains 103 base tables and two portable `SQL SECURITY INVOKER` views, and includes no application rows. The only data statement targets Laravel's `migrations` ledger. The source/local/migration/code decisions and view reconstruction are recorded in `docs/SAYARAFORCE_CANONICAL_SCHEMA.md` and the adjacent manifest/safety report.
 
-This is a deployment blocker, enforced by `STAGING_SCHEMA_BASELINE_APPROVED=false`. Both the staging pipeline and `staging:reset` fail closed until a reviewed, data-free baseline migration/schema is committed and that setting is explicitly changed to `true`. Do not work around this gate by restoring production data.
+The pending migration `2026_08_05_000001_create_messaging_core_tables` runs after the baseline and creates seven tables exactly once. Two independent fresh cycles produced 110 base tables, two valid views, two synthetic tenants, zero foreign-key violations, and identical fingerprint `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`.
 
-To close the blocker:
-
-1. Obtain an approved schema-only definition from the canonical migration/schema source, never a data export.
-2. Review it for `DEFINER`, credentials, customer values, or `INSERT` statements other than Laravel's migration ledger.
-3. Add missing creation migrations or a Laravel schema baseline.
-4. Create a disposable, staging-named database and prove `migrate:fresh` succeeds.
-5. Prove `StagingSyntheticSeeder` creates two isolated synthetic tenants.
-6. Review and merge the baseline.
-7. Set `STAGING_SCHEMA_BASELINE_APPROVED=true` only on `app-sayaraforce-staging`.
+The documented repository gate is approved: `STAGING_SCHEMA_BASELINE_APPROVED=true`. This is not a global default. Bicep and application configuration continue to default to `false`, and the pipeline fails closed when the setting is absent or false. After staging is provisioned, set it to `true` only on `app-sayaraforce-staging` after verifying that the deployed manifest matches this reviewed release.
 
 The MySQL server is on a delegated private subnet. Its staging-only server administrator is the application database user in the prepared baseline; it has no production server or database permission. If a separate least-privilege application user is introduced later, create it inside the staging server and keep both credentials in the staging Key Vault only.
 
@@ -192,7 +188,7 @@ After the staging Web App exists, create the secretless, staging-scoped identity
 
 The script refuses an existing identity with the same name and verifies that the new service principal has exactly one assignment: Website Contributor on the staging Web App resource ID.
 
-The workflow creates an ephemeral test-only application key without printing it, lints PHP, runs focused staging/WhatsApp tests, runs the complete suite, builds frontend assets, removes the temporary `.env`, installs optimized production Composer dependencies, packages only runtime files, verifies the exact staging Azure resource ID, records branch/commit/time, deploys only to the staging app, runs guarded staging migrations and Laravel cache rebuilds, restarts only staging, and checks `/healthz`.
+The workflow creates an ephemeral test-only application key without printing it, validates the static baseline/cutoff, lints PHP, runs focused staging/WhatsApp tests, runs the complete suite, builds frontend assets, removes the temporary `.env`, installs optimized production Composer dependencies, packages only runtime files, verifies the exact staging Azure resource ID, records branch/commit/time, deploys only to the staging app, runs guarded staging migrations, verifies the live staging schema fingerprint against the approved manifest, rebuilds Laravel caches, restarts only staging, and checks `/healthz`.
 
 The pipeline deliberately refuses deployment until the schema baseline gate is approved. It uses a short-lived Entra token for the Kudu command and never retrieves a publish profile.
 
@@ -307,7 +303,7 @@ Staging is not ready until all answers are yes:
 - [ ] The staging deployment identity has no production scope.
 - [ ] The staging workflow contains no production publish profile or app target.
 - [ ] There is no slot or auto-swap.
-- [ ] The schema baseline is complete and data-free.
+- [x] The schema baseline is complete, reproducible, and data-free.
 - [ ] No production application setting, deployment, restart, migration, webhook, OAuth callback, DNS record, or certificate changed.
 - [ ] Meta staging configuration was added without removing production configuration.
 - [ ] Outbound communication remains disabled until test assets and allowlists are approved.
@@ -336,9 +332,9 @@ Recurring cost comes from a dedicated B1 Linux App Service Plan, Burstable B1ms 
 
 Known limitations:
 
-- Azure resources are prepared, not created, because Azure CLI/access was unavailable.
-- Production Azure baseline is not yet independently confirmed.
-- The repository schema baseline is incomplete and blocks deployment/reset.
+- Azure staging resources are prepared but not created; this task intentionally stopped before provisioning.
+- The two production views remain invalid and unchanged. Their separately approved repair must follow local → staging → explicit production approval.
+- Production retains legacy schema objects and migration-ledger drift documented in the canonical manifest; this baseline does not delete them.
 - Meta staging assets and dashboard entries require an approved human operator.
 - DNS and managed TLS wait for the staging Azure hostname and CNAME propagation.
 - The B1 plan and B1ms database are single-instance staging choices, not high availability.

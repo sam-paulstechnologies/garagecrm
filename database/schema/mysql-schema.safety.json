@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "scan_date_utc": "2026-08-06T20:30:00Z",
+  "status": "passed",
+  "baseline_sha256": "237b89602f6bcd876287a236b00ef95d6c892f0810784efefc1a2826a6231bb7",
+  "source_export_sha256": "389a6303ef123dea0f15ad985cf4ee3067e2a62f4ce44e260e546049f8ed9498",
+  "object_counts": {
+    "base_tables": 103,
+    "views": 2
+  },
+  "checks": {
+    "non_migrations_insert_statements": 0,
+    "replace_statements": 0,
+    "load_data_statements": 0,
+    "copy_statements": 0,
+    "definer_clauses": 0,
+    "nonzero_auto_increment_options": 0,
+    "email_literals": 0,
+    "phone_value_literals": 0,
+    "password_hash_literals": 0,
+    "access_token_literals": 0,
+    "meta_asset_id_literals": 0,
+    "smart_matrix_references": 0,
+    "production_hostname_references": 0,
+    "production_database_name_references": 0,
+    "credential_or_grant_statements": 0
+  },
+  "allowed_data_statement": {
+    "target": "migrations",
+    "purpose": "Laravel schema-dump cutoff metadata only",
+    "reviewed": true
+  },
+  "notes": [
+    "Identifiers for credential-capable columns are structural metadata, not values.",
+    "The production migrations ledger is stored only in the temporary reconciliation artifact and was not copied blindly into the baseline."
+  ]
+}

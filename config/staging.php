@@ -4,6 +4,7 @@ return [
     'expected_host' => env('STAGING_EXPECTED_HOST', 'staging.sayaraforce.com'),
     'expected_database' => env('STAGING_EXPECTED_DB_DATABASE', 'sayaraforce_staging'),
     'schema_baseline_approved' => filter_var(env('STAGING_SCHEMA_BASELINE_APPROVED', false), FILTER_VALIDATE_BOOL),
+    'schema_validation_mode' => filter_var(env('STAGING_SCHEMA_VALIDATION_MODE', false), FILTER_VALIDATE_BOOL),
 
     'production' => [
         'app_urls' => env('STAGING_PRODUCTION_APP_URL_DENYLIST', 'https://sayaraforce.com,https://app.sayaraforce.com'),

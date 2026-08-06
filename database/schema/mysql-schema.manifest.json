@@ -1,0 +1,455 @@
+{
+  "schema_version": 1,
+  "generation_date_utc": "2026-08-06T19:33:01.709034+00:00",
+  "structural_source": "Read-only production MySQL base-table metadata from app-sayaraforce; invalid view SELECT bodies recovered separately and converted to SQL SECURITY INVOKER.",
+  "production_structural_fingerprint_sha256": "ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299",
+  "source_export_sha256": "389a6303ef123dea0f15ad985cf4ee3067e2a62f4ce44e260e546049f8ed9498",
+  "baseline_sha256": "237b89602f6bcd876287a236b00ef95d6c892f0810784efefc1a2826a6231bb7",
+  "included_base_table_count": 103,
+  "included_base_tables": [
+    "activities",
+    "ai_metrics_daily",
+    "ai_suggestions",
+    "audience_memberships",
+    "audience_rules",
+    "audience_segmentations",
+    "audiences",
+    "automation_logs",
+    "automation_rules",
+    "bookings",
+    "cache",
+    "cache_locks",
+    "campaign_audiences",
+    "campaign_enrollments",
+    "campaign_logs",
+    "campaign_steps",
+    "campaigns",
+    "client_documents",
+    "client_duplicate_candidates",
+    "client_import_batches",
+    "client_import_rows",
+    "clients",
+    "communication_logs",
+    "communication_logs_backup",
+    "communications",
+    "companies",
+    "company_audience_segmentation_settings",
+    "company_default_garages",
+    "company_module_settings",
+    "company_settings",
+    "conversation_participants",
+    "conversations",
+    "facebook_pages",
+    "failed_jobs",
+    "feedback",
+    "files",
+    "garages",
+    "google_lead_webhook_logs",
+    "incoming_invoices",
+    "intent_action_mappings",
+    "invoices",
+    "job_batches",
+    "job_cards",
+    "job_documents",
+    "job_services",
+    "jobs",
+    "journey_actions",
+    "journey_enrollments",
+    "journey_steps",
+    "journey_templates",
+    "journeys",
+    "laravel_failed_jobs",
+    "lead_activity_logs",
+    "lead_campaign_journey_mappings",
+    "lead_duplicates",
+    "lead_sources",
+    "lead_upload_batches",
+    "lead_upload_rows",
+    "leads",
+    "manager_alerts",
+    "manager_booking_tokens",
+    "marketing_triggers",
+    "message_logs",
+    "message_reads",
+    "message_templates",
+    "meta_pages",
+    "migrations",
+    "model_has_permissions",
+    "model_has_roles",
+    "notes",
+    "notifications",
+    "opportunities",
+    "password_reset_tokens",
+    "permissions",
+    "personal_access_tokens",
+    "plans",
+    "profiles",
+    "queue_jobs",
+    "retention_actions",
+    "role_has_permissions",
+    "roles",
+    "service_predictions",
+    "service_types",
+    "sessions",
+    "settings_audit_logs",
+    "super_admin_audit_logs",
+    "templates",
+    "timeline_comments",
+    "triggers",
+    "users",
+    "vehicle_makes",
+    "vehicle_models",
+    "vehicle_service_histories",
+    "vehicles",
+    "whatsapp_connect_sessions",
+    "whatsapp_connection_audits",
+    "whatsapp_history_messages",
+    "whatsapp_messages",
+    "whatsapp_synced_contacts",
+    "whatsapp_template_mappings",
+    "whatsapp_templates",
+    "whatsapp_usage_logs",
+    "whatsapp_webhook_events"
+  ],
+  "included_view_count": 2,
+  "included_views": [
+    "vw_ai_metrics_daily",
+    "vw_journey_summary"
+  ],
+  "excluded_objects": [
+    "production view DEFINER identities",
+    "production database and hostname qualifications",
+    "AUTO_INCREMENT counters",
+    "application rows",
+    "jobsheets (absent in production)",
+    "invoice_items (absent in production)",
+    "seven messaging Phase 1 tables (pending migration)"
+  ],
+  "represented_migrations": [
+    "0001_01_01_000000_create_users_table",
+    "0001_01_01_000001_create_cache_table",
+    "0001_01_01_000002_create_jobs_table",
+    "2023_09_30_000000_create_templates_table",
+    "2023_10_01_000000_create_automation_rules_table",
+    "2023_10_01_000001_create_clients_table",
+    "2025_06_20_224136_create_permission_tables",
+    "2025_08_13_000001_create_companies_table",
+    "2025_08_13_000002_create_garages_table",
+    "2025_08_13_000003_create_vehicles_tables",
+    "2025_08_13_000004_create_jobsheets_and_job_cards_tables",
+    "2025_08_13_000005_create_invoices_tables",
+    "2025_08_13_000006_create_communication_logs_table",
+    "2025_08_13_000007_create_files_table",
+    "2025_08_13_000008_create_plans_table",
+    "2025_09_13_175925_create_job_documents_table",
+    "2025_10_18_000000_create_message_logs_table",
+    "2025_10_18_003011_create_queue_jobs_table",
+    "2025_10_18_003012_create_laravel_failed_jobs_table",
+    "2025_11_01_214217_create_personal_access_tokens_table",
+    "2026_06_06_000001_add_service_journey_link_columns",
+    "2026_06_07_000001_create_client_import_batches_table",
+    "2026_06_07_000002_create_client_import_rows_table",
+    "2026_06_07_000003_create_vehicle_service_histories_table",
+    "2026_06_07_000004_create_retention_actions_table",
+    "2026_06_08_000001_create_lead_upload_batches_table",
+    "2026_06_08_000002_create_lead_upload_rows_table",
+    "2026_06_12_000001_add_vehicle_renewal_audience_segmentations",
+    "2026_06_17_000001_add_campaign_type_to_leads_table",
+    "2026_06_17_000002_create_lead_campaign_journey_mappings_table",
+    "2026_06_20_000000_create_lead_activity_logs_table",
+    "2026_06_20_000001_add_status_detail_fields_to_leads_table",
+    "2026_06_20_000002_align_opportunity_stage_enum_with_booking_confirmed",
+    "2026_06_21_000001_add_reschedule_fields_to_bookings_table",
+    "2026_07_06_000000_add_access_fields_to_users_table",
+    "2026_07_06_000001_add_platform_status_to_companies_table",
+    "2026_07_06_000002_create_company_module_settings_table",
+    "2026_07_06_000003_create_super_admin_audit_logs_table",
+    "2026_07_22_000001_widen_users_role_column_for_super_admin",
+    "2026_08_04_000001_harden_whatsapp_business_app_onboarding"
+  ],
+  "first_pending_migration": "2026_08_05_000001_create_messaging_core_tables",
+  "pending_migrations": [
+    "2026_08_05_000001_create_messaging_core_tables"
+  ],
+  "production_only_migration_identifiers_excluded": [
+    "2025_09_13_180003_create_job_documents_table"
+  ],
+  "retained_legacy_tables": [
+    "communication_logs_backup"
+  ],
+  "unresolved_legacy_candidates": [
+    "activities",
+    "company_default_garages",
+    "facebook_pages",
+    "incoming_invoices",
+    "intent_action_mappings",
+    "journey_templates",
+    "profiles",
+    "service_predictions",
+    "service_types",
+    "triggers"
+  ],
+  "jobs_queue_decision": {
+    "jobs": "operational workshop table",
+    "queue_jobs": "Laravel database queue table",
+    "failed_jobs": "Laravel failed jobs table",
+    "repository_drift": "The initial queue-shaped jobs migration is marked represented and must never run after this baseline."
+  },
+  "collation_decision": "Preserve each production table/column collation exactly for structural fidelity; normalize only through a separately reviewed future migration.",
+  "view_remediation_decision": "Use SQL SECURITY INVOKER with no fixed DEFINER. Preserve the recovered query shape; correct vw_journey_summary.total_closed_won to count the current booking_confirmed stage because closed_won is a legacy alias absent from the production enum.",
+  "migration_classifications": [
+    {
+      "migration": "0001_01_01_000000_create_users_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "0001_01_01_000001_create_cache_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "0001_01_01_000002_create_jobs_table",
+      "classification": "superseded by later production structure",
+      "represented": true,
+      "note": "The original queue-shaped jobs definition is superseded by operational jobs; queue storage is queue_jobs."
+    },
+    {
+      "migration": "2023_09_30_000000_create_templates_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2023_10_01_000000_create_automation_rules_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2023_10_01_000001_create_clients_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_06_20_224136_create_permission_tables",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000001_create_companies_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000002_create_garages_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000003_create_vehicles_tables",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000004_create_jobsheets_and_job_cards_tables",
+      "classification": "effect partially represented",
+      "represented": true,
+      "note": "job_cards exists; jobsheets is absent in production and is not included."
+    },
+    {
+      "migration": "2025_08_13_000005_create_invoices_tables",
+      "classification": "effect partially represented",
+      "represented": true,
+      "note": "invoices exists; invoice_items is absent in production and is not included."
+    },
+    {
+      "migration": "2025_08_13_000006_create_communication_logs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000007_create_files_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_08_13_000008_create_plans_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_09_13_175925_create_job_documents_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_10_18_000000_create_message_logs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_10_18_003011_create_queue_jobs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_10_18_003012_create_laravel_failed_jobs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2025_11_01_214217_create_personal_access_tokens_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_06_000001_add_service_journey_link_columns",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_07_000001_create_client_import_batches_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_07_000002_create_client_import_rows_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_07_000003_create_vehicle_service_histories_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_07_000004_create_retention_actions_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_08_000001_create_lead_upload_batches_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_08_000002_create_lead_upload_rows_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_12_000001_add_vehicle_renewal_audience_segmentations",
+      "classification": "superseded by data-free baseline policy",
+      "represented": true,
+      "note": "Static data inserts are intentionally not copied; safe synthetic/platform seeders own staging data."
+    },
+    {
+      "migration": "2026_06_17_000001_add_campaign_type_to_leads_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_17_000002_create_lead_campaign_journey_mappings_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_20_000000_create_lead_activity_logs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_20_000001_add_status_detail_fields_to_leads_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_20_000002_align_opportunity_stage_enum_with_booking_confirmed",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_06_21_000001_add_reschedule_fields_to_bookings_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_07_06_000000_add_access_fields_to_users_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_07_06_000001_add_platform_status_to_companies_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_07_06_000002_create_company_module_settings_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_07_06_000003_create_super_admin_audit_logs_table",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_07_22_000001_widen_users_role_column_for_super_admin",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_08_04_000001_harden_whatsapp_business_app_onboarding",
+      "classification": "effect fully represented in baseline",
+      "represented": true,
+      "note": "Production structural effect is present and the migration is marked represented."
+    },
+    {
+      "migration": "2026_08_05_000001_create_messaging_core_tables",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Creates the seven messaging Phase 1 tables exactly once."
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "cycle_one_fingerprint": "379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e",
+    "cycle_two_fingerprint": "379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e",
+    "fingerprints_match": true
+  },
+  "staging_schema_baseline_approved": true
+}
