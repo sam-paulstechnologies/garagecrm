@@ -4,13 +4,20 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Vite;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Mail\Events\MessageSending;
 
 // ✅ R2 Observer wiring
 use App\Models\MessageLog;
 use App\Observers\MessageLogObserver;
 use App\Messaging\Services\ProductAdapterRegistry;
+use App\Messaging\Models\MessagingConnection;
+use App\Messaging\Models\MessagingPhoneNumber;
+use App\Models\System\Company;
 use App\SayaraForce\Messaging\SayaraForceMessagingAdapter;
+use App\Support\Staging\StagingSafety;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -60,8 +67,48 @@ class AppServiceProvider extends ServiceProvider
         | Azure terminates SSL before the request reaches Laravel.
         | Without this, Laravel may generate http:// URLs and browser blocks login.
         */
-        if (app()->environment('production')) {
+        if (app()->environment(['production', 'staging'])) {
             URL::forceScheme('https');
+        }
+
+        if (app()->environment('staging')) {
+            Log::withContext(['environment' => 'staging']);
+
+            Company::saving(function (Company $company): void {
+                app(StagingSafety::class)->assertProviderAssetsAllowed(
+                    $company->meta_waba_id,
+                    $company->meta_phone_number_id
+                );
+            });
+
+            MessagingConnection::saving(function (MessagingConnection $connection): void {
+                app(StagingSafety::class)->assertProviderAssetsAllowed($connection->waba_id, null);
+            });
+
+            MessagingPhoneNumber::saving(function (MessagingPhoneNumber $phone): void {
+                app(StagingSafety::class)->assertProviderAssetsAllowed(null, $phone->phone_number_id);
+            });
+
+            Event::listen(MessageSending::class, function (MessageSending $event): bool|null {
+                $addresses = collect([
+                    ...$event->message->getTo(),
+                    ...$event->message->getCc(),
+                    ...$event->message->getBcc(),
+                ])->map(fn ($address): string => method_exists($address, 'getAddress')
+                    ? $address->getAddress()
+                    : (string) $address)->all();
+
+                if (! app(StagingSafety::class)->emailRecipientsAreAllowed($addresses)) {
+                    Log::warning('Staging email blocked by recipient allowlist.', [
+                        'environment' => 'staging',
+                        'recipient_count' => count($addresses),
+                    ]);
+
+                    return false;
+                }
+
+                return null;
+            });
         }
 
         Vite::prefetch(concurrency: 3);

@@ -47,6 +47,14 @@ return [
             'report' => false,
         ],
 
+        'staging' => [
+            'driver' => 'local',
+            'root' => env('STAGING_STORAGE_PATH', '/mount/sayaraforce-staging'),
+            'serve' => false,
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

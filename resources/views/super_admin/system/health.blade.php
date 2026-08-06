@@ -9,6 +9,18 @@
         <p class="mt-2 text-sm font-semibold sa-muted">Database-backed checks only. Secrets and raw environment values are not displayed.</p>
     </div>
 
+    @if($deployment)
+        <section class="mb-6 rounded-3xl border border-orange-400/40 bg-orange-500/10 p-5">
+            <h2 class="text-lg font-black text-white">Restricted Deployment Marker</h2>
+            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div><dt class="font-black uppercase sa-label">Environment</dt><dd class="mt-1 font-bold text-white">{{ $deployment['environment'] }}</dd></div>
+                <div><dt class="font-black uppercase sa-label">Branch</dt><dd class="mt-1 font-bold text-white">{{ $deployment['branch'] ?: 'Not recorded' }}</dd></div>
+                <div><dt class="font-black uppercase sa-label">Commit</dt><dd class="mt-1 break-all font-mono text-white">{{ $deployment['commit'] ?: 'Not recorded' }}</dd></div>
+                <div><dt class="font-black uppercase sa-label">Deployed</dt><dd class="mt-1 font-bold text-white">{{ $deployment['time'] ?: 'Not recorded' }}</dd></div>
+            </dl>
+        </section>
+    @endif
+
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <div class="rounded-3xl sa-card p-5"><p class="text-xs font-black uppercase tracking-wide sa-label">Environment</p><p class="mt-3 text-xl font-black text-white">{{ $environment }}</p></div>
         <div class="rounded-3xl sa-card p-5"><p class="text-xs font-black uppercase tracking-wide sa-label">Queue</p><p class="mt-3 text-xl font-black text-white">{{ $queueConnection }}</p></div>

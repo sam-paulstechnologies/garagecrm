@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use App\Support\Staging\StagingSafety;
 
 class TwilioWhatsApp
 {
@@ -30,6 +31,7 @@ class TwilioWhatsApp
      */
     public function send(string $to, string $body): array
     {
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed($to);
         $to = $this->normalizeTo($to);
 
         $endpoint = "https://api.twilio.com/2010-04-01/Accounts/{$this->sid}/Messages.json";

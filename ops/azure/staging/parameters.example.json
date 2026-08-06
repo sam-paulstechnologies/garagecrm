@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "<audited-production-region>" },
+    "mysqlServerName": { "value": "mysql-sayaraforce-staging-<unique-suffix>" },
+    "keyVaultName": { "value": "kvsfstaging<suffix>" },
+    "storageAccountName": { "value": "stsayaraforcestaging" },
+    "deploymentPrincipalObjectId": { "value": "<staging-only-github-oidc-object-id-or-empty>" }
+  }
+}

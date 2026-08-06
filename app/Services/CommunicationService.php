@@ -7,6 +7,7 @@ use App\Mail\GenericEmail;
 use App\Models\AutomationRule;
 use App\Models\Template;
 use Twilio\Rest\Client;
+use App\Support\Staging\StagingSafety;
 
 class CommunicationService
 {
@@ -29,6 +30,8 @@ class CommunicationService
 
     public function sendWhatsApp($to, $message, $templateId = null)
     {
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed((string) $to);
+
         if ($templateId) {
             $template = Template::find($templateId);
             $message = $this->applyTemplate($template, $message);

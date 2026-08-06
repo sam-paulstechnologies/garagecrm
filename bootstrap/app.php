@@ -24,6 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
+        // Azure App Service terminates TLS at its front end. This remains inert
+        // unless the deployment explicitly sets TRUSTED_PROXIES (staging uses *).
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES'));
+        $middleware->append(\App\Http\Middleware\ApplyStagingIdentity::class);
+
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,

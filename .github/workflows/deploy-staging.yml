@@ -1,0 +1,198 @@
+name: Deploy SayaraForce Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sayaraforce-staging
+  cancel-in-progress: false
+
+env:
+  AZURE_RESOURCE_GROUP: rg-sayaraforce-staging
+  AZURE_WEBAPP_NAME: app-sayaraforce-staging
+
+jobs:
+  test-build-deploy:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: sayaraforce-staging
+
+    steps:
+      - name: Check out the exact staging commit
+        uses: actions/checkout@v4
+
+      - name: Assert staging-only targets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/staging" ]]
+          [[ "$AZURE_RESOURCE_GROUP" == "rg-sayaraforce-staging" ]]
+          [[ "$AZURE_WEBAPP_NAME" == "app-sayaraforce-staging" ]]
+          [[ "$AZURE_WEBAPP_NAME" != "app-sayaraforce" ]]
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_mysql, pdo_sqlite, bcmath, gd, curl, zip, xml
+          coverage: none
+
+      - name: Install test dependencies
+        run: composer install --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Prepare ephemeral test application key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : > .env
+          test_key="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"
+          printf 'APP_KEY=%s\n' "$test_key" >> "$GITHUB_ENV"
+          unset test_key
+
+      - name: PHP lint
+        shell: bash
+        run: find app config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Focused staging and WhatsApp tests
+        run: php artisan test tests/Feature/SelfServiceWhatsAppOnboardingTest.php tests/Feature/StagingSafetyTest.php --no-ansi
+
+      - name: Full automated suite
+        run: php artisan test --no-ansi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f public/build/manifest.json
+
+      - name: Install production PHP dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Remove ephemeral test environment file
+        shell: bash
+        run: |
+          rm -f .env
+          test ! -e .env
+
+      - name: Package required runtime files only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          package="$RUNNER_TEMP/sayaraforce-package"
+          mkdir -p "$package/storage/framework/cache" "$package/storage/framework/sessions" "$package/storage/framework/views" "$package/storage/logs"
+          for path in app bootstrap config database ops public resources/views routes vendor; do
+            if [[ -e "$path" ]]; then
+              mkdir -p "$package/$(dirname "$path")"
+              cp -a "$path" "$package/$path"
+            fi
+          done
+          cp artisan composer.json composer.lock "$package/"
+          queue_worker="$package/App_Data/jobs/continuous/sayaraforce-staging-queue"
+          mkdir -p "$queue_worker"
+          cp ops/azure/staging/webjobs/sayaraforce-staging-queue/run.sh "$queue_worker/run.sh"
+          cp ops/azure/staging/webjobs/sayaraforce-staging-queue/settings.job "$queue_worker/settings.job"
+          scheduler="$package/App_Data/jobs/continuous/sayaraforce-staging-scheduler"
+          mkdir -p "$scheduler"
+          cp ops/azure/staging/webjobs/sayaraforce-staging-scheduler/run.sh "$scheduler/run.sh"
+          cp ops/azure/staging/webjobs/sayaraforce-staging-scheduler/settings.job "$scheduler/settings.job"
+          (cd "$package" && zip -qr "$GITHUB_WORKSPACE/release.zip" .)
+          unzip -l release.zip | grep -F 'public/build/manifest.json'
+          unzip -l release.zip | grep -F 'ops/azure/staging/post-deploy.sh'
+          unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-queue/run.sh'
+          unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-scheduler/run.sh'
+          if unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-queue/'; then
+            echo 'Production/general queue WebJob found in staging package.' >&2
+            exit 1
+          fi
+          if unzip -l release.zip | grep -E '(^|/)(\.env|tests|node_modules|\.git)(/|$)'; then
+            echo 'Unsafe file found in package.' >&2
+            exit 1
+          fi
+
+      - name: Sign in to Azure with staging-only OIDC identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_STAGING_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_STAGING_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_STAGING_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure target identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          app_id="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query id --output tsv)"
+          [[ "$app_id" == */resourceGroups/rg-sayaraforce-staging/providers/Microsoft.Web/sites/app-sayaraforce-staging ]]
+          schema_ready="$(az webapp config appsettings list --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query "[?name=='STAGING_SCHEMA_BASELINE_APPROVED'].value | [0]" --output tsv)"
+          if [[ "$schema_ready" != "true" ]]; then
+            echo 'Deployment blocked: the reviewed, data-free staging schema baseline is not approved.' >&2
+            exit 1
+          fi
+
+      - name: Deploy package to staging only
+        shell: bash
+        run: |
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --src-path release.zip \
+            --type zip --clean true --restart false --track-status true \
+            --only-show-errors --output none
+
+      - name: Run staging migration and cache rebuild
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          token="$(az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv)"
+          response="$RUNNER_TEMP/kudu-command.json"
+          status="$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+            -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            --data '{"command":"bash ops/azure/staging/post-deploy.sh","dir":"/home/site/wwwroot"}' \
+            "https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net/api/command")"
+          unset token
+          [[ "$status" == "200" ]]
+          exit_code="$(jq -r '.ExitCode' "$response")"
+          if [[ "$exit_code" != "0" ]]; then
+            jq -r '.Error // "Staging post-deploy command failed."' "$response" | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig'
+            exit 1
+          fi
+          jq -r '.Output // "Staging post-deploy command completed."' "$response"
+
+      - name: Record successful deployment marker on staging
+        shell: bash
+        run: |
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --only-show-errors --output none
+
+      - name: Restart staging and verify health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --only-show-errors
+          host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query defaultHostName --output tsv)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 20 "https://$host/healthz" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+
+      - name: Azure logout
+        if: always()
+        run: az logout

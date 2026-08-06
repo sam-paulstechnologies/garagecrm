@@ -31,6 +31,12 @@ class SystemHealthController extends SuperAdminController
             'queueConnection' => Config::get('queue.default'),
             'cacheStore' => Config::get('cache.default'),
             'environment' => app()->environment(),
+            'deployment' => app()->environment('staging') ? [
+                'environment' => 'staging',
+                'branch' => Config::get('staging.deployment.branch'),
+                'commit' => Config::get('staging.deployment.commit'),
+                'time' => Config::get('staging.deployment.time'),
+            ] : null,
             'lastRecords' => $lastRecords,
         ]);
     }

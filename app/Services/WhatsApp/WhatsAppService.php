@@ -5,6 +5,7 @@ namespace App\Services\WhatsApp;
 use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppMessage;
 use App\Services\WhatsApp\Drivers\MetaCloudWhatsApp;
+use App\Support\Staging\StagingSafety;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -60,6 +61,7 @@ class WhatsAppService
         $companyId = (int) $companyId;
         $provider = $this->getTenantProvider($companyId);
         $toE164 = $this->normalizeNumber($toE164);
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed($toE164);
 
         if (! $this->isActiveForCompany($companyId)) {
             throw new \Exception("WhatsApp is not configured or inactive for company {$companyId}");
@@ -99,6 +101,7 @@ class WhatsAppService
         $companyId = (int) $companyId;
         $provider = $this->getTenantProvider($companyId);
         $toE164 = $this->normalizeNumber($toE164);
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed($toE164);
 
         if (! $this->isActiveForCompany($companyId)) {
             throw new \Exception("WhatsApp is not configured or inactive for company {$companyId}");

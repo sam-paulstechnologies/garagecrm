@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Support\Staging\StagingSafety;
 use Twilio\Rest\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -27,6 +28,7 @@ class SendWhatsAppMessage implements ShouldQueue
     public function handle(): void
     {
         try {
+            app(StagingSafety::class)->assertWhatsAppOutboundAllowed($this->toE164);
 
             $companyId = (int) ($this->meta['company_id'] ?? 0);
 

@@ -1,13 +1,13 @@
 name: Deploy Laravel to Azure App Service
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout repository

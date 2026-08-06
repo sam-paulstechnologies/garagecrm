@@ -4,6 +4,7 @@ namespace App\Services\WhatsApp\Drivers;
 
 use App\Models\System\Company;
 use App\Services\WhatsApp\WhatsAppNotifierInterface;
+use App\Support\Staging\StagingSafety;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -42,6 +43,11 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
     public function sendText(string $toE164, string $message): array
     {
         $this->assertConfigured();
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed(
+            $toE164,
+            $this->company->meta_waba_id,
+            $this->phoneNumberId
+        );
 
         $url = $this->messagesUrl();
 
@@ -86,6 +92,11 @@ class MetaCloudWhatsApp implements WhatsAppNotifierInterface
     public function sendTemplate(string $toE164, string $template, array $variables = []): array
     {
         $this->assertConfigured();
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed(
+            $toE164,
+            $this->company->meta_waba_id,
+            $this->phoneNumberId
+        );
 
         $url = $this->messagesUrl();
 

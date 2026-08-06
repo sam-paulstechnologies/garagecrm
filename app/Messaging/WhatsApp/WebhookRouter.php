@@ -7,11 +7,22 @@ use App\Messaging\Models\MessagingConnection;
 use App\Messaging\Models\MessagingPhoneNumber;
 use App\Messaging\Models\MessagingWebhookEvent;
 use App\Models\System\Company;
+use App\Support\Staging\StagingSafety;
 
 class WebhookRouter
 {
+    public function __construct(private readonly StagingSafety $stagingSafety)
+    {
+    }
+
     public function resolve(string $wabaId, string $phoneNumberId): ?ResolvedMessagingContext
     {
+        try {
+            $this->stagingSafety->assertProviderAssetsAllowed($wabaId ?: null, $phoneNumberId ?: null);
+        } catch (\RuntimeException) {
+            return null;
+        }
+
         $connection = null;
         $phone = null;
 
@@ -61,6 +72,12 @@ class WebhookRouter
         }
 
         // Compatibility lookup for pre-Phase-1 production connections such as Smart Matrix.
+        // This path is deliberately disabled in staging so no legacy Company
+        // credential can resolve a staging webhook or outbound connection.
+        if (! $this->stagingSafety->legacyCompanyResolutionAllowed()) {
+            return null;
+        }
+
         $query = Company::query()->where('is_whatsapp_active', true);
         if ($phoneNumberId !== '') {
             $query->where('meta_phone_number_id', $phoneNumberId);

@@ -4,6 +4,7 @@ namespace App\Services\WhatsApp;
 
 use App\Services\WhatsApp\Contracts\WhatsAppClient;
 use GuzzleHttp\Client;
+use App\Support\Staging\StagingSafety;
 use RuntimeException;
 
 class TwilioWhatsAppClient implements WhatsAppClient
@@ -24,6 +25,8 @@ class TwilioWhatsAppClient implements WhatsAppClient
 
     public function send(string $to, string $body, array $options = []): array
     {
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed($to);
+
         $sid = $options['sid'] ?? $this->sid;
         $token = $options['token'] ?? $this->token;
         $from = $options['from'] ?? $this->from;

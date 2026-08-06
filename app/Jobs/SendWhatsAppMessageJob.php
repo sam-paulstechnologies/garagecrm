@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Support\Staging\StagingSafety;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,6 +30,8 @@ class SendWhatsAppMessageJob implements ShouldQueue
 
     public function handle(): void
     {
+        app(StagingSafety::class)->assertWhatsAppOutboundAllowed($this->to);
+
         $sid   = env('TWILIO_SID');
         $token = env('TWILIO_TOKEN');
         $from  = env('TWILIO_WHATSAPP_FROM');

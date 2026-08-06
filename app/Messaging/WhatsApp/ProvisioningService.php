@@ -13,6 +13,7 @@ use App\Messaging\Services\MessagingAuditService;
 use App\Messaging\Services\TokenService;
 use App\Models\System\Company;
 use App\Models\User;
+use App\Support\Staging\StagingSafety;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -27,6 +28,7 @@ class ProvisioningService
         private readonly LegacyCompanyConnectionSynchronizer $legacy,
         private readonly TokenService $tokens,
         private readonly MessagingAuditService $audit,
+        private readonly StagingSafety $stagingSafety,
     ) {
     }
 
@@ -59,6 +61,7 @@ class ProvisioningService
             $waba = $this->meta->getWaba($wabaId, $token);
             $businessId = $this->resolveBusinessId($waba, $input['business_id'] ?? null, $token);
             $phone = $this->resolvePhone($wabaId, $input['phone_number_id'] ?? null, $token, $session->connection_mode);
+            $this->stagingSafety->assertProviderAssetsAllowed($wabaId, (string) ($phone['id'] ?? ''));
 
             $connection = $this->persistDiscoveredAssets(
                 $company,
