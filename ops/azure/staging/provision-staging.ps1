@@ -114,6 +114,10 @@ if ($ResumeFailedStagingProvision) {
     $partialResources = @(az resource list --subscription $SubscriptionId --resource-group $resourceGroup --output json | ConvertFrom-Json)
     if ($partialResources.Count -eq 0) { throw 'Resume refused: no partial staging resources were found.' }
     foreach ($resource in $partialResources) {
+        $azureManagedSmartDetection = $resource.type -ieq 'microsoft.insights/actiongroups' `
+            -and $resource.name -eq 'Application Insights Smart Detection' `
+            -and $resource.id -match '/resourceGroups/rg-sayaraforce-staging/'
+        if ($azureManagedSmartDetection) { continue }
         if ($resource.id -notmatch '/resourceGroups/rg-sayaraforce-staging/' `
             -or $resource.name -notmatch 'staging' `
             -or $resource.tags.environment -ne 'staging') {
