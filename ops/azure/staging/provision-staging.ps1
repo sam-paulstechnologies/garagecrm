@@ -8,6 +8,7 @@ param(
     [Parameter(Mandatory = $true)] [string] $KeyVaultName,
     [string] $StorageAccountName = 'stsayaraforcestaging',
     [string] $DeploymentPrincipalObjectId = '',
+    [switch] $ResumeFailedStagingProvision,
     [switch] $ConfirmStagingProvision
 )
 
@@ -102,8 +103,23 @@ if (-not [string]::Equals(($production.location -replace '\s', ''), ($Location -
     throw "Region mismatch: staging location '$Location' differs from audited production location '$($production.location)'."
 }
 
-if ((az group exists --subscription $SubscriptionId --name $resourceGroup --output tsv) -eq 'true') {
-    throw "Refused: $resourceGroup already exists. This first-provisioning script writes only newly created staging resources."
+$resourceGroupExists = (az group exists --subscription $SubscriptionId --name $resourceGroup --output tsv) -eq 'true'
+if ($resourceGroupExists -and -not $ResumeFailedStagingProvision) {
+    throw "Refused: $resourceGroup already exists. Use -ResumeFailedStagingProvision only after reviewing a failed staging-only deployment."
+}
+if ($ResumeFailedStagingProvision -and -not $resourceGroupExists) {
+    throw 'Resume refused: the staging resource group does not exist.'
+}
+if ($ResumeFailedStagingProvision) {
+    $partialResources = @(az resource list --subscription $SubscriptionId --resource-group $resourceGroup --output json | ConvertFrom-Json)
+    if ($partialResources.Count -eq 0) { throw 'Resume refused: no partial staging resources were found.' }
+    foreach ($resource in $partialResources) {
+        if ($resource.id -notmatch '/resourceGroups/rg-sayaraforce-staging/' `
+            -or $resource.name -notmatch 'staging' `
+            -or $resource.tags.environment -ne 'staging') {
+            throw 'Resume refused: an existing resource is not positively identified as staging-only.'
+        }
+    }
 }
 
 $existingApp = az webapp list --subscription $SubscriptionId --query "[?name=='$webAppName'].id | [0]" --output tsv
@@ -111,9 +127,20 @@ if ($existingApp) {
     throw "Refused: $webAppName already exists."
 }
 
-$storageAvailability = az storage account check-name --subscription $SubscriptionId --name $StorageAccountName --query nameAvailable --output tsv
-if ($storageAvailability -ne 'true') {
-    throw "Storage account name '$StorageAccountName' is unavailable. Choose a close staging-specific alternative."
+$existingStorageId = ''
+if ($resourceGroupExists) {
+    $existingStorageId = (az storage account show --subscription $SubscriptionId --resource-group $resourceGroup `
+        --name $StorageAccountName --query id --output tsv 2>$null).Trim()
+}
+if ($existingStorageId) {
+    if ($existingStorageId -notmatch '/resourceGroups/rg-sayaraforce-staging/providers/Microsoft.Storage/storageAccounts/') {
+        throw 'Existing storage account identity is not staging-only.'
+    }
+} else {
+    $storageAvailability = az storage account check-name --subscription $SubscriptionId --name $StorageAccountName --query nameAvailable --output tsv
+    if ($storageAvailability -ne 'true') {
+        throw "Storage account name '$StorageAccountName' is unavailable. Choose a close staging-specific alternative."
+    }
 }
 
 Write-Host 'Read-only production baseline confirmed:'
@@ -127,6 +154,7 @@ Write-Host "  $MySqlServerName / sayaraforce_staging"
 Write-Host "  $StorageAccountName / $KeyVaultName"
 Write-Host '  vnet-sayaraforce-staging / log-sayaraforce-staging / appi-sayaraforce-staging'
 Write-Host '  id-sayaraforce-staging-deploy (GitHub OIDC; staging Web App scope only)'
+Write-Host "  Resume verified: $([bool] $ResumeFailedStagingProvision)"
 Write-Host 'No production command, slot, swap, DNS, callback, migration, restart, or deployment is included.'
 
 if (-not $ConfirmStagingProvision) {
@@ -175,8 +203,10 @@ New-Item -ItemType Directory -Path $temporaryRoot | Out-Null
 try {
     $secureParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $parameterFile -Encoding utf8
 
-    az group create --subscription $SubscriptionId --name $resourceGroup --location $Location --tags `
-        application=SayaraForce environment=staging dataClassification=synthetic-only --only-show-errors --output none
+    if (-not $resourceGroupExists) {
+        az group create --subscription $SubscriptionId --name $resourceGroup --location $Location --tags `
+            application=SayaraForce environment=staging dataClassification=synthetic-only --only-show-errors --output none
+    }
 
     az deployment group what-if --subscription $SubscriptionId --resource-group $resourceGroup `
         --template-file $templatePath --parameters "@$parameterFile" --only-show-errors

@@ -165,7 +165,7 @@ Run only from an authenticated Azure CLI session after supplying the exact subsc
   -KeyVaultName 'kvsfstaging<unique>'
 ```
 
-The first run is read-only and stops after printing the exact proposal. After review, repeat with `-ConfirmStagingProvision`. Before any write, the script verifies the exact tenant/subscription and refuses when a required Azure resource provider is not already registered. Resource-provider registration is subscription-scoped and requires separate authorization. The script also refuses an existing staging resource group/app and performs no cleanup on a partial Azure failure; inspect partial staging resources manually before deciding on a new action.
+The first run is read-only and stops after printing the exact proposal. After review, repeat with `-ConfirmStagingProvision`. Before any write, the script verifies the exact tenant/subscription and refuses when a required Azure resource provider is not already registered. Resource-provider registration is subscription-scoped and requires separate authorization. The script also refuses an existing staging resource group by default and performs no cleanup on a partial Azure failure. After reviewing a failed staging-only deployment, `-ResumeFailedStagingProvision` permits an idempotent retry only when every existing resource ID, name, and environment tag is staging-specific.
 
 The script uses `az webapp show` for the production identity check and retrieves only specifically named production settings needed to construct staging denylists. Those values are never displayed. It performs no production write and refuses when the current subscription differs from the explicit subscription or when the proposed region differs from the audited production app.
 
