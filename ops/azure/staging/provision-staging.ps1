@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [string] $SubscriptionId,
+    [Parameter(Mandatory = $true)] [string] $TenantId,
     [Parameter(Mandatory = $true)] [string] $ProductionResourceGroup,
     [Parameter(Mandatory = $true)] [string] $Location,
     [Parameter(Mandatory = $true)] [string] $MySqlServerName,
@@ -23,10 +24,26 @@ function Assert-StagingName([string] $Name, [string] $Label) {
     }
 }
 
-function New-StrongSecret([int] $Bytes = 48) {
+function New-RandomBase64([int] $Bytes = 48) {
     $buffer = New-Object byte[] $Bytes
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $generator.GetBytes($buffer) }
+    finally { $generator.Dispose() }
     return [Convert]::ToBase64String($buffer)
+}
+
+function New-StrongSecret([int] $Bytes = 48) {
+    return 'Aa1!' + (New-RandomBase64 $Bytes)
+}
+
+function Read-ProductionSetting([string] $Name) {
+    $value = az webapp config appsettings list --subscription $SubscriptionId `
+        --resource-group $ProductionResourceGroup --name $productionAppName `
+        --query "[?name=='$Name'].value | [0]" --output tsv
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not read the specific production setting name '$Name' for staging denylist construction."
+    }
+    return ([string] $value).Trim()
 }
 
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
@@ -50,6 +67,29 @@ if (-not $account -or $account.state -ne 'Enabled') {
 }
 if (-not [string]::Equals($account.id, $SubscriptionId, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Subscription ambiguity: authenticated subscription '$($account.id)' does not match the explicit SubscriptionId."
+}
+if (-not [string]::Equals($account.tenantId, $TenantId, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Tenant ambiguity: authenticated tenant does not match the explicit TenantId.'
+}
+
+$requiredProviders = @(
+    'Microsoft.Web',
+    'Microsoft.DBforMySQL',
+    'Microsoft.Network',
+    'Microsoft.Storage',
+    'Microsoft.KeyVault',
+    'Microsoft.ManagedIdentity',
+    'Microsoft.Insights',
+    'Microsoft.OperationalInsights'
+)
+$unregisteredProviders = @()
+foreach ($provider in $requiredProviders) {
+    $state = (az provider show --subscription $SubscriptionId --namespace $provider --query registrationState --output tsv).Trim()
+    if ($LASTEXITCODE -ne 0) { throw "Could not verify resource-provider registration: $provider." }
+    if ($state -ne 'Registered') { $unregisteredProviders += $provider }
+}
+if ($unregisteredProviders.Count -gt 0) {
+    throw ('Provisioning refused before any Azure write. Subscription-level resource-provider registration requires separate approval: ' + ($unregisteredProviders -join ', '))
 }
 
 $production = az webapp show --subscription $SubscriptionId --resource-group $ProductionResourceGroup --name $productionAppName `
@@ -85,11 +125,25 @@ Write-Host "  $resourceGroup / $planName / $webAppName"
 Write-Host "  $MySqlServerName / sayaraforce_staging"
 Write-Host "  $StorageAccountName / $KeyVaultName"
 Write-Host '  vnet-sayaraforce-staging / log-sayaraforce-staging / appi-sayaraforce-staging'
+Write-Host '  id-sayaraforce-staging-deploy (GitHub OIDC; staging Web App scope only)'
 Write-Host 'No production command, slot, swap, DNS, callback, migration, restart, or deployment is included.'
 
 if (-not $ConfirmStagingProvision) {
     throw 'Review complete. Re-run with -ConfirmStagingProvision to authorize creation of these new staging resources.'
 }
+
+$productionDatabaseHost = Read-ProductionSetting 'DB_HOST'
+if ([string]::IsNullOrWhiteSpace($productionDatabaseHost)) {
+    throw 'Production DB_HOST setting is unavailable; a safe staging database-host denylist cannot be created.'
+}
+$productionWabaIds = @('META_WABA_ID', 'WA_WABA_ID', 'WHATSAPP_WABA_ID') |
+    ForEach-Object { Read-ProductionSetting $_ } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -Unique
+$productionPhoneNumberIds = @('META_PHONE_NUMBER_ID', 'WA_PHONE_NUMBER_ID', 'WHATSAPP_PHONE_NUMBER_ID') |
+    ForEach-Object { Read-ProductionSetting $_ } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -Unique
 
 $secureParameters = @{
     '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
@@ -101,12 +155,15 @@ $secureParameters = @{
         storageAccountName = @{ value = $StorageAccountName }
         deploymentPrincipalObjectId = @{ value = $DeploymentPrincipalObjectId }
         mysqlAdministratorPassword = @{ value = (New-StrongSecret) }
-        appKey = @{ value = ('base64:' + (New-StrongSecret 32)) }
+        appKey = @{ value = ('base64:' + (New-RandomBase64 32)) }
         webhookVerificationToken = @{ value = (New-StrongSecret 32) }
         platformAdminPassword = @{ value = (New-StrongSecret) }
         garageAdminPassword = @{ value = (New-StrongSecret) }
         employeePassword = @{ value = (New-StrongSecret) }
         tenantBAdminPassword = @{ value = (New-StrongSecret) }
+        productionDatabaseHostDenylist = @{ value = $productionDatabaseHost }
+        productionWabaIdDenylist = @{ value = ($productionWabaIds -join ',') }
+        productionPhoneNumberIdDenylist = @{ value = ($productionPhoneNumberIds -join ',') }
     }
 }
 
@@ -146,4 +203,5 @@ if (-not $web -or $web.name -ne $webAppName -or $web.id -notmatch '/resourceGrou
 Write-Host 'Staging infrastructure created and resource identity verified.'
 Write-Host "Azure hostname: $($web.host)"
 Write-Host "DNS record required: CNAME staging -> $($web.host)"
+Write-Host 'GitHub OIDC identity: id-sayaraforce-staging-deploy (staging Web App scope only)'
 Write-Host 'No application code was deployed and no production resource was changed.'

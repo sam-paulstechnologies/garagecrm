@@ -35,8 +35,20 @@ param employeePassword string
 @secure()
 param tenantBAdminPassword string
 
+@secure()
+param productionDatabaseHostDenylist string
+
+@secure()
+param productionWabaIdDenylist string = ''
+
+@secure()
+param productionPhoneNumberIdDenylist string = ''
+
 @description('Object ID of a dedicated GitHub OIDC deployment principal. Leave empty to create no deployment role assignment.')
 param deploymentPrincipalObjectId string = ''
+
+param deploymentIdentityName string = 'id-sayaraforce-staging-deploy'
+param githubOidcSubject string = 'repo:sam-paulstechnologies/garagecrm:environment:sayaraforce-staging'
 
 var tags = {
   application: 'SayaraForce'
@@ -49,6 +61,7 @@ var mysqlPrivateDnsZoneName = '${mysqlServerName}.private.mysql.database.azure.c
 var appSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, 'appservice-staging')
 var mysqlSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, 'mysql-staging')
 var keyVaultReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName='
+var initialWebHost = '${webAppName}.azurewebsites.net'
 
 resource plan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
@@ -255,6 +268,24 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
+resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: deploymentIdentityName
+  location: location
+  tags: tags
+}
+
+resource githubFederatedCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = {
+  parent: deploymentIdentity
+  name: 'github-sayaraforce-staging'
+  properties: {
+    issuer: 'https://token.actions.githubusercontent.com'
+    subject: githubOidcSubject
+    audiences: [
+      'api://AzureADTokenExchange'
+    ]
+  }
+}
+
 resource appKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: vault
   name: 'app-key'
@@ -331,7 +362,7 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'APP_ENV', value: 'staging' }
         { name: 'APP_DEBUG', value: 'false' }
         { name: 'APP_NAME', value: 'SayaraForce Staging' }
-        { name: 'APP_URL', value: 'https://staging.sayaraforce.com' }
+        { name: 'APP_URL', value: 'https://${initialWebHost}' }
         { name: 'APP_KEY', value: '${keyVaultReference}app-key)' }
         { name: 'LOG_CHANNEL', value: 'stderr' }
         { name: 'LOG_LEVEL', value: 'info' }
@@ -346,10 +377,13 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'CACHE_STORE', value: 'database' }
         { name: 'CACHE_PREFIX', value: 'sayaraforce_staging_cache' }
         { name: 'QUEUE_CONNECTION', value: 'database' }
+        { name: 'DB_QUEUE_CONNECTION', value: 'mysql' }
+        { name: 'DB_QUEUE_TABLE', value: 'queue_jobs' }
+        { name: 'QUEUE_FAILED_TABLE', value: 'failed_jobs' }
         { name: 'SESSION_DRIVER', value: 'database' }
         { name: 'SESSION_COOKIE', value: 'sayaraforce_staging_session' }
         { name: 'SESSION_SECURE_COOKIE', value: 'true' }
-        { name: 'SESSION_DOMAIN', value: 'staging.sayaraforce.com' }
+        { name: 'SESSION_DOMAIN', value: initialWebHost }
         { name: 'TRUSTED_PROXIES', value: '*' }
         { name: 'FILESYSTEM_DISK', value: 'staging' }
         { name: 'STAGING_STORAGE_PATH', value: '/mount/sayaraforce-staging' }
@@ -358,13 +392,13 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'MAIL_FROM_NAME', value: 'SayaraForce Staging' }
         { name: 'META_WHATSAPP_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
         { name: 'META_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
-        { name: 'STAGING_EXPECTED_HOST', value: 'staging.sayaraforce.com' }
+        { name: 'STAGING_EXPECTED_HOST', value: initialWebHost }
         { name: 'STAGING_EXPECTED_DB_DATABASE', value: mysqlDatabaseName }
-        { name: 'STAGING_SCHEMA_BASELINE_APPROVED', value: 'false' }
+        { name: 'STAGING_SCHEMA_BASELINE_APPROVED', value: 'true' }
         { name: 'STAGING_PRODUCTION_APP_URL_DENYLIST', value: 'https://sayaraforce.com,https://app.sayaraforce.com' }
-        { name: 'STAGING_PRODUCTION_DB_HOST_DENYLIST', value: '' }
-        { name: 'STAGING_META_PRODUCTION_WABA_ID_DENYLIST', value: '' }
-        { name: 'STAGING_META_PRODUCTION_PHONE_NUMBER_ID_DENYLIST', value: '' }
+        { name: 'STAGING_PRODUCTION_DB_HOST_DENYLIST', value: productionDatabaseHostDenylist }
+        { name: 'STAGING_META_PRODUCTION_WABA_ID_DENYLIST', value: productionWabaIdDenylist }
+        { name: 'STAGING_META_PRODUCTION_PHONE_NUMBER_ID_DENYLIST', value: productionPhoneNumberIdDenylist }
         { name: 'STAGING_META_ALLOWED_WABA_IDS', value: '' }
         { name: 'STAGING_META_ALLOWED_PHONE_NUMBER_IDS', value: '' }
         { name: 'STAGING_ALLOW_LEGACY_COMPANY_RESOLUTION', value: 'false' }
@@ -458,6 +492,16 @@ resource stagingDeploymentRole 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
+resource managedStagingDeploymentRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(web.id, deploymentIdentity.id, 'staging-website-contributor')
+  scope: web
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'de139f84-1756-47ae-9be6-808fbbe84772')
+    principalId: deploymentIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output webAppId string = web.id
 output webAppHostname string = web.properties.defaultHostName
 output webAppPrincipalId string = web.identity.principalId
@@ -467,3 +511,5 @@ output storageAccountId string = storage.id
 output keyVaultId string = vault.id
 output logAnalyticsWorkspaceId string = logs.id
 output applicationInsightsId string = insights.id
+output deploymentIdentityClientId string = deploymentIdentity.properties.clientId
+output deploymentIdentityPrincipalId string = deploymentIdentity.properties.principalId

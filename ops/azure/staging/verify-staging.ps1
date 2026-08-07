@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [string] $SubscriptionId,
-    [Parameter(Mandatory = $true)] [string] $ProductionResourceGroup
+    [Parameter(Mandatory = $true)] [string] $ProductionResourceGroup,
+    [string] $ExpectedCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,19 +41,33 @@ $productionSettings = @(az webapp config appsettings list --subscription $Subscr
 $productionSettingMap = @{}
 foreach ($setting in $productionSettings) { $productionSettingMap[$setting.name] = [string] $setting.value }
 
+$azureAppUrl = "https://$($staging.host)"
+$customAppUrl = 'https://staging.sayaraforce.com'
 $required = @{
     APP_ENV = 'staging'
     APP_DEBUG = 'false'
     APP_NAME = 'SayaraForce Staging'
-    APP_URL = 'https://staging.sayaraforce.com'
     DB_DATABASE = 'sayaraforce_staging'
     QUEUE_CONNECTION = 'database'
+    DB_QUEUE_CONNECTION = 'mysql'
+    DB_QUEUE_TABLE = 'queue_jobs'
+    QUEUE_FAILED_TABLE = 'failed_jobs'
     CACHE_STORE = 'database'
     FILESYSTEM_DISK = 'staging'
     TRUSTED_PROXIES = '*'
     MAIL_MAILER = 'log'
     STAGING_ALLOW_LEGACY_COMPANY_RESOLUTION = 'false'
+    STAGING_WHATSAPP_OUTBOUND_ENABLED = 'false'
     STAGING_SMS_OUTBOUND_ENABLED = 'false'
+    STAGING_SCHEMA_BASELINE_APPROVED = 'true'
+}
+
+if ($settingMap['APP_URL'] -notin @($azureAppUrl, $customAppUrl)) {
+    throw 'APP_URL is neither the exact staging Azure hostname nor the approved staging custom domain.'
+}
+$expectedHost = ([Uri] $settingMap['APP_URL']).Host
+if ($settingMap['STAGING_EXPECTED_HOST'] -ne $expectedHost -or $settingMap['SESSION_DOMAIN'] -ne $expectedHost) {
+    throw 'Staging host, expected-host, and secure-cookie domain settings are inconsistent.'
 }
 foreach ($item in $required.GetEnumerator()) {
     if ($settingMap[$item.Key] -ne $item.Value) { throw "Unsafe or missing staging setting: $($item.Key)." }
@@ -64,8 +79,19 @@ if ($settingMap['DB_HOST'] -notmatch 'staging' -or $settingMap['DB_HOST'] -match
 if ($settingMap['CACHE_PREFIX'] -notmatch 'staging' -or $settingMap['SESSION_COOKIE'] -notmatch 'staging') {
     throw 'Cache/session namespace isolation check failed.'
 }
-foreach ($key in @('DB_PASSWORD','APP_KEY','META_WHATSAPP_VERIFY_TOKEN','STAGING_PLATFORM_ADMIN_PASSWORD','STAGING_GARAGE_ADMIN_PASSWORD')) {
+foreach ($key in @(
+    'DB_PASSWORD','APP_KEY','META_WHATSAPP_VERIFY_TOKEN',
+    'STAGING_PLATFORM_ADMIN_PASSWORD','STAGING_GARAGE_ADMIN_PASSWORD',
+    'STAGING_EMPLOYEE_PASSWORD','STAGING_TENANT_B_ADMIN_PASSWORD'
+)) {
     if ($settingMap[$key] -notmatch '^@Microsoft.KeyVault\(') { throw "$key is not a Key Vault reference." }
+}
+
+if ($ExpectedCommit -and $settingMap['DEPLOYED_COMMIT'] -ne $ExpectedCommit) {
+    throw 'Deployment marker does not match the reviewed staging commit.'
+}
+if ($settingMap['DEPLOYED_BRANCH'] -ne 'staging' -or $settingMap['DEPLOYED_COMMIT'] -notmatch '^[0-9a-f]{40}$') {
+    throw 'Deployment marker is absent or invalid.'
 }
 
 foreach ($key in @(
@@ -95,6 +121,29 @@ if ($health.StatusCode -ne 200) { throw 'Health endpoint failed.' }
 $robots = Invoke-WebRequest -Uri "https://$($staging.host)/robots.txt" -UseBasicParsing -TimeoutSec 60
 if ($robots.Content -notmatch 'Disallow:\s*/' -or $robots.Headers['X-Robots-Tag'] -notmatch 'noindex') {
     throw 'Robots/noindex policy failed.'
+}
+
+$token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
+if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging verification.' }
+$headers = @{ Authorization = "Bearer $token" }
+$body = @{
+    command = 'php artisan staging:schema-fingerprint --verify --no-interaction && php artisan staging:verify-live --json'
+    dir = '/home/site/wwwroot'
+} | ConvertTo-Json
+$liveResult = Invoke-RestMethod -Method Post -Uri "https://$webAppName.scm.azurewebsites.net/api/command" `
+    -Headers $headers -ContentType 'application/json' -Body $body
+$token = $null
+if ([int] $liveResult.ExitCode -ne 0 -or $liveResult.Output -notmatch '"status"\s*:\s*"passed"') {
+    throw 'Live staging database and application verification failed.'
+}
+
+$continuousJobs = @(az webapp webjob continuous list --subscription $SubscriptionId --resource-group $resourceGroup `
+    --name $webAppName --query '[].{name:name,status:status}' --output json | ConvertFrom-Json)
+foreach ($jobName in @('sayaraforce-staging-queue', 'sayaraforce-staging-scheduler')) {
+    $job = $continuousJobs | Where-Object { $_.name -eq $jobName } | Select-Object -First 1
+    if (-not $job -or $job.status -notin @('Running', 'Initializing', 'PendingRestart')) {
+        throw "Staging continuous WebJob is absent or unhealthy: $jobName."
+    }
 }
 
 $assetGuardsReady = $settingMap['STAGING_PRODUCTION_DB_HOST_DENYLIST'] `

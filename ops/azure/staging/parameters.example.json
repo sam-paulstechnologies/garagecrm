@@ -6,6 +6,8 @@
     "mysqlServerName": { "value": "mysql-sayaraforce-staging-<unique-suffix>" },
     "keyVaultName": { "value": "kvsfstaging<suffix>" },
     "storageAccountName": { "value": "stsayaraforcestaging" },
-    "deploymentPrincipalObjectId": { "value": "<staging-only-github-oidc-object-id-or-empty>" }
+    "deploymentPrincipalObjectId": { "value": "" },
+    "deploymentIdentityName": { "value": "id-sayaraforce-staging-deploy" },
+    "githubOidcSubject": { "value": "repo:<owner>/<repository>:environment:sayaraforce-staging" }
   }
 }
