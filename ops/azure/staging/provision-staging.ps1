@@ -43,6 +43,7 @@ function Read-ProductionSetting([string] $Name) {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read the specific production setting name '$Name' for staging denylist construction."
     }
+    if ($null -eq $value) { return '' }
     return ([string] $value).Trim()
 }
 
