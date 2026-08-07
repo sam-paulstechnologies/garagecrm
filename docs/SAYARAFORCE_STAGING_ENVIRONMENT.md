@@ -83,7 +83,7 @@ The documented repository gate is approved: `STAGING_SCHEMA_BASELINE_APPROVED=tr
 
 The MySQL server is on a delegated private subnet. Its staging-only server administrator is the application database user in the prepared baseline; it has no production server or database permission. If a separate least-privilege application user is introduced later, create it inside the staging server and keep both credentials in the staging Key Vault only.
 
-Backups use the MySQL staging server's seven-day automated retention. Geo-redundant backup and high availability are disabled to contain staging cost. Review those settings before raising the environment's recovery objective.
+Backups use the MySQL staging server's seven-day automated retention. Geo-redundant backup and high availability are disabled to contain staging cost. The template allows Azure to select the compatible availability placement and free/default IOPS advertised for the chosen UAE North SKU instead of forcing an unsupported zone. Review those settings before raising the environment's recovery objective.
 
 ## Environment and secret isolation
 

@@ -153,11 +153,9 @@ resource mysql 'Microsoft.DBforMySQL/flexibleServers@2023-12-30' = {
     administratorLogin: mysqlAdministratorLogin
     administratorLoginPassword: mysqlAdministratorPassword
     version: '8.0.21'
-    availabilityZone: '1'
     storage: {
       storageSizeGB: 32
       autoGrow: 'Enabled'
-      iops: 360
     }
     backup: {
       backupRetentionDays: 7
