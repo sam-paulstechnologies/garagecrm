@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $resourceGroup = 'rg-sayaraforce-staging'
 $webAppName = 'app-sayaraforce-staging'
 $productionAppName = 'app-sayaraforce'
+$expectedFingerprint = '379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e'
 
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
     throw 'Azure CLI is required. No verification was performed.'
@@ -29,15 +30,18 @@ if ($staging.id -notmatch '/resourceGroups/rg-sayaraforce-staging/') { throw 'St
 if ($staging.plan -eq $production.plan) { throw 'Isolation failure: staging shares the production App Service Plan.' }
 if (-not $staging.httpsOnly) { throw 'Isolation failure: HTTPS-only is disabled on staging.' }
 
-$slots = @(az webapp deployment slot list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --output json | ConvertFrom-Json)
+$slotResult = az webapp deployment slot list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --output json | ConvertFrom-Json
+$slots = @($slotResult | ForEach-Object { $_ })
 if ($slots.Count -gt 0) { throw 'Slot policy failure: staging slots exist.' }
 
-$settings = @(az webapp config appsettings list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --output json | ConvertFrom-Json)
+$settingResult = az webapp config appsettings list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --output json | ConvertFrom-Json
+$settings = @($settingResult | ForEach-Object { $_ })
 $settingMap = @{}
 foreach ($setting in $settings) { $settingMap[$setting.name] = [string] $setting.value }
 
-$productionSettings = @(az webapp config appsettings list --subscription $SubscriptionId --resource-group $ProductionResourceGroup `
-    --name $productionAppName --output json | ConvertFrom-Json)
+$productionSettingResult = az webapp config appsettings list --subscription $SubscriptionId --resource-group $ProductionResourceGroup `
+    --name $productionAppName --output json | ConvertFrom-Json
+$productionSettings = @($productionSettingResult | ForEach-Object { $_ })
 $productionSettingMap = @{}
 foreach ($setting in $productionSettings) { $productionSettingMap[$setting.name] = [string] $setting.value }
 
@@ -60,6 +64,9 @@ $required = @{
     STAGING_WHATSAPP_OUTBOUND_ENABLED = 'false'
     STAGING_SMS_OUTBOUND_ENABLED = 'false'
     STAGING_SCHEMA_BASELINE_APPROVED = 'true'
+    WEBSITE_SKIP_RUNNING_KUDUAGENT = 'false'
+    WEBJOBS_STOPPED = '0'
+    WEBJOBS_DISABLE_SCHEDULE = '1'
 }
 
 if ($settingMap['APP_URL'] -notin @($azureAppUrl, $customAppUrl)) {
@@ -112,9 +119,14 @@ foreach ($key in @(
 $allValues = ($settings | ForEach-Object { [string] $_.value }) -join "`n"
 if ($allValues -match '(?i)smart[ -]?matrix') { throw 'A Smart Matrix reference was detected in staging settings.' }
 
-$config = az webapp config show --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --output json | ConvertFrom-Json
+$configUri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$webAppName/config/web?api-version=2024-11-01"
+$configResource = az rest --method get --uri $configUri --output json | ConvertFrom-Json
+$config = $configResource.properties
 if ($config.autoSwapSlotName) { throw 'Auto-swap must not be configured.' }
 if ($config.minTlsVersion -ne '1.2' -or $config.ftpsState -ne 'Disabled') { throw 'TLS/FTPS policy check failed.' }
+if ($config.webJobsEnabled -ne $true -or $config.alwaysOn -ne $true) {
+    throw 'Linux WebJobs and Always On must both be enabled on staging.'
+}
 
 $health = Invoke-WebRequest -Uri "https://$($staging.host)/healthz" -UseBasicParsing -TimeoutSec 60
 if ($health.StatusCode -ne 200) { throw 'Health endpoint failed.' }
@@ -126,25 +138,51 @@ if ($robots.Content -notmatch 'Disallow:\s*/' -or $robots.Headers['X-Robots-Tag'
 $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
 if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging verification.' }
 $headers = @{ Authorization = "Bearer $token" }
-$body = @{
-    command = 'php artisan staging:schema-fingerprint --verify --no-interaction && php artisan staging:verify-live --json'
-    dir = '/home/site/wwwroot'
-} | ConvertTo-Json
-$liveResult = Invoke-RestMethod -Method Post -Uri "https://$webAppName.scm.azurewebsites.net/api/command" `
-    -Headers $headers -ContentType 'application/json' -Body $body
-$token = $null
-if ([int] $liveResult.ExitCode -ne 0 -or $liveResult.Output -notmatch '"status"\s*:\s*"passed"') {
-    throw 'Live staging database and application verification failed.'
+$verificationJobName = 'sayaraforce-staging-verify'
+$triggeredJobResult = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs" `
+    -Headers $headers -TimeoutSec 60
+$triggeredJobs = @($triggeredJobResult | ForEach-Object { $_ })
+if (-not ($triggeredJobs | Where-Object { $_.name -eq $verificationJobName })) {
+    throw 'Read-only staging verification WebJob is absent.'
 }
 
-$continuousJobs = @(az webapp webjob continuous list --subscription $SubscriptionId --resource-group $resourceGroup `
-    --name $webAppName --query '[].{name:name,status:status}' --output json | ConvertFrom-Json)
-foreach ($jobName in @('sayaraforce-staging-queue', 'sayaraforce-staging-scheduler')) {
-    $job = $continuousJobs | Where-Object { $_.name -eq $jobName } | Select-Object -First 1
-    if (-not $job -or $job.status -notin @('Running', 'Initializing', 'PendingRestart')) {
-        throw "Staging continuous WebJob is absent or unhealthy: $jobName."
-    }
+$requestedAt = [DateTime]::UtcNow.AddSeconds(-5)
+$runUri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$webAppName/triggeredwebjobs/$verificationJobName/run?api-version=2024-11-01"
+az rest --method post --uri $runUri --output none
+if ($LASTEXITCODE -ne 0) { throw 'Read-only staging verification WebJob could not be started.' }
+
+$runDeadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 5
+    $history = Invoke-RestMethod -Method Get `
+        -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs/$verificationJobName/history" `
+        -Headers $headers -TimeoutSec 60
+    $verificationRun = $history.runs | Where-Object { [DateTime] $_.start_time -ge $requestedAt } |
+        Sort-Object start_time -Descending | Select-Object -First 1
+} while ((-not $verificationRun -or $verificationRun.status -in @('Initializing', 'Running')) `
+    -and [DateTime]::UtcNow -lt $runDeadline)
+
+if (-not $verificationRun -or $verificationRun.status -ne 'Success') {
+    throw 'Read-only staging verification WebJob failed or timed out.'
 }
+$liveOutput = (Invoke-WebRequest -Uri $verificationRun.output_url -Headers $headers -UseBasicParsing -TimeoutSec 60).Content
+if ($liveOutput -notmatch [regex]::Escape($expectedFingerprint) `
+    -or $liveOutput -notmatch 'Schema fingerprint matches the approved canonical schema\.' `
+    -or $liveOutput -notmatch '"status"\s*:\s*"passed"') {
+    throw 'Live staging database, fingerprint, or application verification failed.'
+}
+
+$continuousJobResult = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/continuouswebjobs" `
+    -Headers $headers -TimeoutSec 60
+$continuousJobs = @($continuousJobResult | ForEach-Object { $_ })
+$queueJob = $continuousJobs | Where-Object { $_.name -eq 'sayaraforce-staging-queue' } | Select-Object -First 1
+if (-not $queueJob -or $queueJob.status -notin @('Running', 'Initializing', 'PendingRestart')) {
+    throw 'Staging queue WebJob is absent or unhealthy.'
+}
+if ($continuousJobs | Where-Object { $_.name -eq 'sayaraforce-staging-scheduler' }) {
+    throw 'Staging scheduler must remain disabled during initial bring-up.'
+}
+$token = $null
 
 $assetGuardsReady = $settingMap['STAGING_PRODUCTION_DB_HOST_DENYLIST'] `
     -and $settingMap['STAGING_META_ALLOWED_WABA_IDS'] `
@@ -161,5 +199,6 @@ $uatReady = $settingMap['STAGING_SCHEMA_BASELINE_APPROVED'] -eq 'true' -and $ass
 
 Write-Host 'Staging infrastructure and configuration isolation checks passed.'
 Write-Host "Staging host: https://$($staging.host)"
+Write-Host 'Staging queue WebJob is running; scheduler is disabled.'
 Write-Host "WhatsApp UAT guard configuration complete: $([bool] $uatReady)"
 Write-Host 'No secret values were printed.'

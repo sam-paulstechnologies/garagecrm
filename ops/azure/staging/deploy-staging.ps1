@@ -82,19 +82,33 @@ try {
         foreach ($file in @('artisan','composer.json','composer.lock')) {
             Copy-Item $file -Destination $packageRoot -Force
         }
-        $queueTarget = Join-Path $packageRoot 'App_Data\jobs\continuous\sayaraforce-staging-queue'
-        New-Item -ItemType Directory -Path $queueTarget -Force | Out-Null
-        Copy-Item 'ops\azure\staging\webjobs\sayaraforce-staging-queue\run.sh' -Destination $queueTarget -Force
-        Copy-Item 'ops\azure\staging\webjobs\sayaraforce-staging-queue\settings.job' -Destination $queueTarget -Force
-        $schedulerTarget = Join-Path $packageRoot 'App_Data\jobs\continuous\sayaraforce-staging-scheduler'
-        New-Item -ItemType Directory -Path $schedulerTarget -Force | Out-Null
-        Copy-Item 'ops\azure\staging\webjobs\sayaraforce-staging-scheduler\run.sh' -Destination $schedulerTarget -Force
-        Copy-Item 'ops\azure\staging\webjobs\sayaraforce-staging-scheduler\settings.job' -Destination $schedulerTarget -Force
+        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
+            $jobTarget = Join-Path $packageRoot "App_Data\jobs\triggered\$jobName"
+            New-Item -ItemType Directory -Path $jobTarget -Force | Out-Null
+            Copy-Item "ops\azure\staging\webjobs\$jobName\*" -Destination $jobTarget -Force
+        }
+        # The scheduler is intentionally not packaged during initial staging bring-up.
+        # The queue worker is uploaded only after the guarded post-deployment job succeeds.
         New-Item -ItemType Directory -Path (Join-Path $packageRoot 'storage\framework\cache') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $packageRoot 'storage\framework\sessions') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $packageRoot 'storage\framework\views') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $packageRoot 'storage\logs') -Force | Out-Null
-        Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $zipPath -CompressionLevel Optimal
+        $tar = Get-Command tar.exe -ErrorAction SilentlyContinue
+        if (-not $tar) { throw 'Portable ZIP packaging requires Windows bsdtar (tar.exe).' }
+        & $tar.Source -a -c -f $zipPath -C $packageRoot .
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zipPath)) {
+            throw 'Portable staging ZIP packaging failed.'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+        try {
+            if (@($archive.Entries | Where-Object { $_.FullName.Contains('\') }).Count -gt 0) {
+                throw 'Portable staging ZIP contains Windows path separators.'
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
 
         az webapp deploy --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --src-path $zipPath --type zip --clean true --restart false --track-status true --only-show-errors --output none
@@ -102,22 +116,68 @@ try {
         $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
         if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging Kudu.' }
         $headers = @{ Authorization = "Bearer $token" }
-        $body = @{ command = 'bash ops/azure/staging/post-deploy.sh'; dir = '/home/site/wwwroot' } | ConvertTo-Json
-        $commandResult = Invoke-RestMethod -Method Post -Uri "https://$webAppName.scm.azurewebsites.net/api/command" `
-            -Headers $headers -ContentType 'application/json' -Body $body
-        $token = $null
-        if ([int] $commandResult.ExitCode -ne 0) {
-            Write-Error ($commandResult.Error -replace '(?i)(password|token|secret)=[^\s]+', '$1=[REDACTED]')
-            throw 'Staging post-deployment command failed.'
+        $postDeployName = 'sayaraforce-staging-postdeploy'
+        $jobDeadline = [DateTime]::UtcNow.AddMinutes(2)
+        do {
+            Start-Sleep -Seconds 5
+            $triggeredJobResult = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs" `
+                -Headers $headers -TimeoutSec 60
+            $triggeredJobs = @($triggeredJobResult | ForEach-Object { $_ })
+            $postDeployJob = $triggeredJobs | Where-Object { $_.name -eq $postDeployName } | Select-Object -First 1
+        } while (-not $postDeployJob -and [DateTime]::UtcNow -lt $jobDeadline)
+        if (-not $postDeployJob) { throw 'Staging post-deployment WebJob was not discovered.' }
+
+        $requestedAt = [DateTime]::UtcNow.AddSeconds(-5)
+        $runUri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$webAppName/triggeredwebjobs/$postDeployName/run?api-version=2024-11-01"
+        az rest --method post --uri $runUri --output none
+        if ($LASTEXITCODE -ne 0) { throw 'Staging post-deployment WebJob could not be started.' }
+
+        $runDeadline = [DateTime]::UtcNow.AddMinutes(10)
+        do {
+            Start-Sleep -Seconds 5
+            $history = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs/$postDeployName/history" `
+                -Headers $headers -TimeoutSec 60
+            $run = $history.runs | Where-Object { [DateTime] $_.start_time -ge $requestedAt } |
+                Sort-Object start_time -Descending | Select-Object -First 1
+        } while ((-not $run -or $run.status -in @('Initializing', 'Running')) -and [DateTime]::UtcNow -lt $runDeadline)
+        if (-not $run -or $run.status -ne 'Success') {
+            throw 'Staging post-deployment WebJob failed or timed out.'
         }
+        $postDeployOutput = (Invoke-WebRequest -Uri $run.output_url -Headers $headers -UseBasicParsing -TimeoutSec 60).Content
+        if ($postDeployOutput -notmatch 'Schema fingerprint matches the approved canonical schema\.' `
+            -or $postDeployOutput -notmatch 'Staging migration and Laravel cache rebuild completed\.') {
+            throw 'Staging post-deployment output did not pass the schema and cache gates.'
+        }
+
+        $mkdirBody = @{ command = 'mkdir -p App_Data/jobs/continuous/sayaraforce-staging-queue'; dir = '/home/site/wwwroot' } | ConvertTo-Json
+        $mkdirResult = Invoke-RestMethod -Method Post -Uri "https://$webAppName.scm.azurewebsites.net/api/command" `
+            -Headers $headers -ContentType 'application/json' -Body $mkdirBody -TimeoutSec 60
+        if ([int] $mkdirResult.ExitCode -ne 0) { throw 'Could not create the staging queue WebJob directory.' }
+        foreach ($fileName in @('run.sh', 'settings.job')) {
+            $sourcePath = Join-Path "ops\azure\staging\webjobs\sayaraforce-staging-queue" $fileName
+            $fileBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $sourcePath).Path)
+            Invoke-RestMethod -Method Put `
+                -Uri "https://$webAppName.scm.azurewebsites.net/api/vfs/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/$fileName" `
+                -Headers ($headers + @{ 'If-Match' = '*' }) -ContentType 'application/octet-stream' -Body $fileBytes -TimeoutSec 60 | Out-Null
+        }
+        $token = $null
 
         $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
         az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
 
         az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors
-        $health = Invoke-WebRequest -Uri "https://$($web.host)/healthz" -UseBasicParsing -TimeoutSec 60
-        if ($health.StatusCode -ne 200) { throw 'Staging health check failed.' }
+        $healthDeadline = [DateTime]::UtcNow.AddMinutes(8)
+        do {
+            Start-Sleep -Seconds 10
+            try {
+                $health = Invoke-WebRequest -Uri "https://$($web.host)/healthz" -UseBasicParsing -TimeoutSec 30
+            }
+            catch {
+                $health = $null
+            }
+        } while ((!$health -or $health.StatusCode -ne 200) -and [DateTime]::UtcNow -lt $healthDeadline)
+        if (-not $health -or $health.StatusCode -ne 200) { throw 'Staging health check failed.' }
     }
     finally {
         if (Test-Path -LiteralPath $temporaryRoot) {

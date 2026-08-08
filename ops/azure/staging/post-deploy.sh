@@ -3,6 +3,18 @@ set -Eeuo pipefail
 
 cd /home/site/wwwroot
 
+# Empty directories are not reliably preserved by Git or ZIP deployment.
+# Create Laravel's staging-only writable paths before any Artisan command.
+runtime_directories=(
+  storage/framework/cache/data
+  storage/framework/sessions
+  storage/framework/views
+  storage/logs
+  bootstrap/cache
+)
+mkdir -p "${runtime_directories[@]}"
+chmod -R ug+rwX storage bootstrap/cache
+
 if [[ "${APP_ENV:-}" != "staging" ]]; then
   echo "Refused: APP_ENV is not staging." >&2
   exit 40

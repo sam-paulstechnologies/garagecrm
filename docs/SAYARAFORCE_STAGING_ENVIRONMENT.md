@@ -25,7 +25,7 @@ flowchart LR
 
 Staging uses a separate resource group, App Service Plan, Web App, database server/database, VNet, storage account/share, Key Vault, logging workspace, Application Insights instance, credentials, settings, and deployment identity. Queue, cache, and sessions are database-backed but live only in the isolated staging database and use staging-specific prefixes/cookie names. This matches the repository's current database queue/cache technology without sharing a production backend.
 
-The staging package injects staging-only continuous queue and scheduler WebJobs at package time. Both workers check `APP_ENV=staging` and `WEBSITE_SITE_NAME=app-sayaraforce-staging` before they can run. The generic/production queue worker and legacy scheduler package are excluded from the staging artifact; staging worker sources stay under `ops/` so a normal production source package does not register them.
+Initial staging bring-up enables only the staging queue WebJob. It checks `APP_ENV=staging` and `WEBSITE_SITE_NAME=app-sayaraforce-staging`, then runs `queue:work database` for the `default,notifications` queues with three tries and a 90-second timeout. The scheduler package is deliberately excluded and `WEBJOBS_DISABLE_SCHEDULE=1` remains set until a separately reviewed UAT need justifies enabling business automation. Guarded post-deployment and read-only verification tasks run as triggered staging WebJobs inside the PHP container. None of these staging worker sources are registered by a normal production package.
 
 ## Prepared resource inventory
 
@@ -179,9 +179,9 @@ The GitHub environment `sayaraforce-staging` needs these OIDC values:
 
 The Bicep deployment creates the secretless, staging-scoped managed identity and its GitHub federated credential. Populate the three GitHub environment values from the managed identity, current tenant, and explicit subscription after provisioning. `create-staging-deployment-identity.ps1` is retained only as a reviewed fallback for environments that cannot use managed-identity federation; do not run it when the Bicep-managed identity exists.
 
-The workflow creates an ephemeral test-only application key without printing it, validates the static baseline/cutoff, lints PHP, runs focused staging/WhatsApp tests, runs the complete suite, builds frontend assets, removes the temporary `.env`, installs optimized production Composer dependencies, packages only runtime files, verifies the exact staging Azure resource ID, records branch/commit/time, deploys only to the staging app, runs guarded staging migrations, seeds the idempotent synthetic dataset, verifies the live staging schema fingerprint and isolation checks, rebuilds Laravel caches, restarts only staging, and checks `/healthz`.
+The workflow creates an ephemeral test-only application key without printing it, validates the static baseline/cutoff, lints PHP, runs focused staging/WhatsApp tests, runs the complete suite, builds frontend assets, removes the temporary `.env`, installs optimized production Composer dependencies, creates a Linux-portable ZIP with forward-slash entry names, verifies the exact staging Azure resource ID, records branch/commit/time, and deploys only to the staging app. A guarded triggered WebJob then creates Laravel's writable runtime directories, runs staging migrations and the idempotent synthetic seeder, verifies the approved fingerprint, and rebuilds caches inside the PHP container. Only after that succeeds is the queue worker installed. The scheduler remains absent.
 
-The pipeline deliberately refuses deployment until the schema baseline gate is approved. It uses a short-lived Entra token for the Kudu command and never retrieves a publish profile.
+The pipeline deliberately refuses deployment until the schema baseline gate is approved. It uses a short-lived Entra token plus the staging-scoped ARM WebJob action and never retrieves a publish profile. Empty directories are not trusted to survive Git/ZIP deployment: `post-deploy.sh` creates `storage/framework/cache/data`, `storage/framework/sessions`, `storage/framework/views`, `storage/logs`, and `bootstrap/cache` before any Artisan cache command.
 
 Local deployment is available through `deploy-staging.ps1`; it requires a clean `staging` branch, an explicit subscription, an exact staging resource-ID check, and `-ConfirmStagingDeployment`.
 
@@ -323,11 +323,12 @@ Recurring cost comes from a dedicated B1 Linux App Service Plan, Burstable B1ms 
 
 Known limitations:
 
-- Azure staging resources are prepared but not created; this task intentionally stopped before provisioning.
+- Azure staging resources are provisioned in `rg-sayaraforce-staging`; production resources remain separate and unchanged.
 - The two production views remain invalid and unchanged. Their separately approved repair must follow local → staging → explicit production approval.
 - Production retains legacy schema objects and migration-ledger drift documented in the canonical manifest; this baseline does not delete them.
 - Meta staging assets and dashboard entries require an approved human operator.
 - DNS and managed TLS wait for the staging Azure hostname and CNAME propagation.
+- The staging scheduler remains disabled during initial bring-up; enable it only for a reviewed UAT that requires scheduled business automation.
 - The B1 plan and B1ms database are single-instance staging choices, not high availability.
 - Database queue/cache/session isolation is complete at the server/database level but is not a dedicated Redis/Service Bus design.
 

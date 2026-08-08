@@ -337,6 +337,9 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       linuxFxVersion: 'PHP|8.3'
       alwaysOn: true
+      // App Service exposes this property on config/web although the Bicep type is stale.
+      #disable-next-line BCP037
+      webJobsEnabled: true
       ftpsState: 'Disabled'
       healthCheckPath: '/healthz'
       http20Enabled: true
@@ -420,8 +423,9 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
         { name: 'WEBSITE_VNET_ROUTE_ALL', value: '1' }
         { name: 'WEBSITE_HTTPLOGGING_RETENTION_DAYS', value: '7' }
+        { name: 'WEBSITE_SKIP_RUNNING_KUDUAGENT', value: 'false' }
         { name: 'WEBJOBS_STOPPED', value: '0' }
-        { name: 'WEBJOBS_DISABLE_SCHEDULE', value: '0' }
+        { name: 'WEBJOBS_DISABLE_SCHEDULE', value: '1' }
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
       ]
     }
