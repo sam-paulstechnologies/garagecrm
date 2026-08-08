@@ -155,7 +155,7 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
             --src-path release.zip \
-            --type zip --clean true --restart false --track-status true \
+            --type zip --clean true --restart false --track-status false \
             --only-show-errors --output none
 
       - name: Run staging migration and cache rebuild

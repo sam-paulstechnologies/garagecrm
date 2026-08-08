@@ -121,7 +121,7 @@ try {
         }
 
         az webapp deploy --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
-            --src-path $zipPath --type zip --clean true --restart false --track-status true --only-show-errors --output none
+            --src-path $zipPath --type zip --clean true --restart false --track-status false --only-show-errors --output none
 
         $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
         if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging Kudu.' }
