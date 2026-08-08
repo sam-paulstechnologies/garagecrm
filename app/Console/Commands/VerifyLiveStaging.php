@@ -49,11 +49,13 @@ class VerifyLiveStaging extends Command
                 }
             }
 
-            $this->assertSame(2, (int) DB::table('companies')->count(), 'synthetic tenant count');
+            $tenantCount = (int) DB::table('companies')->count();
+            $userCount = (int) DB::table('users')->count();
+            $this->assertAtLeast(2, $tenantCount, 'synthetic tenant count');
             $this->assertSame(0, (int) DB::table('companies')
                 ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
                 ->count(), 'non-synthetic tenant count');
-            $this->assertSame(4, (int) DB::table('users')->count(), 'synthetic user count');
+            $this->assertAtLeast(4, $userCount, 'synthetic user count');
             $this->assertSame(0, (int) DB::table('users')
                 ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
                 ->count(), 'non-synthetic user count');
@@ -80,8 +82,8 @@ class VerifyLiveStaging extends Command
                 'base_tables' => $baseTables,
                 'views' => $views,
                 'messaging_tables' => count($messagingTables),
-                'synthetic_tenants' => 2,
-                'synthetic_users' => 4,
+                'synthetic_tenants' => $tenantCount,
+                'synthetic_users' => $userCount,
                 'provider_records' => 0,
                 'jobs_table' => 'operational',
                 'queue_jobs_table' => 'database_queue',
@@ -101,6 +103,13 @@ class VerifyLiveStaging extends Command
     {
         if ($actual !== $expected) {
             throw new RuntimeException("Unexpected {$label}: expected {$expected}, found {$actual}.");
+        }
+    }
+
+    private function assertAtLeast(int $minimum, int $actual, string $label): void
+    {
+        if ($actual < $minimum) {
+            throw new RuntimeException("Unexpected {$label}: expected at least {$minimum}, found {$actual}.");
         }
     }
 }

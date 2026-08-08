@@ -60,6 +60,7 @@ $required = @{
     FILESYSTEM_DISK = 'staging'
     TRUSTED_PROXIES = '*'
     MAIL_MAILER = 'log'
+    PUBLIC_REGISTRATION_ENABLED = 'true'
     STAGING_ALLOW_LEGACY_COMPANY_RESOLUTION = 'false'
     STAGING_WHATSAPP_OUTBOUND_ENABLED = 'false'
     STAGING_SMS_OUTBOUND_ENABLED = 'false'
@@ -130,6 +131,12 @@ if ($config.webJobsEnabled -ne $true -or $config.alwaysOn -ne $true) {
 
 $health = Invoke-WebRequest -Uri "https://$($staging.host)/healthz" -UseBasicParsing -TimeoutSec 60
 if ($health.StatusCode -ne 200) { throw 'Health endpoint failed.' }
+$login = Invoke-WebRequest -Uri "https://$($staging.host)/login" -UseBasicParsing -TimeoutSec 60
+if ($login.StatusCode -ne 200) { throw 'Login page failed.' }
+$registration = Invoke-WebRequest -Uri "https://$($staging.host)/register" -UseBasicParsing -TimeoutSec 60
+if ($registration.StatusCode -ne 200 -or $registration.Content -notmatch 'Garage self-service onboarding') {
+    throw 'Public garage registration page failed.'
+}
 $robots = Invoke-WebRequest -Uri "https://$($staging.host)/robots.txt" -UseBasicParsing -TimeoutSec 60
 if ($robots.Content -notmatch 'Disallow:\s*/' -or $robots.Headers['X-Robots-Tag'] -notmatch 'noindex') {
     throw 'Robots/noindex policy failed.'

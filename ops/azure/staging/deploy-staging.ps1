@@ -155,7 +155,7 @@ try {
         }
         $postDeployOutput = (Invoke-WebRequest -Uri $run.output_url -Headers $headers -UseBasicParsing -TimeoutSec 60).Content
         if ($postDeployOutput -notmatch 'Schema fingerprint matches the approved canonical schema\.' `
-            -or $postDeployOutput -notmatch 'Staging migration and Laravel cache rebuild completed\.') {
+            -or $postDeployOutput -notmatch 'Staging migration and Laravel cache rebuild completed without reseeding\.') {
             throw 'Staging post-deployment output did not pass the schema and cache gates.'
         }
 

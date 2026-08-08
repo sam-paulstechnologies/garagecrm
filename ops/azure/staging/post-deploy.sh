@@ -27,7 +27,6 @@ fi
 
 php artisan staging:assert-safe --require-schema --no-interaction
 php artisan migrate --force --no-interaction
-php artisan db:seed --class=Database\\Seeders\\StagingSyntheticSeeder --force --no-interaction
 php artisan staging:schema-fingerprint --verify --no-interaction
 php artisan staging:verify-live --no-interaction
 php artisan optimize:clear
@@ -37,4 +36,4 @@ php artisan view:cache
 php artisan storage:link || true
 php artisan queue:restart || true
 
-echo "Staging migration and Laravel cache rebuild completed."
+echo "Staging migration and Laravel cache rebuild completed without reseeding."

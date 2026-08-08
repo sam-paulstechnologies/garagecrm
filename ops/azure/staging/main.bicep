@@ -391,6 +391,7 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'MAIL_MAILER', value: 'log' }
         { name: 'MAIL_FROM_ADDRESS', value: 'staging-no-reply@sayaraforce.test' }
         { name: 'MAIL_FROM_NAME', value: 'SayaraForce Staging' }
+        { name: 'PUBLIC_REGISTRATION_ENABLED', value: 'true' }
         { name: 'META_WHATSAPP_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
         { name: 'META_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
         { name: 'STAGING_EXPECTED_HOST', value: initialWebHost }

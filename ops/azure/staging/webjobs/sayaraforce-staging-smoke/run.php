@@ -125,11 +125,23 @@ try {
         throw new RuntimeException('Outbound communication safeguards are not fail-closed.');
     }
 
+    $registrationResponse = (new HttpClient([
+        'base_uri' => $baseUrl,
+        'http_errors' => false,
+        'timeout' => 30,
+    ]))->get('register');
+    $expectedRegistrationStatus = config('registration.public_enabled') ? 200 : 404;
+    if ($registrationResponse->getStatusCode() !== $expectedRegistrationStatus
+        || ($expectedRegistrationStatus === 200
+            && ! str_contains((string) $registrationResponse->getBody(), 'Garage self-service onboarding'))) {
+        throw new RuntimeException('Public registration environment gate is inconsistent.');
+    }
+
     echo json_encode([
         'status' => 'passed',
         'environment' => 'staging',
         'login' => 200,
-        'registration' => (new HttpClient(['base_uri' => $baseUrl, 'http_errors' => false, 'timeout' => 30]))->get('register')->getStatusCode(),
+        'registration' => $registrationResponse->getStatusCode(),
         'surfaces' => $surfaceResults,
         'staging_banner' => true,
         'noindex' => true,

@@ -147,10 +147,17 @@
                 </form>
 
                 <div class="mt-6 border-t border-white/10 pt-6 text-center text-sm leading-6 text-[#AEBBD0]">
-                    New to SayaraForce?
-                    <a href="{{ route('public.home') }}#audit" class="font-semibold text-[#FF8A38] transition hover:text-[#FFB079]">
-                        Book a free audit
-                    </a>
+                    @if (config('registration.public_enabled'))
+                        New to SayaraForce?
+                        <a href="{{ route('register') }}" class="font-semibold text-[#FF8A38] transition hover:text-[#FFB079]">
+                            Create your garage workspace
+                        </a>
+                    @else
+                        New to SayaraForce?
+                        <a href="{{ route('public.home') }}#audit" class="font-semibold text-[#FF8A38] transition hover:text-[#FFB079]">
+                            Book a free audit
+                        </a>
+                    @endif
                 </div>
             </div>
 
