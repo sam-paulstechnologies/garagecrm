@@ -51,6 +51,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
           : > .env
           test_key="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"
           printf 'APP_KEY=%s\n' "$test_key" >> "$GITHUB_ENV"
@@ -248,4 +249,4 @@ jobs:
 
       - name: Azure logout
         if: always()
-        run: az logout
+        run: az account show >/dev/null 2>&1 && az logout || true

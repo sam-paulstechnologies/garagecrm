@@ -55,6 +55,16 @@ try {
     }
     [Environment]::SetEnvironmentVariable('APP_KEY', 'base64:' + [Convert]::ToBase64String($testKeyBytes), 'Process')
 
+    foreach ($runtimeDirectory in @(
+        'storage\framework\cache\data',
+        'storage\framework\sessions',
+        'storage\framework\views',
+        'storage\logs',
+        'bootstrap\cache'
+    )) {
+        New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
+    }
+
     composer install --prefer-dist --no-interaction --optimize-autoloader
     php artisan config:clear
     & (Join-Path $PSScriptRoot 'validate-schema-baseline.ps1')
