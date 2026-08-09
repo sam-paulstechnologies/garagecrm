@@ -131,7 +131,7 @@ Route::prefix('v1')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'throttle:60,1'])
+    ->middleware(['auth:sanctum', 'active', 'throttle:60,1'])
     ->group(function () {
 
         Route::get('/me', MeController::class)
@@ -139,6 +139,7 @@ Route::prefix('v1')
 
         Route::prefix('whatsapp/templates')
             ->as('api.whatsapp.templates.')
+            ->middleware('entitled:whatsapp_transactional')
             ->group(function () {
                 Route::get('/', [WhatsAppTemplateApiController::class, 'index'])->name('index');
                 Route::post('/', [WhatsAppTemplateApiController::class, 'store'])->name('store');
@@ -162,6 +163,7 @@ Route::prefix('v1')
 
         Route::prefix('whatsapp/campaigns')
             ->as('api.whatsapp.campaigns.')
+            ->middleware('entitled:campaign_intelligence')
             ->group(function () {
                 Route::get('/', [WhatsAppCampaignApiController::class, 'index'])->name('index');
                 Route::post('/', [WhatsAppCampaignApiController::class, 'store'])->name('store');
@@ -179,6 +181,7 @@ Route::prefix('v1')
                     ->name('destroy');
 
                 Route::post('/{id}/send', [WhatsAppCampaignApiController::class, 'sendNow'])
+                    ->middleware('entitled:whatsapp_marketing')
                     ->whereNumber('id')
                     ->name('send');
             });
@@ -193,26 +196,31 @@ Route::prefix('v1')
                     ->name('show');
 
                 Route::post('/{id}/retry', [WhatsAppMessageApiController::class, 'retry'])
+                    ->middleware('entitled:whatsapp_manual_reply')
                     ->whereNumber('id')
                     ->name('retry');
             });
 
         Route::prefix('whatsapp/settings')
             ->as('api.whatsapp.settings.')
+            ->middleware('entitled:whatsapp_connect')
             ->group(function () {
                 Route::get('/', [WhatsAppSettingApiController::class, 'show'])->name('show');
                 Route::post('/', [WhatsAppSettingApiController::class, 'update'])->name('update');
             });
 
         Route::get('/leads/{id}/summary', [LeadSummaryController::class, 'show'])
+            ->middleware('entitled:leads')
             ->whereNumber('id')
             ->name('api.leads.summary');
 
         Route::get('/bookings/{id}/summary', [BookingSummaryController::class, 'show'])
+            ->middleware('entitled:bookings')
             ->whereNumber('id')
             ->name('api.bookings.summary');
 
         Route::post('/bookings/{id}/transition', [BookingTransitionController::class, 'store'])
+            ->middleware('entitled:bookings')
             ->whereNumber('id')
             ->name('api.bookings.transition');
     });

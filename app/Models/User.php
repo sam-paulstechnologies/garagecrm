@@ -16,7 +16,9 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    public const ROLES = ['super_admin', 'admin', 'manager', 'mechanic', 'receptionist', 'supervisor', 'media_team'];
+    public const PLATFORM_ROLES = ['super_admin', 'platform_admin'];
+
+    public const TENANT_ROLES = ['admin', 'manager', 'mechanic', 'receptionist', 'supervisor', 'media_team'];
 
     protected $fillable = [
         'name',
@@ -57,5 +59,22 @@ class User extends Authenticatable
     public function garage(): BelongsTo
     {
         return $this->belongsTo(Garage::class);
+    }
+
+    /** @return list<string> */
+    public static function platformRoles(): array
+    {
+        return self::PLATFORM_ROLES;
+    }
+
+    /** @return list<string> */
+    public static function tenantRoles(): array
+    {
+        return self::TENANT_ROLES;
+    }
+
+    public function isPlatformUser(): bool
+    {
+        return in_array((string) $this->role, self::PLATFORM_ROLES, true);
     }
 }

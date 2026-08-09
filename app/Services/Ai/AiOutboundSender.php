@@ -2,6 +2,7 @@
 
 namespace App\Services\Ai;
 
+use App\Commercial\EntitlementService;
 use App\Models\MessageLog;
 use Illuminate\Support\Facades\DB;
 
@@ -9,6 +10,11 @@ class AiOutboundSender
 {
     public static function sendFromInbound(MessageLog $inbound, string $replyText): MessageLog
     {
+        $companyId = (int) $inbound->company_id;
+        $entitlements = app(EntitlementService::class);
+        $entitlements->assertCan($companyId, 'ai_action_execution');
+        $entitlements->assertCan($companyId, 'whatsapp_ai_autonomous');
+
         $out = new MessageLog();
 
         // Copy safe linkage fields

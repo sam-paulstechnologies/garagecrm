@@ -6,7 +6,7 @@ use App\Http\Controllers\Mechanic\BookingController;
 use App\Http\Controllers\Mechanic\LeadController;
 use App\Http\Controllers\Mechanic\ProfileController;
 
-Route::middleware(['auth', 'role:mechanic'])->prefix('mechanic')->name('mechanic.')->group(function () {
+Route::middleware(['auth', 'active', 'force_password', 'role:mechanic'])->prefix('mechanic')->name('mechanic.')->group(function () {
     Route::get('job-cards', [JobCardController::class, 'index'])->name('job-cards.index');
     Route::get('job-cards/{jobCard}', [JobCardController::class, 'show'])->name('job-cards.show');
 

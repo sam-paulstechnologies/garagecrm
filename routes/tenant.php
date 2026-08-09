@@ -10,7 +10,7 @@ use App\Http\Controllers\Tenant\JobCardController;
 use App\Http\Controllers\Tenant\InvoiceController;
 use App\Http\Controllers\Tenant\CommunicationController;
 
-Route::middleware(['auth', 'role:tenant'])->prefix('tenant')->name('tenant.')->group(function () {
+Route::middleware(['auth', 'active', 'force_password', 'role:tenant'])->prefix('tenant')->name('tenant.')->group(function () {
     Route::get('clients/{client}/bookings', [ClientBookingController::class, 'index'])
         ->name('clients.bookings');
 

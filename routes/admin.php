@@ -207,6 +207,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::get('dashboard', [DashboardController::class, 'index'])
             ->name('dashboard');
 
+        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.resetPassword');
+        Route::resource('users', UserController::class)->except(['show']);
+
         Route::get('sla-dashboard', [SlaDashboardController::class, 'index'])
             ->name('sla_dashboard');
 
@@ -325,7 +329,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | existing production connections and coexistence diagnostics.
         |--------------------------------------------------------------------------
         */
-        Route::middleware('role:admin')->prefix('messaging/whatsapp')->name('messaging.whatsapp.')->group(function () {
+        Route::middleware(['role:admin', 'entitled:whatsapp_connect'])->prefix('messaging/whatsapp')->name('messaging.whatsapp.')->group(function () {
             Route::get('/', [MessagingWhatsAppOnboardingController::class, 'index'])->name('index');
             Route::post('onboarding/session', [MessagingWhatsAppOnboardingController::class, 'start'])
                 ->middleware('throttle:5,1')
@@ -655,7 +659,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | Marketing
         |--------------------------------------------------------------------------
         */
-        Route::prefix('marketing')->name('marketing.')->group(function () {
+        Route::prefix('marketing')->name('marketing.')->middleware('entitled:campaign_intelligence')->group(function () {
             Route::get('campaigns', [MarketingCampaignController::class, 'index'])
                 ->name('campaigns.index');
 
@@ -701,7 +705,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | Growth
         |--------------------------------------------------------------------------
         */
-        Route::prefix('growth')->name('growth.')->group(function () {
+        Route::prefix('growth')->name('growth.')->middleware('entitled:source_attribution')->group(function () {
             Route::get('journey-mapping', [LeadCampaignJourneyMappingController::class, 'index'])
                 ->name('journey-mapping.index');
 
@@ -721,7 +725,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | AI
         |--------------------------------------------------------------------------
         */
-        Route::prefix('ai')->name('ai.')->group(function () {
+        Route::prefix('ai')->name('ai.')->middleware('entitled:ai_observational')->group(function () {
             Route::get('/', [AiSettingController::class, 'edit'])
                 ->name('edit');
 

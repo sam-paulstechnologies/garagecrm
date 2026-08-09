@@ -6,6 +6,7 @@ use App\Http\Controllers\SuperAdmin\GarageController;
 use App\Http\Controllers\SuperAdmin\LogController;
 use App\Http\Controllers\SuperAdmin\MessagingConnectionController;
 use App\Http\Controllers\SuperAdmin\OperationsCenterController;
+use App\Http\Controllers\SuperAdmin\PlatformUserController;
 use App\Http\Controllers\SuperAdmin\SystemHealthController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::get('garages/{garage}/modules', [GarageController::class, 'modules'])->name('garages.modules');
         Route::patch('garages/{garage}/modules', [GarageController::class, 'updateModule'])->name('garages.modules.update');
         Route::get('garages/{garage}/channels', [GarageController::class, 'channels'])->name('garages.channels');
+
+        Route::post('platform-users', [PlatformUserController::class, 'store'])->name('platform-users.store');
+        Route::patch('platform-users/{platformUser}', [PlatformUserController::class, 'update'])->name('platform-users.update');
 
         Route::get('logs/messages', [LogController::class, 'messages'])->name('logs.messages');
         Route::get('logs/leads', [LogController::class, 'leads'])->name('logs.leads');

@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Support\Facades\Blade;
+use App\Commercial\EntitlementService;
 
 // ✅ R2 Observer wiring
 use App\Models\MessageLog;
@@ -46,6 +48,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Blade::if('entitled', function (string $capability): bool {
+            $company = auth()->user()?->company;
+
+            return $company ? app(EntitlementService::class)->can($company, $capability) : false;
+        });
+
         /*
         |--------------------------------------------------------------------------
         | Keep Vite assets on the current request host

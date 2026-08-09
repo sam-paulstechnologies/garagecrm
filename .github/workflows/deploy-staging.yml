@@ -208,7 +208,7 @@ jobs:
           postdeploy_output="$RUNNER_TEMP/postdeploy-output.log"
           curl --fail --silent --show-error -H "Authorization: Bearer $token" "$output_url" > "$postdeploy_output"
           grep -F 'Schema fingerprint matches the approved canonical schema.' "$postdeploy_output"
-          grep -F 'Staging migration and Laravel cache rebuild completed without reseeding.' "$postdeploy_output"
+          grep -F 'Staging migration, commercial catalogue bootstrap, and Laravel cache rebuild completed without reseeding operational data.' "$postdeploy_output"
 
           mkdir_response="$RUNNER_TEMP/kudu-mkdir.json"
           curl --fail --silent --show-error -X POST \

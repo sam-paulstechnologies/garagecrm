@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Commercial\SubscriptionManager;
+use Database\Seeders\CommercialFoundationSeeder;
 use App\Models\Client\Opportunity;
 use App\Models\Job\Booking;
 use App\Models\Job\Job;
@@ -35,6 +37,8 @@ class BookingLifecycleRepairTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $this->seed(CommercialFoundationSeeder::class);
+        app(SubscriptionManager::class)->assignFree(\App\Models\System\Company::query()->findOrFail($this->companyId));
 
         $this->admin = User::create([
             'name' => 'Admin User',

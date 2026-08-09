@@ -169,7 +169,8 @@
   ],
   "first_pending_migration": "2026_08_05_000001_create_messaging_core_tables",
   "pending_migrations": [
-    "2026_08_05_000001_create_messaging_core_tables"
+    "2026_08_05_000001_create_messaging_core_tables",
+    "2026_08_10_000001_create_commercial_foundation"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -443,12 +444,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Creates the seven messaging Phase 1 tables exactly once."
+    },
+    {
+      "migration": "2026_08_10_000001_create_commercial_foundation",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds the versioned commercial catalogue, subscription, entitlement, usage, audit, and provider-event foundation without altering baseline operational data."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e",
-    "cycle_two_fingerprint": "379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e",
+    "cycle_one_fingerprint": "8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e",
+    "cycle_two_fingerprint": "8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

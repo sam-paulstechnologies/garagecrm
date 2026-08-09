@@ -13,7 +13,7 @@ Authoritative artifacts:
 - `database/schema/mysql-schema.safety.json`: machine-readable data-safety result.
 - `ops/azure/staging/production-view-remediation.sql`: unexecuted production repair plan.
 
-The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the pending messaging migration, the reproducible canonical fingerprint is `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`.
+The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. After the reviewed commercial-foundation migration, the current reproducible staging fingerprint is `8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e`.
 
 ## Reconciled inventories
 
@@ -54,8 +54,9 @@ All live application surfaces tested against the disposable MySQL installation l
 The production ledger has 41 entries, but it is not copied blindly. Each tracked migration is classified in the manifest against the resulting structure.
 
 - Forty tracked migrations are represented by the baseline.
-- `2026_08_05_000001_create_messaging_core_tables` is the first and only pending tracked migration.
-- It creates exactly seven messaging tables once, producing 110 base tables in the validated fresh database.
+- `2026_08_05_000001_create_messaging_core_tables` remains the first pending migration after the production-derived baseline and creates exactly seven messaging tables once.
+- `2026_08_10_000001_create_commercial_foundation` then adds eight versioned plan, price, subscription, entitlement, usage, audit, and provider-event tables additively.
+- Together they produce 118 base tables in the current validated fresh database.
 - The queue-shaped `0001_01_01_000002_create_jobs_table` is marked represented because running it would conflict with operational `jobs`.
 - The static-data migration `2026_06_12_000001_add_vehicle_renewal_audience_segmentations` is represented structurally, but its rows are deliberately excluded by the data-free policy.
 - Laravel loads the schema SQL only when the target database is empty. A populated database continues from its `migrations` ledger, and a second `migrate --force` has no pending migration or duplicate-table effect.
@@ -78,21 +79,22 @@ Both INVOKER views were created and queried with controlled synthetic records in
 
 ## Disposable validation
 
-The guarded validator refuses a non-local host, a database name without `staging_validation`, or the normal development database. Each cycle dropped and recreated only `sayaraforce_staging_validation`, loaded the canonical baseline through Laravel, ran the pending messaging migration, seeded two synthetic tenants, verified 128 foreign-key constraints, created and queried both views, booted Laravel, discovered routes, and ran the representative application-surface integration test.
+The guarded validator refuses a non-local host, a database name without `staging_validation`, or the normal development database. Each cycle dropped and recreated only the named disposable validation database, loaded the canonical baseline through Laravel, ran the messaging and commercial-foundation migrations, seeded the immutable five-plan catalogue and two synthetic tenants, assigned explicit synthetic subscriptions, verified 140 foreign-key constraints, created and queried both views, booted Laravel, discovered routes, and ran the representative application-surface integration test.
 
 Cycle results:
 
 | Check | Cycle one | Cycle two |
 |---|---:|---:|
-| Base tables | 110 | 110 |
+| Base tables | 118 | 118 |
 | Views | 2 | 2 |
 | Messaging tables | 7 exactly once | 7 exactly once |
+| Commercial foundation tables | 8 exactly once | 8 exactly once |
 | Synthetic companies/garages | 2 / 2 | 2 / 2 |
-| Foreign-key constraints checked | 128 | 128 |
+| Foreign-key constraints checked | 140 | 140 |
 | Foreign-key violations | 0 | 0 |
-| Structural fingerprint | `379628...c21e` | `379628...c21e` |
+| Structural fingerprint | `8a7bd0...fd8e` | `8a7bd0...fd8e` |
 
-The focused WhatsApp/staging/baseline suite passed 28 tests with 165 assertions (one MySQL-only test intentionally skipped outside guarded integration mode). The full suite passed 200 tests with 1,264 assertions and one intentional integration skip. The guarded MySQL surface test passed 33 assertions in both cycles. PHP lint passed for 594 files, and the Vite production build succeeded in an operating-system temporary directory so existing generated frontend work was untouched.
+For Commercial Foundation Phase 1, the full suite passed 204 tests with 1,260 assertions and one intentional integration skip. The guarded MySQL surface test passed 33 assertions in both cycles. PHP lint and the Vite production build also passed.
 
 ## Test-harness audit
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Marketing;
 
+use App\Commercial\EntitlementService;
 use App\Models\Client\Lead;
 use App\Models\Marketing\Campaign;
 use App\Models\Marketing\CampaignEnrollment;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Log;
 
 class CampaignDispatcher
 {
+    public function __construct(private readonly EntitlementService $entitlements) {}
+
     public function enroll(int $companyId, Campaign $campaign, $subjectType, $subjectId): CampaignEnrollment
     {
         return CampaignEnrollment::firstOrCreate(
@@ -32,6 +35,16 @@ class CampaignDispatcher
 
     public function tick(CampaignEnrollment $enrollment): void
     {
+        if (! $this->entitlements->can((int) $enrollment->company_id, 'campaign_intelligence')
+            || ! $this->entitlements->can((int) $enrollment->company_id, 'whatsapp_marketing')) {
+            Log::notice('[CampaignDispatcher] Commercial entitlement denied campaign execution', [
+                'company_id' => $enrollment->company_id,
+                'enrollment_id' => $enrollment->id,
+            ]);
+
+            return;
+        }
+
         $campaign = $enrollment->campaign()->with('steps')->first();
 
         if (! $campaign) {

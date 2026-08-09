@@ -8,10 +8,18 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
+use Database\Seeders\CommercialFoundationSeeder;
+use App\Models\Commercial\Subscription;
 
 class RegistrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(CommercialFoundationSeeder::class);
+    }
 
     public function test_public_registration_is_disabled_by_default(): void
     {
@@ -46,10 +54,12 @@ class RegistrationTest extends TestCase
         $this->assertDatabaseCount('garages', 1);
         $this->assertDatabaseCount('users', 1);
         $this->assertDatabaseCount('messaging_connections', 0);
+        $this->assertDatabaseCount('subscriptions', 1);
 
         $company = Company::query()->sole();
         $garage = Garage::query()->sole();
         $admin = User::query()->sole();
+        $subscription = Subscription::query()->with('planVersion.plan')->sole();
 
         $this->assertAuthenticatedAs($admin);
         $this->assertSame('admin', $admin->role);
@@ -59,6 +69,9 @@ class RegistrationTest extends TestCase
         $this->assertSame($garage->id, $admin->garage_id);
         $this->assertSame($company->id, $garage->company_id);
         $this->assertCount(1, $company->users);
+        $this->assertSame($company->id, $subscription->company_id);
+        $this->assertSame('free', $subscription->planVersion->plan->code);
+        $this->assertSame('active', $subscription->status);
 
         $this->get(route('admin.messaging.whatsapp.index'))
             ->assertOk()

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
+use App\Models\Commercial\Subscription;
 
 class Company extends Model
 {
@@ -135,6 +136,11 @@ class Company extends Model
         return $this->belongsTo(Plan::class);
     }
 
+    public function subscription()
+    {
+        return $this->hasOne(Subscription::class, 'company_id');
+    }
+
     public function moduleSettings()
     {
         return $this->hasMany(\App\Models\CompanyModuleSetting::class, 'company_id');
@@ -163,11 +169,7 @@ class Company extends Model
 
     public function getActivePlanAttribute()
     {
-        if ($this->isTrialActive() && $this->plan) {
-            return $this->plan;
-        }
-
-        return Plan::find(1); // Freemium fallback
+        return $this->subscription?->planVersion?->plan ?? $this->plan;
     }
 
     /*

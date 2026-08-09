@@ -113,8 +113,13 @@ function Invoke-ValidationCycle([string] $CycleName) {
     $emptyCount = [int] (Invoke-MySql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE();" | Select-Object -First 1)
     if ($emptyCount -ne 0) { throw "{$CycleName}: recreated database is not empty." }
 
-    php artisan migrate --path="database/migrations/$($script:manifest.pending_migrations[0]).php" --force --no-interaction | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "{$CycleName}: baseline load or pending migration failed." }
+    foreach ($pendingMigration in @($script:manifest.pending_migrations)) {
+        php artisan migrate --path="database/migrations/$pendingMigration.php" --force --no-interaction | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "{$CycleName}: baseline load or pending migration failed." }
+    }
+
+    php artisan db:seed --class=Database\Seeders\CommercialFoundationSeeder --force --no-interaction | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "{$CycleName}: commercial catalogue seed failed." }
 
     foreach ($key in @('STAGING_PLATFORM_ADMIN_PASSWORD','STAGING_GARAGE_ADMIN_PASSWORD','STAGING_EMPLOYEE_PASSWORD','STAGING_TENANT_B_ADMIN_PASSWORD')) {
         [Environment]::SetEnvironmentVariable($key, (New-InitialPassword), 'Process')
@@ -128,6 +133,9 @@ function Invoke-ValidationCycle([string] $CycleName) {
             Remove-Item "Env:$key" -ErrorAction SilentlyContinue
         }
     }
+
+    php artisan commercial:bootstrap-staging-subscriptions --confirm --no-interaction | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "{$CycleName}: explicit staging subscription bootstrap failed." }
 
     Invoke-MySql @'
 START TRANSACTION;
@@ -149,10 +157,13 @@ COMMIT;
 '@ | Out-Null
 
     $assertions = @(Invoke-MySql @'
-SELECT COUNT(*)=110 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
+SELECT COUNT(*)=118 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=41 FROM migrations;
+SELECT COUNT(*)=42 FROM migrations;
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
+SELECT COUNT(*)=8 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('plan_versions','prices','plan_entitlements','subscriptions','company_entitlement_overrides','entitlement_usages','entitlement_audit_logs','billing_provider_events');
+SELECT COUNT(*)=5 FROM plans WHERE code IN ('free','service','growth','performance','ai_pro');
+SELECT COUNT(*)=(SELECT COUNT(*) FROM companies) FROM subscriptions;
 SELECT COUNT(*)=2 FROM companies;
 SELECT COUNT(*)=2 FROM garages;
 SELECT COUNT(*)=4 FROM users;
@@ -182,7 +193,7 @@ SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() 
     return [ordered] @{
         cycle = $CycleName
         fingerprint = $match.Value
-        base_tables = 110
+        base_tables = 118
         views = 2
         foreign_keys_checked = $foreignKeys
         routes = $routeCount
@@ -213,7 +224,11 @@ try {
     $safetyPath = Join-Path $repositoryRoot 'database/schema/mysql-schema.safety.json'
     $safety = Get-Content -Raw -LiteralPath $safetyPath | ConvertFrom-Json
     if ($safety.status -ne 'passed' -or -not [string]::Equals([string] $safety.baseline_sha256, $baselineHash, [StringComparison]::Ordinal)) { throw 'Machine-readable schema safety report is missing or stale.' }
-    if (@($script:manifest.pending_migrations).Count -ne 1 -or $script:manifest.pending_migrations[0] -ne '2026_08_05_000001_create_messaging_core_tables') { throw 'Manifest pending-migration cutoff is not approved.' }
+    $expectedPendingMigrations = @('2026_08_05_000001_create_messaging_core_tables', '2026_08_10_000001_create_commercial_foundation')
+    if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
+        -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {
+        throw 'Manifest pending-migration cutoff is not approved.'
+    }
 
     $trackedMigrations = @(git ls-files 'database/migrations/*.php' | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
     $classified = @($script:manifest.represented_migrations) + @($script:manifest.pending_migrations)

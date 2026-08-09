@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Commercial\Jobs\EntitlementAwareJob;
+use App\Commercial\Jobs\RequireJobEntitlement;
 use App\Models\MessageLog;
 use App\Models\Client\Client;
 use App\Models\Client\Opportunity;
@@ -14,11 +16,26 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class GenerateAiSuggestion implements ShouldQueue
+class GenerateAiSuggestion implements ShouldQueue, EntitlementAwareJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public function __construct(public int $messageId) {}
+
+    public function middleware(): array
+    {
+        return [new RequireJobEntitlement()];
+    }
+
+    public function entitlementCompanyId(): ?int
+    {
+        return MessageLog::query()->whereKey($this->messageId)->value('company_id');
+    }
+
+    public function entitlementCapability(): string
+    {
+        return 'ai_action_execution';
+    }
 
     public function handle(
         SuggestReplyService $replyService,

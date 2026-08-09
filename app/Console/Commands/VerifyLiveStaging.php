@@ -24,7 +24,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(110, $baseTables, 'base-table count');
+            $this->assertSame(118, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -35,6 +35,17 @@ class VerifyLiveStaging extends Command
             foreach ($messagingTables as $table) {
                 if (! Schema::hasTable($table)) {
                     throw new RuntimeException("Missing messaging table: {$table}.");
+                }
+            }
+
+            $commercialTables = [
+                'plan_versions', 'prices', 'plan_entitlements', 'subscriptions',
+                'company_entitlement_overrides', 'entitlement_usages',
+                'entitlement_audit_logs', 'billing_provider_events',
+            ];
+            foreach ($commercialTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    throw new RuntimeException("Missing commercial foundation table: {$table}.");
                 }
             }
 
@@ -56,6 +67,19 @@ class VerifyLiveStaging extends Command
                 ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
                 ->count(), 'non-synthetic tenant count');
             $this->assertAtLeast(4, $userCount, 'synthetic user count');
+            $this->assertSame(5, (int) DB::table('plans')
+                ->whereIn('code', ['free', 'service', 'growth', 'performance', 'ai_pro'])->count(), 'canonical plan count');
+            $this->assertSame($tenantCount, (int) DB::table('subscriptions')->count(), 'explicit subscription count');
+            $this->assertSame(1, (int) DB::table('subscriptions as s')
+                ->join('companies as c', 'c.id', '=', 's.company_id')
+                ->join('plan_versions as pv', 'pv.id', '=', 's.plan_version_id')
+                ->join('plans as p', 'p.id', '=', 'pv.plan_id')
+                ->where('c.email', 'tenant-a@staging.sayaraforce.test')->where('p.code', 'ai_pro')->count(), 'primary synthetic plan mapping');
+            $this->assertSame(1, (int) DB::table('subscriptions as s')
+                ->join('companies as c', 'c.id', '=', 's.company_id')
+                ->join('plan_versions as pv', 'pv.id', '=', 's.plan_version_id')
+                ->join('plans as p', 'p.id', '=', 'pv.plan_id')
+                ->where('c.email', 'tenant-b@staging.sayaraforce.test')->where('p.code', 'service')->count(), 'secondary synthetic plan mapping');
             $this->assertSame(0, (int) DB::table('users')
                 ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
                 ->count(), 'non-synthetic user count');
@@ -82,6 +106,7 @@ class VerifyLiveStaging extends Command
                 'base_tables' => $baseTables,
                 'views' => $views,
                 'messaging_tables' => count($messagingTables),
+                'commercial_tables' => count($commercialTables),
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
                 'provider_records' => 0,

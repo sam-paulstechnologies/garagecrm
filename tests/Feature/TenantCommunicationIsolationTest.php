@@ -15,6 +15,20 @@ class TenantCommunicationIsolationTest extends TestCase
 
         Schema::dropIfExists('clients');
         Schema::dropIfExists('templates');
+        Schema::dropIfExists('companies');
+
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('status')->default('active');
+            $table->timestamp('suspended_at')->nullable();
+            $table->timestamps();
+        });
+
+        \DB::table('companies')->insert([
+            ['id' => 1, 'name' => 'Tenant One', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'Tenant Two', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
 
         Schema::create('clients', function (Blueprint $table) {
             $table->id();

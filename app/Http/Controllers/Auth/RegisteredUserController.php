@@ -15,6 +15,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use App\Commercial\SubscriptionManager;
 
 class RegisteredUserController extends Controller
 {
@@ -29,7 +30,7 @@ class RegisteredUserController extends Controller
     /**
      * Handle an incoming registration request.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, SubscriptionManager $subscriptions): RedirectResponse
     {
         $request->merge([
             'email' => Str::lower(trim((string) $request->input('email'))),
@@ -50,7 +51,7 @@ class RegisteredUserController extends Controller
         ]);
 
         try {
-            $user = DB::transaction(function () use ($validated): User {
+            $user = DB::transaction(function () use ($validated, $subscriptions): User {
                 $company = Company::query()->create([
                     'name' => $validated['garage_name'],
                     'email' => $validated['email'],
@@ -64,6 +65,8 @@ class RegisteredUserController extends Controller
                     'name' => $validated['garage_name'],
                     'phone' => $validated['phone'],
                 ]);
+
+                $subscriptions->assignFree($company);
 
                 return User::query()->create([
                     'company_id' => $company->id,

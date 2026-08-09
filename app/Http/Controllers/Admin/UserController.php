@@ -32,7 +32,7 @@ class UserController extends Controller
         return view('admin.users.create', [
             'companies' => Company::where('id', $companyId)->get(),
             'garages'   => Garage::where('company_id', $companyId)->get(),
-            'roles'     => User::ROLES,
+            'roles'     => User::tenantRoles(),
         ]);
     }
 
@@ -44,7 +44,7 @@ class UserController extends Controller
             'name'      => 'required|string|max:255',
             'email'     => 'required|email|unique:users,email',
             'phone'     => 'nullable|string|max:20',
-            'role'      => ['required', Rule::in(User::ROLES)],
+            'role'      => ['required', Rule::in(User::tenantRoles())],
             'password'  => 'required|min:8|confirmed',
             'garage_id' => 'nullable|exists:garages,id',
             'status'    => 'required|boolean',
@@ -71,7 +71,7 @@ class UserController extends Controller
             'user'     => $user,
             'companies'=> Company::where('id', $user->company_id)->get(),
             'garages'  => Garage::where('company_id', $user->company_id)->get(),
-            'roles'    => User::ROLES,
+            'roles'    => User::tenantRoles(),
         ]);
     }
 
@@ -83,7 +83,7 @@ class UserController extends Controller
             'name'      => 'required|string|max:255',
             'email'     => 'required|email|unique:users,email,' . $user->id,
             'phone'     => 'nullable|string|max:20',
-            'role'      => ['required', Rule::in(User::ROLES)],
+            'role'      => ['required', Rule::in(User::tenantRoles())],
             'password'  => 'nullable|min:8|confirmed',
             'garage_id' => 'nullable|exists:garages,id',
             'status'    => 'required|boolean',

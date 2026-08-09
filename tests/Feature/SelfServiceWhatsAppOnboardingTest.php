@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Commercial\SubscriptionManager;
+use Database\Seeders\CommercialFoundationSeeder;
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Messaging\Enums\ConnectionStatus;
 use App\Messaging\Models\MessagingConnection;
@@ -26,6 +28,8 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seed(CommercialFoundationSeeder::class);
 
         config([
             'app.key' => 'base64:'.base64_encode(str_repeat('k', 32)),
@@ -372,6 +376,7 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     private function tenant(array $companyOverrides = [], array $userOverrides = []): array
     {
         $company = Company::query()->create(array_merge(['name' => 'Phase One Garage'], $companyOverrides));
+        app(SubscriptionManager::class)->assignFree($company);
         $user = User::factory()->create(array_merge([
             'company_id' => $company->id,
             'role' => 'admin',
