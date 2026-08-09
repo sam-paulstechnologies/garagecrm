@@ -24,7 +24,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(118, $baseTables, 'base-table count');
+            $this->assertSame(120, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -46,6 +46,13 @@ class VerifyLiveStaging extends Command
             foreach ($commercialTables as $table) {
                 if (! Schema::hasTable($table)) {
                     throw new RuntimeException("Missing commercial foundation table: {$table}.");
+                }
+            }
+
+            $aiMeteringTables = ['ai_customer_usages', 'ai_analysis_runs'];
+            foreach ($aiMeteringTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    throw new RuntimeException("Missing AI metering table: {$table}.");
                 }
             }
 
@@ -107,6 +114,7 @@ class VerifyLiveStaging extends Command
                 'views' => $views,
                 'messaging_tables' => count($messagingTables),
                 'commercial_tables' => count($commercialTables),
+                'ai_metering_tables' => count($aiMeteringTables),
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
                 'provider_records' => 0,
