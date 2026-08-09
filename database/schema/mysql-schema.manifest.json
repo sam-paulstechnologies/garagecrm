@@ -170,7 +170,8 @@
   "first_pending_migration": "2026_08_05_000001_create_messaging_core_tables",
   "pending_migrations": [
     "2026_08_05_000001_create_messaging_core_tables",
-    "2026_08_10_000001_create_commercial_foundation"
+    "2026_08_10_000001_create_commercial_foundation",
+    "2026_08_10_000002_create_ai_monitoring_metering"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -450,12 +451,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds the versioned commercial catalogue, subscription, entitlement, usage, audit, and provider-event foundation without altering baseline operational data."
+    },
+    {
+      "migration": "2026_08_10_000002_create_ai_monitoring_metering",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds tenant-scoped HMAC customer-period metering and cost-safe AI analysis telemetry without copying customer data into the commercial usage ledger."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e",
-    "cycle_two_fingerprint": "8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e",
+    "cycle_one_fingerprint": "163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb",
+    "cycle_two_fingerprint": "163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

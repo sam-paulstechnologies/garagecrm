@@ -8,6 +8,31 @@ use Illuminate\Support\Facades\Log;
 class NlpService
 {
     /**
+     * Run observational analysis with cost-safe telemetry. The result contains
+     * no prompt text, credentials, or customer identity.
+     *
+     * @return array{analysis: array, telemetry: array<string, int|string|null>}
+     */
+    public function analyzeWithTelemetry(string $text, array $context = []): array
+    {
+        $started = hrtime(true);
+        $analysis = $this->analyze($text, $context);
+
+        return [
+            'analysis' => $analysis,
+            'telemetry' => [
+                'provider' => 'openai',
+                'model' => $this->model(),
+                'input_tokens' => null,
+                'output_tokens' => null,
+                'total_tokens' => null,
+                'estimated_cost_micros' => null,
+                'duration_ms' => (int) round((hrtime(true) - $started) / 1_000_000),
+            ],
+        ];
+    }
+
+    /**
      * Main entry: analyze incoming text and return structured JSON.
      */
     public function analyze(string $text, array $context = []): array

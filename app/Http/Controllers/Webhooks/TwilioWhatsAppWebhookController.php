@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Models\MessageLog;
-use App\Services\Leads\LeadConversionService;
+use App\Services\WhatsApp\InboundMessageRecorder;
 
 use Twilio\TwiML\MessagingResponse;
 use Twilio\Security\RequestValidator;
@@ -67,6 +67,19 @@ class TwilioWhatsAppWebhookController
         | Dispatch job
         |--------------------------------------------------------------------------
         */
+        $raw = app(InboundMessageRecorder::class)->record([
+            'company_id' => (int) $companyId,
+            'provider_message_id' => filled($sid) ? (string) $sid : null,
+            'from' => $fromRaw,
+            'to' => $toRaw,
+            'body' => $body !== '' ? $body : ($numMedia > 0 ? '[Media]' : ''),
+            'meta' => [
+                'provider' => 'twilio',
+                'has_media' => $numMedia > 0,
+                'num_media' => $numMedia,
+            ],
+        ]);
+
         ProcessInboundWhatsApp::dispatch(
             from: $fromRaw,
             to: $toRaw,
@@ -76,7 +89,8 @@ class TwilioWhatsAppWebhookController
             profileName: $profile,
             provider: 'twilio',
             payload: $payload,
-            companyId: (int) $companyId
+            companyId: (int) $companyId,
+            messageLogId: $raw->id,
         );
 
         /*
@@ -86,17 +100,15 @@ class TwilioWhatsAppWebhookController
         */
         $twiml = new MessagingResponse();
 
-        $twiml->message(
-            $body === ''
-                ? "👋 Hi! Please send a message so we can assist you."
-                : "👋 Got it! Processing your request..."
-        );
+        // Customer-facing replies are emitted only by the queued lifecycle after
+        // commercial and environment safety checks. Twilio receives an empty
+        // acknowledgement here.
 
         return response($twiml, Response::HTTP_OK)
             ->header('Content-Type', 'text/xml');
     }
 
-    public function status(Request $request, LeadConversionService $converter)
+    public function status(Request $request)
     {
         /*
         |--------------------------------------------------------------------------
@@ -144,31 +156,8 @@ class TwilioWhatsAppWebhookController
             return response('OK', Response::HTTP_OK);
         }
 
-        $meta = is_array($log->meta) ? $log->meta : [];
-
         if ($log->provider_status !== $status) {
             $log->update(['provider_status' => $status]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Convert on delivery (safe)
-        |--------------------------------------------------------------------------
-        */
-        if ($status === 'delivered' && empty($meta['converted']) && $log->lead_id) {
-            try {
-                $converter->ensureClientAndOpportunity((int) $log->lead_id, (int) $log->company_id);
-
-                $meta['converted'] = true;
-                $log->update(['meta' => $meta]);
-
-            } catch (\Throwable $e) {
-                Log::error('[WA] Conversion failed', [
-                    'company_id' => $log->company_id,
-                    'sid' => $sid,
-                    'err' => $e->getMessage(),
-                ]);
-            }
         }
 
         return response('OK', Response::HTTP_OK);

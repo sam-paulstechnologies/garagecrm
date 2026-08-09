@@ -26,6 +26,13 @@ $aiPro = array_merge($performance, [
 return [
     'catalogue_version' => '2026-launch-v1',
     'effective_from' => '2026-08-01 00:00:00',
+    'ai_metering' => [
+        // A dedicated staging/production secret is preferred. APP_KEY is a safe
+        // per-environment fallback and keeps raw customer identifiers out of the
+        // commercial usage ledger.
+        'hmac_key' => env('AI_METERING_HMAC_KEY') ?: env('APP_KEY'),
+        'max_analysis_runs_per_customer_period' => (int) env('AI_MAX_ANALYSIS_RUNS_PER_CUSTOMER_PERIOD', 100),
+    ],
     'plans' => [
         Plans::FREE => [
             'name' => 'Free', 'rank' => 0, 'description' => 'See what you are missing.',

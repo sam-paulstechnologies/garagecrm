@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Commercial\EntitlementService;
+use App\Services\Ai\AiMonitoringMeter;
 use App\Models\MessageLog;
 use App\Models\Shared\Communication;
+use App\Models\System\Company;
 use App\Models\User;
 use App\Notifications\ManagerLeadHandoffNotification;
 use App\Services\Ai\NlpService;
@@ -12,8 +15,8 @@ use App\Services\Conversation\ConversationGuard;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\MessageLogger;
 use App\Services\Feedback\FeedbackResponseService;
-use App\Services\Leads\LeadConversionService;
 use App\Services\Leads\LeadResolver;
+use App\Services\WhatsApp\InboundMessageRecorder;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Bus\Queueable;
@@ -44,7 +47,8 @@ class ProcessInboundWhatsApp implements ShouldQueue
         public ?string $profileName = null,
         public string $provider = 'twilio',
         public array $payload = [],
-        public ?int $companyId = null
+        public ?int $companyId = null,
+        public ?int $messageLogId = null,
     ) {
         $this->onConnection('database');
         $this->onQueue('default');
@@ -74,33 +78,48 @@ class ProcessInboundWhatsApp implements ShouldQueue
         $text = trim((string) $this->body);
         $hasMedia = $this->numMedia > 0;
 
-        if ($text === '' && ! $hasMedia) {
-            Log::info('[WA] Empty inbound ignored', [
+        /*
+        |--------------------------------------------------------------------------
+        | Raw persistence comes first
+        |--------------------------------------------------------------------------
+        |
+        | Meta/Twilio ingress normally creates this row before dispatch. The
+        | fallback keeps direct/internal dispatches safe as well. No CRM, NLP or
+        | outbound failure can erase the accepted customer message.
+        */
+
+        $recorder = app(InboundMessageRecorder::class);
+        $inboundLog = $this->messageLogId
+            ? MessageLog::query()
+                ->where('company_id', $companyId)
+                ->whereKey($this->messageLogId)
+                ->first()
+            : null;
+
+        $inboundLog ??= $recorder->record([
+            'company_id' => $companyId,
+            'provider_message_id' => $this->sid,
+            'to' => $toE164,
+            'from' => $fromE164,
+            'body' => $text !== '' ? $text : ($hasMedia ? '[Media]' : ''),
+            'meta' => array_merge($this->payload, [
+                'has_media' => $hasMedia,
+                'num_media' => $this->numMedia,
+                'provider' => $this->provider,
+            ]),
+        ]);
+
+        if ($this->messageLogId === null && $this->sid && ! $inboundLog->wasRecentlyCreated) {
+            Log::info('[WA] Duplicate provider message ignored before enrichment', [
                 'company_id' => $companyId,
-                'from' => $fromE164,
                 'sid' => $this->sid,
             ]);
 
             return;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Duplicate provider message protection
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            $this->sid &&
-            MessageLog::where('company_id', $companyId)
-                ->where('provider_message_id', $this->sid)
-                ->exists()
-        ) {
-            Log::info('[WA] Duplicate SID ignored', [
-                'company_id' => $companyId,
-                'sid' => $this->sid,
-            ]);
-
+        if ($text === '' && ! $hasMedia) {
+            $recorder->markLifecycle($inboundLog, 'ignored_empty');
             return;
         }
 
@@ -124,6 +143,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'from' => $fromE164,
             ]);
 
+            $recorder->markLifecycle($inboundLog, 'lead_resolution_failed', 'lead_unavailable');
             return;
         }
 
@@ -134,24 +154,8 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'lead_company_id' => $lead->company_id,
             ]);
 
+            $recorder->markLifecycle($inboundLog, 'tenant_mismatch', 'lead_company_mismatch');
             return;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Ensure client/opportunity
-        |--------------------------------------------------------------------------
-        */
-
-        try {
-            app(LeadConversionService::class)->ensureClientAndOpportunity($lead->id, $companyId);
-            $lead->refresh();
-        } catch (\Throwable $e) {
-            Log::warning('[WA] Conversion failed', [
-                'company_id' => $companyId,
-                'lead_id' => $lead->id,
-                'error' => $e->getMessage(),
-            ]);
         }
 
         /*
@@ -162,6 +166,13 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         $conversation = app(ConversationService::class)->resolve($companyId, $lead);
         $conversationId = $conversation?->id;
+
+        $inboundLog->forceFill([
+            'lead_id' => $lead->id,
+            'conversation_id' => $conversationId,
+            'to_number' => $toE164,
+            'from_number' => $fromE164,
+        ])->save();
 
         /*
         |--------------------------------------------------------------------------
@@ -174,35 +185,82 @@ class ProcessInboundWhatsApp implements ShouldQueue
             'confidence' => 0,
         ];
 
+        $meteringDecision = null;
+        $telemetry = [];
+
         if ($text !== '') {
             try {
-                $nlp = app(NlpService::class)->analyze($text);
+                $company = Company::query()->findOrFail($companyId);
+                $meteringDecision = app(AiMonitoringMeter::class)->claim(
+                    company: $company,
+                    messagingConnectionId: filled($this->payload['messaging_connection_id'] ?? null)
+                        ? (int) $this->payload['messaging_connection_id']
+                        : null,
+                    externalIdentifier: $fromE164,
+                    message: $inboundLog,
+                    connectionScope: $this->provider.'|'.$toE164,
+                );
+
+                if ($meteringDecision->allowed) {
+                    $result = app(NlpService::class)->analyzeWithTelemetry($text);
+                    $nlp = $result['analysis'];
+                    $telemetry = $result['telemetry'];
+                    app(AiMonitoringMeter::class)->recordRun(
+                        $meteringDecision,
+                        $company,
+                        $inboundLog,
+                        'completed',
+                        $telemetry,
+                    );
+                } else {
+                    app(AiMonitoringMeter::class)->recordRun(
+                        $meteringDecision,
+                        $company,
+                        $inboundLog,
+                        $meteringDecision->status,
+                    );
+                }
             } catch (\Throwable $e) {
                 Log::warning('[NlpService] Chat failed ' . $e->getMessage());
+
+                if ($meteringDecision && isset($company)) {
+                    app(AiMonitoringMeter::class)->recordRun(
+                        $meteringDecision,
+                        $company,
+                        $inboundLog,
+                        'failed',
+                        $telemetry + ['error_code' => 'analysis_failed'],
+                    );
+                }
             }
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Log inbound
+        | Enrich the already durable inbound row
         |--------------------------------------------------------------------------
         */
 
-        $inboundLog = app(MessageLogger::class)->logInbound([
-            'company_id' => $companyId,
-            'lead_id' => $lead->id,
-            'conversation_id' => $conversationId,
-            'to' => $toE164,
-            'from' => $fromE164,
-            'body' => $text !== '' ? $text : '[Media]',
-            'provider_message_id' => $this->sid,
-            'meta' => array_merge($this->payload, [
-                'has_media' => $hasMedia,
-                'num_media' => $this->numMedia,
-                'provider' => $this->provider,
+        $meta = is_array($inboundLog->meta) ? $inboundLog->meta : [];
+        $enrichment = [
+            'meta' => array_merge($meta, [
+                'lifecycle_stage' => 'crm_enriched',
+                'ai_metering_status' => $meteringDecision?->status ?? ($text === '' ? 'skipped_no_text' : 'metering_failed'),
+                'ai_metering_reason' => $meteringDecision?->reason,
+                'ai_metering_new_customer' => $meteringDecision?->newCustomer ?? false,
+                'crm_enriched_at' => now()->toIso8601String(),
             ]),
-            'ai_analysis' => $nlp,
-        ]);
+        ];
+        if (Schema::hasColumn('message_logs', 'ai_analysis')) {
+            $enrichment['ai_analysis'] = $nlp;
+        }
+        if (Schema::hasColumn('message_logs', 'ai_confidence')) {
+            $enrichment['ai_confidence'] = $nlp['confidence'] ?? null;
+        }
+        if (Schema::hasColumn('message_logs', 'ai_intent')) {
+            $enrichment['ai_intent'] = $nlp['intent'] ?? null;
+        }
+        $inboundLog->forceFill($enrichment)->save();
 
         /*
         |--------------------------------------------------------------------------
@@ -592,6 +650,15 @@ class ProcessInboundWhatsApp implements ShouldQueue
         ?string $lockAction = null,
         int $lockTtlSeconds = 300
     ): void {
+        if (! app(EntitlementService::class)->can($companyId, 'whatsapp_transactional')) {
+            Log::notice('[WA] Transactional response denied by commercial entitlement', [
+                'company_id' => $companyId,
+                'event_key' => $eventKey,
+            ]);
+
+            return;
+        }
+
         $lockAction = $lockAction ?: $eventKey;
         $lockKey = sha1($toE164 . '|' . $eventKey . '|' . ($vars['booking_id'] ?? '') . '|' . ($vars['job_id'] ?? ''));
 
@@ -1004,6 +1071,15 @@ class ProcessInboundWhatsApp implements ShouldQueue
         array $context = []
     ): void {
         try {
+            if (! app(EntitlementService::class)->can($companyId, 'whatsapp_transactional')) {
+                Log::notice('[WA] Session response denied by commercial entitlement', [
+                    'company_id' => $companyId,
+                    'lead_id' => $leadId,
+                ]);
+
+                return;
+            }
+
             /** @var WhatsAppService $whatsapp */
             $whatsapp = app(WhatsAppService::class);
 

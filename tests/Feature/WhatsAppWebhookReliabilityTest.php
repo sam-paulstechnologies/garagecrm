@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessInboundWhatsApp;
+use App\Commercial\Plans;
+use App\Commercial\SubscriptionManager;
 use App\Models\MessageLog;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Database\Schema\Blueprint;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
+use Database\Seeders\CommercialFoundationSeeder;
 
 class WhatsAppWebhookReliabilityTest extends TestCase
 {
@@ -23,6 +26,7 @@ class WhatsAppWebhookReliabilityTest extends TestCase
         parent::setUp();
 
         $this->prepareWebhookSchema();
+        $this->seed(CommercialFoundationSeeder::class);
         config([
             'services.meta.app_secret' => 'test-meta-app-secret',
             'services.meta_leads.app_secret' => 'test-meta-app-secret',
@@ -104,7 +108,6 @@ class WhatsAppWebhookReliabilityTest extends TestCase
             'meta_phone_number_id' => 'test-phone-number-id',
             'is_whatsapp_active' => true,
         ]);
-
         $response = $this->signedMetaPost([
             'object' => 'whatsapp_business_account',
             'entry' => [[
@@ -221,6 +224,10 @@ class WhatsAppWebhookReliabilityTest extends TestCase
             'meta_access_token' => 'test-token',
             'is_whatsapp_active' => true,
         ]);
+        app(SubscriptionManager::class)->assignPlan(
+            \App\Models\System\Company::query()->findOrFail($companyId),
+            Plans::SERVICE,
+        );
 
         $this->lead($companyId, '971586934377');
 
@@ -372,6 +379,7 @@ class WhatsAppWebhookReliabilityTest extends TestCase
     {
         return (int) DB::table('companies')->insertGetId(array_merge([
             'name' => 'Webhook Garage',
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ], $overrides));

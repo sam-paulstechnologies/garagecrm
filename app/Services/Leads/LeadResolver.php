@@ -3,7 +3,6 @@
 namespace App\Services\Leads;
 
 use App\Models\Client\Lead;
-use App\Models\Client\Opportunity;
 use App\Models\LeadDuplicate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -159,26 +158,6 @@ class LeadResolver
                     'source' => $source,
                 ]);
 
-                /*
-                |--------------------------------------------------------------------------
-                | 5. Auto Opportunity For WhatsApp Leads
-                |--------------------------------------------------------------------------
-                | Website flow can create/update opportunity later through conversion service.
-                */
-
-                if ($source === 'whatsapp') {
-                    Opportunity::firstOrCreate([
-                        'lead_id' => $lead->id,
-                        'company_id' => $companyId,
-                    ], [
-                        'client_id' => $client->id,
-                        'title' => ($lead->name ?: 'WhatsApp Lead') . ' Opportunity',
-                        'stage' => Opportunity::STAGE_NEW,
-                        'source' => 'whatsapp',
-                        'ai_status' => 'collecting_details',
-                    ]);
-                }
-
                 return $lead;
             });
 
@@ -198,7 +177,9 @@ class LeadResolver
     protected function initialStatusForSource(string $source): string
     {
         return match ($source) {
-            'whatsapp' => Lead::STATUS_QUALIFIED,
+            // An inbound greeting is an enquiry, not a qualified commercial
+            // opportunity. Qualification is performed by the conversation flow.
+            'whatsapp' => Lead::STATUS_NEW,
             default => Lead::STATUS_NEW,
         };
     }

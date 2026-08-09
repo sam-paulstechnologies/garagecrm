@@ -157,11 +157,12 @@ COMMIT;
 '@ | Out-Null
 
     $assertions = @(Invoke-MySql @'
-SELECT COUNT(*)=118 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
+SELECT COUNT(*)=120 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=42 FROM migrations;
+SELECT COUNT(*)=43 FROM migrations;
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
 SELECT COUNT(*)=8 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('plan_versions','prices','plan_entitlements','subscriptions','company_entitlement_overrides','entitlement_usages','entitlement_audit_logs','billing_provider_events');
+SELECT COUNT(*)=2 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('ai_customer_usages','ai_analysis_runs');
 SELECT COUNT(*)=5 FROM plans WHERE code IN ('free','service','growth','performance','ai_pro');
 SELECT COUNT(*)=(SELECT COUNT(*) FROM companies) FROM subscriptions;
 SELECT COUNT(*)=2 FROM companies;
@@ -193,7 +194,7 @@ SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() 
     return [ordered] @{
         cycle = $CycleName
         fingerprint = $match.Value
-        base_tables = 118
+        base_tables = 120
         views = 2
         foreign_keys_checked = $foreignKeys
         routes = $routeCount
@@ -224,7 +225,11 @@ try {
     $safetyPath = Join-Path $repositoryRoot 'database/schema/mysql-schema.safety.json'
     $safety = Get-Content -Raw -LiteralPath $safetyPath | ConvertFrom-Json
     if ($safety.status -ne 'passed' -or -not [string]::Equals([string] $safety.baseline_sha256, $baselineHash, [StringComparison]::Ordinal)) { throw 'Machine-readable schema safety report is missing or stale.' }
-    $expectedPendingMigrations = @('2026_08_05_000001_create_messaging_core_tables', '2026_08_10_000001_create_commercial_foundation')
+    $expectedPendingMigrations = @(
+        '2026_08_05_000001_create_messaging_core_tables',
+        '2026_08_10_000001_create_commercial_foundation',
+        '2026_08_10_000002_create_ai_monitoring_metering'
+    )
     if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
         -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {
         throw 'Manifest pending-migration cutoff is not approved.'
