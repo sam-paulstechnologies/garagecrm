@@ -43,9 +43,7 @@ jobs:
           php-version: '8.3'
           extensions: mbstring, intl, pdo_mysql, pdo_sqlite, bcmath, gd, curl, zip, xml
           coverage: none
-
-      - name: Install test dependencies
-        run: composer install --prefer-dist --no-interaction --optimize-autoloader
+          tools: composer:2.8.12
 
       - name: Prepare ephemeral test application key
         shell: bash
@@ -56,6 +54,9 @@ jobs:
           test_key="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"
           printf 'APP_KEY=%s\n' "$test_key" >> "$GITHUB_ENV"
           unset test_key
+
+      - name: Install test dependencies
+        run: composer install --prefer-dist --no-interaction --optimize-autoloader
 
       - name: Validate canonical schema baseline
         shell: pwsh
