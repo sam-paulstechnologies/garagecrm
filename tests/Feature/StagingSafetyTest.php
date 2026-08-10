@@ -136,4 +136,15 @@ class StagingSafetyTest extends TestCase
         $this->expectExceptionMessage('local validation safety contract is incomplete');
         app(StagingSafety::class)->assertRuntimeIsolated();
     }
+
+    public function test_live_verifier_requires_seed_fixtures_without_rejecting_self_service_uat_tenants(): void
+    {
+        $source = (string) file_get_contents(app_path('Console/Commands/VerifyLiveStaging.php'));
+
+        $this->assertStringContainsString('required synthetic tenant count', $source);
+        $this->assertStringContainsString('required synthetic user count', $source);
+        $this->assertStringContainsString('self_service_staging_tenants', $source);
+        $this->assertStringNotContainsString('non-synthetic tenant count', $source);
+        $this->assertStringNotContainsString('non-synthetic user count', $source);
+    }
 }

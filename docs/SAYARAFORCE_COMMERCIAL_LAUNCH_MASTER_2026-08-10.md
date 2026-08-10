@@ -161,6 +161,7 @@ Validation evidence:
 - Focused WhatsApp/commercial/tenant-isolation coverage passed 125 tests with 738 assertions. The complete suite passed 270 tests with 1,689 assertions; PHP lint passed 696 files and the frontend production build passed with only the existing Browserslist/font/chunk notices.
 - Two guarded disposable MySQL cycles passed with 127 base tables, two valid views, 47 migration records, 163 foreign keys, 462 routes, two synthetic tenants, and identical fingerprint `9bd58c304af5a43125c69066b458436c0f2ea0f701866c9bb992302ab8304dd3`.
 - Meta configuration remains parked, outbound WhatsApp/SMS remain disabled, mail remains log-only, and no production resource or provider asset is part of this correction.
+- Initial staging workflow `31427555348` passed source, test, build, deployment, additive migration and exact fingerprint gates, then correctly stopped before marker/cache completion because the original live verifier treated one legitimate public-registration UAT tenant as non-synthetic. The verifier now requires the original two seeded tenants and four seeded users, explicit subscriptions, isolated schema, synthetic operational fixtures and zero provider credentials, while allowing additional self-service staging tenants without inspecting or reporting their identities.
 
 ## Human dependency queue
 

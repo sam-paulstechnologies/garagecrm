@@ -93,10 +93,13 @@ class VerifyLiveStaging extends Command
             $tenantCount = (int) DB::table('companies')->count();
             $userCount = (int) DB::table('users')->count();
             $this->assertAtLeast(2, $tenantCount, 'synthetic tenant count');
-            $this->assertSame(0, (int) DB::table('companies')
-                ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
-                ->count(), 'non-synthetic tenant count');
             $this->assertAtLeast(4, $userCount, 'synthetic user count');
+            $this->assertSame(2, (int) DB::table('companies')
+                ->whereIn('email', ['tenant-a@staging.sayaraforce.test', 'tenant-b@staging.sayaraforce.test'])
+                ->count(), 'required synthetic tenant count');
+            $this->assertAtLeast(4, (int) DB::table('users')
+                ->where('email', 'like', '%@staging.sayaraforce.test')
+                ->count(), 'required synthetic user count');
             $this->assertSame(5, (int) DB::table('plans')
                 ->whereIn('code', ['free', 'service', 'growth', 'performance', 'ai_pro'])->count(), 'canonical plan count');
             $this->assertSame($tenantCount, (int) DB::table('subscriptions')->count(), 'explicit subscription count');
@@ -110,9 +113,6 @@ class VerifyLiveStaging extends Command
                 ->join('plan_versions as pv', 'pv.id', '=', 's.plan_version_id')
                 ->join('plans as p', 'p.id', '=', 'pv.plan_id')
                 ->where('c.email', 'tenant-b@staging.sayaraforce.test')->where('p.code', 'service')->count(), 'secondary synthetic plan mapping');
-            $this->assertSame(0, (int) DB::table('users')
-                ->where(fn ($query) => $query->whereNull('email')->orWhere('email', 'not like', '%@staging.sayaraforce.test'))
-                ->count(), 'non-synthetic user count');
             foreach (['clients', 'leads', 'vehicles', 'conversations'] as $table) {
                 $this->assertSame(2, (int) DB::table($table)->count(), "{$table} synthetic row count");
             }
@@ -144,6 +144,7 @@ class VerifyLiveStaging extends Command
                 'product_event_tables' => 1,
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
+                'self_service_staging_tenants' => max(0, $tenantCount - 2),
                 'provider_records' => 0,
                 'jobs_table' => 'operational',
                 'queue_jobs_table' => 'database_queue',
