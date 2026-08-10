@@ -1,7 +1,9 @@
 {{-- resources/views/admin/company/partials/current-plan.blade.php --}}
 
 @php
-    $plan = $company->plan ?? null;
+    $subscription = $company->subscription()->with('planVersion.plan')->first();
+    $plan = $subscription?->planVersion?->plan;
+    $planIdentity = app(\App\Commercial\EntitlementService::class)->planIdentity($company);
 
     $features = [];
 
@@ -39,9 +41,7 @@
                 Trial Active
             </span>
         @else
-            <span class="sf-badge-orange">
-                Growth Plan
-            </span>
+            <x-commercial-plan-badge :company="$company" class="sf-badge-orange" />
         @endif
     </div>
 
@@ -58,7 +58,7 @@
                     </div>
 
                     <div class="mt-2 text-xl font-extrabold text-white">
-                        {{ $plan->name ?? 'Growth Plan' }}
+                        {{ $planIdentity['label'] }}
                     </div>
                 </div>
 

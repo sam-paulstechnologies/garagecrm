@@ -10,6 +10,7 @@ use App\Messaging\Exceptions\MessagingProvisioningException;
 use App\Messaging\Models\MessagingConnection;
 use App\Messaging\Models\MessagingConsent;
 use App\Messaging\Models\MessagingOnboardingSession;
+use App\Messaging\Models\MessagingNumberClaim;
 use App\Messaging\Models\MessagingPhoneNumber;
 use App\Messaging\Services\MessagingAuditService;
 use App\Messaging\Services\TokenService;
@@ -33,6 +34,7 @@ class ProvisioningService
         private readonly StagingSafety $stagingSafety,
         private readonly ResourceLimitService $resourceLimits,
         private readonly ProductFunnelMilestoneRecorder $milestones,
+        private readonly PhoneNumberNormalizer $phoneNumbers,
     ) {}
 
     public function complete(Company $company, User $user, array $input): array
@@ -64,8 +66,14 @@ class ProvisioningService
             $waba = $this->meta->getWaba($wabaId, $token);
             $businessId = $this->resolveBusinessId($waba, $input['business_id'] ?? null, $token);
             $phone = $this->resolvePhone($wabaId, $input['phone_number_id'] ?? null, $token, $session->connection_mode);
+            $this->assertClaimMatchesProvider($session, $phone);
             $this->stagingSafety->assertProviderAssetsAllowed($wabaId, (string) ($phone['id'] ?? ''));
-            $this->resourceLimits->assertCanConnectPhone($company, 'meta_whatsapp', (string) $phone['id']);
+            $this->resourceLimits->assertCanConnectPhone(
+                $company,
+                'meta_whatsapp',
+                (string) $phone['id'],
+                $session->messaging_number_claim_id,
+            );
 
             $connection = $this->persistDiscoveredAssets(
                 $company,
@@ -123,6 +131,11 @@ class ProvisioningService
                 MessagingConsent::query()
                     ->where('messaging_onboarding_session_id', $session->id)
                     ->update(['messaging_connection_id' => $locked->id]);
+                if ($session->messaging_number_claim_id) {
+                    MessagingNumberClaim::query()->whereKey($session->messaging_number_claim_id)->update([
+                        'status' => MessagingNumberClaim::READY,
+                    ]);
+                }
             });
 
             $this->audit->record($company->id, $connection->id, $user->id, $connection->product_key,
@@ -274,6 +287,28 @@ class ProvisioningService
         return $phone;
     }
 
+    private function assertClaimMatchesProvider(MessagingOnboardingSession $session, array $phone): void
+    {
+        if (! $session->messaging_number_claim_id) {
+            return;
+        }
+
+        $claim = $session->numberClaim()->first();
+        if (! $claim || (int) $claim->company_id !== (int) $session->company_id) {
+            throw new MessagingProvisioningException('number_claim_missing', 'The saved WhatsApp number could not be verified. Start again.');
+        }
+
+        try {
+            $providerNumber = $this->phoneNumbers->normalize((string) ($phone['display_phone_number'] ?? ''));
+        } catch (\InvalidArgumentException) {
+            throw new MessagingProvisioningException('provider_number_missing', 'Meta did not return the number needed to verify this request.');
+        }
+
+        if (! hash_equals((string) $claim->phone_e164, $providerNumber)) {
+            throw new MessagingProvisioningException('claimed_number_mismatch', 'Meta returned a different number. Nothing was connected.');
+        }
+    }
+
     private function persistDiscoveredAssets(Company $company, User $user, MessagingOnboardingSession $session, array $tokenPayload, string $token, string $wabaId, ?string $businessId, array $phone, string $sessionEvent): MessagingConnection
     {
         $conflict = MessagingPhoneNumber::query()
@@ -313,6 +348,7 @@ class ProvisioningService
                 [
                     'messaging_connection_id' => $connection->id,
                     'display_phone_number' => $phone['display_phone_number'] ?? null,
+                    'phone_e164' => $session->numberClaim?->phone_e164 ?? $this->normaliseProviderPhone($phone),
                     'verified_name' => $phone['verified_name'] ?? null,
                     'display_name_status' => $phone['name_status'] ?? null,
                     'quality_rating' => $phone['quality_rating'] ?? null,
@@ -323,6 +359,14 @@ class ProvisioningService
                 ],
             );
             MessagingPhoneNumber::query()->where('messaging_connection_id', $connection->id)->where('id', '!=', $phoneModel->id)->update(['is_primary' => false]);
+
+            if ($session->messaging_number_claim_id) {
+                MessagingNumberClaim::query()->whereKey($session->messaging_number_claim_id)->update([
+                    'messaging_phone_number_id' => $phoneModel->id,
+                    'status' => MessagingNumberClaim::META_VERIFIED,
+                    'meta_verified_at' => now(),
+                ]);
+            }
 
             $session->forceFill([
                 'messaging_connection_id' => $connection->id,
@@ -338,6 +382,15 @@ class ProvisioningService
 
             return $connection;
         });
+    }
+
+    private function normaliseProviderPhone(array $phone): ?string
+    {
+        try {
+            return $this->phoneNumbers->normalize((string) ($phone['display_phone_number'] ?? ''));
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
     }
 
     private function assertSessionEvent(string $mode, string $event): void

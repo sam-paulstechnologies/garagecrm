@@ -8,6 +8,7 @@ use App\Messaging\Exceptions\MessagingProvisioningException;
 use App\Messaging\Models\MessagingConnection;
 use App\Messaging\Models\MessagingConsent;
 use App\Messaging\Models\MessagingOnboardingSession;
+use App\Messaging\Models\MessagingNumberClaim;
 use App\Messaging\Services\MessagingAuditService;
 use App\Models\System\Company;
 use App\Models\User;
@@ -37,11 +38,30 @@ class EmbeddedSignupService
         return $this->meta->signupConfiguration($mode);
     }
 
-    public function start(Company $company, User $user, string $mode, bool $consentAccepted): array
+    public function start(
+        Company $company,
+        User $user,
+        string $mode,
+        bool $consentAccepted,
+        ?int $numberClaimId = null,
+    ): array
     {
         $this->assertMode($mode);
         if (! $consentAccepted) {
             throw new MessagingProvisioningException('consent_required', 'Accept the messaging consent before connecting WhatsApp.');
+        }
+
+        $numberClaim = $numberClaimId
+            ? MessagingNumberClaim::query()
+                ->whereKey($numberClaimId)
+                ->where('company_id', $company->id)
+                ->where('connection_mode', $mode)
+                ->first()
+            : null;
+        $hasExistingVerifiedNumber = $this->currentConnection($company)?->phoneNumbers->isNotEmpty() ?? false;
+
+        if (! $numberClaim && ! $hasExistingVerifiedNumber) {
+            throw new MessagingProvisioningException('number_required', 'Add your WhatsApp number before opening Meta.');
         }
 
         $productKey = (string) config('messaging.default_product', 'sayaraforce');
@@ -50,8 +70,9 @@ class EmbeddedSignupService
             throw new MessagingProvisioningException('meta_not_configured', 'This WhatsApp connection option is not configured yet.');
         }
 
-        $issued = DB::transaction(function () use ($company, $user, $mode, $productKey): array {
+        $issued = DB::transaction(function () use ($company, $user, $mode, $productKey, $numberClaim): array {
             $issued = $this->states->issue((int) $company->id, (int) $user->id, $productKey, $mode);
+            $issued['session']->forceFill(['messaging_number_claim_id' => $numberClaim?->id])->save();
 
             MessagingConsent::query()->create([
                 'company_id' => $company->id,

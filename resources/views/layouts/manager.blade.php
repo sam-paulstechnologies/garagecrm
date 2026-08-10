@@ -1243,7 +1243,7 @@
                     >
 
                     <span class="manager-brand-text">
-                        <span class="manager-brand-badge">Growth Plan</span>
+                        <x-commercial-plan-badge :company="auth()->user()?->company" class="manager-brand-badge" />
                     </span>
                 </a>
 

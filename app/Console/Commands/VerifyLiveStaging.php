@@ -24,7 +24,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(126, $baseTables, 'base-table count');
+            $this->assertSame(127, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -36,6 +36,9 @@ class VerifyLiveStaging extends Command
                 if (! Schema::hasTable($table)) {
                     throw new RuntimeException("Missing messaging table: {$table}.");
                 }
+            }
+            if (! Schema::hasTable('messaging_number_claims')) {
+                throw new RuntimeException('Missing messaging number-claim table.');
             }
 
             $commercialTables = [
@@ -133,6 +136,7 @@ class VerifyLiveStaging extends Command
                 'base_tables' => $baseTables,
                 'views' => $views,
                 'messaging_tables' => count($messagingTables),
+                'messaging_number_claim_tables' => 1,
                 'commercial_tables' => count($commercialTables),
                 'ai_metering_tables' => count($aiMeteringTables),
                 'billing_tables' => count($billingTables),

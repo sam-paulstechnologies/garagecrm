@@ -6,7 +6,7 @@ use App\Messaging\Enums\ConnectionMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StartMessagingWhatsAppOnboardingRequest extends FormRequest
+class SaveMessagingWhatsAppNumberRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -16,9 +16,10 @@ class StartMessagingWhatsAppOnboardingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'number_claim_id' => ['nullable', 'integer', 'min:1'],
+            'country_code' => ['nullable', 'string', 'max:8', 'regex:/^\+?[0-9\s()-]+$/'],
+            'phone_number' => ['required', 'string', 'max:32'],
+            'label' => ['nullable', 'string', 'max:80'],
             'connection_mode' => ['required', Rule::enum(ConnectionMode::class)],
-            'consent_accepted' => ['required', 'accepted'],
         ];
     }
 }

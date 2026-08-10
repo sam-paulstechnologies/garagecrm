@@ -7,6 +7,7 @@ use App\Commercial\SubscriptionManager;
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Messaging\Enums\ConnectionStatus;
 use App\Messaging\Models\MessagingConnection;
+use App\Messaging\Models\MessagingNumberClaim;
 use App\Messaging\Models\MessagingPhoneNumber;
 use App\Messaging\WhatsApp\MetaApiClient;
 use App\Models\System\Company;
@@ -52,8 +53,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     public function test_authorised_tenant_admin_can_start_onboarding_with_signed_state_nonce_and_consent(): void
     {
         [$company, $admin] = $this->tenant();
+        $claim = $this->numberClaim($admin);
 
         $response = $this->actingAs($admin)->postJson(route('admin.messaging.whatsapp.start'), [
+            'number_claim_id' => $claim->id,
             'connection_mode' => 'business_app_onboarding',
             'consent_accepted' => true,
         ]);
@@ -79,11 +82,9 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         $this->actingAs($admin)->get(route('admin.messaging.whatsapp.index'))
             ->assertOk()
             ->assertSee('Connect your garage WhatsApp')
-            ->assertSee('Connect existing Business app number')
-            ->assertSee('Connect dedicated number')
-            ->assertSee('SayaraForce will never ask for your Facebook password.')
-            ->assertSee('business-config', false)
-            ->assertSee('cloud-config', false)
+            ->assertSee('Add your WhatsApp number')
+            ->assertSee('Keep using WhatsApp Business App')
+            ->assertSee('Dedicated WhatsApp number')
             ->assertDontSee('access token')
             ->assertDontSee('subscribed_apps')
             ->assertDontSee('test-app-secret');
@@ -126,6 +127,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         $this->assertSame('sayaraforce', $connection->product_key);
         $this->assertSame(ConnectionStatus::Connected, $connection->status);
         $this->assertDatabaseHas('messaging_phone_numbers', ['messaging_connection_id' => $connection->id, 'phone_number_id' => '300300']);
+        $this->assertDatabaseHas('messaging_number_claims', [
+            'company_id' => $company->id,
+            'status' => MessagingNumberClaim::READY,
+        ]);
         $this->assertDatabaseHas('messaging_connection_checks', ['messaging_connection_id' => $connection->id, 'check_key' => 'app_subscription', 'status' => 'passed']);
         $this->assertDatabaseHas('companies', ['id' => $company->id, 'meta_waba_id' => '200200', 'meta_phone_number_id' => '300300', 'is_whatsapp_active' => true]);
         $this->assertDatabaseHas('product_events', [
@@ -244,6 +249,23 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         $this->actingAs($admin)->postJson(route('admin.messaging.whatsapp.complete'), $completion)
             ->assertUnprocessable()->assertJsonPath('reason', 'phone_not_shared');
         $this->assertDatabaseCount('messaging_connections', 0);
+    }
+
+    public function test_meta_must_return_the_same_number_the_tenant_added(): void
+    {
+        [, $admin] = $this->tenant();
+        $payload = $this->start($admin);
+        $this->fakeSuccessfulMeta(displayPhone: '+971 55 999 0000');
+
+        $this->actingAs($admin)->postJson(route('admin.messaging.whatsapp.complete'), $this->completionPayload($payload))
+            ->assertUnprocessable()
+            ->assertJsonPath('reason', 'claimed_number_mismatch');
+
+        $this->assertDatabaseCount('messaging_connections', 0);
+        $this->assertDatabaseHas('messaging_number_claims', [
+            'phone_e164' => '+971500000000',
+            'status' => MessagingNumberClaim::PENDING_META,
+        ]);
     }
 
     public function test_nested_subscription_readback_is_required_and_connection_is_not_marked_connected_early(): void
@@ -401,10 +423,25 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
 
     private function start(User $admin, string $mode = 'business_app_onboarding'): array
     {
+        $claim = $this->numberClaim($admin, $mode);
+
         return $this->actingAs($admin)->postJson(route('admin.messaging.whatsapp.start'), [
+            'number_claim_id' => $claim->id,
             'connection_mode' => $mode,
             'consent_accepted' => true,
         ])->assertOk()->json();
+    }
+
+    private function numberClaim(User $admin, string $mode = 'business_app_onboarding'): MessagingNumberClaim
+    {
+        return MessagingNumberClaim::query()->firstOrCreate(
+            ['company_id' => $admin->company_id, 'phone_e164' => '+971500000000'],
+            [
+                'created_by' => $admin->id,
+                'connection_mode' => $mode,
+                'status' => MessagingNumberClaim::PENDING_META,
+            ],
+        );
     }
 
     private function completionPayload(array $start): array
@@ -419,8 +456,9 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     private function fakeSuccessfulMeta(
         array $subscriptionPayload = ['data' => [['whatsapp_business_api_data' => ['id' => '925717083333434']]]],
         bool $isOnBusinessApp = true,
+        string $displayPhone = '+971 50 000 0000',
     ): void {
-        Http::fake(function (Request $request) use ($subscriptionPayload, $isOnBusinessApp) {
+        Http::fake(function (Request $request) use ($subscriptionPayload, $isOnBusinessApp, $displayPhone) {
             $url = $request->url();
 
             return match (true) {
@@ -431,7 +469,7 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
                     'granular_scopes' => [['scope' => 'whatsapp_business_management', 'target_ids' => ['200200']]],
                 ]]),
                 str_contains($url, '/200200/phone_numbers') => Http::response(['data' => [[
-                    'id' => '300300', 'display_phone_number' => '+971 50 000 0000', 'verified_name' => 'Demo Workspace',
+                    'id' => '300300', 'display_phone_number' => $displayPhone, 'verified_name' => 'Demo Workspace',
                     'quality_rating' => 'GREEN', 'status' => 'CONNECTED', 'code_verification_status' => 'VERIFIED',
                     'platform_type' => 'CLOUD_API', 'is_on_biz_app' => $isOnBusinessApp, 'name_status' => 'APPROVED',
                 ]]]),

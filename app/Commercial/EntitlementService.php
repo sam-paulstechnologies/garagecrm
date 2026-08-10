@@ -44,6 +44,49 @@ class EntitlementService
         return $resolved?->subscription()->value('status') ?? 'unsubscribed';
     }
 
+    /**
+     * Return the stable commercial identity shown to tenant users.
+     *
+     * This deliberately resolves through the same subscription and entitled-state
+     * rules as capability decisions. It is not cached, and it never falls back to
+     * the legacy companies.plan_id relationship or a guessed paid plan.
+     *
+     * @return array{code: ?string, label: string, state: string}
+     */
+    public function planIdentity(Company|int $company): array
+    {
+        $resolved = $this->resolveCompany($company);
+        $subscription = $resolved?->subscription()->with('planVersion.plan')->first();
+        $state = (string) ($subscription?->status ?? 'unsubscribed');
+        $code = (string) ($subscription?->planVersion?->plan?->code ?? '');
+
+        if (! $subscription?->isEntitledState() || ! in_array($code, Plans::codes(), true)) {
+            return ['code' => null, 'label' => 'UNASSIGNED', 'state' => $state];
+        }
+
+        return [
+            'code' => $code,
+            'label' => match ($code) {
+                Plans::FREE => 'FREE',
+                Plans::SERVICE => 'SERVICE',
+                Plans::GROWTH => 'GROWTH',
+                Plans::PERFORMANCE => 'PERFORMANCE',
+                Plans::AI_PRO => 'AI PRO',
+            },
+            'state' => $state,
+        ];
+    }
+
+    public function planCode(Company|int $company): ?string
+    {
+        return $this->planIdentity($company)['code'];
+    }
+
+    public function planLabel(Company|int $company): string
+    {
+        return $this->planIdentity($company)['label'];
+    }
+
     public function decide(Company|int $company, string $capability): EntitlementDecision
     {
         $resolved = $this->resolveCompany($company);

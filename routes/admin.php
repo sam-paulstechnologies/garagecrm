@@ -354,6 +354,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         */
         Route::middleware(['role:admin', 'entitled:whatsapp_connect'])->prefix('messaging/whatsapp')->name('messaging.whatsapp.')->group(function () {
             Route::get('/', [MessagingWhatsAppOnboardingController::class, 'index'])->name('index');
+            Route::post('number', [MessagingWhatsAppOnboardingController::class, 'storeNumber'])
+                ->middleware('throttle:10,1')
+                ->name('number.store');
+            Route::patch('number/{numberClaim}', [MessagingWhatsAppOnboardingController::class, 'updateNumber'])
+                ->middleware('throttle:10,1')
+                ->name('number.update');
+            Route::delete('number/{numberClaim}', [MessagingWhatsAppOnboardingController::class, 'destroyNumber'])
+                ->middleware('throttle:10,1')
+                ->name('number.destroy');
             Route::post('onboarding/session', [MessagingWhatsAppOnboardingController::class, 'start'])
                 ->middleware('throttle:5,1')
                 ->name('start');

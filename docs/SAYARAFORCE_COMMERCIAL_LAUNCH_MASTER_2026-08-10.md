@@ -152,6 +152,16 @@ Validation evidence:
 - Phase 11 adds only `2026_08_10_000005_create_product_events`. It is additive, has nullable tenant/user foreign keys with null-on-delete behavior, event/time indexes and a unique dedupe key.
 - Commit `af0d55ef48638c54fbcef432577ce966f3965408` passed workflow `31351719337`, including the exact full suite, frontend build, staging-only package deployment, additive migration, cache rebuild, marker and health checks. The independent live verifier accepted 126 base tables, two views and fingerprint `6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480`; queue Running, scheduler disabled, outbound guards closed and production isolated. Public staging returned 200 with all five catalogue tiers, while unauthenticated platform commercial metrics correctly redirected to login.
 
+## Post-launch staging UAT correction — plan identity and number claims
+
+- The global and manager shells no longer default to a hard-coded Growth label or probe obsolete company package attributes. A shared badge component now calls `EntitlementService::planIdentity`, resolves only stable canonical codes, fails closed as `UNASSIGNED`, and performs no application-level label cache. Free, Service, Growth, Performance, AI Pro, subscription switches and grandfathered canonical versions are covered.
+- `messaging_number_claims` represents a tenant-owned E.164 number before Meta verification. It is explicitly not a provider phone record and cannot carry WABA IDs, provider phone IDs, tokens or connected state. The existing `messaging_phone_numbers` table remains provider authority after Meta confirms the exact saved number.
+- Free and Service number limits are enforced by `ResourceLimitService` from `limit.whatsapp_numbers`; pending claims and verified phones share the same allowance. Duplicate, second-number, cross-tenant update/delete, provider-field spoofing, replacement and verified-connection regression cases are covered.
+- The WhatsApp page now keeps number entry available when Meta configuration is absent, defaults its UAE country-code selector to +971 while accepting international E.164 numbers, separates number/mode entry from Meta connection, and presents Number added → Meta verification → Connection → Webhook → Ready truthfully.
+- Focused WhatsApp/commercial/tenant-isolation coverage passed 125 tests with 738 assertions. The complete suite passed 270 tests with 1,689 assertions; PHP lint passed 696 files and the frontend production build passed with only the existing Browserslist/font/chunk notices.
+- Two guarded disposable MySQL cycles passed with 127 base tables, two valid views, 47 migration records, 163 foreign keys, 462 routes, two synthetic tenants, and identical fingerprint `9bd58c304af5a43125c69066b458436c0f2ea0f701866c9bb992302ab8304dd3`.
+- Meta configuration remains parked, outbound WhatsApp/SMS remain disabled, mail remains log-only, and no production resource or provider asset is part of this correction.
+
 ## Human dependency queue
 
 1. Stripe: create/verify the UAE business account, complete KYC/bank setup, provide test keys/webhook secret, later approve live credentials. Engineering uses a fake/test adapter until then.

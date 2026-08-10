@@ -24,12 +24,10 @@
         $brandUrl = route('admin.dashboard');
     }
 
-    $activePackageName = 'Growth Plan';
+    $company = null;
 
     if (auth()->check()) {
         $user = auth()->user();
-
-        $company = null;
 
         try {
             $company = $user->company ?? null;
@@ -37,20 +35,6 @@
             $company = null;
         }
 
-        $possiblePackageName =
-            data_get($company, 'package_name') ??
-            data_get($company, 'subscription_plan') ??
-            data_get($company, 'plan_name') ??
-            data_get($company, 'active_package') ??
-            null;
-
-        if (! empty($possiblePackageName)) {
-            $activePackageName = str($possiblePackageName)->headline()->toString();
-
-            if (! str($activePackageName)->contains('Plan')) {
-                $activePackageName .= ' Plan';
-            }
-        }
     }
 
     if ($isSuperAdmin) {
@@ -464,9 +448,7 @@
                     >
 
                     <span class="hidden leading-tight md:block">
-                        <span class="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-500 ring-1 ring-orange-400/20">
-                            {{ $activePackageName }}
-                        </span>
+                        <x-commercial-plan-badge :company="$company" class="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-500 ring-1 ring-orange-400/20" />
                     </span>
                 </a>
             </div>

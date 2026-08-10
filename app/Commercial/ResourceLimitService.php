@@ -3,6 +3,7 @@
 namespace App\Commercial;
 
 use App\Messaging\Models\MessagingPhoneNumber;
+use App\Messaging\Models\MessagingNumberClaim;
 use App\Models\System\Company;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
@@ -21,7 +22,22 @@ class ResourceLimitService
         );
     }
 
-    public function assertCanConnectPhone(Company $company, string $provider, string $providerPhoneId): void
+    public function assertCanAddPhoneClaim(Company $company): void
+    {
+        $this->assertBelow(
+            $company,
+            'limit.whatsapp_numbers',
+            $this->usedWhatsAppNumbers($company),
+            $this->whatsAppLimitMessage($company),
+        );
+    }
+
+    public function assertCanConnectPhone(
+        Company $company,
+        string $provider,
+        string $providerPhoneId,
+        ?int $numberClaimId = null,
+    ): void
     {
         $alreadyOwned = MessagingPhoneNumber::query()
             ->where('provider', $provider)
@@ -33,11 +49,40 @@ class ResourceLimitService
             return;
         }
 
-        $used = MessagingPhoneNumber::query()
+        $used = $this->usedWhatsAppNumbers($company, $numberClaimId);
+
+        $this->assertBelow($company, 'limit.whatsapp_numbers', $used, $this->whatsAppLimitMessage($company));
+    }
+
+    private function usedWhatsAppNumbers(Company $company, ?int $ignoreClaimId = null): int
+    {
+        $verified = MessagingPhoneNumber::query()
             ->whereHas('connection', fn ($query) => $query->where('company_id', $company->id))
             ->count();
+        $pending = MessagingNumberClaim::query()
+            ->where('company_id', $company->id)
+            ->whereNull('messaging_phone_number_id')
+            ->when($ignoreClaimId, fn ($query) => $query->where('id', '!=', $ignoreClaimId))
+            ->count();
 
-        $this->assertBelow($company, 'limit.whatsapp_numbers', $used, 'Your plan WhatsApp number limit has been reached.');
+        return $verified + $pending;
+    }
+
+    private function whatsAppLimitMessage(Company $company): string
+    {
+        $identity = $this->entitlements->planIdentity($company);
+        $plan = match ($identity['code']) {
+            'free' => 'Free',
+            'service' => 'Service',
+            'growth' => 'Growth',
+            'performance' => 'Performance',
+            'ai_pro' => 'AI Pro',
+            default => 'Your plan',
+        };
+        $limit = $this->entitlements->limit($company, 'limit.whatsapp_numbers');
+        $allowance = $limit === 1 ? 'one WhatsApp number' : "{$limit} WhatsApp numbers";
+
+        return "{$plan} includes {$allowance}. Upgrade if you need additional numbers.";
     }
 
     private function assertBelow(Company $company, string $capability, int $used, string $message): void

@@ -9,7 +9,7 @@ class MessagingOnboardingSession extends Model
 {
     protected $fillable = [
         'public_id', 'company_id', 'user_id', 'product_key', 'provider', 'connection_mode',
-        'state_hash', 'nonce_hash', 'status', 'session_event', 'messaging_connection_id',
+        'state_hash', 'nonce_hash', 'status', 'session_event', 'messaging_connection_id', 'messaging_number_claim_id',
         'expires_at', 'started_at', 'completed_at', 'last_attempted_at', 'attempt_count',
         'failure_code', 'failure_message', 'metadata',
     ];
@@ -27,5 +27,10 @@ class MessagingOnboardingSession extends Model
     public function connection(): BelongsTo
     {
         return $this->belongsTo(MessagingConnection::class, 'messaging_connection_id');
+    }
+
+    public function numberClaim(): BelongsTo
+    {
+        return $this->belongsTo(MessagingNumberClaim::class, 'messaging_number_claim_id');
     }
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MessagingPhoneNumber extends Model
 {
     protected $fillable = [
-        'messaging_connection_id', 'provider', 'phone_number_id', 'display_phone_number',
+        'messaging_connection_id', 'provider', 'phone_number_id', 'display_phone_number', 'phone_e164',
         'verified_name', 'display_name_status', 'quality_rating', 'registration_status',
         'coexistence_status', 'is_primary', 'last_health_check_at', 'metadata',
     ];
