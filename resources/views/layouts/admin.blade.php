@@ -35,6 +35,14 @@
             </a>
 
             <nav class="flex items-center gap-3 text-sm" aria-label="Administration">
+                @if(\Illuminate\Support\Facades\Route::has('admin.notifications.index'))
+                    <a
+                        href="{{ route('admin.notifications.index') }}"
+                        class="rounded-lg px-3 py-2 font-semibold text-[var(--sf-muted-strong)] transition hover:bg-[var(--sf-hover)] hover:text-[var(--sf-text-strong)]"
+                    >
+                        Notifications
+                    </a>
+                @endif
                 @if(\Illuminate\Support\Facades\Route::has('admin.documents.index'))
                     <a
                         href="{{ route('admin.documents.index') }}"

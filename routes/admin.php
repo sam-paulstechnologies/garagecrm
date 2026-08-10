@@ -60,6 +60,7 @@ use App\Http\Controllers\Admin\Marketing\TriggerController as MarketingTriggerCo
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Tenant\ClientBookingController;
 use App\Http\Controllers\Public\ManagerBookingController;
+use App\Http\Controllers\NotificationCenterController;
 
 /*
 |--------------------------------------------------------------------------
@@ -81,6 +82,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
+
+        Route::get('notifications', [NotificationCenterController::class, 'index'])
+            ->name('notifications.index');
 
         /*
         |--------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 @section('title', $serviceMode ? 'Service Dashboard' : 'Free Overview')
 
 @section('content')
+@php($routePrefix = auth()->user()?->role === 'manager' ? 'manager' : 'admin')
 <div class="mx-auto max-w-7xl space-y-7 px-4 py-8 sm:px-6">
     <header class="rounded-3xl border border-white/10 bg-slate-950/80 p-7 shadow-xl">
         <p class="text-xs font-black uppercase tracking-[0.24em] text-orange-300">{{ strtoupper(str_replace('_', ' ', $planCode)) }} · {{ $serviceMode ? 'MANAGE' : 'SEE' }}</p>
@@ -14,12 +15,12 @@
 
     <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         @foreach([
-            ['New enquiries', $metrics['new_enquiries'], 'admin.leads.index'],
-            ['Needs follow-up', $metrics['needs_follow_up'], 'admin.leads.index'],
-            ['Qualified', $metrics['qualified'], 'admin.opportunities.index'],
-            ['Upcoming bookings', $metrics['upcoming_bookings'], 'admin.bookings.index'],
-            ['Missed follow-ups', $metrics['missed_follow_ups'], 'admin.leads.index'],
-            ['Due for service', $metrics['due_for_service'], 'admin.leads.index'],
+            ['New enquiries', $metrics['new_enquiries'], $routePrefix.'.leads.index'],
+            ['Needs follow-up', $metrics['needs_follow_up'], $routePrefix.'.leads.index'],
+            ['Qualified', $metrics['qualified'], $routePrefix.'.opportunities.index'],
+            ['Upcoming bookings', $metrics['upcoming_bookings'], $routePrefix.'.bookings.index'],
+            ['Missed follow-ups', $metrics['missed_follow_ups'], $routePrefix.'.leads.index'],
+            ['Due for service', $metrics['due_for_service'], $routePrefix.'.leads.index'],
         ] as [$label, $value, $routeName])
             <a href="{{ Route::has($routeName) ? route($routeName) : '#' }}" class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:border-orange-400/40">
                 <p class="text-sm font-bold text-slate-400">{{ $label }}</p>
@@ -27,6 +28,12 @@
             </a>
         @endforeach
     </section>
+
+    @if(Route::has($routePrefix.'.notifications.index'))
+        <a href="{{ route($routePrefix.'.notifications.index') }}" class="inline-flex min-h-11 items-center rounded-xl border border-white/10 px-5 py-3 font-bold text-white">
+            Open notification centre
+        </a>
+    @endif
 
     <section class="grid gap-5 lg:grid-cols-3">
         <div class="rounded-2xl border border-white/10 bg-slate-950/70 p-6">

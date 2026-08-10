@@ -13,12 +13,16 @@ use App\Http\Controllers\Manager\OperationsCenterController as ManagerOperations
 use App\Http\Controllers\Manager\SettingsController as ManagerSettingsController;
 use App\Http\Controllers\Manager\TeamController as ManagerTeamController;
 use App\Http\Controllers\Admin\ServiceDashboardController;
+use App\Http\Controllers\NotificationCenterController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
     ->prefix('manager')
     ->name('manager.')
     ->group(function () {
+
+        Route::get('notifications', [NotificationCenterController::class, 'index'])
+            ->name('notifications.index');
 
         /*
         |--------------------------------------------------------------------------

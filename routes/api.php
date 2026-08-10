@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\BookingSummaryController;
 use App\Http\Controllers\Api\BookingTransitionController;
 use App\Http\Controllers\Api\LeadSummaryController;
 use App\Http\Controllers\Api\MeController;
+use App\Http\Controllers\Api\PushDeviceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -136,6 +137,12 @@ Route::prefix('v1')
 
         Route::get('/me', MeController::class)
             ->name('api.me');
+
+        Route::post('/push-devices', [PushDeviceController::class, 'store'])
+            ->name('api.push-devices.store');
+        Route::delete('/push-devices/{device}', [PushDeviceController::class, 'destroy'])
+            ->whereNumber('device')
+            ->name('api.push-devices.destroy');
 
         Route::prefix('whatsapp/templates')
             ->as('api.whatsapp.templates.')

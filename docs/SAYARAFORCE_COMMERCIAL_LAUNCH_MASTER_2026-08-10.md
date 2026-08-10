@@ -15,8 +15,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 2 — WhatsApp lifecycle and AI metering | Complete | Commits `95db5d3e`, `ca45683d`; CI/deploy passed; live verifier passed; queue running; fingerprint `163f55f...259fb` |
 | 3 — billing engine and payment gateway | Complete | Commits `5a16cdbb`, `f168a558`; workflow `31343944379` passed; live verifier passed; fingerprint `ffcb44d...7697` |
 | 4 — Free and Service product | Complete | Commit `ba3bfc19`; workflow `31345416690` and live verifier passed; schema fingerprint unchanged |
-| 5 — Growth, Performance, AI Pro | Local gate passed; staging deployment pending | Direct-route/job tier boundaries and explicit approval for AI actions; AI Pro 10,000 remains provisional/configurable |
-| 6 — mobile/service-manager experience | Pending | External push credentials may remain unresolved behind a fake provider |
+| 5 — Growth, Performance, AI Pro | Complete | Commit `0a24daca`; workflow `31346356662` and live verifier passed after transient queue initialization |
+| 6 — mobile/service-manager experience | Local gate in progress | Responsive notification centre, intent/device model, fake provider; external credentials remain unresolved |
 | 7 — Meta/WhatsApp UAT readiness | Pending | Synthetic signed fixtures only; live Meta remains parked |
 | 8 — full staging launch rehearsal | Pending | No real cards, customer messages, or production assets |
 | 9 — production migration preparation | Pending | Tooling/runbooks only; no production execution |
@@ -85,6 +85,17 @@ Validation evidence:
 - AI reply generation now uses `ai_recommendations` and only persists a recommendation. It no longer creates or mutates an Opportunity from an inbound message. Approved suggestion delivery is a separate notification-queue job that rechecks the AI action entitlement, the recorded approving user, tenant linkage, and manual WhatsApp entitlement before provider execution.
 - AI configuration, policy, insights, suggestion, approval, and rejection routes now have specific capabilities instead of inheriting one broad observational check. Direct Service/Growth/Performance route probes return 403 at their tier boundaries.
 - Focused Phase 5/Phase 1/Phase 4 coverage passed 25 tests with 130 assertions. The full suite passed 237 tests with 1,453 assertions. Phase 5 has no schema migration; the expected fingerprint remains unchanged.
+- Commit `0a24dacac20a88cdf97da3df2df622de33c81662` deployed through workflow `31346356662`. The first live verifier reached its final queue check while the WebJob was still initializing; the worker recovered to Running without intervention and the complete verifier then passed.
+
+## Phase 6 decisions and validation
+
+- Repository evidence shows responsive Laravel/Inertia web surfaces and an installable web manifest, but no service worker, native client, FCM/APNs integration, or existing push-token domain. Phase 6 therefore extends the responsive product rather than inventing a separate native application.
+- `notification_intents` persists tenant/user-scoped intent, lifecycle, idempotency, delivery timestamps, and privacy-minimized payload metadata. Supported types cover new enquiry, high intent, follow-up due/missed, booking upcoming, next service, and billing attention.
+- `push_devices` stores only a tenant-scoped HMAC token identity plus encrypted device token; API responses hide both. Registration/revocation is authenticated, user/tenant scoped, and idempotent.
+- Push delivery is provider-neutral. `fake` performs no network operation and is the only enabled staging driver. External drivers fail closed unless the environment explicitly enables delivery; Firebase/APNs/web-push credentials remain a human dependency.
+- Background delivery rechecks company status and user/tenant linkage, suppresses disabled tenants or missing devices, and never falls back to WhatsApp/SMS/email.
+- A responsive notification centre and 44-pixel mobile actions were added for admin/manager users. The shared Service dashboard now generates role-correct links and exposes the notification centre.
+- Focused notification/mobile plus manager and Free/Service regression coverage passed 42 tests with 336 assertions. The full suite passed 243 tests with 1,473 assertions and the frontend production build passed. Two guarded disposable MySQL cycles passed with 125 base tables, two views, 45 migrations, 157 foreign keys, 458 routes, two synthetic tenants, and identical fingerprint `62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b`.
 
 ## Human dependency queue
 

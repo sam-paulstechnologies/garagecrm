@@ -1188,6 +1188,12 @@
             'active' => ['manager.inbox.*', 'manager.escalations', 'manager.conversation', 'manager.conversation.*'],
             'safe' => false,
         ],
+        [
+            'label' => 'Notifications',
+            'route' => 'manager.notifications.index',
+            'active' => 'manager.notifications.*',
+            'safe' => false,
+        ],
     ];
 
     $authUser = auth()->user();
