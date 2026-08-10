@@ -3,6 +3,7 @@
 namespace App\Commercial;
 
 use App\Models\Commercial\Price;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 final class PublicPricingCatalogue
@@ -10,6 +11,10 @@ final class PublicPricingCatalogue
     /** @return array<int, array<string, mixed>> */
     public function plans(): array
     {
+        if (! Schema::hasTable('plans') || ! Schema::hasTable('plan_versions') || ! Schema::hasTable('prices')) {
+            return [];
+        }
+
         $definitions = (array) config('commercial_public.plans');
         $prices = Price::query()
             ->where('status', 'active')

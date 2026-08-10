@@ -137,6 +137,7 @@ Validation evidence:
 - Locked-feature upsells use tenant-scoped counts already present in the application. They render no usage claim when no real usage exists, and never manufacture a metric.
 - Focused public-site, launch-experience and Free/Service validation passed 14 tests with 112 assertions. The frontend production build passed; its only notices were existing Browserslist, dynamic/static chunk and font-resolution warnings.
 - Phase 10 introduces no migration. Its exact commit will receive the complete CI regression suite and live staging verification before the phase is marked complete.
+- Initial workflow `31350607386` stopped in the full suite before deployment because the legacy root-page smoke test deliberately boots without migrations and the catalogue reader queried `prices` unconditionally. The reader now returns an empty catalogue only when the commercial schema is unavailable, so bootstrap/maintenance states do not return HTTP 500; it never substitutes hard-coded prices. The reproduced failing smoke plus public catalogue regression then passed seven tests with 72 assertions.
 
 ## Human dependency queue
 
