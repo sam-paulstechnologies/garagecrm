@@ -18,8 +18,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 5 — Growth, Performance, AI Pro | Complete | Commit `0a24daca`; workflow `31346356662` and live verifier passed after transient queue initialization |
 | 6 — mobile/service-manager experience | Complete | Commit `5412c5b5`; workflow `31347576717` and live verifier passed; fake push only |
 | 7 — Meta/WhatsApp UAT readiness | Complete | Commit `bd63053f`; workflow `31348427916` and live verifier passed; live Meta remains parked |
-| 8 — full staging launch rehearsal | Local gate complete | Composite fake-provider ladder plus lifecycle, limit, role, tenant and outbound regression |
-| 9 — production migration preparation | Pending | Tooling/runbooks only; no production execution |
+| 8 — full staging launch rehearsal | Complete | Commit `b23ce862`; workflow `31349240822` and guarded live verifier passed |
+| 9 — production migration preparation | Local gate complete | Read-only legacy planner and unexecuted production promotion runbook; no production access |
 | 10 — commercial launch experience | Pending | Catalogue-driven pricing and real-metric upsells |
 | 11 — measurement foundation | Pending | Privacy-minimized product/commercial events |
 
@@ -117,6 +117,15 @@ Validation evidence:
 - The focused rehearsal plus registration, ingress, metering, billing lifecycle, limits, tenant roles, inbox isolation, notification and tier-boundary suites passed 78 tests with 463 assertions. The complete suite passed 247 tests with 1,541 assertions.
 - Separate existing cases in the same gate cover duplicate webhook, raw capture before enrichment, quota exhaustion, concurrent/customer-period metering, failed payment/grace, retry-safe provider events, cancel-at-period-end, introductory-price transition, user/number limits, expired overrides, suspended companies, locked APIs, and queued-job denial.
 - No migration or frontend change is introduced in Phase 8. The canonical fingerprint remains unchanged; the live staging run will retain synthetic-only data and make no card, Meta, push, SMS, email or WhatsApp network call.
+- Commit `b23ce86273570c41b8f5197074a76fb3b0f90271` deployed through workflow `31349240822`. The guarded live verifier passed with isolated staging configuration, queue worker Running, scheduler disabled, Meta UAT guard incomplete by design, and no secret output.
+
+## Phase 9 decisions and validation
+
+- `commercial:plan-legacy-migration` is a read-only planning command. It reports aggregate classifications by default and exposes only optional numeric company IDs when an authorized operator deliberately requests them. It does not load or print tenant names, emails, contracts, credentials, or customer records and performs no mutations.
+- The planner distinguishes explicit canonical assignments, grandfathered subscriptions, legacy contracts needing a reviewed entitlement snapshot, canonical-plan references needing approval, subscription records needing manual review, and plan-less tenants. No database ID is treated as commercial meaning.
+- The production promotion runbook fixes the later order as backup and identity verification, additive schema migration, catalogue/legacy shadow evaluation, explicit human approval, application release, cache rebuild, queue restart, and production verification. It includes a rollback posture and a hard stop before any grandfathering or enforcement change.
+- Synthetic tests prove legacy classifications, aggregate-only output, optional ID output, and zero database mutation. Focused Phase 9 validation passed two tests with 14 assertions.
+- This phase prepares production migration only. No production database, app, Azure setting, queue, tenant, or entitlement was queried or changed.
 
 ## Human dependency queue
 
