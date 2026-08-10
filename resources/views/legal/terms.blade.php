@@ -115,9 +115,10 @@
 
             <h2>4. Pricing</h2>
             <p>
-                Approved monthly plan pricing is AED 999 for Starter, AED 1,499 for Growth, and AED 1,999 for Pro.
-                WhatsApp, Meta, AI usage and provider fees may be charged separately where applicable. The selected plan and
-                implementation scope must be confirmed in the final service agreement.
+                Current launch and standard monthly prices, introductory duration, renewal behavior and cancellation terms are
+                shown in the versioned SayaraForce catalogue and verified checkout before activation. WhatsApp, Meta, AI usage
+                and provider fees may be charged separately where applicable. The selected plan and implementation scope must
+                be confirmed in the final service agreement.
             </p>
 
             <h2>5. No Guaranteed Results</h2>

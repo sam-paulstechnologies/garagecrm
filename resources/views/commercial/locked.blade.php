@@ -8,6 +8,11 @@
         <p class="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Plan feature</p>
         <h1 class="mt-3 text-3xl font-black text-white">This feature is not included yet</h1>
         <p class="mt-4 text-base leading-7 text-slate-300">{{ $upsell['message'] }}</p>
+        @if($upsell['usage_message'])
+            <p class="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-slate-200">
+                {{ $upsell['usage_message'] }}
+            </p>
+        @endif
 
         @if($upsell['next_plan'])
             <div class="mt-7 rounded-2xl border border-white/10 bg-white/5 p-5">

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Database\Seeders\CommercialFoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -10,11 +11,18 @@ class PublicWebsiteLeadCaptureTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(CommercialFoundationSeeder::class);
+    }
+
     public function test_public_landing_page_exposes_approved_pricing_audit_capture_and_legal_links(): void
     {
         $response = $this->get(route('public.home'))
             ->assertOk()
-            ->assertSee('Understand every enquiry.')
+            ->assertSee('Connect your WhatsApp.')
+            ->assertSee('Stop losing bookings.')
             ->assertSee('Turn every customer message into a clear next step.')
             ->assertSee('AI suggestions are reviewed by your team before they are sent.')
             ->assertSee('Human review required')
@@ -22,12 +30,18 @@ class PublicWebsiteLeadCaptureTest extends TestCase
             ->assertSee(route('public.demo.store'), false)
             ->assertSee(route('privacy-policy'), false)
             ->assertSee(route('terms'), false)
+            ->assertSee('AED 0')
+            ->assertSee('AED 199')
+            ->assertSee('AED 399')
             ->assertSee('AED 999')
-            ->assertSee('AED 1,499')
             ->assertSee('AED 1,999')
-            ->assertSee('Recommended')
-            ->assertSee('WhatsApp, Meta, AI usage and provider fees may be charged separately where applicable.')
-            ->assertSee('AI Communication Copilot access is initially available to selected Pro pilot garages.')
+            ->assertSee('AED 1,499')
+            ->assertSee('AED 2,999')
+            ->assertSee('AED 3,999')
+            ->assertSee('Best place to start')
+            ->assertSee('Start free')
+            ->assertSee('Launch price applies for the first 12 billing cycles')
+            ->assertSee('Prices exclude separately applicable WhatsApp, Meta, AI, payment-provider and other usage charges.')
             ->assertSee('/css/sayaraforce-brand.css', false)
             ->assertSee('/images/brand/sayaraforce-logo-horizontal.png', false)
             ->assertSee('/images/brand/sayaraforce-logo-tagline.png', false)
@@ -37,8 +51,8 @@ class PublicWebsiteLeadCaptureTest extends TestCase
 
         $content = $response->getContent();
 
-        $this->assertStringNotContainsString('AED 499', $content);
-        $this->assertStringNotContainsString('AED 699', $content);
+        $this->assertStringNotContainsString('<h3 class="plan-name">Starter</h3>', $content);
+        $this->assertStringNotContainsString('normal_price * 0.5', $content);
         $this->assertStringNotContainsString('aggregateRating', $content);
         $this->assertStringNotContainsString('Trusted by', $content);
         $this->assertStringNotContainsString('Fully autonomous AI', $content);

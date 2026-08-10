@@ -1,17 +1,17 @@
 <?php
 
+use App\Commercial\PublicPricingCatalogue;
+use App\Http\Controllers\PasswordForceController;
+use App\Http\Controllers\Public\DemoRequestController;
+use App\Http\Controllers\Webhooks\BillingWebhookController;
+use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
+use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-
-use App\Http\Controllers\PasswordForceController;
-use App\Http\Controllers\Public\DemoRequestController;
-use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
-use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
-use App\Http\Controllers\Webhooks\BillingWebhookController;
-use App\Http\Middleware\VerifyCsrfToken;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,7 +26,7 @@ use App\Http\Middleware\VerifyCsrfToken;
 | Logged-in users should use /dashboard.
 |--------------------------------------------------------------------------
 */
-Route::get('/', function (Request $request) {
+Route::get('/', function (Request $request, PublicPricingCatalogue $catalogue) {
     $host = strtolower((string) $request->getHost());
 
     $isAppDomain =
@@ -37,7 +37,7 @@ Route::get('/', function (Request $request) {
         return redirect()->to('/login');
     }
 
-    return view('public.home');
+    return view('public.home', ['commercialPlans' => $catalogue->plans()]);
 })->name('public.home');
 
 /*
@@ -106,13 +106,13 @@ Route::get('/db-counts', function () {
 
     abort_if(! $companyId, 403);
 
-    $counts = DB::selectOne("
+    $counts = DB::selectOne('
         SELECT
           (SELECT COUNT(*) FROM users WHERE company_id = ?)     AS users,
           (SELECT COUNT(*) FROM clients WHERE company_id = ?)   AS clients,
           (SELECT COUNT(*) FROM leads WHERE company_id = ?)     AS leads,
           (SELECT COUNT(*) FROM bookings WHERE company_id = ?)  AS bookings
-    ", [$companyId, $companyId, $companyId, $companyId]);
+    ', [$companyId, $companyId, $companyId, $companyId]);
 
     return response()->json([
         'ok' => true,
@@ -146,13 +146,13 @@ Route::middleware(['auth', 'active', 'force_password'])->group(function () {
         abort_if(! $user || blank($user->role), 403);
 
         return match (strtolower(trim((string) $user->role))) {
-            'admin'    => redirect()->route('admin.dashboard'),
+            'admin' => redirect()->route('admin.dashboard'),
             'super_admin' => redirect()->route('super-admin.dashboard'),
-            'manager'  => redirect()->route('manager.dashboard'),
+            'manager' => redirect()->route('manager.dashboard'),
             'mechanic' => redirect()->route('mechanic.dashboard'),
-            'tenant'   => redirect()->route('tenant.dashboard'),
+            'tenant' => redirect()->route('tenant.dashboard'),
             'media_team' => redirect()->route('admin.lead-sources.meta'),
-            default    => abort(403),
+            default => abort(403),
         };
     })->name('dashboard');
 

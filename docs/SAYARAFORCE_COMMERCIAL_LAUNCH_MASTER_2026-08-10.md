@@ -19,8 +19,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 6 — mobile/service-manager experience | Complete | Commit `5412c5b5`; workflow `31347576717` and live verifier passed; fake push only |
 | 7 — Meta/WhatsApp UAT readiness | Complete | Commit `bd63053f`; workflow `31348427916` and live verifier passed; live Meta remains parked |
 | 8 — full staging launch rehearsal | Complete | Commit `b23ce862`; workflow `31349240822` and guarded live verifier passed |
-| 9 — production migration preparation | Local gate complete | Read-only legacy planner and unexecuted production promotion runbook; no production access |
-| 10 — commercial launch experience | Pending | Catalogue-driven pricing and real-metric upsells |
+| 9 — production migration preparation | Complete | Commit `a50e8258`; workflow `31349953947` and guarded live verifier passed; production untouched |
+| 10 — commercial launch experience | Local gate complete | Catalogue-driven public pricing, accessible entry proposition, accurate legal copy, real-metric upsells |
 | 11 — measurement foundation | Pending | Privacy-minimized product/commercial events |
 
 ## Phase 1 completion record
@@ -126,6 +126,17 @@ Validation evidence:
 - The production promotion runbook fixes the later order as backup and identity verification, additive schema migration, catalogue/legacy shadow evaluation, explicit human approval, application release, cache rebuild, queue restart, and production verification. It includes a rollback posture and a hard stop before any grandfathering or enforcement change.
 - Synthetic tests prove legacy classifications, aggregate-only output, optional ID output, and zero database mutation. Focused Phase 9 validation passed two tests with 14 assertions.
 - This phase prepares production migration only. No production database, app, Azure setting, queue, tenant, or entitlement was queried or changed.
+- Commit `a50e82580ae3d572b8a35bdab473d3f232c6b462` deployed through workflow `31349953947`. The guarded live verifier passed with the exact deployment marker, unchanged schema fingerprint, queue worker Running, scheduler disabled, and Meta/outbound controls still closed.
+
+## Phase 10 decisions and validation
+
+- The public catalogue now comes from active immutable plan-version and price records. Marketing configuration contains positioning, benefits and calls to action only; it contains no duplicate price amounts.
+- The page presents Free, Service, Growth, Performance and AI Pro with the approved launch and standard AED amounts. AI Pro is explicitly “from” pricing. Paid plans describe the configurable 12-cycle introductory period and renewal at the displayed standard price without claiming a percentage discount.
+- The primary proposition is “Connect your WhatsApp. Stop losing bookings.” Free and Service remain self-service entry points; higher plans can use upgrade/contact positioning without fake testimonials or fabricated outcomes.
+- The public legal page points to the versioned catalogue and verified checkout terms instead of hard-coded legacy prices.
+- Locked-feature upsells use tenant-scoped counts already present in the application. They render no usage claim when no real usage exists, and never manufacture a metric.
+- Focused public-site, launch-experience and Free/Service validation passed 14 tests with 112 assertions. The frontend production build passed; its only notices were existing Browserslist, dynamic/static chunk and font-resolution warnings.
+- Phase 10 introduces no migration. Its exact commit will receive the complete CI regression suite and live staging verification before the phase is marked complete.
 
 ## Human dependency queue
 

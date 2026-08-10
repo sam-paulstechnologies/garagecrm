@@ -35,7 +35,7 @@
             ],
             [
                 'question' => 'Can I upgrade my plan later?',
-                'answer' => 'Yes. A garage can discuss moving to a different plan as its team and workflow requirements change.',
+                'answer' => 'Yes. Free and Service are self-service, and a garage can upgrade as its team, workflow and reporting requirements change.',
             ],
             [
                 'question' => 'Does SayaraForce use AI?',
@@ -51,7 +51,7 @@
             ],
             [
                 'question' => 'Which package includes AI?',
-                'answer' => 'Sayara AI Communication Copilot is initially being introduced through selected Pro pilot garages. Package availability may expand after the pilot.',
+                'answer' => 'All plans preserve core capture. Advanced recommendations, measurement and approval-controlled action AI are progressively available in Growth, Performance and AI Pro.',
             ],
             [
                 'question' => 'Does AI replace my service advisers?',
@@ -86,29 +86,13 @@
                     'publisher' => [
                         '@id' => 'https://sayaraforce.com/#organization',
                     ],
-                    'offers' => [
-                        [
-                            '@type' => 'Offer',
-                            'name' => 'Starter',
-                            'priceCurrency' => 'AED',
-                            'price' => '999',
-                            'url' => 'https://sayaraforce.com/#pricing',
-                        ],
-                        [
-                            '@type' => 'Offer',
-                            'name' => 'Growth',
-                            'priceCurrency' => 'AED',
-                            'price' => '1499',
-                            'url' => 'https://sayaraforce.com/#pricing',
-                        ],
-                        [
-                            '@type' => 'Offer',
-                            'name' => 'Pro',
-                            'priceCurrency' => 'AED',
-                            'price' => '1999',
-                            'url' => 'https://sayaraforce.com/#pricing',
-                        ],
-                    ],
+                    'offers' => array_map(fn (array $plan) => [
+                        '@type' => 'Offer',
+                        'name' => $plan['name'],
+                        'priceCurrency' => $plan['currency'],
+                        'price' => (string) $plan['launch_amount'],
+                        'url' => 'https://sayaraforce.com/#pricing',
+                    ], $commercialPlans),
                 ],
                 [
                     '@type' => 'FAQPage',
@@ -1039,7 +1023,7 @@
 
         .problem-cards {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
             gap: 12px;
             margin-top: 46px;
         }
@@ -1586,6 +1570,30 @@
             color: var(--muted-on-light);
             font-size: 0.78rem;
             font-weight: 500;
+        }
+
+        .plan-launch-label,
+        .plan-standard,
+        .plan-price-terms {
+            color: #43516D;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .plan-launch-label {
+            margin: 15px 0 -12px;
+            color: #9A3412;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .plan-standard {
+            margin: 8px 0 0;
+        }
+
+        .plan-price-terms {
+            margin: 7px 0 0;
         }
 
         .plan-features {
@@ -2515,14 +2523,14 @@
         <section class="hero dark-section" aria-labelledby="hero-title">
             <div class="container hero-grid">
                 <div>
-                    <p class="hero-eyebrow">INTELLIGENT COMMUNICATION FOR UAE GARAGES</p>
-                    <h1 id="hero-title"><span class="hero-line">Understand every enquiry.</span><span class="hero-line hero-highlight">Reply faster.</span><span class="hero-line">Recover more bookings.</span></h1>
+                    <p class="hero-eyebrow">WHATSAPP-TO-BOOKING FOR UAE GARAGES</p>
+                    <h1 id="hero-title"><span class="hero-line">Connect your WhatsApp.</span><span class="hero-line hero-highlight">Stop losing bookings.</span><span class="hero-line">Grow with every enquiry.</span></h1>
                     <p class="hero-copy">
                         SayaraForce combines lead management, WhatsApp communication, booking visibility and customer retention with AI-assisted tools that help your team understand conversations and prepare better replies.
                     </p>
 
                     <div class="hero-actions">
-                        <a class="button button-primary" href="#audit">Book Free Lead-Recovery Audit</a>
+                        <a class="button button-primary" href="{{ route('register') }}">Start free</a>
                         <a class="button button-secondary" href="#solution">See How It Works</a>
                     </div>
 
@@ -2927,66 +2935,40 @@
             <div class="container">
                 <div class="pricing-heading">
                     <p class="section-label">Pricing</p>
-                    <h2 id="pricing-title">Simple pricing. Powerful follow-up.</h2>
-                    <p class="section-intro">Choose the plan that matches the way your garage manages communication, automation and customer retention.</p>
+                    <h2 id="pricing-title">Start free. Expand when value is clear.</h2>
+                    <p class="section-intro">Launch prices are explicit introductory catalogue prices for the first 12 billing cycles—not an implied percentage discount.</p>
                 </div>
 
                 <div class="pricing-grid">
-                    <article class="price-card">
-                        <h3 class="plan-name">Starter</h3>
-                        <p class="plan-positioning">Core lead management and structured garage communication.</p>
-                        <div class="plan-price">
-                            <strong>AED 999</strong>
-                            <span>/month</span>
-                        </div>
-                        <ul class="plan-features">
-                            <li>Lead capture</li>
-                            <li>Basic client records</li>
-                            <li>Manager inbox visibility</li>
-                            <li>Booking tracking</li>
-                            <li>Basic dashboard</li>
-                        </ul>
-                        <a class="button" href="#audit">Book Free Audit</a>
-                    </article>
-
-                    <article class="price-card recommended">
-                        <span class="recommended-label">Recommended</span>
-                        <h3 class="plan-name">Growth</h3>
-                        <p class="plan-positioning">Advanced automation, reminders, campaigns and operational visibility.</p>
-                        <div class="plan-price">
-                            <strong>AED 1,499</strong>
-                            <span>/month</span>
-                        </div>
-                        <ul class="plan-features">
-                            <li>Everything in Starter</li>
-                            <li>Opportunity pipeline</li>
-                            <li>Booking and job workflow</li>
-                            <li>Invoice tracking</li>
-                            <li>Retention reminders and manager workflow</li>
-                        </ul>
-                        <a class="button" href="#audit">Book Free Audit</a>
-                    </article>
-
-                    <article class="price-card">
-                        <h3 class="plan-name">Pro</h3>
-                        <p class="plan-positioning">Advanced control with access to Sayara AI Communication Copilot features.</p>
-                        <div class="plan-price">
-                            <strong>AED 1,999</strong>
-                            <span>/month</span>
-                        </div>
-                        <ul class="plan-features">
-                            <li>AI conversation summaries</li>
-                            <li>AI intent and urgency insights</li>
-                            <li>AI suggested replies</li>
-                            <li>Language assistance</li>
-                            <li>Advanced communication intelligence</li>
-                        </ul>
-                        <p class="plan-pilot-note">AI Communication Copilot access is initially available to selected Pro pilot garages.</p>
-                        <a class="button" href="#audit">Book Free Audit</a>
-                    </article>
+                    @foreach($commercialPlans as $plan)
+                        <article class="price-card {{ $plan['recommended'] ? 'recommended' : '' }}">
+                            @if($plan['recommended'])
+                                <span class="recommended-label">Best place to start</span>
+                            @endif
+                            <h3 class="plan-name">{{ $plan['name'] }}</h3>
+                            <p class="plan-positioning">{{ $plan['positioning'] }}</p>
+                            @if($plan['launch_amount'] > 0)
+                                <p class="plan-launch-label">Launch price</p>
+                            @endif
+                            <div class="plan-price">
+                                <strong>{{ $plan['currency'] }} {{ number_format($plan['launch_amount'], 0) }}{{ $plan['custom_from'] ? '+' : '' }}</strong>
+                                <span>/month</span>
+                            </div>
+                            @if($plan['standard_amount'] !== $plan['launch_amount'])
+                                <p class="plan-standard">Standard: {{ $plan['currency'] }} {{ number_format($plan['standard_amount'], 0) }}{{ $plan['custom_from'] ? '+' : '' }}/month</p>
+                                <p class="plan-price-terms">Launch price applies for the first {{ $plan['promotion_cycles'] }} billing cycles, then the standard catalogue price applies.</p>
+                            @endif
+                            <ul class="plan-features">
+                                @foreach($plan['features'] as $feature)
+                                    <li>{{ $feature }}</li>
+                                @endforeach
+                            </ul>
+                            <a class="button" href="{{ $plan['code'] === 'ai_pro' ? '#audit' : route('register') }}">{{ $plan['cta'] }}</a>
+                        </article>
+                    @endforeach
                 </div>
 
-                <p class="pricing-note">WhatsApp, Meta, AI usage and provider fees may be charged separately where applicable.</p>
+                <p class="pricing-note">Prices exclude separately applicable WhatsApp, Meta, AI, payment-provider and other usage charges. Cancellation and renewal follow the verified subscription terms shown at checkout.</p>
             </div>
         </section>
 
@@ -3044,7 +3026,7 @@
                         <li>Practical recommendations</li>
                         <li>No obligation</li>
                     </ul>
-                    <p class="audit-pilot-note">AI Communication Copilot demonstrations are available for selected Pro pilot garages.</p>
+                    <p class="audit-pilot-note">Advanced AI demonstrations use controlled, synthetic scenarios and never imply autonomous customer messaging.</p>
                 </div>
 
                 <form class="audit-form" method="POST" action="{{ route('public.demo.store') }}">
