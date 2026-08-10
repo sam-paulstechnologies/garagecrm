@@ -24,7 +24,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(120, $baseTables, 'base-table count');
+            $this->assertSame(123, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -55,6 +55,17 @@ class VerifyLiveStaging extends Command
                     throw new RuntimeException("Missing AI metering table: {$table}.");
                 }
             }
+
+            $billingTables = ['price_provider_mappings', 'billing_checkout_sessions', 'billing_invoices'];
+            foreach ($billingTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    throw new RuntimeException("Missing billing engine table: {$table}.");
+                }
+            }
+            $this->assertSame(10, (int) DB::table('price_provider_mappings')
+                ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
+            $this->assertSame(0, (int) DB::table('price_provider_mappings')
+                ->where('payment_provider', 'stripe')->count(), 'unapproved Stripe price mapping count');
 
             foreach (['company_id', 'booking_id', 'client_id', 'description', 'status'] as $column) {
                 if (! Schema::hasColumn('jobs', $column)) {
@@ -115,6 +126,7 @@ class VerifyLiveStaging extends Command
                 'messaging_tables' => count($messagingTables),
                 'commercial_tables' => count($commercialTables),
                 'ai_metering_tables' => count($aiMeteringTables),
+                'billing_tables' => count($billingTables),
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
                 'provider_records' => 0,

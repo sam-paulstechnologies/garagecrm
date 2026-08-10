@@ -161,6 +161,7 @@
     $settingsActive =
         request()->routeIs('admin.settings.launch-setup.*') ||
         request()->routeIs('admin.settings.index') ||
+        request()->routeIs('admin.billing.*') ||
         request()->routeIs('admin.ai.*') ||
         request()->routeIs('admin.whatsapp.settings.*');
 
@@ -176,6 +177,12 @@
             'description' => 'Tenant profile, Meta, Twilio, and system defaults',
             'route' => 'admin.settings.index',
             'active' => 'admin.settings.index',
+        ],
+        [
+            'label' => 'Plan & Billing',
+            'description' => 'Subscription, launch price, renewal, and payment status',
+            'route' => 'admin.billing.index',
+            'active' => 'admin.billing.*',
         ],
         [
             'label' => 'WhatsApp Controls',

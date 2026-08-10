@@ -70,7 +70,16 @@ class SubscriptionManager
                     'cancelled_at' => null,
                     'grandfathered' => $status === 'legacy_grandfathered',
                     'payment_provider' => null,
+                    'provider_customer_id' => null,
+                    'provider_subscription_id' => null,
+                    'provider_price_id' => null,
                     'payment_status' => $planCode === Plans::FREE ? 'not_required' : 'pending',
+                    'grace_ends_at' => null,
+                    'suspended_at' => null,
+                    'cancellation_requested_at' => null,
+                    'provider_state_updated_at' => null,
+                    'introductory_cycles_completed' => 0,
+                    'standard_price_transition_requested_at' => null,
                 ],
             );
 

@@ -20,6 +20,8 @@ use App\Messaging\Models\MessagingPhoneNumber;
 use App\Models\System\Company;
 use App\SayaraForce\Messaging\SayaraForceMessagingAdapter;
 use App\Support\Staging\StagingSafety;
+use App\Billing\BillingGatewayResolver;
+use App\Billing\Contracts\BillingGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -28,6 +30,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(BillingGateway::class, fn ($app): BillingGateway =>
+            $app->make(BillingGatewayResolver::class)->configured()
+        );
+
         // AI services singletons
         $this->app->singleton(\App\Services\Ai\NlpService::class);
 

@@ -171,7 +171,8 @@
   "pending_migrations": [
     "2026_08_05_000001_create_messaging_core_tables",
     "2026_08_10_000001_create_commercial_foundation",
-    "2026_08_10_000002_create_ai_monitoring_metering"
+    "2026_08_10_000002_create_ai_monitoring_metering",
+    "2026_08_10_000003_create_billing_engine"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -457,12 +458,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds tenant-scoped HMAC customer-period metering and cost-safe AI analysis telemetry without copying customer data into the commercial usage ledger."
+    },
+    {
+      "migration": "2026_08_10_000003_create_billing_engine",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds provider-neutral price mappings, checkout and invoice history, verified-event lifecycle fields, and deterministic introductory-price transition state."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb",
-    "cycle_two_fingerprint": "163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb",
+    "cycle_one_fingerprint": "ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697",
+    "cycle_two_fingerprint": "ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

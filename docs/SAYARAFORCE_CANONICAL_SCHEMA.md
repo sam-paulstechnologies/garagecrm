@@ -13,7 +13,7 @@ Authoritative artifacts:
 - `database/schema/mysql-schema.safety.json`: machine-readable data-safety result.
 - `ops/azure/staging/production-view-remediation.sql`: unexecuted production repair plan.
 
-The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. After the reviewed commercial-foundation migration it was `8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e`. After Phase 2 AI customer-period metering and analysis telemetry, the current reproducible staging fingerprint is `163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb`.
+The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. After the reviewed commercial-foundation migration it was `8a7bd0ed144ca2dc3536913d0293f66e322403eed0be4c5518c16f60a46cfd8e`. Phase 2 AI metering produced `163f55f3252e9b6aa6b4426d1124622d34de71ae9f03636cd5fdb2b1742259fb`. After the Phase 3 provider-neutral billing engine, the current reproducible staging fingerprint is `ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697`.
 
 ## Reconciled inventories
 
@@ -57,7 +57,8 @@ The production ledger has 41 entries, but it is not copied blindly. Each tracked
 - `2026_08_05_000001_create_messaging_core_tables` remains the first pending migration after the production-derived baseline and creates exactly seven messaging tables once.
 - `2026_08_10_000001_create_commercial_foundation` then adds eight versioned plan, price, subscription, entitlement, usage, audit, and provider-event tables additively.
 - `2026_08_10_000002_create_ai_monitoring_metering` adds two HMAC identity/cost-telemetry tables without storing raw customer identifiers in the commercial usage ledger.
-- Together they produce 120 base tables in the current validated fresh database.
+- `2026_08_10_000003_create_billing_engine` adds three provider-neutral billing tables and lifecycle fields; browser returns never activate entitlements.
+- Together they produce 123 base tables in the current validated fresh database.
 - The queue-shaped `0001_01_01_000002_create_jobs_table` is marked represented because running it would conflict with operational `jobs`.
 - The static-data migration `2026_06_12_000001_add_vehicle_renewal_audience_segmentations` is represented structurally, but its rows are deliberately excluded by the data-free policy.
 - Laravel loads the schema SQL only when the target database is empty. A populated database continues from its `migrations` ledger, and a second `migrate --force` has no pending migration or duplicate-table effect.
@@ -86,7 +87,7 @@ Cycle results:
 
 | Check | Cycle one | Cycle two |
 |---|---:|---:|
-| Base tables | 120 | 120 |
+| Base tables | 123 | 123 |
 | Views | 2 | 2 |
 | Messaging tables | 7 exactly once | 7 exactly once |
 | Commercial foundation tables | 8 exactly once | 8 exactly once |
@@ -94,7 +95,7 @@ Cycle results:
 | Synthetic companies/garages | 2 / 2 | 2 / 2 |
 | Foreign-key constraints checked | 147 | 147 |
 | Foreign-key violations | 0 | 0 |
-| Structural fingerprint | `163f55...259fb` | `163f55...259fb` |
+| Structural fingerprint | `ffcb44...7697` | `ffcb44...7697` |
 
 For Commercial Foundation Phase 1, the full suite passed 204 tests with 1,260 assertions and one intentional integration skip. Phase 2 then passed the full 211-test execution (200 warning-classified because the clean release worktree intentionally has no committed Vite manifest, plus 11 ordinary passes) with 1,290 assertions. The guarded MySQL surface test passed 33 assertions in both Phase 2 cycles. PHP lint and the Vite production build also passed.
 

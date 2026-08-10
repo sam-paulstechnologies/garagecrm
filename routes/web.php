@@ -10,6 +10,7 @@ use App\Http\Controllers\PasswordForceController;
 use App\Http\Controllers\Public\DemoRequestController;
 use App\Http\Controllers\Webhooks\EmailInboundWebhookController;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\BillingWebhookController;
 use App\Http\Middleware\VerifyCsrfToken;
 
 /*
@@ -177,6 +178,12 @@ Route::match(['GET', 'POST'], '/webhooks/twilio/whatsapp/status',
 Route::post('/webhooks/email/inbound',
     [EmailInboundWebhookController::class, 'handle']
 )->withoutMiddleware(VerifyCsrfToken::class);
+
+Route::post('/webhooks/billing/{provider}', BillingWebhookController::class)
+    ->whereIn('provider', ['stripe', 'fake'])
+    ->middleware('throttle:120,1')
+    ->withoutMiddleware(VerifyCsrfToken::class)
+    ->name('billing.webhook');
 
 /*
 |--------------------------------------------------------------------------

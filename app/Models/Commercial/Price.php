@@ -5,6 +5,7 @@ namespace App\Models\Commercial;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
 class Price extends Model
@@ -29,6 +30,11 @@ class Price extends Model
     public function planVersion(): BelongsTo
     {
         return $this->belongsTo(PlanVersion::class);
+    }
+
+    public function providerMappings(): HasMany
+    {
+        return $this->hasMany(PriceProviderMapping::class);
     }
 
     public function isPromotionAvailableAt(CarbonInterface $at): bool

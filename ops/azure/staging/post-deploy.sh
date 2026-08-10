@@ -28,6 +28,7 @@ fi
 php artisan staging:assert-safe --require-schema --no-interaction
 php artisan migrate --force --no-interaction
 php artisan db:seed --class='Database\Seeders\CommercialFoundationSeeder' --force --no-interaction
+php artisan db:seed --class='Database\Seeders\BillingFoundationSeeder' --force --no-interaction
 php artisan commercial:bootstrap-staging-subscriptions --confirm --no-interaction
 php artisan staging:schema-fingerprint --verify --no-interaction
 php artisan staging:verify-live --no-interaction

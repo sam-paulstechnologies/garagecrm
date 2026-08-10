@@ -49,7 +49,9 @@ use App\Http\Controllers\Admin\{
     MetaConnectController,
     DocumentInboxController,
     CommunicationLogController,
-    RetentionActionController
+    RetentionActionController,
+    BillingController,
+    FakeBillingCheckoutController
 };
 
 use App\Http\Controllers\Admin\Marketing\CampaignController as MarketingCampaignController;
@@ -258,6 +260,18 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         Route::post('settings/test-twilio', [SettingsController::class, 'testTwilioInline'])
             ->name('settings.test-twilio');
+
+        Route::middleware('role:admin')->prefix('billing')->name('billing.')->group(function () {
+            Route::get('/', [BillingController::class, 'index'])->name('index');
+            Route::post('checkout', [BillingController::class, 'checkout'])->middleware('throttle:10,1')->name('checkout');
+            Route::get('success/{checkout}', [BillingController::class, 'success'])->whereNumber('checkout')->name('success');
+            Route::post('cancel', [BillingController::class, 'cancel'])->middleware('throttle:5,1')->name('cancel');
+            Route::post('portal', [BillingController::class, 'portal'])->middleware('throttle:10,1')->name('portal');
+            Route::get('fake/{billingCheckoutSession}', [FakeBillingCheckoutController::class, 'show'])
+                ->whereNumber('billingCheckoutSession')->name('fake.show');
+            Route::post('fake/{billingCheckoutSession}/complete', [FakeBillingCheckoutController::class, 'complete'])
+                ->whereNumber('billingCheckoutSession')->middleware('throttle:10,1')->name('fake.complete');
+        });
 
         /*
         |--------------------------------------------------------------------------
