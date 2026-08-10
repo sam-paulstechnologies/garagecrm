@@ -60,6 +60,7 @@ Validation evidence:
 - Local focused billing validation: 11 scenarios and 82 assertions passed, including signature spoofing, duplicate and tampered replay, out-of-order delivery, cross-tenant idempotency, redirect distrust, verified plan change without duplicate subscriptions, grace/suspension, cancellation, Stripe test adapter coverage, and deterministic introductory-price transition.
 - Full suite after Phase 3: 222 tests executed, 1,372 assertions, no failures. The warning classification remains limited to the known absent prebuilt Vite manifest; frontend production build and compiled Blade views passed.
 - Two guarded disposable MySQL cycles passed with 123 base tables, two views, 44 migration records, 153 foreign keys, 450 routes, and identical fingerprint `ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697`.
+- Staging workflow run `31343570973` passed every source, schema, PHP, test, frontend, production-dependency, packaging, OIDC, and Azure target check. Azure OneDeploy then left only an incomplete `Receiving changes / Fetching changes` receipt before any post-deploy migration, marker, or restart step ran. The deployment step now retries the same immutable ZIP up to three times; every attempt remains hard-bound to the already verified staging resource.
 
 ## Human dependency queue
 

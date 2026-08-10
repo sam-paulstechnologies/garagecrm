@@ -152,12 +152,33 @@ jobs:
       - name: Deploy package to staging only
         shell: bash
         run: |
-          az webapp deploy \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --src-path release.zip \
-            --type zip --clean true --restart false --track-status false \
-            --only-show-errors --output none
+          set -Eeuo pipefail
+          # OneDeploy can occasionally leave a transient "Receiving changes"
+          # receipt before accepting the immutable package. Retrying the same
+          # ZIP is idempotent and remains constrained to the verified staging
+          # resource above.
+          deployed=false
+          for attempt in {1..3}; do
+            if az webapp deploy \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --src-path release.zip \
+              --type zip --clean true --restart false --track-status false \
+              --only-show-errors --output none; then
+              deployed=true
+              break
+            fi
+
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Staging OneDeploy receipt failed on attempt ${attempt}; retrying the same package." >&2
+              sleep $((attempt * 15))
+            fi
+          done
+
+          if [[ "$deployed" != true ]]; then
+            echo 'Staging OneDeploy did not accept the immutable release package after three attempts.' >&2
+            exit 1
+          fi
 
       - name: Run staging migration and cache rebuild
         shell: bash
