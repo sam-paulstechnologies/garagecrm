@@ -41,6 +41,9 @@ final class RouteCapabilityMap
             [['admin.whatsapp.performance.*'], 'campaign_intelligence'],
             [['admin.whatsapp.messages.*', 'admin.whatsapp.logs.*'], 'inbox'],
             [['admin.whatsapp.settings.*', 'admin.whatsapp.connect*'], 'whatsapp_connect'],
+            [['admin.ai.suggestions.approve', 'admin.ai.update', 'admin.ai.policy.update'], 'ai_action_execution'],
+            [['admin.ai.suggestions.*', 'admin.ai.policy.edit'], 'ai_recommendations'],
+            [['admin.ai.insights.*', 'admin.ai.edit'], 'ai_observational'],
 
             [['admin.users.*', 'manager.team.*'], 'limit.users'],
             [['admin.clients.*', 'manager.clients.*'], 'clients'],
@@ -58,7 +61,6 @@ final class RouteCapabilityMap
             [['admin.audience-segmentations.*', 'admin.marketing.*'], 'campaign_intelligence'],
             [['admin.reports.*'], 'advanced_reports'],
             [['admin.sla_dashboard', 'manager.operations.*'], 'staff_performance'],
-            [['admin.ai.*'], 'ai_observational'],
             [['admin.messaging.whatsapp.*'], 'whatsapp_connect'],
         ];
     }

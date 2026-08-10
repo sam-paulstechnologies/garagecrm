@@ -14,8 +14,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 1 — security and entitlement kernel | Complete | Commits `c5ac6624`, `910abb68`, `e8f2aecb`; 204 tests, 1,260 assertions; deployed staging; P0 role escalation closed |
 | 2 — WhatsApp lifecycle and AI metering | Complete | Commits `95db5d3e`, `ca45683d`; CI/deploy passed; live verifier passed; queue running; fingerprint `163f55f...259fb` |
 | 3 — billing engine and payment gateway | Complete | Commits `5a16cdbb`, `f168a558`; workflow `31343944379` passed; live verifier passed; fingerprint `ffcb44d...7697` |
-| 4 — Free and Service product | Local gate passed; staging deployment pending | Fail-closed route/action enforcement, Free/Service limits, service dashboard, outbound-purpose separation, contextual locks |
-| 5 — Growth, Performance, AI Pro | Pending | AI Pro 10,000 allowance remains provisional/configurable, not a promise |
+| 4 — Free and Service product | Complete | Commit `ba3bfc19`; workflow `31345416690` and live verifier passed; schema fingerprint unchanged |
+| 5 — Growth, Performance, AI Pro | Local gate passed; staging deployment pending | Direct-route/job tier boundaries and explicit approval for AI actions; AI Pro 10,000 remains provisional/configurable |
 | 6 — mobile/service-manager experience | Pending | External push credentials may remain unresolved behind a fake provider |
 | 7 — Meta/WhatsApp UAT readiness | Pending | Synthetic signed fixtures only; live Meta remains parked |
 | 8 — full staging launch rehearsal | Pending | No real cards, customer messages, or production assets |
@@ -74,6 +74,17 @@ Validation evidence:
 - `UpsellPresentationService` centralizes the product ladder, catalogue prices, and approved copy. Locked UI is presentation only; authorization is always server-side.
 - Legacy route tests that previously created plan-less tenant fixtures now assign an explicit canonical plan. No testing or environment bypass was introduced.
 - Focused Free/Service plus Phase 1/2 regression coverage passed 24 tests with 120 assertions. The complete suite passed 230 tests with 1,413 assertions; the only warnings remain the known clean-worktree Vite-manifest warning. No schema migration is introduced in Phase 4, so the approved commercial fingerprint remains `ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697`.
+- Commit `ba3bfc192135c993e77f642ed40e7e4a23f2f997` deployed through workflow `31345416690`. The guarded live verifier passed with the exact marker and fingerprint, isolated configuration, queue running, scheduler disabled, and real Meta/outbound guards still closed.
+
+## Phase 5 decisions and validation
+
+- Growth unlocks operations, management, staff/source/retention insight, basic campaign attribution, and standard AI recommendations. It does not unlock campaign intelligence, ROI, advanced reports, priority scoring, or action execution.
+- Performance adds campaign intelligence/ROI, advanced reports/retention, and priority scoring. It does not receive action execution or autonomous WhatsApp.
+- AI Pro adds controlled action execution/follow-up/reactivation with `approval_required` mode. Its 10,000 monitored-customer staging allowance remains catalogue configuration only and is not presented as a fixed commercial promise.
+- `CommercialActionGate` enforces entitlement mode as behavior. Background middleware now refuses approval-required jobs unless the job provides an explicit, verifiable approval signal.
+- AI reply generation now uses `ai_recommendations` and only persists a recommendation. It no longer creates or mutates an Opportunity from an inbound message. Approved suggestion delivery is a separate notification-queue job that rechecks the AI action entitlement, the recorded approving user, tenant linkage, and manual WhatsApp entitlement before provider execution.
+- AI configuration, policy, insights, suggestion, approval, and rejection routes now have specific capabilities instead of inheriting one broad observational check. Direct Service/Growth/Performance route probes return 403 at their tier boundaries.
+- Focused Phase 5/Phase 1/Phase 4 coverage passed 25 tests with 130 assertions. The full suite passed 237 tests with 1,453 assertions. Phase 5 has no schema migration; the expected fingerprint remains unchanged.
 
 ## Human dependency queue
 

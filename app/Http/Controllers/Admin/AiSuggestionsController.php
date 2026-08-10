@@ -3,8 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\MessageLog;
-use App\Services\AI\AiOutboundSender;
+use App\Jobs\SendApprovedAiSuggestion;
 use App\Services\AI\AiMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -65,21 +64,14 @@ class AiSuggestionsController extends Controller
                     'updated_at' => now(),
                 ]);
 
-            // Send outbound message
-            $inbound = MessageLog::where('company_id', $companyId)
-                ->findOrFail($row->message_log_id);
-
-            AiOutboundSender::sendFromInbound(
-                $inbound,
-                (string) $row->suggestion_text
-            );
-
             // Metrics
             AiMetricsService::bumpAiOut(
                 $companyId,
                 $row->confidence !== null ? (float) $row->confidence : null
             );
         });
+
+        SendApprovedAiSuggestion::dispatch($id)->afterCommit();
 
         return back()->with('success', 'AI suggestion approved and sent.');
     }

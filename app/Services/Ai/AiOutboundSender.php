@@ -2,18 +2,25 @@
 
 namespace App\Services\Ai;
 
-use App\Commercial\EntitlementService;
+use App\Commercial\CommercialActionGate;
+use App\Commercial\OutboundEntitlementPolicy;
 use App\Models\MessageLog;
 use Illuminate\Support\Facades\DB;
 
 class AiOutboundSender
 {
-    public static function sendFromInbound(MessageLog $inbound, string $replyText): MessageLog
+    public static function sendFromInbound(MessageLog $inbound, string $replyText, bool $explicitApproval = false): MessageLog
     {
         $companyId = (int) $inbound->company_id;
-        $entitlements = app(EntitlementService::class);
-        $entitlements->assertCan($companyId, 'ai_action_execution');
-        $entitlements->assertCan($companyId, 'whatsapp_ai_autonomous');
+        app(CommercialActionGate::class)->assertAllowed(
+            $companyId,
+            'ai_action_execution',
+            $explicitApproval,
+        );
+        app(OutboundEntitlementPolicy::class)->assertAllowed(
+            $companyId,
+            OutboundEntitlementPolicy::AI_AUTONOMOUS,
+        );
 
         $out = new MessageLog();
 

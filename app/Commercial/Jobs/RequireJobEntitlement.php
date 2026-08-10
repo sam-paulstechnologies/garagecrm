@@ -13,11 +13,19 @@ class RequireJobEntitlement
         $companyId = $job->entitlementCompanyId();
         $capability = $job->entitlementCapability();
 
-        if (! $companyId || ! app(EntitlementService::class)->can($companyId, $capability)) {
+        $decision = $companyId
+            ? app(EntitlementService::class)->decide($companyId, $capability)
+            : null;
+
+        $approvalSatisfied = $decision?->mode !== 'approval_required'
+            || ($job instanceof ExplicitlyApprovedEntitlementJob && $job->commercialActionApproved());
+
+        if (! $companyId || ! $decision?->allowed || $decision->mode === 'disabled' || ! $approvalSatisfied) {
             Log::notice('Commercially gated job skipped.', [
                 'company_id' => $companyId,
                 'capability' => $capability,
                 'job' => $job::class,
+                'reason' => ! $approvalSatisfied ? 'approval_required' : ($decision?->reason ?? 'company_unresolved'),
             ]);
 
             return null;

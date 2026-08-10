@@ -744,24 +744,40 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | AI
         |--------------------------------------------------------------------------
         */
-        Route::prefix('ai')->name('ai.')->middleware('entitled:ai_observational')->group(function () {
+        Route::prefix('ai')->name('ai.')->group(function () {
             Route::get('/', [AiSettingController::class, 'edit'])
+                ->middleware('entitled:ai_observational')
                 ->name('edit');
 
             Route::put('/', [AiSettingController::class, 'update'])
+                ->middleware('entitled:ai_action_execution')
                 ->name('update');
 
             Route::get('policy', [AiPolicyController::class, 'edit'])
+                ->middleware('entitled:ai_recommendations')
                 ->name('policy.edit');
 
             Route::put('policy', [AiPolicyController::class, 'update'])
+                ->middleware('entitled:ai_action_execution')
                 ->name('policy.update');
 
             Route::get('insights', [AiInsightsController::class, 'index'])
+                ->middleware('entitled:ai_observational')
                 ->name('insights.index');
 
             Route::get('suggestions', [AiSuggestionsController::class, 'index'])
+                ->middleware('entitled:ai_recommendations')
                 ->name('suggestions.index');
+
+            Route::post('suggestions/{suggestion}/approve', [AiSuggestionsController::class, 'approve'])
+                ->middleware('entitled:ai_action_execution')
+                ->whereNumber('suggestion')
+                ->name('suggestions.approve');
+
+            Route::post('suggestions/{suggestion}/reject', [AiSuggestionsController::class, 'reject'])
+                ->middleware('entitled:ai_recommendations')
+                ->whereNumber('suggestion')
+                ->name('suggestions.reject');
         });
 
         /*
