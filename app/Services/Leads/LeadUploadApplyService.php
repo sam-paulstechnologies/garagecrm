@@ -595,6 +595,7 @@ class LeadUploadApplyService
                     'upload_row_id' => $row->id,
                     'campaign_type' => $payload['campaign_type'] ?? null,
                     'journey_key' => $journeyMapping['journey_key'] ?? null,
+                    'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::TRANSACTIONAL,
                 ]
             );
 

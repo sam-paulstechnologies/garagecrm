@@ -13,8 +13,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 0 — staging foundation | Complete | Isolated Azure staging, TLS, queue, canonical schema, synthetic data, outbound disabled |
 | 1 — security and entitlement kernel | Complete | Commits `c5ac6624`, `910abb68`, `e8f2aecb`; 204 tests, 1,260 assertions; deployed staging; P0 role escalation closed |
 | 2 — WhatsApp lifecycle and AI metering | Complete | Commits `95db5d3e`, `ca45683d`; CI/deploy passed; live verifier passed; queue running; fingerprint `163f55f...259fb` |
-| 3 — billing engine and payment gateway | Local gate passed; staging deployment pending | Provider-neutral lifecycle, signed fake/Stripe test adapters, webhook idempotency, grace policy, billing UI, and introductory-price transition implemented |
-| 4 — Free and Service product | Pending | Depends on Phase 2/3 services, not live Meta |
+| 3 — billing engine and payment gateway | Complete | Commits `5a16cdbb`, `f168a558`; workflow `31343944379` passed; live verifier passed; fingerprint `ffcb44d...7697` |
+| 4 — Free and Service product | Local gate passed; staging deployment pending | Fail-closed route/action enforcement, Free/Service limits, service dashboard, outbound-purpose separation, contextual locks |
 | 5 — Growth, Performance, AI Pro | Pending | AI Pro 10,000 allowance remains provisional/configurable, not a promise |
 | 6 — mobile/service-manager experience | Pending | External push credentials may remain unresolved behind a fake provider |
 | 7 — Meta/WhatsApp UAT readiness | Pending | Synthetic signed fixtures only; live Meta remains parked |
@@ -61,6 +61,19 @@ Validation evidence:
 - Full suite after Phase 3: 222 tests executed, 1,372 assertions, no failures. The warning classification remains limited to the known absent prebuilt Vite manifest; frontend production build and compiled Blade views passed.
 - Two guarded disposable MySQL cycles passed with 123 base tables, two views, 44 migration records, 153 foreign keys, 450 routes, and identical fingerprint `ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697`.
 - Staging workflow run `31343570973` passed every source, schema, PHP, test, frontend, production-dependency, packaging, OIDC, and Azure target check. Azure OneDeploy then left only an incomplete `Receiving changes / Fetching changes` receipt before any post-deploy migration, marker, or restart step ran. The deployment step now retries the same immutable ZIP up to three times; every attempt remains hard-bound to the already verified staging resource.
+- Commit `f168a5584e7961cfe43cbe18a12fe00d3dc03869` added that deterministic OneDeploy retry. Workflow run `31343944379` then deployed the exact commit successfully. The guarded live verifier passed after the first custom-domain cold-start check timed out and subsequent custom/Azure hostname health probes returned 200. The queue worker remained running, scheduler disabled, schema unchanged, and production was read-only verified Running.
+
+## Phase 4 decisions and validation
+
+- Tenant web routes now resolve through one `RouteCapabilityMap` and a global fail-closed middleware. Direct URLs and write requests are denied server-side; GET requests receive a contextual 403 locked screen. Platform roles retain their separately authorized platform behavior and tenant plans never grant platform access.
+- Free retains customers, vehicles, leads, opportunities, bookings, calendar, Inbox/manual reply, WhatsApp connection, one user/location/number, and 25 monitored customers. Jobs, invoices, campaign intelligence, marketing outbound, and autonomous AI remain denied.
+- Service adds the purpose-built service dashboard, transactional WhatsApp, reminders, follow-up and next-service capabilities, three users, one location/number, and 300 monitored customers. Jobs/invoices and marketing intelligence remain off.
+- User and WhatsApp-number allowances are checked against real tenant records. A known number may reconnect; a second distinct number is refused. Invalid tenant-role input is validated before quota enforcement so the Phase 1 role-escalation control remains authoritative.
+- Every active Meta outbound call now declares a commercial purpose: manual, transactional, marketing, or AI autonomous. The service checks that capability before provider/staging safety. Marketing and AI autonomous outbound remain disabled in every launch plan. The legacy unified notifier configuration is email-only and its Twilio branch is unreachable from registered event mappings.
+- Free and Service dashboards use only tenant-scoped operational counts. The Service view shows enquiries, follow-ups, qualified leads, bookings, due-service customers, response/conversion measures, and actual AI allowance usage; it contains no campaign or ROI metrics.
+- `UpsellPresentationService` centralizes the product ladder, catalogue prices, and approved copy. Locked UI is presentation only; authorization is always server-side.
+- Legacy route tests that previously created plan-less tenant fixtures now assign an explicit canonical plan. No testing or environment bypass was introduced.
+- Focused Free/Service plus Phase 1/2 regression coverage passed 24 tests with 120 assertions. The complete suite passed 230 tests with 1,413 assertions; the only warnings remain the known clean-worktree Vite-manifest warning. No schema migration is introduced in Phase 4, so the approved commercial fingerprint remains `ffcb44d1847c7d9c75d710ad8a868b4ea55424a659ffbd62aef9597ecbab7697`.
 
 ## Human dependency queue
 

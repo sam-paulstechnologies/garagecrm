@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Commercial\OutboundEntitlementPolicy;
 use App\Models\Client\Lead;
 use App\Models\Conversation;
 use App\Models\MessageLog;
@@ -124,6 +125,9 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             'lead_id'         => $this->leadId,
             'conversation_id' => $conversationId,
             'action'          => $this->action,
+            'commercial_purpose' => $this->action === 'manual_reply'
+                ? OutboundEntitlementPolicy::MANUAL
+                : OutboundEntitlementPolicy::TRANSACTIONAL,
         ]);
 
         if ($this->action === 'follow_up') {

@@ -169,6 +169,7 @@ class ChatController extends Controller
         $waResp = $whatsApp->sendText($to, $body, [
             'company_id'      => $chat->company_id,
             'source'          => 'admin_chat',
+            'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::MANUAL,
             'conversation_id' => $chat->id,
         ]);
 

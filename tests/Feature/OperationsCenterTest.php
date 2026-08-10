@@ -8,11 +8,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use Tests\Concerns\InteractsWithCommercialPlans;
 use Tests\TestCase;
 
 class OperationsCenterTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithCommercialPlans, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -170,6 +171,7 @@ class OperationsCenterTest extends TestCase
             'phone' => '971500000001',
             'status' => 'active',
         ]);
+        $this->assignCanonicalPlan($company, 'growth');
         $manager = $this->user('manager', $company->id);
 
         $this->actingAs($manager)
@@ -249,6 +251,8 @@ class OperationsCenterTest extends TestCase
             'phone' => '971500000006',
             'status' => 'active',
         ]);
+
+        $this->assignCanonicalPlan($company, 'growth');
 
         $this->actingAs($this->user('manager', $company->id))
             ->getJson(route('manager.operations.node', 'journey-lead'))

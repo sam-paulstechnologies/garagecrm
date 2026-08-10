@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Commercial\ResourceLimitService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\System\Company;
@@ -36,9 +37,10 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ResourceLimitService $limits)
     {
         $companyId = auth()->user()->company_id;
+        $company = Company::query()->findOrFail($companyId);
 
         $data = $request->validate([
             'name'      => 'required|string|max:255',
@@ -49,6 +51,8 @@ class UserController extends Controller
             'garage_id' => 'nullable|exists:garages,id',
             'status'    => 'required|boolean',
         ]);
+
+        $limits->assertCanCreateUser($company);
 
         $data['company_id'] = $companyId;
 

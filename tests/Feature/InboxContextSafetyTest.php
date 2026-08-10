@@ -13,10 +13,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Mockery\MockInterface;
 use Tests\TestCase;
+use Tests\Concerns\InteractsWithCommercialPlans;
+use App\Commercial\Plans;
 
 class InboxContextSafetyTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithCommercialPlans;
 
     private User $admin;
     private User $manager;
@@ -40,6 +43,8 @@ class InboxContextSafetyTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->assignCanonicalPlan($this->companyId, Plans::FREE);
 
         $this->admin = User::create([
             'name' => 'Inbox Admin',
@@ -351,7 +356,10 @@ class InboxContextSafetyTest extends TestCase
         $this->mock(WhatsAppService::class, function (MockInterface $mock) use ($expectedTo, $expectedBody) {
             $mock->shouldReceive('sendText')
                 ->once()
-                ->with($expectedTo, $expectedBody, ['company_id' => $this->companyId])
+                ->with($expectedTo, $expectedBody, [
+                    'company_id' => $this->companyId,
+                    'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::MANUAL,
+                ])
                 ->andReturn(['ok' => true]);
         });
     }

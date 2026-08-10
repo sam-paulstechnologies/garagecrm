@@ -2,6 +2,7 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Commercial\OutboundEntitlementPolicy;
 use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppMessage;
 use App\Services\WhatsApp\Drivers\MetaCloudWhatsApp;
@@ -59,6 +60,7 @@ class WhatsAppService
         }
 
         $companyId = (int) $companyId;
+        app(OutboundEntitlementPolicy::class)->assertAllowed($companyId, $context['commercial_purpose'] ?? null);
         $provider = $this->getTenantProvider($companyId);
         $toE164 = $this->normalizeNumber($toE164);
         app(StagingSafety::class)->assertWhatsAppOutboundAllowed($toE164);
@@ -99,6 +101,7 @@ class WhatsAppService
         }
 
         $companyId = (int) $companyId;
+        app(OutboundEntitlementPolicy::class)->assertAllowed($companyId, $context['commercial_purpose'] ?? null);
         $provider = $this->getTenantProvider($companyId);
         $toE164 = $this->normalizeNumber($toE164);
         app(StagingSafety::class)->assertWhatsAppOutboundAllowed($toE164);

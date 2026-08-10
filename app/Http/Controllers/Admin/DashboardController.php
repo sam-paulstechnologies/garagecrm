@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Commercial\EntitlementService;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Client\CommunicationLog;
@@ -29,7 +30,7 @@ class DashboardController extends Controller
         return $companyId;
     }
 
-    public function index(Request $request)
+    public function index(Request $request, EntitlementService $entitlements)
     {
         $user = auth()->user();
 
@@ -38,6 +39,15 @@ class DashboardController extends Controller
         }
 
         $companyId = $this->companyId();
+        $company = $user->company;
+
+        if (! $entitlements->can($company, 'management_dashboard')) {
+            if ($entitlements->can($company, 'service_dashboard')) {
+                return redirect()->route('admin.service-dashboard');
+            }
+
+            return app(ServiceDashboardController::class)->free($request);
+        }
 
         /*
         |--------------------------------------------------------------------------

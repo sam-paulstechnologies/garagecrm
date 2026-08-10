@@ -279,6 +279,7 @@ class FeedbackController extends Controller
                     'source'         => 'feedback_controller',
                     'action'         => 'customer_feedback_reply',
                     'send_mode'      => 'session_message',
+                    'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::TRANSACTIONAL,
                 ]
             );
 

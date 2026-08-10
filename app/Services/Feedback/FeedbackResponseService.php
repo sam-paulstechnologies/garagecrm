@@ -405,6 +405,7 @@ class FeedbackResponseService
                 'conversation_id' => $conversationId,
                 'send_mode' => 'session_message',
                 'source' => $context['source'] ?? 'feedback_response_service',
+                'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::TRANSACTIONAL,
             ]);
 
             app(WhatsAppService::class)->sendText(

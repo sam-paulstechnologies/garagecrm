@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\ServiceDashboardController;
 
 use App\Http\Controllers\Admin\{
     AjaxController,
@@ -208,6 +209,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         */
         Route::get('dashboard', [DashboardController::class, 'index'])
             ->name('dashboard');
+
+        Route::get('service-dashboard', [ServiceDashboardController::class, 'index'])
+            ->middleware('entitled:service_dashboard')
+            ->name('service-dashboard');
 
         Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
         Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.resetPassword');

@@ -158,7 +158,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         Event::listen(MessageLogged::class, function (MessageLogged $event) use (&$logged): void {
             $logged[] = ['message' => $event->message, 'context' => $event->context];
         });
-        $result = app(WhatsAppService::class)->sendText('+971 50 123 4567', 'Mocked staff reply', ['company_id' => $company->id]);
+        $result = app(WhatsAppService::class)->sendText('+971 50 123 4567', 'Mocked staff reply', [
+            'company_id' => $company->id,
+            'commercial_purpose' => 'manual',
+        ]);
 
         $this->assertSame('wamid.outbound.phase1', $result['message_id'] ?? null);
         Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'

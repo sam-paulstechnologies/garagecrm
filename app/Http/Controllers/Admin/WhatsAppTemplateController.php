@@ -189,6 +189,7 @@ class WhatsAppTemplateController extends Controller
         $context = [
             'company_id' => $companyId,
             'lead_id'    => $request->input('lead_id'),
+            'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::MARKETING,
         ];
 
         // IMPORTANT:

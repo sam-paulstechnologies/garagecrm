@@ -111,7 +111,7 @@ class InboxController extends Controller
             $wa->sendText(
                 $conversation->customer_phone,
                 $request->input('message'),
-                ['company_id' => $companyId]
+                ['company_id' => $companyId, 'commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::MANUAL]
             );
         } catch (Throwable $e) {
             Log::warning('[Inbox] Admin WhatsApp send failed', [

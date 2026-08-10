@@ -2,6 +2,7 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Commercial\OutboundEntitlementPolicy;
 use App\Models\WhatsApp\WhatsAppMessage;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Models\WhatsApp\WhatsAppTemplateMapping;
@@ -38,6 +39,7 @@ class SendWhatsAppMessage
                 context: [
                     'company_id' => $companyId,
                     'source' => 'direct_template',
+                    'commercial_purpose' => $vars['commercial_purpose'] ?? OutboundEntitlementPolicy::MARKETING,
                     'vars' => $vars,
                 ]
             );
@@ -80,6 +82,7 @@ class SendWhatsAppMessage
                 context: [
                     'company_id' => $companyId,
                     'source' => 'plain_text',
+                    'commercial_purpose' => $payload['commercial_purpose'] ?? OutboundEntitlementPolicy::MANUAL,
                 ] + $payload
             );
         } catch (\Throwable $e) {
@@ -140,6 +143,7 @@ class SendWhatsAppMessage
                     'company_id' => $companyId,
                     'reason' => 'manager_notify',
                     'source' => 'manager_notify',
+                    'commercial_purpose' => OutboundEntitlementPolicy::TRANSACTIONAL,
                 ]
             );
         } catch (\Throwable $e) {
@@ -172,6 +176,8 @@ class SendWhatsAppMessage
     {
         $companyId = (int) $companyId;
         $eventKey = trim($eventKey);
+        $commercialPurpose = $vars['commercial_purpose']
+            ?? app(OutboundEntitlementPolicy::class)->purposeForEvent($eventKey);
 
         if (! $companyId || $eventKey === '') {
             Log::warning('[WA][fireEvent] Missing company or event key', [
@@ -361,6 +367,7 @@ class SendWhatsAppMessage
                 context: [
                     'company_id' => $companyId,
                     'event_key' => $eventKey,
+                    'commercial_purpose' => $commercialPurpose,
                     'template_id' => $template->id,
                     'template_name' => $templateName,
                     'provider' => $activeProvider,

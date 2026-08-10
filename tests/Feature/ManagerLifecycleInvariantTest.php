@@ -13,11 +13,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\InteractsWithCommercialPlans;
 use Tests\TestCase;
 
 class ManagerLifecycleInvariantTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithCommercialPlans, RefreshDatabase;
 
     private User $manager;
     private User $admin;
@@ -36,6 +37,8 @@ class ManagerLifecycleInvariantTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->assignCanonicalPlan($this->companyId, 'ai_pro');
 
         $this->manager = User::create([
             'name' => 'Manager User',

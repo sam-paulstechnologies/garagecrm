@@ -11,11 +11,12 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\InteractsWithCommercialPlans;
 use Tests\TestCase;
 
 class WhatsAppEmbeddedSignupTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithCommercialPlans, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -640,6 +641,7 @@ class WhatsAppEmbeddedSignupTest extends TestCase
     private function tenant(): array
     {
         $company = Company::query()->create(['name' => 'Coexistence Test Garage']);
+        $this->assignCanonicalPlan($company, 'free');
         $user = User::factory()->create([
             'company_id' => $company->id,
             'role' => 'admin',

@@ -1109,8 +1109,8 @@ class ProcessInboundWhatsApp implements ShouldQueue
                             'message' => $body,
                             'text' => $body,
                             'content' => $body,
-                            'context' => $context,
-                            'meta' => $context,
+                            'context' => ['commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::TRANSACTIONAL] + $context,
+                            'meta' => ['commercial_purpose' => \App\Commercial\OutboundEntitlementPolicy::TRANSACTIONAL] + $context,
                         ]
                     );
 

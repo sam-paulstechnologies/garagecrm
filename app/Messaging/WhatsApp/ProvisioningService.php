@@ -2,6 +2,7 @@
 
 namespace App\Messaging\WhatsApp;
 
+use App\Commercial\ResourceLimitService;
 use App\Messaging\Enums\ConnectionMode;
 use App\Messaging\Enums\ConnectionStatus;
 use App\Messaging\Exceptions\MessagingProvisioningException;
@@ -29,6 +30,7 @@ class ProvisioningService
         private readonly TokenService $tokens,
         private readonly MessagingAuditService $audit,
         private readonly StagingSafety $stagingSafety,
+        private readonly ResourceLimitService $resourceLimits,
     ) {
     }
 
@@ -62,6 +64,7 @@ class ProvisioningService
             $businessId = $this->resolveBusinessId($waba, $input['business_id'] ?? null, $token);
             $phone = $this->resolvePhone($wabaId, $input['phone_number_id'] ?? null, $token, $session->connection_mode);
             $this->stagingSafety->assertProviderAssetsAllowed($wabaId, (string) ($phone['id'] ?? ''));
+            $this->resourceLimits->assertCanConnectPhone($company, 'meta_whatsapp', (string) $phone['id']);
 
             $connection = $this->persistDiscoveredAssets(
                 $company,

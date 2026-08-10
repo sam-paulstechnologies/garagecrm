@@ -8,10 +8,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
+use Tests\Concerns\InteractsWithCommercialPlans;
 
 class AdminResponsiveShellTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithCommercialPlans;
 
     public function test_admin_pages_render_full_width_top_nav_shell(): void
     {
@@ -73,6 +75,8 @@ class AdminResponsiveShellTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->assignCanonicalPlan($companyId);
 
         return User::factory()->create([
             'role' => $role,

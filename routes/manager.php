@@ -12,6 +12,7 @@ use App\Http\Controllers\Manager\OpportunityController as ManagerOpportunityCont
 use App\Http\Controllers\Manager\OperationsCenterController as ManagerOperationsCenterController;
 use App\Http\Controllers\Manager\SettingsController as ManagerSettingsController;
 use App\Http\Controllers\Manager\TeamController as ManagerTeamController;
+use App\Http\Controllers\Admin\ServiceDashboardController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
@@ -26,6 +27,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:manager'])
         */
         Route::get('dashboard', [DashboardController::class, 'index'])
             ->name('dashboard');
+
+        Route::get('service-dashboard', [ServiceDashboardController::class, 'index'])
+            ->middleware('entitled:service_dashboard')
+            ->name('service-dashboard');
 
         /*
         |--------------------------------------------------------------------------

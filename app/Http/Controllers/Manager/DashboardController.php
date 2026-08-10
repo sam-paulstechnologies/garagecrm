@@ -2,17 +2,28 @@
 
 namespace App\Http\Controllers\Manager;
 
+use App\Commercial\EntitlementService;
+use App\Http\Controllers\Admin\ServiceDashboardController;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(EntitlementService $entitlements)
     {
         $companyId = (int) (auth()->user()?->company_id ?? 0);
 
         abort_if(! $companyId, 403);
+
+        $company = auth()->user()->company;
+        if (! $entitlements->can($company, 'management_dashboard')) {
+            if ($entitlements->can($company, 'service_dashboard')) {
+                return redirect()->route('manager.service-dashboard');
+            }
+
+            return app(ServiceDashboardController::class)->free(request());
+        }
 
         $stats = [
             'open_leads' => $this->countOpenLeads($companyId),

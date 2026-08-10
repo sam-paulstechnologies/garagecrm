@@ -9,10 +9,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
+use Tests\Concerns\InteractsWithCommercialPlans;
 
 class AdminCalendarEventsTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithCommercialPlans;
 
     private User $admin;
     private User $assignedUser;
@@ -37,6 +39,8 @@ class AdminCalendarEventsTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->assignCanonicalPlan($this->companyId);
 
         $this->admin = User::create([
             'name' => 'Calendar Admin',
