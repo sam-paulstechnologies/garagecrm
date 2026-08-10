@@ -16,8 +16,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 3 — billing engine and payment gateway | Complete | Commits `5a16cdbb`, `f168a558`; workflow `31343944379` passed; live verifier passed; fingerprint `ffcb44d...7697` |
 | 4 — Free and Service product | Complete | Commit `ba3bfc19`; workflow `31345416690` and live verifier passed; schema fingerprint unchanged |
 | 5 — Growth, Performance, AI Pro | Complete | Commit `0a24daca`; workflow `31346356662` and live verifier passed after transient queue initialization |
-| 6 — mobile/service-manager experience | Local gate in progress | Responsive notification centre, intent/device model, fake provider; external credentials remain unresolved |
-| 7 — Meta/WhatsApp UAT readiness | Pending | Synthetic signed fixtures only; live Meta remains parked |
+| 6 — mobile/service-manager experience | Complete | Commit `5412c5b5`; workflow `31347576717` and live verifier passed; fake push only |
+| 7 — Meta/WhatsApp UAT readiness | Local gate complete | Secret-free readiness diagnostic and synthetic safety suite; live Meta remains parked |
 | 8 — full staging launch rehearsal | Pending | No real cards, customer messages, or production assets |
 | 9 — production migration preparation | Pending | Tooling/runbooks only; no production execution |
 | 10 — commercial launch experience | Pending | Catalogue-driven pricing and real-metric upsells |
@@ -96,6 +96,16 @@ Validation evidence:
 - Background delivery rechecks company status and user/tenant linkage, suppresses disabled tenants or missing devices, and never falls back to WhatsApp/SMS/email.
 - A responsive notification centre and 44-pixel mobile actions were added for admin/manager users. The shared Service dashboard now generates role-correct links and exposes the notification centre.
 - Focused notification/mobile plus manager and Free/Service regression coverage passed 42 tests with 336 assertions. The full suite passed 243 tests with 1,473 assertions and the frontend production build passed. Two guarded disposable MySQL cycles passed with 125 base tables, two views, 45 migrations, 157 foreign keys, 458 routes, two synthetic tenants, and identical fingerprint `62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b`.
+- Commit `5412c5b54bd0a02fb30c5c9b013cc5b7075d9f14` deployed through workflow `31347576717`. The guarded live verifier passed with the exact deployment marker and fingerprint, notification tables present, fake push/external delivery settings enforced, queue running, scheduler disabled, and production read-only verified Running.
+
+## Phase 7 decisions and validation
+
+- `staging:meta-readiness` produces a restricted presence/safety report without printing IDs, credentials, tokens, WABA/phone values, or recipient values and without making a Meta request.
+- Engineering readiness and human-owned live-UAT configuration readiness are separate. Missing Meta application/config IDs and test assets remain visible dependencies but do not weaken or block synthetic engineering verification.
+- Staging remains fail closed: production WABA/phone denylists and staging test-asset allowlists are required before an asset can resolve; legacy company resolution, WhatsApp outbound, and SMS outbound remain disabled.
+- The handoff documents the additive domain, callback and Embedded Signup URLs plus the exact Key Vault/App Service settings the human must supply. It explicitly stops if a Meta dashboard action would replace a production callback.
+- Existing signed synthetic coverage continues to prove signature rejection, unknown/denied assets, replay/idempotency, raw capture before enrichment, clean lead progression, quota exhaustion, coexistence history/echo isolation, and no unintended outbound. The new readiness suite adds configuration-presence and secret-nondisclosure assertions.
+- Phase 7 focused readiness/staging/webhook/Embedded Signup coverage passed 39 tests with 207 assertions. The complete regression suite passed 246 tests with 1,495 assertions. No migration or frontend change was introduced; the approved fingerprint remains `62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b`.
 
 ## Human dependency queue
 
