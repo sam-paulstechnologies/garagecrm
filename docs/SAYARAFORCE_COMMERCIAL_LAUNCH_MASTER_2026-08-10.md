@@ -17,8 +17,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 4 — Free and Service product | Complete | Commit `ba3bfc19`; workflow `31345416690` and live verifier passed; schema fingerprint unchanged |
 | 5 — Growth, Performance, AI Pro | Complete | Commit `0a24daca`; workflow `31346356662` and live verifier passed after transient queue initialization |
 | 6 — mobile/service-manager experience | Complete | Commit `5412c5b5`; workflow `31347576717` and live verifier passed; fake push only |
-| 7 — Meta/WhatsApp UAT readiness | Local gate complete | Secret-free readiness diagnostic and synthetic safety suite; live Meta remains parked |
-| 8 — full staging launch rehearsal | Pending | No real cards, customer messages, or production assets |
+| 7 — Meta/WhatsApp UAT readiness | Complete | Commit `bd63053f`; workflow `31348427916` and live verifier passed; live Meta remains parked |
+| 8 — full staging launch rehearsal | Local gate complete | Composite fake-provider ladder plus lifecycle, limit, role, tenant and outbound regression |
 | 9 — production migration preparation | Pending | Tooling/runbooks only; no production execution |
 | 10 — commercial launch experience | Pending | Catalogue-driven pricing and real-metric upsells |
 | 11 — measurement foundation | Pending | Privacy-minimized product/commercial events |
@@ -106,6 +106,17 @@ Validation evidence:
 - The handoff documents the additive domain, callback and Embedded Signup URLs plus the exact Key Vault/App Service settings the human must supply. It explicitly stops if a Meta dashboard action would replace a production callback.
 - Existing signed synthetic coverage continues to prove signature rejection, unknown/denied assets, replay/idempotency, raw capture before enrichment, clean lead progression, quota exhaustion, coexistence history/echo isolation, and no unintended outbound. The new readiness suite adds configuration-presence and secret-nondisclosure assertions.
 - Phase 7 focused readiness/staging/webhook/Embedded Signup coverage passed 39 tests with 207 assertions. The complete regression suite passed 246 tests with 1,495 assertions. No migration or frontend change was introduced; the approved fingerprint remains `62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b`.
+- Commit `bd63053f6fee3dcf9514820bf1b0ee1253a6c2dd` deployed through workflow `31348427916`. The guarded live verifier passed with the exact marker and fingerprint, queue running, scheduler disabled, outbound guards closed, and no production write. It correctly reported live Meta guard configuration incomplete; this remains the documented human-owned dependency.
+
+## Phase 8 decisions and validation
+
+- The composite launch rehearsal starts at the real public-registration endpoint, asserts exactly one tenant, garage, admin, active Free subscription, zero messaging connections, WhatsApp-ready onboarding access, and the Free AI allowance.
+- It upgrades the same tenant through Service, Growth, Performance and AI Pro using only the fake/test checkout plus a signed, normalized provider event. Redirects cannot unlock access; verified events reuse one local/provider subscription and create one idempotent provider receipt per transition.
+- The rehearsal asserts each commercial boundary at the point of upgrade, including Service reminders without jobs, Growth operations without campaign intelligence, Performance measurement without action execution, and AI Pro approval-required action AI without autonomous WhatsApp.
+- A safe notification intent is persisted without external delivery. Mail remains log-only; WhatsApp and SMS outbound remain disabled; no Meta connection or provider asset is created.
+- The focused rehearsal plus registration, ingress, metering, billing lifecycle, limits, tenant roles, inbox isolation, notification and tier-boundary suites passed 78 tests with 463 assertions. The complete suite passed 247 tests with 1,541 assertions.
+- Separate existing cases in the same gate cover duplicate webhook, raw capture before enrichment, quota exhaustion, concurrent/customer-period metering, failed payment/grace, retry-safe provider events, cancel-at-period-end, introductory-price transition, user/number limits, expired overrides, suspended companies, locked APIs, and queued-job denial.
+- No migration or frontend change is introduced in Phase 8. The canonical fingerprint remains unchanged; the live staging run will retain synthetic-only data and make no card, Meta, push, SMS, email or WhatsApp network call.
 
 ## Human dependency queue
 
