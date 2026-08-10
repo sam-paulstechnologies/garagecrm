@@ -21,7 +21,7 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 8 — full staging launch rehearsal | Complete | Commit `b23ce862`; workflow `31349240822` and guarded live verifier passed |
 | 9 — production migration preparation | Complete | Commit `a50e8258`; workflow `31349953947` and guarded live verifier passed; production untouched |
 | 10 — commercial launch experience | Complete | Commits `42bfa7c3`, `00065967`; workflow `31351005730`, live verifier and public-page smoke passed |
-| 11 — measurement foundation | Local gate complete | Privacy-minimized product events, platform-only metrics, unit-economic telemetry, reproducible migration |
+| 11 — measurement foundation | Complete | Commit `af0d55ef`; workflow `31351719337`, live verifier and public smoke passed; fingerprint `6c5799c4...a39480` |
 
 ## Phase 1 completion record
 
@@ -149,7 +149,8 @@ Validation evidence:
 - A Phase 11 review found and fixed a latent P1 billing defect: the verified paid-invoice branch used an introductory-cycle variable that had been assigned only in the cancellation branch. A new regression proves a paid invoice increments exactly one cycle and records AED 199.00 once.
 - Focused observability, billing, registration, lifecycle/metering and Meta-onboarding coverage passed 47 tests with 300 assertions across the two reported groups. The complete suite passed 256 tests with 1,595 assertions; warning classification remains the known absent clean-worktree Vite manifest, plus one pre-existing PHPUnit doc-comment deprecation. PHP lint and Pint passed, and the frontend production build passed with only the existing Browserslist/font/chunk notices.
 - Two guarded disposable MySQL cycles passed with 126 base tables, two valid views, 46 migration records, 159 foreign keys, 459 routes and identical fingerprint `6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480`.
-- Phase 11 adds only `2026_08_10_000005_create_product_events`. It is additive, has nullable tenant/user foreign keys with null-on-delete behavior, event/time indexes and a unique dedupe key. Its exact commit must still pass CI deployment, live migration/fingerprint verification and staging smoke before the phase is marked complete.
+- Phase 11 adds only `2026_08_10_000005_create_product_events`. It is additive, has nullable tenant/user foreign keys with null-on-delete behavior, event/time indexes and a unique dedupe key.
+- Commit `af0d55ef48638c54fbcef432577ce966f3965408` passed workflow `31351719337`, including the exact full suite, frontend build, staging-only package deployment, additive migration, cache rebuild, marker and health checks. The independent live verifier accepted 126 base tables, two views and fingerprint `6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480`; queue Running, scheduler disabled, outbound guards closed and production isolated. Public staging returned 200 with all five catalogue tiers, while unauthenticated platform commercial metrics correctly redirected to login.
 
 ## Human dependency queue
 
