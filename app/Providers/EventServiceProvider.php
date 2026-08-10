@@ -27,6 +27,7 @@ class EventServiceProvider extends ServiceProvider
         */
 
         \App\Events\LeadCreated::class => [
+            \App\Listeners\RecordProductFunnelEvent::class,
             \App\Listeners\SendUnifiedNotification::class,
             \App\Listeners\StartJourneyForLead::class,
             \App\Listeners\HandleLeadCreatedOutbound::class,
@@ -46,6 +47,7 @@ class EventServiceProvider extends ServiceProvider
         */
 
         \App\Events\OpportunityStatusUpdated::class => [
+            \App\Listeners\RecordProductFunnelEvent::class,
             \App\Listeners\SendUnifiedNotification::class,
             \App\Listeners\SendManagerBookingNotification::class,
         ],
@@ -68,6 +70,7 @@ class EventServiceProvider extends ServiceProvider
         */
 
         \App\Events\BookingStatusUpdated::class => [
+            \App\Listeners\RecordProductFunnelEvent::class,
             \App\Listeners\SendUnifiedNotification::class,
             \App\Listeners\SendManagerBookingNotification::class,
         ],

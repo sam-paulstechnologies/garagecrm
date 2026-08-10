@@ -2,6 +2,7 @@
 
 namespace App\SayaraForce\Messaging;
 
+use App\Commercial\ProductFunnelMilestoneRecorder;
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Messaging\Contracts\ProductMessagingAdapter;
 use App\Messaging\Data\NormalizedIncomingMessage;
@@ -9,6 +10,8 @@ use App\Services\WhatsApp\InboundMessageRecorder;
 
 class SayaraForceMessagingAdapter implements ProductMessagingAdapter
 {
+    public function __construct(private readonly ProductFunnelMilestoneRecorder $milestones) {}
+
     public function productKey(): string
     {
         return 'sayaraforce';
@@ -37,6 +40,8 @@ class SayaraForceMessagingAdapter implements ProductMessagingAdapter
         if (! $raw->wasRecentlyCreated) {
             return;
         }
+
+        $this->milestones->firstInbound($message->companyId);
 
         ProcessInboundWhatsApp::dispatch(
             from: $message->from,

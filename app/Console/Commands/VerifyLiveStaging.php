@@ -24,7 +24,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(125, $baseTables, 'base-table count');
+            $this->assertSame(126, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -67,6 +67,9 @@ class VerifyLiveStaging extends Command
                 if (! Schema::hasTable($table)) {
                     throw new RuntimeException("Missing mobile notification table: {$table}.");
                 }
+            }
+            if (! Schema::hasTable('product_events')) {
+                throw new RuntimeException('Missing commercial product-event table.');
             }
             $this->assertSame(10, (int) DB::table('price_provider_mappings')
                 ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
@@ -134,6 +137,7 @@ class VerifyLiveStaging extends Command
                 'ai_metering_tables' => count($aiMeteringTables),
                 'billing_tables' => count($billingTables),
                 'notification_tables' => count($notificationTables),
+                'product_event_tables' => 1,
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
                 'provider_records' => 0,

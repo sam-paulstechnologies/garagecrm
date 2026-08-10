@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Commercial\ProductEvents;
 use App\Commercial\SubscriptionManager;
-use Database\Seeders\CommercialFoundationSeeder;
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Messaging\Enums\ConnectionStatus;
 use App\Messaging\Models\MessagingConnection;
@@ -12,12 +12,13 @@ use App\Messaging\WhatsApp\MetaApiClient;
 use App\Models\System\Company;
 use App\Models\User;
 use App\Services\WhatsApp\WhatsAppService;
+use Database\Seeders\CommercialFoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -65,6 +66,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         $this->assertSame(48, strlen($response->json('nonce')));
         $this->assertDatabaseHas('messaging_onboarding_sessions', ['company_id' => $company->id, 'user_id' => $admin->id, 'status' => 'pending']);
         $this->assertDatabaseHas('messaging_consents', ['company_id' => $company->id, 'accepted_by' => $admin->id, 'consent_version' => '2026-08-phase-1']);
+        $this->assertDatabaseHas('product_events', [
+            'company_id' => $company->id,
+            'event_type' => ProductEvents::WHATSAPP_ONBOARDING_STARTED,
+        ]);
     }
 
     public function test_owner_page_is_plain_language_and_keeps_connection_modes_separate(): void
@@ -123,6 +128,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
         $this->assertDatabaseHas('messaging_phone_numbers', ['messaging_connection_id' => $connection->id, 'phone_number_id' => '300300']);
         $this->assertDatabaseHas('messaging_connection_checks', ['messaging_connection_id' => $connection->id, 'check_key' => 'app_subscription', 'status' => 'passed']);
         $this->assertDatabaseHas('companies', ['id' => $company->id, 'meta_waba_id' => '200200', 'meta_phone_number_id' => '300300', 'is_whatsapp_active' => true]);
+        $this->assertDatabaseHas('product_events', [
+            'company_id' => $company->id,
+            'event_type' => ProductEvents::WHATSAPP_CONNECTED,
+        ]);
         $rawToken = (string) DB::table('messaging_connections')->value('encrypted_access_token');
         $legacyToken = (string) DB::table('companies')->value('meta_access_token');
         $this->assertStringNotContainsString('tenant-access-token', $rawToken);
@@ -410,10 +419,10 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     private function fakeSuccessfulMeta(
         array $subscriptionPayload = ['data' => [['whatsapp_business_api_data' => ['id' => '925717083333434']]]],
         bool $isOnBusinessApp = true,
-    ): void
-    {
+    ): void {
         Http::fake(function (Request $request) use ($subscriptionPayload, $isOnBusinessApp) {
             $url = $request->url();
+
             return match (true) {
                 str_contains($url, '/oauth/access_token') => Http::response(['access_token' => 'tenant-access-token', 'token_type' => 'bearer', 'expires_in' => 3600]),
                 str_contains($url, '/debug_token') => Http::response(['data' => [
@@ -478,6 +487,7 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
     private function signedWebhook(array $payload)
     {
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+
         return $this->call('POST', route('api.webhooks.meta.whatsapp.handle'), [], [], [], [
             'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json',
             'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $body, 'test-app-secret'),

@@ -2,14 +2,15 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Commercial\ProductEvents;
+use App\Models\Commercial\Subscription;
 use App\Models\Garage\Garage;
 use App\Models\System\Company;
 use App\Models\User;
+use Database\Seeders\CommercialFoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
-use Database\Seeders\CommercialFoundationSeeder;
-use App\Models\Commercial\Subscription;
 
 class RegistrationTest extends TestCase
 {
@@ -41,6 +42,7 @@ class RegistrationTest extends TestCase
             ->assertOk()
             ->assertSee('Garage self-service onboarding')
             ->assertSee('Create garage workspace');
+        $this->assertDatabaseHas('product_events', ['event_type' => ProductEvents::REGISTRATION_STARTED]);
     }
 
     public function test_successful_registration_creates_one_tenant_garage_and_admin_then_opens_whatsapp_onboarding(): void
@@ -72,6 +74,11 @@ class RegistrationTest extends TestCase
         $this->assertSame($company->id, $subscription->company_id);
         $this->assertSame('free', $subscription->planVersion->plan->code);
         $this->assertSame('active', $subscription->status);
+        $this->assertDatabaseHas('product_events', [
+            'company_id' => $company->id,
+            'user_id' => $admin->id,
+            'event_type' => ProductEvents::REGISTRATION_COMPLETED,
+        ]);
 
         $this->get(route('admin.messaging.whatsapp.index'))
             ->assertOk()
@@ -115,7 +122,7 @@ class RegistrationTest extends TestCase
 
         $this->actingAs($admin);
 
-        $this->assertNull((new Garage())->resolveRouteBinding($otherGarage->id));
+        $this->assertNull((new Garage)->resolveRouteBinding($otherGarage->id));
         $this->assertNotSame($otherCompany->id, $admin->company_id);
         $this->assertDatabaseCount('messaging_connections', 0);
     }

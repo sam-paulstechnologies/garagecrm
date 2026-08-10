@@ -173,7 +173,8 @@
     "2026_08_10_000001_create_commercial_foundation",
     "2026_08_10_000002_create_ai_monitoring_metering",
     "2026_08_10_000003_create_billing_engine",
-    "2026_08_10_000004_create_mobile_notification_foundation"
+    "2026_08_10_000004_create_mobile_notification_foundation",
+    "2026_08_10_000005_create_product_events"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -471,12 +472,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds tenant-scoped notification intents and encrypted push-device registrations for provider-neutral mobile delivery."
+    },
+    {
+      "migration": "2026_08_10_000005_create_product_events",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds a privacy-minimized, tenant-aware product-event ledger for commercial funnel and unit-economic telemetry."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b",
-    "cycle_two_fingerprint": "62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b",
+    "cycle_one_fingerprint": "6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480",
+    "cycle_two_fingerprint": "6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

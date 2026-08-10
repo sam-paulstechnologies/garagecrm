@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Commercial\ProductEventRecorder;
+use App\Commercial\ProductEvents;
+use App\Commercial\SubscriptionManager;
 use App\Http\Controllers\Controller;
 use App\Models\Garage\Garage;
 use App\Models\System\Company;
@@ -15,23 +18,30 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use App\Commercial\SubscriptionManager;
 
 class RegisteredUserController extends Controller
 {
     /**
      * Display the registration view.
      */
-    public function create(): View
+    public function create(Request $request, ProductEventRecorder $events): View
     {
+        $events->recordSafely(
+            ProductEvents::REGISTRATION_STARTED,
+            dedupeKey: 'registration-started:'.hash('sha256', $request->session()->getId()),
+        );
+
         return view('auth.register');
     }
 
     /**
      * Handle an incoming registration request.
      */
-    public function store(Request $request, SubscriptionManager $subscriptions): RedirectResponse
-    {
+    public function store(
+        Request $request,
+        SubscriptionManager $subscriptions,
+        ProductEventRecorder $events,
+    ): RedirectResponse {
         $request->merge([
             'email' => Str::lower(trim((string) $request->input('email'))),
             'garage_name' => trim((string) $request->input('garage_name')),
@@ -92,6 +102,13 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
         $request->session()->regenerate();
+        $events->recordSafely(
+            ProductEvents::REGISTRATION_COMPLETED,
+            $user->company,
+            $user,
+            ['plan_code' => 'free'],
+            'registration-completed:'.$user->company_id,
+        );
 
         return redirect()
             ->route('admin.messaging.whatsapp.index')

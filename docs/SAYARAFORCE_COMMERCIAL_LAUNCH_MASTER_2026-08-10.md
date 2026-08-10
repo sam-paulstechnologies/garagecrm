@@ -20,8 +20,8 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 | 7 — Meta/WhatsApp UAT readiness | Complete | Commit `bd63053f`; workflow `31348427916` and live verifier passed; live Meta remains parked |
 | 8 — full staging launch rehearsal | Complete | Commit `b23ce862`; workflow `31349240822` and guarded live verifier passed |
 | 9 — production migration preparation | Complete | Commit `a50e8258`; workflow `31349953947` and guarded live verifier passed; production untouched |
-| 10 — commercial launch experience | Local gate complete | Catalogue-driven public pricing, accessible entry proposition, accurate legal copy, real-metric upsells |
-| 11 — measurement foundation | Pending | Privacy-minimized product/commercial events |
+| 10 — commercial launch experience | Complete | Commits `42bfa7c3`, `00065967`; workflow `31351005730`, live verifier and public-page smoke passed |
+| 11 — measurement foundation | Local gate complete | Privacy-minimized product events, platform-only metrics, unit-economic telemetry, reproducible migration |
 
 ## Phase 1 completion record
 
@@ -138,6 +138,18 @@ Validation evidence:
 - Focused public-site, launch-experience and Free/Service validation passed 14 tests with 112 assertions. The frontend production build passed; its only notices were existing Browserslist, dynamic/static chunk and font-resolution warnings.
 - Phase 10 introduces no migration. Its exact commit will receive the complete CI regression suite and live staging verification before the phase is marked complete.
 - Initial workflow `31350607386` stopped in the full suite before deployment because the legacy root-page smoke test deliberately boots without migrations and the catalogue reader queried `prices` unconditionally. The reader now returns an empty catalogue only when the commercial schema is unavailable, so bootstrap/maintenance states do not return HTTP 500; it never substitutes hard-coded prices. The reproduced failing smoke plus public catalogue regression then passed seven tests with 72 assertions.
+- Commits `42bfa7c3782e8ebe86bc2b078e384f4c7f5f12a3` and `000659674d3464bbfd21dec97c7e0e94b7a6f157` passed corrected workflow `31351005730`. The guarded live verifier passed after the ordinary post-deploy cold start, with the queue Running, scheduler disabled and outbound/Meta guards closed. Public staging returned 200 and displayed all five catalogue amounts plus the split-line “Connect your WhatsApp. Stop losing bookings.” proposition.
+
+## Phase 11 decisions and validation
+
+- `product_events` is a tenant-aware, privacy-minimized ledger. Event names and property keys are whitelisted, arbitrary arrays are refused, obvious email/phone-like values and oversized strings are rejected, and only a SHA-256 idempotency key is persisted. Optional telemetry fails safely if its additive table is not yet available during deployment and cannot block registration, billing, inbound capture, or another primary operation.
+- Instrumented milestones include registration start/completion; WhatsApp onboarding start/connection; first inbound, lead, opportunity and booking; 50/80/100 percent AI allowance thresholds; locked-feature upgrade views; checkout start; subscription activation/failure/cancellation; and verified plan upgrades/downgrades. First-event and threshold keys are tenant/period scoped and idempotent.
+- AI thresholds derive from the configured tenant allowance. No raw customer identifier is copied to product events, and raw inbound capture still precedes all measurement work.
+- The platform-only commercial dashboard reports entitled plan assignments, verified Free-to-Service and Service-to-Growth transitions, cancellations, failed payments, incomplete checkout count, AI runs/tokens/recorded cost units, monitored-customer averages, allowance pressure, provider-reported WhatsApp usage/cost, and verified AED invoice revenue. Payment fees remain explicitly unavailable rather than guessed.
+- A Phase 11 review found and fixed a latent P1 billing defect: the verified paid-invoice branch used an introductory-cycle variable that had been assigned only in the cancellation branch. A new regression proves a paid invoice increments exactly one cycle and records AED 199.00 once.
+- Focused observability, billing, registration, lifecycle/metering and Meta-onboarding coverage passed 47 tests with 300 assertions across the two reported groups. The complete suite passed 256 tests with 1,595 assertions; warning classification remains the known absent clean-worktree Vite manifest, plus one pre-existing PHPUnit doc-comment deprecation. PHP lint and Pint passed, and the frontend production build passed with only the existing Browserslist/font/chunk notices.
+- Two guarded disposable MySQL cycles passed with 126 base tables, two valid views, 46 migration records, 159 foreign keys, 459 routes and identical fingerprint `6c5799c461f3935342817ce3cb17649b400b59b97cdf8d801de7de7a55a39480`.
+- Phase 11 adds only `2026_08_10_000005_create_product_events`. It is additive, has nullable tenant/user foreign keys with null-on-delete behavior, event/time indexes and a unique dedupe key. Its exact commit must still pass CI deployment, live migration/fingerprint verification and staging smoke before the phase is marked complete.
 
 ## Human dependency queue
 

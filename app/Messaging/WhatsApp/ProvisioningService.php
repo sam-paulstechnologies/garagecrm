@@ -2,6 +2,7 @@
 
 namespace App\Messaging\WhatsApp;
 
+use App\Commercial\ProductFunnelMilestoneRecorder;
 use App\Commercial\ResourceLimitService;
 use App\Messaging\Enums\ConnectionMode;
 use App\Messaging\Enums\ConnectionStatus;
@@ -31,8 +32,8 @@ class ProvisioningService
         private readonly MessagingAuditService $audit,
         private readonly StagingSafety $stagingSafety,
         private readonly ResourceLimitService $resourceLimits,
-    ) {
-    }
+        private readonly ProductFunnelMilestoneRecorder $milestones,
+    ) {}
 
     public function complete(Company $company, User $user, array $input): array
     {
@@ -127,6 +128,11 @@ class ProvisioningService
             $this->audit->record($company->id, $connection->id, $user->id, $connection->product_key,
                 'provisioning_completed', 'success', ['subscription_attempts' => $subscription['attempts']],
                 idempotencyKey: $session->public_id);
+            $this->milestones->whatsappConnected(
+                (int) $company->id,
+                (string) $session->connection_mode,
+                (int) $connection->id,
+            );
 
             return ['connection' => $connection->fresh(['phoneNumbers', 'checks']), 'idempotent' => false];
         } catch (MessagingProvisioningException $exception) {
@@ -177,6 +183,7 @@ class ProvisioningService
             });
 
             $this->audit->record($connection->company_id, $connection->id, $user->id, $connection->product_key, 'provisioning_retried', 'success');
+
             return $this->health->run($connection->fresh(['phoneNumbers']));
         } catch (MessagingProvisioningException $exception) {
             $connection->forceFill([
@@ -243,6 +250,7 @@ class ProvisioningService
         if ((string) ($business['id'] ?? '') !== $candidate || ($ownerId !== '' && $ownerId !== $candidate)) {
             throw new MessagingProvisioningException('business_mismatch', 'The selected Meta business does not own this WhatsApp account.');
         }
+
         return $candidate;
     }
 
@@ -262,6 +270,7 @@ class ProvisioningService
         if ($mode === ConnectionMode::CloudApi->value && $isOnBusinessApp === true) {
             throw new MessagingProvisioningException('wrong_onboarding_mode', 'Use the existing Business app option for this number.');
         }
+
         return $phone;
     }
 
@@ -326,6 +335,7 @@ class ProvisioningService
             ])->save();
 
             MessagingConsent::query()->where('messaging_onboarding_session_id', $session->id)->update(['messaging_connection_id' => $connection->id]);
+
             return $connection;
         });
     }

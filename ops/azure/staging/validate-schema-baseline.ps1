@@ -157,14 +157,15 @@ COMMIT;
 '@ | Out-Null
 
     $assertions = @(Invoke-MySql @'
-SELECT COUNT(*)=125 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
+SELECT COUNT(*)=126 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=45 FROM migrations;
+SELECT COUNT(*)=46 FROM migrations;
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
 SELECT COUNT(*)=8 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('plan_versions','prices','plan_entitlements','subscriptions','company_entitlement_overrides','entitlement_usages','entitlement_audit_logs','billing_provider_events');
 SELECT COUNT(*)=2 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('ai_customer_usages','ai_analysis_runs');
 SELECT COUNT(*)=3 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('price_provider_mappings','billing_checkout_sessions','billing_invoices');
 SELECT COUNT(*)=2 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('push_devices','notification_intents');
+SELECT COUNT(*)=1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='product_events';
 SELECT COUNT(*)=5 FROM plans WHERE code IN ('free','service','growth','performance','ai_pro');
 SELECT COUNT(*)=(SELECT COUNT(*) FROM companies) FROM subscriptions;
 SELECT COUNT(*)=2 FROM companies;
@@ -196,7 +197,7 @@ SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() 
     return [ordered] @{
         cycle = $CycleName
         fingerprint = $match.Value
-        base_tables = 125
+        base_tables = 126
         views = 2
         foreign_keys_checked = $foreignKeys
         routes = $routeCount
@@ -232,7 +233,8 @@ try {
         '2026_08_10_000001_create_commercial_foundation',
         '2026_08_10_000002_create_ai_monitoring_metering',
         '2026_08_10_000003_create_billing_engine',
-        '2026_08_10_000004_create_mobile_notification_foundation'
+        '2026_08_10_000004_create_mobile_notification_foundation',
+        '2026_08_10_000005_create_product_events'
     )
     if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
         -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {

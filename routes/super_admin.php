@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\SuperAdmin\AuditController;
+use App\Http\Controllers\SuperAdmin\CommercialMetricsController;
 use App\Http\Controllers\SuperAdmin\DashboardController;
 use App\Http\Controllers\SuperAdmin\GarageController;
 use App\Http\Controllers\SuperAdmin\LogController;
@@ -15,6 +16,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
     ->name('super-admin.')
     ->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
+        Route::get('commercial', CommercialMetricsController::class)->name('commercial.index');
 
         Route::get('garages', [GarageController::class, 'index'])->name('garages.index');
         Route::get('garages/{garage}', [GarageController::class, 'show'])->name('garages.show');

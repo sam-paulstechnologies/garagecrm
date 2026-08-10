@@ -5,6 +5,9 @@ namespace App\Billing;
 use App\Billing\Data\NormalizedBillingEvent;
 use App\Billing\Exceptions\BillingConfigurationException;
 use App\Billing\Exceptions\InvalidBillingWebhook;
+use App\Commercial\ProductEventRecorder;
+use App\Commercial\ProductEvents;
+use App\Jobs\TransitionIntroductoryBillingPrice;
 use App\Models\Commercial\BillingCheckoutSession;
 use App\Models\Commercial\BillingInvoice;
 use App\Models\Commercial\BillingProviderEvent;
@@ -13,13 +16,13 @@ use App\Models\Commercial\Subscription;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use App\Jobs\TransitionIntroductoryBillingPrice;
 
 class BillingWebhookProcessor
 {
     public function __construct(
         private readonly BillingGatewayResolver $gateways,
         private readonly BillingManager $billing,
+        private readonly ProductEventRecorder $productEvents,
     ) {}
 
     /** @return array{duplicate: bool, status: string} */
@@ -106,13 +109,21 @@ class BillingWebhookProcessor
             if (! $subscription) {
                 throw new BillingConfigurationException('Deleted provider subscription does not map to a tenant subscription.');
             }
-            $completedCycles = min(65535, ((int) $subscription->introductory_cycles_completed) + 1);
             $subscription->update([
                 'status' => 'cancelled', 'payment_status' => 'cancelled',
                 'cancelled_at' => now(), 'cancel_at_period_end' => false,
                 'provider_state_updated_at' => $event->occurredAt,
             ]);
             $this->audit($subscription, 'billing.subscription_cancelled', $provider);
+            $this->productEvents->recordSafely(
+                ProductEvents::SUBSCRIPTION_CANCELLED,
+                $subscription->company,
+                properties: [
+                    'plan_code' => (string) $subscription->planVersion?->plan?->code,
+                    'provider' => $provider,
+                ],
+                dedupeKey: 'subscription-cancelled:'.$event->id,
+            );
 
             return 'processed';
         }
@@ -121,6 +132,7 @@ class BillingWebhookProcessor
             if (! $subscription) {
                 throw new BillingConfigurationException('Paid invoice does not map to a tenant subscription.');
             }
+            $completedCycles = min(65535, ((int) $subscription->introductory_cycles_completed) + 1);
             $this->upsertInvoice($subscription, $event, 'paid');
             $subscription->update([
                 'status' => $subscription->cancel_at_period_end ? 'cancel_at_period_end' : 'active',
@@ -153,6 +165,15 @@ class BillingWebhookProcessor
                 'provider_state_updated_at' => $event->occurredAt,
             ]);
             $this->audit($subscription, 'billing.payment_failed_grace_started', $provider, ['grace_days' => (int) config('billing.failed_payment.grace_days', 7)]);
+            $this->productEvents->recordSafely(
+                ProductEvents::SUBSCRIPTION_FAILED,
+                $subscription->company,
+                properties: [
+                    'plan_code' => (string) $subscription->planVersion?->plan?->code,
+                    'provider' => $provider,
+                ],
+                dedupeKey: 'subscription-failed:'.$event->id,
+            );
 
             return 'processed';
         }

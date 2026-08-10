@@ -3,7 +3,10 @@
 namespace App\Billing;
 
 use App\Billing\Contracts\BillingGateway;
+use App\Billing\Data\ProviderCustomer;
 use App\Billing\Exceptions\BillingConfigurationException;
+use App\Commercial\ProductEventRecorder;
+use App\Commercial\ProductEvents;
 use App\Models\Commercial\BillingCheckoutSession;
 use App\Models\Commercial\EntitlementAuditLog;
 use App\Models\Commercial\Price;
@@ -12,11 +15,13 @@ use App\Models\Commercial\Subscription;
 use App\Models\System\Company;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Billing\Data\ProviderCustomer;
 
 class BillingManager
 {
-    public function __construct(private readonly BillingGateway $gateway) {}
+    public function __construct(
+        private readonly BillingGateway $gateway,
+        private readonly ProductEventRecorder $productEvents,
+    ) {}
 
     public function startCheckout(Company $company, Price $price, ?string $idempotencyKey = null): BillingCheckoutSession
     {
@@ -120,6 +125,17 @@ class BillingManager
             'context' => ['price_code' => $price->code, 'checkout_id' => $checkout->id],
             'created_at' => now(),
         ]);
+        $this->productEvents->recordSafely(
+            ProductEvents::CHECKOUT_STARTED,
+            $company,
+            auth()->user(),
+            [
+                'current_plan' => (string) $subscription->planVersion?->plan?->code,
+                'target_plan' => (string) $price->planVersion?->plan?->code,
+                'provider' => $provider,
+            ],
+            'checkout-started:'.$checkout->id,
+        );
 
         return $checkout->fresh();
     }
@@ -168,6 +184,8 @@ class BillingManager
         return DB::transaction(function () use ($checkout, $providerCustomerId, $providerSubscriptionId, $providerPriceId, $paymentStatus, $occurredAt, $periodStart, $periodEnd): Subscription {
             $checkout = BillingCheckoutSession::query()->with('requestedPrice.planVersion')->lockForUpdate()->findOrFail($checkout->id);
             $subscription = Subscription::query()->lockForUpdate()->findOrFail($checkout->subscription_id);
+            $previousPlan = (string) $subscription->planVersion?->plan?->code;
+            $previousRank = (int) $subscription->planVersion?->plan?->rank;
             $mappingMatches = PriceProviderMapping::query()
                 ->where('price_id', $checkout->requested_price_id)
                 ->where('payment_provider', $checkout->payment_provider)
@@ -217,6 +235,26 @@ class BillingManager
                 'context' => ['price_code' => $price->code, 'checkout_id' => $checkout->id],
                 'created_at' => now(),
             ]);
+            $nextPlan = (string) $price->planVersion?->plan?->code;
+            $this->productEvents->recordSafely(
+                ProductEvents::SUBSCRIPTION_ACTIVATED,
+                $checkout->company,
+                properties: ['plan_code' => $nextPlan, 'provider' => $checkout->payment_provider],
+                dedupeKey: 'subscription-activated:'.$checkout->id,
+            );
+            if ($previousPlan !== '' && $nextPlan !== '' && $previousPlan !== $nextPlan) {
+                $nextRank = (int) $price->planVersion?->plan?->rank;
+                $this->productEvents->recordSafely(
+                    $nextRank >= $previousRank ? ProductEvents::PLAN_UPGRADED : ProductEvents::PLAN_DOWNGRADED,
+                    $checkout->company,
+                    properties: [
+                        'from_plan' => $previousPlan,
+                        'to_plan' => $nextPlan,
+                        'provider' => $checkout->payment_provider,
+                    ],
+                    dedupeKey: 'plan-transition:'.$checkout->id,
+                );
+            }
 
             return $subscription->fresh();
         });

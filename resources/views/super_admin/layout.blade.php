@@ -65,6 +65,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('super-admin.dashboard') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.dashboard') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Dashboard</a>
+                <a href="{{ route('super-admin.commercial.index') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.commercial.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Commercial</a>
                 <a href="{{ route('super-admin.garages.index') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.garages.*') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Garages</a>
                 <a href="{{ route('super-admin.logs.messages') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.logs.messages') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Messages</a>
                 <a href="{{ route('super-admin.logs.leads') }}" class="rounded-2xl px-4 py-2 text-xs font-extrabold {{ request()->routeIs('super-admin.logs.leads') ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/15' }}">Leads</a>

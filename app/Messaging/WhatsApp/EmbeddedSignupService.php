@@ -2,10 +2,11 @@
 
 namespace App\Messaging\WhatsApp;
 
+use App\Commercial\ProductFunnelMilestoneRecorder;
 use App\Messaging\Enums\ConnectionMode;
 use App\Messaging\Exceptions\MessagingProvisioningException;
-use App\Messaging\Models\MessagingConsent;
 use App\Messaging\Models\MessagingConnection;
+use App\Messaging\Models\MessagingConsent;
 use App\Messaging\Models\MessagingOnboardingSession;
 use App\Messaging\Services\MessagingAuditService;
 use App\Models\System\Company;
@@ -26,8 +27,8 @@ class EmbeddedSignupService
         private readonly MetaApiClient $meta,
         private readonly OnboardingStateService $states,
         private readonly MessagingAuditService $audit,
-    ) {
-    }
+        private readonly ProductFunnelMilestoneRecorder $milestones,
+    ) {}
 
     public function configuration(string $mode): array
     {
@@ -75,6 +76,12 @@ class EmbeddedSignupService
 
             return $issued;
         });
+
+        $this->milestones->whatsappOnboardingStarted(
+            (int) $company->id,
+            $mode,
+            (string) $issued['session']->public_id,
+        );
 
         return [
             'state' => $issued['state'],

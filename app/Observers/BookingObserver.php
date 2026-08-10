@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Commercial\ProductFunnelMilestoneRecorder;
 use App\Events\BookingStatusUpdated;
 use App\Models\Job\Booking;
 use Illuminate\Support\Facades\DB;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 class BookingObserver
 {
+    public function __construct(private readonly ProductFunnelMilestoneRecorder $milestones) {}
+
     /*
     |--------------------------------------------------------------------------
     | Booking Observer
@@ -37,6 +40,11 @@ class BookingObserver
         'slot',
     ];
 
+    public function created(Booking $booking): void
+    {
+        $this->milestones->firstBooking((int) $booking->company_id);
+    }
+
     public function updated(Booking $booking): void
     {
         /*
@@ -55,7 +63,7 @@ class BookingObserver
                 'company_id' => $booking->company_id,
                 'old_status' => $booking->getOriginal('status'),
                 'new_status' => $booking->status,
-                'reason'     => 'BookingStateService owns BookingStatusUpdated dispatch',
+                'reason' => 'BookingStateService owns BookingStatusUpdated dispatch',
             ]);
 
             return;
@@ -88,8 +96,8 @@ class BookingObserver
             }
 
             Log::info('[BookingObserver] Booking reschedule event dispatched', [
-                'booking_id'    => $freshBooking->id,
-                'company_id'    => $freshBooking->company_id,
+                'booking_id' => $freshBooking->id,
+                'company_id' => $freshBooking->company_id,
                 'changed_field' => $dateChanged,
             ]);
 

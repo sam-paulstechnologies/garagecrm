@@ -9,19 +9,17 @@ use App\Billing\Gateways\FakeBillingGateway;
 use App\Billing\Gateways\StripeBillingGateway;
 use App\Commercial\Plans;
 use App\Commercial\SubscriptionManager;
+use App\Jobs\TransitionIntroductoryBillingPrice;
 use App\Models\Commercial\BillingCheckoutSession;
-use App\Models\Commercial\BillingProviderEvent;
 use App\Models\Commercial\Price;
 use App\Models\Commercial\PriceProviderMapping;
-use App\Billing\Data\ProviderCustomer;
 use App\Models\System\Company;
 use App\Models\User;
-use App\Jobs\TransitionIntroductoryBillingPrice;
 use Database\Seeders\BillingFoundationSeeder;
 use Database\Seeders\CommercialFoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class BillingEngineTest extends TestCase
@@ -286,6 +284,33 @@ class BillingEngineTest extends TestCase
         $this->assertSame(1, \App\Models\Commercial\EntitlementAuditLog::query()
             ->where('subscription_id', $subscription->id)
             ->where('event', 'billing.standard_price_transition_requested')->count());
+    }
+
+    public function test_verified_paid_invoice_increments_introductory_cycle_and_records_revenue(): void
+    {
+        [$company] = $this->activatedServiceTenant();
+        $subscription = $company->fresh()->subscription;
+
+        $result = $this->fakeEvent('invoice.paid', 'invoice', 'invoice_cycle_one', [
+            'provider_subscription_id' => $subscription->provider_subscription_id,
+            'provider_invoice_id' => 'invoice_cycle_one',
+            'currency' => 'AED',
+            'amount_due_minor' => 19900,
+            'amount_paid_minor' => 19900,
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+            'paid_at' => now()->timestamp,
+        ]);
+
+        $this->assertSame('processed', $result['status']);
+        $this->assertSame(1, $subscription->fresh()->introductory_cycles_completed);
+        $this->assertDatabaseHas('billing_invoices', [
+            'company_id' => $company->id,
+            'provider_invoice_id' => 'invoice_cycle_one',
+            'status' => 'paid',
+            'currency' => 'AED',
+            'amount_paid' => '199.00',
+        ]);
     }
 
     /** @return array{Company, User} */

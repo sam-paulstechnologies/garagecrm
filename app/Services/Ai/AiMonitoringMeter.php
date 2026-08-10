@@ -4,6 +4,7 @@ namespace App\Services\Ai;
 
 use App\Commercial\AiMonitoringDecision;
 use App\Commercial\EntitlementService;
+use App\Commercial\ProductFunnelMilestoneRecorder;
 use App\Models\Commercial\AiAnalysisRun;
 use App\Models\Commercial\AiCustomerUsage;
 use App\Models\Commercial\EntitlementUsage;
@@ -16,11 +17,13 @@ use Illuminate\Support\Facades\DB;
 class AiMonitoringMeter
 {
     public const CAPABILITY = 'ai_observational';
+
     public const ALLOWANCE = 'limit.ai_monitored_customers';
 
-    public function __construct(private readonly EntitlementService $entitlements)
-    {
-    }
+    public function __construct(
+        private readonly EntitlementService $entitlements,
+        private readonly ProductFunnelMilestoneRecorder $milestones,
+    ) {}
 
     public function claim(
         Company $company,
@@ -120,6 +123,16 @@ class AiMonitoringMeter
                 $aggregate->increment('used');
             }
 
+            $currentUsed = (int) $aggregate->fresh()->used;
+            if ($inserted === 1 && $limit !== null) {
+                $this->milestones->aiUsageThresholds(
+                    (int) $company->id,
+                    $currentUsed,
+                    $limit,
+                    $periodStart,
+                );
+            }
+
             return new AiMonitoringDecision(
                 true,
                 'allowed',
@@ -128,7 +141,7 @@ class AiMonitoringMeter
                 $periodStart,
                 $periodEnd,
                 $limit,
-                (int) $aggregate->fresh()->used,
+                $currentUsed,
                 $inserted === 1,
             );
         }, 3);

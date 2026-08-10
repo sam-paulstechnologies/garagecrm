@@ -3,11 +3,11 @@
 namespace Tests\Feature;
 
 use App\Commercial\Plans;
+use App\Commercial\ProductEvents;
 use App\Commercial\SubscriptionManager;
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Messaging\Data\NormalizedIncomingMessage;
 use App\Models\Client\Opportunity;
-use App\Models\Commercial\AiAnalysisRun;
 use App\Models\Commercial\AiCustomerUsage;
 use App\Models\Commercial\EntitlementUsage;
 use App\Models\MessageLog;
@@ -17,8 +17,8 @@ use App\Services\Ai\AiMonitoringMeter;
 use App\Services\Ai\NlpService;
 use App\Services\Leads\LeadResolver;
 use Database\Seeders\CommercialFoundationSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
@@ -59,6 +59,11 @@ class WhatsAppLifecycleMeteringTest extends TestCase
         $this->assertSame('raw_captured', data_get($raw->meta, 'lifecycle_stage'));
         $this->assertNull($raw->lead_id);
         $this->assertSame(1, MessageLog::query()->where('provider_message_id', 'wamid.phase2.raw')->count());
+        $this->assertDatabaseHas('product_events', [
+            'company_id' => $company->id,
+            'event_type' => ProductEvents::FIRST_INBOUND,
+        ]);
+        $this->assertSame(1, DB::table('product_events')->where('event_type', ProductEvents::FIRST_INBOUND)->count());
         Queue::assertPushed(ProcessInboundWhatsApp::class, 1);
         Queue::assertPushed(ProcessInboundWhatsApp::class, fn (ProcessInboundWhatsApp $job) => $job->messageLogId === $raw->id);
     }
@@ -91,6 +96,10 @@ class WhatsAppLifecycleMeteringTest extends TestCase
             'company_id' => $company->id,
             'capability' => AiMonitoringMeter::ALLOWANCE,
             'used' => 1,
+        ]);
+        $this->assertDatabaseHas('product_events', [
+            'company_id' => $company->id,
+            'event_type' => ProductEvents::FIRST_LEAD,
         ]);
     }
 
@@ -176,6 +185,34 @@ class WhatsAppLifecycleMeteringTest extends TestCase
         $this->assertSame(2, AiCustomerUsage::query()->where('company_id', $company->id)->count());
     }
 
+    public function test_ai_usage_threshold_events_are_period_scoped_and_idempotent(): void
+    {
+        $company = $this->companyOn(Plans::FREE, 'Threshold Garage');
+        $subscription = $company->subscription()->firstOrFail();
+        $periodStart = $subscription->current_period_start->copy()->startOfSecond();
+        EntitlementUsage::query()->create([
+            'company_id' => $company->id,
+            'capability' => AiMonitoringMeter::ALLOWANCE,
+            'period_start' => $periodStart,
+            'period_end' => $subscription->current_period_end,
+            'used' => 12,
+        ]);
+
+        $meter = app(AiMonitoringMeter::class);
+        $meter->claim($company, null, '971500000250', $this->message($company, 'wamid.threshold.50'), 'meta|threshold');
+        EntitlementUsage::query()->where('company_id', $company->id)->update(['used' => 19]);
+        $meter->claim($company, null, '971500000251', $this->message($company, 'wamid.threshold.80'), 'meta|threshold');
+        EntitlementUsage::query()->where('company_id', $company->id)->update(['used' => 24]);
+        $meter->claim($company, null, '971500000252', $this->message($company, 'wamid.threshold.100'), 'meta|threshold');
+
+        foreach ([ProductEvents::AI_USAGE_50, ProductEvents::AI_USAGE_80, ProductEvents::AI_USAGE_100] as $event) {
+            $this->assertSame(1, DB::table('product_events')
+                ->where('company_id', $company->id)
+                ->where('event_type', $event)
+                ->count());
+        }
+    }
+
     public function test_raw_message_survives_lead_resolution_failure(): void
     {
         $company = $this->companyOn(Plans::FREE, 'Failure Garage');
@@ -222,11 +259,13 @@ class WhatsAppLifecycleMeteringTest extends TestCase
 
     private function fakeNlp(): object
     {
-        $calls = new class {
+        $calls = new class
+        {
             public int $count = 0;
         };
 
-        app()->instance(NlpService::class, new class($calls) extends NlpService {
+        app()->instance(NlpService::class, new class($calls) extends NlpService
+        {
             public function __construct(private object $calls) {}
 
             public function analyzeWithTelemetry(string $text, array $context = []): array
