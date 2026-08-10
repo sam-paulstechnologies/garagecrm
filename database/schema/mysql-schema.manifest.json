@@ -175,7 +175,8 @@
     "2026_08_10_000003_create_billing_engine",
     "2026_08_10_000004_create_mobile_notification_foundation",
     "2026_08_10_000005_create_product_events",
-    "2026_08_10_000006_create_messaging_number_claims"
+    "2026_08_10_000006_create_messaging_number_claims",
+    "2026_08_11_000001_harden_billing_payment_lifecycle"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -485,12 +486,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds tenant-scoped pre-Meta WhatsApp number claims, normalized E.164 identity, and onboarding linkage without creating provider-connected records."
+    },
+    {
+      "migration": "2026_08_11_000001_harden_billing_payment_lifecycle",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Separates provider-confirmed checkout from verified payment activation and adds immutable checkout, price, and test-mode attribution to provider invoice history."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "9bd58c304af5a43125c69066b458436c0f2ea0f701866c9bb992302ab8304dd3",
-    "cycle_two_fingerprint": "9bd58c304af5a43125c69066b458436c0f2ea0f701866c9bb992302ab8304dd3",
+    "cycle_one_fingerprint": "b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd",
+    "cycle_two_fingerprint": "b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

@@ -97,7 +97,8 @@ class CommercialLaunchRehearsalTest extends TestCase
         $this->assertSame('approval_required', $entitlements->decide($company, 'ai_action_execution')->mode);
         $this->assertFalse($entitlements->can($company, 'whatsapp_ai_autonomous'));
         $this->assertDatabaseCount('subscriptions', 1);
-        $this->assertDatabaseCount('billing_provider_events', 4);
+        $this->assertDatabaseCount('billing_provider_events', 8);
+        $this->assertDatabaseCount('billing_invoices', 4);
         $this->assertDatabaseCount('billing_checkout_sessions', 4);
         $this->assertDatabaseCount('messaging_connections', 0);
         $this->assertSame('log', config('mail.default'));

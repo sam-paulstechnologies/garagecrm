@@ -78,6 +78,16 @@ class VerifyLiveStaging extends Command
                 ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
             $this->assertSame(0, (int) DB::table('price_provider_mappings')
                 ->where('payment_provider', 'stripe')->count(), 'unapproved Stripe price mapping count');
+            $this->assertSame(0, (int) DB::table('subscriptions as s')
+                ->where('s.payment_provider', 'fake')
+                ->where('s.payment_status', 'paid')
+                ->whereNotExists(function ($query): void {
+                    $query->selectRaw('1')
+                        ->from('billing_invoices as bi')
+                        ->whereColumn('bi.subscription_id', 's.id')
+                        ->where('bi.payment_provider', 'fake')
+                        ->where('bi.status', 'paid');
+                })->count(), 'paid fake subscription without paid invoice count');
 
             foreach (['company_id', 'booking_id', 'client_id', 'description', 'status'] as $column) {
                 if (! Schema::hasColumn('jobs', $column)) {
@@ -140,6 +150,7 @@ class VerifyLiveStaging extends Command
                 'commercial_tables' => count($commercialTables),
                 'ai_metering_tables' => count($aiMeteringTables),
                 'billing_tables' => count($billingTables),
+                'test_billing_invoices' => (int) DB::table('billing_invoices')->where('test_mode', true)->count(),
                 'notification_tables' => count($notificationTables),
                 'product_event_tables' => 1,
                 'synthetic_tenants' => $tenantCount,

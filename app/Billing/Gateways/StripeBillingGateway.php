@@ -158,7 +158,11 @@ class StripeBillingGateway implements BillingGateway
             throw new InvalidBillingWebhook('Stripe webhook envelope is incomplete.');
         }
 
-        $metadata = (array) Arr::get($object, 'metadata', []);
+        $metadata = array_merge(
+            (array) Arr::get($object, 'subscription_details.metadata', []),
+            (array) Arr::get($object, 'parent.subscription_details.metadata', []),
+            (array) Arr::get($object, 'metadata', []),
+        );
         $subscriptionId = Arr::get($object, 'subscription')
             ?? Arr::get($object, 'parent.subscription_details.subscription')
             ?? ($objectType === 'subscription' ? $objectId : null);
@@ -185,6 +189,7 @@ class StripeBillingGateway implements BillingGateway
             'due_at' => Arr::get($object, 'due_date'),
             'paid_at' => Arr::get($object, 'status_transitions.paid_at'),
             'hosted_invoice_url' => Arr::get($object, 'hosted_invoice_url'),
+            'test_mode' => ! (bool) Arr::get($event, 'livemode', true),
         ], fn ($value) => $value !== null && $value !== '');
 
         return new NormalizedBillingEvent(

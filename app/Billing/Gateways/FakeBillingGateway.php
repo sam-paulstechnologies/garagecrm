@@ -67,12 +67,18 @@ class FakeBillingGateway implements BillingGateway
 
     public function normalizeEvent(string $payload): NormalizedBillingEvent
     {
-        $event = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+        try {
+            $event = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new InvalidBillingWebhook('The fake billing event JSON is invalid.', previous: $exception);
+        }
         foreach (['id', 'type', 'created', 'object_type', 'object_id', 'data'] as $required) {
             if (! array_key_exists($required, $event)) {
                 throw new InvalidBillingWebhook('The fake billing event is malformed.');
             }
         }
+        $data = (array) $event['data'];
+        $data['test_mode'] = ! (bool) ($event['livemode'] ?? false);
 
         return new NormalizedBillingEvent(
             (string) $event['id'],
@@ -80,7 +86,7 @@ class FakeBillingGateway implements BillingGateway
             CarbonImmutable::createFromTimestampUTC((int) $event['created']),
             (string) $event['object_type'],
             (string) $event['object_id'],
-            (array) $event['data'],
+            $data,
         );
     }
 
@@ -93,6 +99,7 @@ class FakeBillingGateway implements BillingGateway
             'created' => $created ?? now()->timestamp,
             'object_type' => $objectType,
             'object_id' => $objectId,
+            'livemode' => false,
             'data' => $data,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 

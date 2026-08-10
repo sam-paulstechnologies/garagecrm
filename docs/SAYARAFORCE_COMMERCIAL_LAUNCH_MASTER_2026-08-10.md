@@ -163,6 +163,16 @@ Validation evidence:
 - Meta configuration remains parked, outbound WhatsApp/SMS remain disabled, mail remains log-only, and no production resource or provider asset is part of this correction.
 - Initial staging workflow `31427555348` passed source, test, build, deployment, additive migration and exact fingerprint gates, then correctly stopped before marker/cache completion because the original live verifier treated one legitimate public-registration UAT tenant as non-synthetic. The verifier now requires the original two seeded tenants and four seeded users, explicit subscriptions, isolated schema, synthetic operational fixtures and zero provider credentials, while allowing additional self-service staging tenants without inspecting or reporting their identities.
 
+## Post-launch staging UAT correction — verified fake billing lifecycle
+
+- Root cause: the staging fake checkout emitted one checkout/subscription event carrying `payment_status=paid`; the shared processor immediately activated the requested plan while no invoice event existed. The success redirect itself was non-entitling, but the fake provider collapsed provider confirmation and payment settlement into one event.
+- Checkout and subscription confirmation now persist provider identity on the checkout as `payment_pending`. Only a verified, idempotent `invoice.paid` or `invoice.payment_succeeded` event may activate the requested price, set payment to paid, complete checkout, and unlock entitlements.
+- Fake checkout emits the same normalized two-event lifecycle expected from Stripe: provider checkout/subscription confirmation followed by a synthetic paid invoice. Failed and cancelled checkouts leave the previous subscription unchanged; repeated provider events remain idempotent.
+- Billing history now preserves checkout, immutable price and test-mode attribution and labels fake invoices as TEST or STAGING / TEST. A guarded staging/test-only reconciliation command converts legacy fake paid checkouts without history into signed, normalized invoice events; it does not run in production.
+- Stripe normalization now reads subscription metadata carried by invoice parents and records test/live mode in the same normalized contract as the fake adapter. Real Stripe entitlement changes remain webhook-driven; browser return URLs never activate access.
+- Focused billing/commercial/staging validation passed 41 tests with 311 assertions. The complete suite passed 276 tests with 1,741 assertions; modified PHP lint and the frontend production build passed.
+- Two guarded disposable MySQL cycles passed with 127 base tables, two views, 48 migration records, 165 foreign keys, 463 routes and identical fingerprint `b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd`. The disposable database was removed after validation.
+
 ## Human dependency queue
 
 1. Stripe: create/verify the UAE business account, complete KYC/bank setup, provide test keys/webhook secret, later approve live credentials. Engineering uses a fake/test adapter until then.

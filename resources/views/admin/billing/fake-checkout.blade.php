@@ -19,7 +19,10 @@
             @csrf
             <button class="w-full rounded-xl bg-blue-500 px-5 py-3 text-sm font-black text-white hover:bg-blue-400">Complete signed sandbox checkout</button>
         </form>
-        <a class="mt-3 block text-center text-sm font-bold text-slate-500 hover:text-white" href="{{ route('admin.billing.index') }}">Cancel</a>
+        <form class="mt-3" method="POST" action="{{ route('admin.billing.fake.cancel', $checkout) }}">
+            @csrf
+            <button class="w-full text-center text-sm font-bold text-slate-500 hover:text-white">Cancel sandbox checkout</button>
+        </form>
     </div>
 </div>
 @endsection

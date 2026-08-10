@@ -10,7 +10,8 @@ class BillingCheckoutSession extends Model
 {
     protected $fillable = [
         'company_id', 'subscription_id', 'requested_price_id', 'payment_provider', 'operation',
-        'idempotency_key', 'provider_customer_id', 'provider_checkout_id', 'checkout_url',
+        'idempotency_key', 'provider_customer_id', 'provider_checkout_id',
+        'provider_subscription_id', 'provider_price_id', 'checkout_url',
         'status', 'expires_at', 'completed_at',
     ];
 

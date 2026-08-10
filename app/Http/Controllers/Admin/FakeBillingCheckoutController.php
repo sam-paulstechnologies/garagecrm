@@ -30,9 +30,14 @@ class FakeBillingCheckoutController extends Controller
             ->where('payment_provider', 'fake')
             ->where('price_phase', 'launch')
             ->firstOrFail();
-        $eventId = 'evt_fake_checkout_'.$billingCheckoutSession->id;
+        $eventId = 'evt_fake_test_checkout_'.$billingCheckoutSession->id;
         $isChange = $billingCheckoutSession->operation === 'plan_change';
         $subscription = $billingCheckoutSession->subscription;
+        $providerSubscriptionId = $isChange
+            ? (string) $subscription->provider_subscription_id
+            : 'sub_fake_test_'.$billingCheckoutSession->id;
+        $periodStart = now()->startOfSecond();
+        $periodEnd = $periodStart->copy()->addMonth();
         [$payload, $signature] = $gateway->signedEvent(
             $isChange ? 'customer.subscription.updated' : 'checkout.session.completed',
             $isChange ? 'subscription' : 'checkout.session',
@@ -40,18 +45,56 @@ class FakeBillingCheckoutController extends Controller
             [
                 'local_checkout_id' => $billingCheckoutSession->id,
                 'provider_customer_id' => $billingCheckoutSession->provider_customer_id,
-                'provider_subscription_id' => $isChange ? $subscription->provider_subscription_id : 'sub_fake_'.$billingCheckoutSession->id,
+                'provider_subscription_id' => $providerSubscriptionId,
                 'provider_price_id' => $mapping->provider_price_id,
                 'subscription_status' => 'active',
                 'payment_status' => 'paid',
-                'period_start' => now()->timestamp,
-                'period_end' => now()->addMonth()->timestamp,
+                'period_start' => $periodStart->timestamp,
+                'period_end' => $periodEnd->timestamp,
             ],
             $eventId,
+            $periodStart->timestamp,
         );
         $processor->process('fake', $payload, $signature);
 
+        $price = $billingCheckoutSession->requestedPrice;
+        $invoiceId = 'in_fake_test_'.$billingCheckoutSession->id;
+        $amountMinor = (int) round(((float) $price->amountAt($periodStart)) * 100);
+        [$invoicePayload, $invoiceSignature] = $gateway->signedEvent(
+            'invoice.paid',
+            'invoice',
+            $invoiceId,
+            [
+                'local_checkout_id' => $billingCheckoutSession->id,
+                'provider_customer_id' => $billingCheckoutSession->provider_customer_id,
+                'provider_subscription_id' => $providerSubscriptionId,
+                'provider_price_id' => $mapping->provider_price_id,
+                'provider_invoice_id' => $invoiceId,
+                'currency' => strtolower((string) $price->currency),
+                'amount_due_minor' => $amountMinor,
+                'amount_paid_minor' => $amountMinor,
+                'period_start' => $periodStart->timestamp,
+                'period_end' => $periodEnd->timestamp,
+                'paid_at' => $periodStart->copy()->addSecond()->timestamp,
+            ],
+            'evt_fake_test_invoice_paid_'.$billingCheckoutSession->id,
+            $periodStart->copy()->addSecond()->timestamp,
+        );
+        $processor->process('fake', $invoicePayload, $invoiceSignature);
+
         return redirect()->route('admin.billing.success', ['checkout' => $billingCheckoutSession->id]);
+    }
+
+    public function cancelCheckout(Request $request, BillingCheckoutSession $billingCheckoutSession): RedirectResponse
+    {
+        $this->authorizeSession($request, $billingCheckoutSession);
+        $this->assertAvailable();
+        if ($billingCheckoutSession->status !== 'completed') {
+            $billingCheckoutSession->update(['status' => 'cancelled']);
+        }
+
+        return redirect()->route('admin.billing.index')
+            ->with('warning', 'Sandbox checkout cancelled. No subscription or entitlement change was made.');
     }
 
     private function authorizeSession(Request $request, BillingCheckoutSession $checkout): void

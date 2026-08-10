@@ -171,17 +171,57 @@ class BillingManager
         return $this->gateway->createBillingPortal((string) $subscription->provider_customer_id, route('admin.billing.index'));
     }
 
-    public function activateFromVerifiedEvent(
+    public function recordProviderCheckoutCompleted(
         BillingCheckoutSession $checkout,
         string $providerCustomerId,
         string $providerSubscriptionId,
         string $providerPriceId,
-        string $paymentStatus,
+    ): BillingCheckoutSession {
+        return DB::transaction(function () use ($checkout, $providerCustomerId, $providerSubscriptionId, $providerPriceId): BillingCheckoutSession {
+            $checkout = BillingCheckoutSession::query()->lockForUpdate()->findOrFail($checkout->id);
+            if ($checkout->status === 'completed') {
+                return $checkout;
+            }
+
+            $mappingMatches = PriceProviderMapping::query()
+                ->where('price_id', $checkout->requested_price_id)
+                ->where('payment_provider', $checkout->payment_provider)
+                ->where('provider_price_id', $providerPriceId)
+                ->where('status', 'active')
+                ->exists();
+            if (! $mappingMatches) {
+                throw new BillingConfigurationException('Verified checkout price does not match the requested internal price.');
+            }
+
+            $checkout->update([
+                'provider_customer_id' => $providerCustomerId,
+                'provider_subscription_id' => $providerSubscriptionId,
+                'provider_price_id' => $providerPriceId,
+                'status' => 'payment_pending',
+            ]);
+            EntitlementAuditLog::query()->create([
+                'company_id' => $checkout->company_id,
+                'subscription_id' => $checkout->subscription_id,
+                'event' => 'billing.checkout_provider_confirmed',
+                'source' => $checkout->payment_provider,
+                'context' => ['checkout_id' => $checkout->id, 'activation' => 'verified_invoice_required'],
+                'created_at' => now(),
+            ]);
+
+            return $checkout->fresh();
+        });
+    }
+
+    public function activateFromVerifiedPaymentEvent(
+        BillingCheckoutSession $checkout,
+        string $providerCustomerId,
+        string $providerSubscriptionId,
+        string $providerPriceId,
         \DateTimeInterface $occurredAt,
         ?\DateTimeInterface $periodStart = null,
         ?\DateTimeInterface $periodEnd = null,
     ): Subscription {
-        return DB::transaction(function () use ($checkout, $providerCustomerId, $providerSubscriptionId, $providerPriceId, $paymentStatus, $occurredAt, $periodStart, $periodEnd): Subscription {
+        return DB::transaction(function () use ($checkout, $providerCustomerId, $providerSubscriptionId, $providerPriceId, $occurredAt, $periodStart, $periodEnd): Subscription {
             $checkout = BillingCheckoutSession::query()->with('requestedPrice.planVersion')->lockForUpdate()->findOrFail($checkout->id);
             $subscription = Subscription::query()->lockForUpdate()->findOrFail($checkout->subscription_id);
             $previousPlan = (string) $subscription->planVersion?->plan?->code;
@@ -215,7 +255,7 @@ class BillingManager
                 'provider_customer_id' => $providerCustomerId,
                 'provider_subscription_id' => $providerSubscriptionId,
                 'provider_price_id' => $providerPriceId,
-                'payment_status' => $paymentStatus,
+                'payment_status' => 'paid',
                 'cancel_at_period_end' => false,
                 'cancelled_at' => null,
                 'grace_ends_at' => null,

@@ -25,6 +25,7 @@ class BillingController extends Controller
             ->get();
         $invoices = BillingInvoice::query()
             ->where('company_id', $company->id)
+            ->with('price.planVersion.plan')
             ->latest()
             ->limit(24)
             ->get();

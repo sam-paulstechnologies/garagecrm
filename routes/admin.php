@@ -280,6 +280,8 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
                 ->whereNumber('billingCheckoutSession')->name('fake.show');
             Route::post('fake/{billingCheckoutSession}/complete', [FakeBillingCheckoutController::class, 'complete'])
                 ->whereNumber('billingCheckoutSession')->middleware('throttle:10,1')->name('fake.complete');
+            Route::post('fake/{billingCheckoutSession}/cancel', [FakeBillingCheckoutController::class, 'cancelCheckout'])
+                ->whereNumber('billingCheckoutSession')->middleware('throttle:10,1')->name('fake.cancel');
         });
 
         /*

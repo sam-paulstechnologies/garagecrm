@@ -87,9 +87,21 @@
             <p class="mt-3 text-sm text-slate-500">No verified provider invoices have been recorded.</p>
         @else
             <div class="mt-4 overflow-x-auto">
-                <table class="min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th class="py-2">Date</th><th>Status</th><th>Amount</th><th>Period</th></tr></thead><tbody class="divide-y divide-white/5 text-slate-300">
+                <table class="min-w-full text-left text-sm"><thead class="text-xs uppercase text-slate-500"><tr><th class="py-2">Date</th><th>Provider</th><th>Plan</th><th>Status</th><th>Amount</th><th>Period</th></tr></thead><tbody class="divide-y divide-white/5 text-slate-300">
                     @foreach($invoices as $invoice)
-                        <tr><td class="py-3">{{ $invoice->created_at->format('d M Y') }}</td><td>{{ str_replace('_', ' ', ucfirst($invoice->status)) }}</td><td>{{ $invoice->currency }} {{ number_format((float) $invoice->amount_paid, 2) }}</td><td>{{ $invoice->period_start?->format('d M Y') ?? '—' }} – {{ $invoice->period_end?->format('d M Y') ?? '—' }}</td></tr>
+                        <tr>
+                            <td class="py-3">{{ ($invoice->paid_at ?? $invoice->created_at)->format('d M Y') }}</td>
+                            <td>
+                                @if($invoice->test_mode)
+                                    <span class="mr-1 inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-blue-300">{{ app()->environment('staging') ? 'Staging / Test' : 'Test' }}</span>
+                                @endif
+                                <span class="font-bold uppercase">{{ $invoice->payment_provider }}</span>
+                            </td>
+                            <td>{{ $invoice->price?->planVersion?->plan?->name ?? 'Legacy plan' }}</td>
+                            <td>{{ str_replace('_', ' ', ucfirst($invoice->status)) }}</td>
+                            <td>{{ $invoice->currency }} {{ number_format((float) $invoice->amount_paid, 2) }}</td>
+                            <td>{{ $invoice->period_start?->format('d M Y') ?? '—' }} – {{ $invoice->period_end?->format('d M Y') ?? '—' }}</td>
+                        </tr>
                     @endforeach
                 </tbody></table>
             </div>

@@ -86,16 +86,18 @@ class BillingWebhookProcessor
 
         if (in_array($event->type, ['checkout.session.completed', 'customer.subscription.created'], true)) {
             if (! $checkout) {
-                throw new BillingConfigurationException('Verified billing activation has no matching local checkout.');
+                throw new BillingConfigurationException('Verified checkout has no matching local checkout.');
             }
-            $this->activate($checkout, $event);
+            $this->recordCheckoutCompleted($checkout, $event);
 
             return 'processed';
         }
 
         if ($event->type === 'customer.subscription.updated') {
-            if ($checkout && (! $subscription || (int) $checkout->requested_price_id !== (int) $subscription->price_id)) {
-                $subscription = $this->activate($checkout, $event);
+            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
+                $this->recordCheckoutCompleted($checkout, $event);
+
+                return 'processed';
             }
             if (! $subscription) {
                 throw new BillingConfigurationException('Provider subscription does not map to a tenant subscription.');
@@ -129,11 +131,14 @@ class BillingWebhookProcessor
         }
 
         if (in_array($event->type, ['invoice.paid', 'invoice.payment_succeeded'], true)) {
+            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
+                $subscription = $this->activateFromPaidInvoice($checkout, $event);
+            }
             if (! $subscription) {
                 throw new BillingConfigurationException('Paid invoice does not map to a tenant subscription.');
             }
             $completedCycles = min(65535, ((int) $subscription->introductory_cycles_completed) + 1);
-            $this->upsertInvoice($subscription, $event, 'paid');
+            $this->upsertInvoice($subscription, $event, 'paid', $checkout);
             $subscription->update([
                 'status' => $subscription->cancel_at_period_end ? 'cancel_at_period_end' : 'active',
                 'payment_status' => 'paid',
@@ -157,7 +162,13 @@ class BillingWebhookProcessor
             if (! $subscription) {
                 throw new BillingConfigurationException('Failed invoice does not map to a tenant subscription.');
             }
-            $this->upsertInvoice($subscription, $event, 'payment_failed');
+            $this->upsertInvoice($subscription, $event, 'payment_failed', $checkout);
+            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
+                $checkout->update(['status' => 'payment_failed']);
+                $this->audit($subscription, 'billing.checkout_payment_failed', $provider, ['checkout_id' => $checkout->id]);
+
+                return 'processed';
+            }
             $subscription->update([
                 'status' => 'grace',
                 'payment_status' => 'past_due',
@@ -208,24 +219,49 @@ class BillingWebhookProcessor
         return $checkout ? Subscription::query()->lockForUpdate()->find($checkout->subscription_id) : null;
     }
 
-    private function activate(BillingCheckoutSession $checkout, NormalizedBillingEvent $event): Subscription
+    private function recordCheckoutCompleted(BillingCheckoutSession $checkout, NormalizedBillingEvent $event): void
     {
         foreach (['provider_customer_id', 'provider_subscription_id', 'provider_price_id'] as $required) {
             if (blank($event->data[$required] ?? null)) {
-                throw new BillingConfigurationException("Verified activation is missing {$required}.");
+                throw new BillingConfigurationException("Verified checkout is missing {$required}.");
             }
         }
 
-        return $this->billing->activateFromVerifiedEvent(
+        $this->billing->recordProviderCheckoutCompleted(
             $checkout,
             (string) $event->data['provider_customer_id'],
             (string) $event->data['provider_subscription_id'],
             (string) $event->data['provider_price_id'],
-            (string) ($event->data['payment_status'] ?? 'paid'),
+        );
+    }
+
+    private function activateFromPaidInvoice(BillingCheckoutSession $checkout, NormalizedBillingEvent $event): Subscription
+    {
+        $providerCustomerId = (string) ($event->data['provider_customer_id'] ?? $checkout->provider_customer_id ?? '');
+        $providerSubscriptionId = (string) ($event->data['provider_subscription_id'] ?? $checkout->provider_subscription_id ?? '');
+        $providerPriceId = (string) ($event->data['provider_price_id'] ?? $checkout->provider_price_id ?? '');
+        foreach (compact('providerCustomerId', 'providerSubscriptionId', 'providerPriceId') as $key => $value) {
+            if (blank($value)) {
+                throw new BillingConfigurationException("Verified payment is missing {$key}.");
+            }
+        }
+
+        return $this->billing->activateFromVerifiedPaymentEvent(
+            $checkout,
+            $providerCustomerId,
+            $providerSubscriptionId,
+            $providerPriceId,
             $event->occurredAt,
             $this->date($event->data['period_start'] ?? null),
             $this->date($event->data['period_end'] ?? null),
         );
+    }
+
+    private function checkoutNeedsPayment(BillingCheckoutSession $checkout, ?Subscription $subscription): bool
+    {
+        return $checkout->status !== 'completed'
+            || ! $subscription
+            || (int) $checkout->requested_price_id !== (int) $subscription->price_id;
     }
 
     private function updateSubscriptionState(Subscription $subscription, NormalizedBillingEvent $event): void
@@ -269,15 +305,25 @@ class BillingWebhookProcessor
         $this->audit($subscription, 'billing.subscription_state_changed', $subscription->payment_provider, ['status' => $status]);
     }
 
-    private function upsertInvoice(Subscription $subscription, NormalizedBillingEvent $event, string $status): void
+    private function upsertInvoice(
+        Subscription $subscription,
+        NormalizedBillingEvent $event,
+        string $status,
+        ?BillingCheckoutSession $checkout = null,
+    ): void
     {
         $invoiceId = (string) ($event->data['provider_invoice_id'] ?? $event->objectId);
         $url = (string) ($event->data['hosted_invoice_url'] ?? '');
+        $price = $checkout?->requestedPrice()->first() ?? $subscription->price;
+        $paymentProvider = (string) ($checkout?->payment_provider ?? $subscription->payment_provider);
         BillingInvoice::query()->updateOrCreate(
-            ['payment_provider' => $subscription->payment_provider, 'provider_invoice_id' => $invoiceId],
+            ['payment_provider' => $paymentProvider, 'provider_invoice_id' => $invoiceId],
             [
                 'company_id' => $subscription->company_id,
                 'subscription_id' => $subscription->id,
+                'billing_checkout_session_id' => $checkout?->id,
+                'price_id' => $price?->id,
+                'test_mode' => filter_var($event->data['test_mode'] ?? false, FILTER_VALIDATE_BOOL),
                 'status' => $status,
                 'currency' => strtoupper((string) ($event->data['currency'] ?? 'AED')),
                 'amount_due' => $this->major($event->data['amount_due_minor'] ?? 0),

@@ -7,10 +7,12 @@ use App\Billing\BillingWebhookProcessor;
 use App\Billing\Exceptions\BillingConfigurationException;
 use App\Billing\Gateways\FakeBillingGateway;
 use App\Billing\Gateways\StripeBillingGateway;
+use App\Commercial\EntitlementService;
 use App\Commercial\Plans;
 use App\Commercial\SubscriptionManager;
 use App\Jobs\TransitionIntroductoryBillingPrice;
 use App\Models\Commercial\BillingCheckoutSession;
+use App\Models\Commercial\BillingInvoice;
 use App\Models\Commercial\Price;
 use App\Models\Commercial\PriceProviderMapping;
 use App\Models\System\Company;
@@ -40,7 +42,7 @@ class BillingEngineTest extends TestCase
         $this->seed(BillingFoundationSeeder::class);
     }
 
-    public function test_checkout_redirect_cannot_activate_entitlements_and_verified_fake_event_activates_once(): void
+    public function test_checkout_redirect_cannot_activate_and_verified_fake_payment_lifecycle_activates_once(): void
     {
         [$company, $admin] = $this->tenant(Plans::FREE, 'Checkout Garage');
         $service = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
@@ -63,11 +65,119 @@ class BillingEngineTest extends TestCase
         $this->assertSame('active', $subscription->status);
         $this->assertSame('fake', $subscription->payment_provider);
         $this->assertSame('paid', $subscription->payment_status);
-        $this->assertDatabaseCount('billing_provider_events', 1);
+        $this->assertDatabaseCount('billing_provider_events', 2);
+        $this->assertDatabaseHas('billing_invoices', [
+            'company_id' => $company->id,
+            'billing_checkout_session_id' => $checkout->id,
+            'price_id' => $service->id,
+            'payment_provider' => 'fake',
+            'test_mode' => true,
+            'status' => 'paid',
+            'currency' => 'AED',
+            'amount_paid' => '199.00',
+        ]);
+        $this->actingAs($admin)->get(route('admin.billing.index'))
+            ->assertOk()
+            ->assertSeeText('Test')
+            ->assertSeeText('fake')
+            ->assertSeeText('Service')
+            ->assertSeeText('AED 199.00');
 
         $this->actingAs($admin)->post(route('admin.billing.fake.complete', $checkout))->assertRedirect();
-        $this->assertDatabaseCount('billing_provider_events', 1);
+        $this->assertDatabaseCount('billing_provider_events', 2);
+        $this->assertDatabaseCount('billing_invoices', 1);
+        $this->assertSame(1, $subscription->fresh()->introductory_cycles_completed);
         $this->assertDatabaseCount('subscriptions', 1);
+    }
+
+    public function test_verified_checkout_event_alone_remains_payment_pending_and_does_not_unlock_entitlements(): void
+    {
+        [$company, $admin] = $this->tenant(Plans::FREE, 'Checkout Pending Garage');
+        $service = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $service->code,
+            'idempotency_key' => 'checkout-pending-00000000000001',
+        ])->assertRedirect();
+        $checkout = BillingCheckoutSession::query()->sole();
+        $mapping = PriceProviderMapping::query()
+            ->where('price_id', $service->id)->where('payment_provider', 'fake')->firstOrFail();
+
+        $this->fakeEvent('checkout.session.completed', 'checkout.session', (string) $checkout->provider_checkout_id, [
+            'local_checkout_id' => $checkout->id,
+            'provider_customer_id' => $checkout->provider_customer_id,
+            'provider_subscription_id' => 'sub_fake_pending_only',
+            'provider_price_id' => $mapping->provider_price_id,
+            'payment_status' => 'paid',
+        ], eventId: 'evt_fake_checkout_pending_only');
+
+        $subscription = $company->fresh()->subscription;
+        $this->assertSame(Plans::FREE, $subscription->planVersion->plan->code);
+        $this->assertSame('active', $subscription->status);
+        $this->assertSame('not_required', $subscription->payment_status);
+        $this->assertSame('payment_pending', $checkout->fresh()->status);
+        $this->assertFalse(app(EntitlementService::class)->can($company, 'transactional_booking_reminders'));
+        $this->assertDatabaseCount('billing_invoices', 0);
+    }
+
+    public function test_failed_initial_payment_records_failure_without_activating_or_creating_paid_invoice(): void
+    {
+        [$company, $admin] = $this->tenant(Plans::FREE, 'Failed Checkout Garage');
+        $service = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $service->code,
+            'idempotency_key' => 'checkout-failed-000000000000001',
+        ])->assertRedirect();
+        $checkout = BillingCheckoutSession::query()->sole();
+        $mapping = PriceProviderMapping::query()
+            ->where('price_id', $service->id)->where('payment_provider', 'fake')->firstOrFail();
+        $provider = [
+            'local_checkout_id' => $checkout->id,
+            'provider_customer_id' => $checkout->provider_customer_id,
+            'provider_subscription_id' => 'sub_fake_failed_initial',
+            'provider_price_id' => $mapping->provider_price_id,
+        ];
+        $this->fakeEvent('checkout.session.completed', 'checkout.session', (string) $checkout->provider_checkout_id,
+            $provider + ['payment_status' => 'unpaid'], eventId: 'evt_fake_failed_checkout');
+        $this->fakeEvent('invoice.payment_failed', 'invoice', 'in_fake_failed_initial', $provider + [
+            'provider_invoice_id' => 'in_fake_failed_initial',
+            'currency' => 'aed',
+            'amount_due_minor' => 19900,
+            'amount_paid_minor' => 0,
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+        ], eventId: 'evt_fake_failed_invoice');
+
+        $subscription = $company->fresh()->subscription;
+        $this->assertSame(Plans::FREE, $subscription->planVersion->plan->code);
+        $this->assertSame('active', $subscription->status);
+        $this->assertSame('not_required', $subscription->payment_status);
+        $this->assertSame('payment_failed', $checkout->fresh()->status);
+        $this->assertDatabaseHas('billing_invoices', [
+            'provider_invoice_id' => 'in_fake_failed_initial',
+            'status' => 'payment_failed',
+            'amount_paid' => '0.00',
+        ]);
+        $this->assertSame(0, BillingInvoice::query()->where('status', 'paid')->count());
+    }
+
+    public function test_cancelled_fake_checkout_never_activates_the_requested_plan(): void
+    {
+        [$company, $admin] = $this->tenant(Plans::FREE, 'Cancelled Checkout Garage');
+        $service = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $service->code,
+            'idempotency_key' => 'checkout-cancelled-000000000001',
+        ])->assertRedirect();
+        $checkout = BillingCheckoutSession::query()->sole();
+
+        $this->actingAs($admin)->post(route('admin.billing.fake.cancel', $checkout))
+            ->assertRedirect(route('admin.billing.index'))
+            ->assertSessionHas('warning');
+
+        $this->assertSame('cancelled', $checkout->fresh()->status);
+        $this->assertSame(Plans::FREE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertDatabaseCount('billing_provider_events', 0);
+        $this->assertDatabaseCount('billing_invoices', 0);
     }
 
     public function test_checkout_request_is_idempotent_and_cannot_be_reused_across_tenants(): void
@@ -264,6 +374,114 @@ class BillingEngineTest extends TestCase
         Http::assertSentCount(8);
     }
 
+    public function test_fake_and_stripe_adapters_normalize_the_same_checkout_and_invoice_contract(): void
+    {
+        $fake = app(FakeBillingGateway::class);
+        $stripe = app(StripeBillingGateway::class);
+        $now = now()->timestamp;
+        $commonCheckout = [
+            'local_checkout_id' => 42,
+            'provider_customer_id' => 'cus_test_contract',
+            'provider_subscription_id' => 'sub_test_contract',
+            'provider_price_id' => 'price_test_contract',
+            'payment_status' => 'paid',
+        ];
+        [$fakeCheckoutPayload] = $fake->signedEvent(
+            'checkout.session.completed', 'checkout.session', 'cs_test_contract', $commonCheckout,
+            'evt_fake_contract_checkout', $now,
+        );
+        $stripeCheckoutPayload = json_encode([
+            'id' => 'evt_stripe_contract_checkout',
+            'type' => 'checkout.session.completed',
+            'created' => $now,
+            'livemode' => false,
+            'data' => ['object' => [
+                'id' => 'cs_test_contract',
+                'object' => 'checkout.session',
+                'customer' => 'cus_test_contract',
+                'subscription' => 'sub_test_contract',
+                'payment_status' => 'paid',
+                'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_test_contract'],
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        $this->assertNormalizedContractMatches(
+            $fake->normalizeEvent($fakeCheckoutPayload),
+            $stripe->normalizeEvent($stripeCheckoutPayload),
+            array_keys($commonCheckout + ['test_mode' => true]),
+        );
+
+        $commonInvoice = [
+            'local_checkout_id' => 42,
+            'provider_customer_id' => 'cus_test_contract',
+            'provider_subscription_id' => 'sub_test_contract',
+            'provider_price_id' => 'price_test_contract',
+            'provider_invoice_id' => 'in_test_contract',
+            'payment_status' => 'paid',
+            'currency' => 'aed',
+            'amount_due_minor' => 19900,
+            'amount_paid_minor' => 19900,
+            'period_start' => $now,
+            'period_end' => $now + 2592000,
+            'paid_at' => $now,
+        ];
+        [$fakeInvoicePayload] = $fake->signedEvent(
+            'invoice.paid', 'invoice', 'in_test_contract', $commonInvoice,
+            'evt_fake_contract_invoice', $now,
+        );
+        $stripeInvoicePayload = json_encode([
+            'id' => 'evt_stripe_contract_invoice',
+            'type' => 'invoice.paid',
+            'created' => $now,
+            'livemode' => false,
+            'data' => ['object' => [
+                'id' => 'in_test_contract',
+                'object' => 'invoice',
+                'customer' => 'cus_test_contract',
+                'subscription' => 'sub_test_contract',
+                'status' => 'paid',
+                'currency' => 'aed',
+                'amount_due' => 19900,
+                'amount_paid' => 19900,
+                'status_transitions' => ['paid_at' => $now],
+                'lines' => ['data' => [[
+                    'price' => ['id' => 'price_test_contract'],
+                    'period' => ['start' => $now, 'end' => $now + 2592000],
+                ]]],
+                'parent' => ['subscription_details' => [
+                    'subscription' => 'sub_test_contract',
+                    'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_test_contract'],
+                ]],
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        $this->assertNormalizedContractMatches(
+            $fake->normalizeEvent($fakeInvoicePayload),
+            $stripe->normalizeEvent($stripeInvoicePayload),
+            array_keys($commonInvoice + ['test_mode' => true]),
+        );
+    }
+
+    public function test_legacy_fake_paid_checkout_reconciliation_uses_a_verified_idempotent_invoice_event(): void
+    {
+        [$company] = $this->activatedServiceTenant();
+        $checkout = BillingCheckoutSession::query()->where('company_id', $company->id)->sole();
+        BillingInvoice::query()->delete();
+        $company->subscription()->update(['introductory_cycles_completed' => 0]);
+
+        $this->artisan('billing:reconcile-fake-test-history', ['--confirm' => true])->assertSuccessful();
+        $this->assertDatabaseHas('billing_invoices', [
+            'billing_checkout_session_id' => $checkout->id,
+            'price_id' => $checkout->requested_price_id,
+            'payment_provider' => 'fake',
+            'test_mode' => true,
+            'status' => 'paid',
+        ]);
+        $this->assertSame(1, $company->fresh()->subscription->introductory_cycles_completed);
+
+        $this->artisan('billing:reconcile-fake-test-history', ['--confirm' => true])->assertSuccessful();
+        $this->assertDatabaseCount('billing_invoices', 1);
+        $this->assertSame(1, $company->fresh()->subscription->introductory_cycles_completed);
+    }
+
     public function test_introductory_price_transition_is_deterministic_and_idempotent(): void
     {
         [$company] = $this->activatedServiceTenant();
@@ -303,7 +521,7 @@ class BillingEngineTest extends TestCase
         ]);
 
         $this->assertSame('processed', $result['status']);
-        $this->assertSame(1, $subscription->fresh()->introductory_cycles_completed);
+        $this->assertSame(2, $subscription->fresh()->introductory_cycles_completed);
         $this->assertDatabaseHas('billing_invoices', [
             'company_id' => $company->id,
             'provider_invoice_id' => 'invoice_cycle_one',
@@ -343,12 +561,33 @@ class BillingEngineTest extends TestCase
     }
 
     /** @param array<string, scalar|null> $data */
-    private function fakeEvent(string $type, string $objectType, string $objectId, array $data, ?int $created = null): array
+    private function fakeEvent(
+        string $type,
+        string $objectType,
+        string $objectId,
+        array $data,
+        ?int $created = null,
+        ?string $eventId = null,
+    ): array
     {
         $gateway = app(FakeBillingGateway::class);
-        [$payload, $signature] = $gateway->signedEvent($type, $objectType, $objectId, $data, created: $created);
+        [$payload, $signature] = $gateway->signedEvent($type, $objectType, $objectId, $data, $eventId, $created);
 
         return app(BillingWebhookProcessor::class)->process('fake', $payload, $signature);
+    }
+
+    private function assertNormalizedContractMatches(
+        \App\Billing\Data\NormalizedBillingEvent $fake,
+        \App\Billing\Data\NormalizedBillingEvent $stripe,
+        array $keys,
+    ): void {
+        $this->assertSame($fake->type, $stripe->type);
+        $this->assertSame($fake->objectType, $stripe->objectType);
+        $this->assertSame($fake->objectId, $stripe->objectId);
+        $this->assertEquals(
+            collect($fake->data)->only($keys)->all(),
+            collect($stripe->data)->only($keys)->all(),
+        );
     }
 
     private function stripeSignature(string $payload, string $secret): string
