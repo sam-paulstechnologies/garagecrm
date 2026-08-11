@@ -46,20 +46,27 @@
     <section>
         <div class="mb-4">
             <h2 class="text-xl font-black text-white">Choose your next stage</h2>
-            <p class="mt-1 text-sm text-slate-400">Launch pricing is represented by versioned price records for the first {{ config('commercial.pricing.promotion_duration_months') }} billing cycles, then the standard price applies.</p>
+            <p class="mt-1 text-sm text-slate-400">
+                @if($launchOfferEnabled)
+                    Launch pricing applies to qualifying new subscriptions for their first {{ $promotionCycles }} verified paid monthly cycles, then the standard price applies.
+                @else
+                    The Launch Offer is closed for new subscriptions. Existing enrolled subscriptions retain any remaining introductory cycles.
+                @endif
+            </p>
         </div>
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             @foreach($prices as $price)
                 @php($plan = $price->planVersion->plan)
+                @php($checkoutPhase = $checkoutPhases[$price->id] ?? 'standard')
                 <article class="flex flex-col rounded-3xl border {{ $subscription->price_id === $price->id ? 'border-orange-400/40 bg-orange-500/10' : 'border-white/10 bg-slate-900/80' }} p-5">
                     <h3 class="text-lg font-black text-white">{{ $plan->name }}</h3>
                     <p class="mt-2 min-h-12 text-xs leading-5 text-slate-400">{{ $plan->description }}</p>
                     <div class="mt-5">
-                        <span class="text-2xl font-black text-white">AED {{ number_format((float) ($price->promotional_amount ?? $price->list_amount), 0) }}</span>
+                        <span class="text-2xl font-black text-white">AED {{ number_format((float) ($checkoutPhase === 'launch' ? $price->promotional_amount : $price->list_amount), 0) }}</span>
                         <span class="text-xs font-bold text-slate-500">/{{ $price->interval }}</span>
                     </div>
-                    @if($price->promotional_amount !== null && (float) $price->promotional_amount !== (float) $price->list_amount)
-                        <p class="mt-1 text-xs font-semibold text-slate-500">Then AED {{ number_format((float) $price->list_amount, 0) }}/{{ $price->interval }} after the introductory period.</p>
+                    @if($checkoutPhase === 'launch' && $price->promotional_amount !== null && (float) $price->promotional_amount !== (float) $price->list_amount)
+                        <p class="mt-1 text-xs font-semibold text-slate-500">For the first {{ $promotionCycles }} paid months, then AED {{ number_format((float) $price->list_amount, 0) }}/{{ $price->interval }}.</p>
                     @endif
                     <div class="mt-auto pt-5">
                         @if($subscription->price_id === $price->id)

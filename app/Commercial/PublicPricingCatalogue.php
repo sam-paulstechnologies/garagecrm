@@ -8,6 +8,8 @@ use RuntimeException;
 
 final class PublicPricingCatalogue
 {
+    public function __construct(private readonly LaunchOfferService $launchOffer) {}
+
     /** @return array<int, array<string, mixed>> */
     public function plans(): array
     {
@@ -24,7 +26,9 @@ final class PublicPricingCatalogue
             ->get()
             ->keyBy(fn (Price $price): string => (string) $price->planVersion?->plan?->code);
 
-        return collect(Plans::codes())->map(function (string $code) use ($definitions, $prices): array {
+        $offerEnabled = $this->launchOffer->isEnabled();
+
+        return collect(Plans::codes())->map(function (string $code) use ($definitions, $prices, $offerEnabled): array {
             /** @var Price|null $price */
             $price = $prices->get($code);
             $definition = $definitions[$code] ?? null;
@@ -41,7 +45,11 @@ final class PublicPricingCatalogue
                 'currency' => (string) $price->currency,
                 'launch_amount' => (float) $price->promotional_amount,
                 'standard_amount' => (float) $price->list_amount,
-                'promotion_cycles' => (int) $price->promotion_duration_months,
+                'display_amount' => $offerEnabled
+                    ? (float) $price->promotional_amount
+                    : (float) $price->list_amount,
+                'launch_offer_enabled' => $offerEnabled,
+                'promotion_cycles' => $this->launchOffer->durationCycles(),
                 'renewal_behavior' => (string) $price->renewal_behavior,
                 'recommended' => $code === Plans::SERVICE,
                 'custom_from' => $code === Plans::AI_PRO,

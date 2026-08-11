@@ -25,7 +25,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(127, $baseTables, 'base-table count');
+            $this->assertSame(128, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -46,6 +46,7 @@ class VerifyLiveStaging extends Command
                 'plan_versions', 'prices', 'plan_entitlements', 'subscriptions',
                 'company_entitlement_overrides', 'entitlement_usages',
                 'entitlement_audit_logs', 'billing_provider_events',
+                'commercial_settings',
             ];
             foreach ($commercialTables as $table) {
                 if (! Schema::hasTable($table)) {
@@ -78,6 +79,14 @@ class VerifyLiveStaging extends Command
             $this->assertSame(10, (int) DB::table('price_provider_mappings')
                 ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
             $stripeMappingCount = $this->assertStripeMappingsAreAbsentOrCanonical();
+            $this->assertSame(1, (int) DB::table('commercial_settings')
+                ->where('key', 'launch_offer_enabled')->where('boolean_value', true)->count(), 'enabled launch-offer setting count');
+            $this->assertSame(5, (int) DB::table('prices')
+                ->where('currency', 'AED')->where('interval', 'month')
+                ->where('promotion_duration_months', 3)->count(), 'three-cycle canonical price count');
+            if ((string) config('billing.provider') !== 'fake') {
+                throw new RuntimeException('Staging billing provider must remain fake before Stripe Sandbox cutover approval.');
+            }
             if ((string) config('billing.stripe.api_version') !== StripeBillingGateway::SUPPORTED_API_VERSION) {
                 throw new RuntimeException('Stripe webhook/API fixture version is not the reviewed Dahlia contract.');
             }

@@ -30,7 +30,8 @@ class TransitionIntroductoryBillingPrice implements ShouldQueue
     {
         $subscription = Subscription::query()->with('price')->findOrFail($this->subscriptionId);
         $duration = (int) ($subscription->price->promotion_duration_months ?? 0);
-        if ($duration <= 0 || $subscription->introductory_cycles_completed < $duration
+        if (! $subscription->launch_offer_qualified_at || $subscription->launch_offer_consumed_at
+            || $duration <= 0 || $subscription->introductory_cycles_completed < $duration
             || $subscription->standard_price_transition_requested_at
             || $subscription->price->renewal_behavior !== 'standard_after_promotion') {
             return;
@@ -53,13 +54,20 @@ class TransitionIntroductoryBillingPrice implements ShouldQueue
             if ($locked->standard_price_transition_requested_at) {
                 return;
             }
-            $locked->update(['standard_price_transition_requested_at' => now()]);
+            $locked->update([
+                'standard_price_transition_requested_at' => now(),
+                'launch_offer_consumed_at' => now(),
+                'provider_price_id' => $mapping->provider_price_id,
+            ]);
             EntitlementAuditLog::query()->create([
                 'company_id' => $locked->company_id,
                 'subscription_id' => $locked->id,
                 'event' => 'billing.standard_price_transition_requested',
                 'source' => $locked->payment_provider,
-                'context' => ['provider_price_phase' => $mapping->price_phase],
+                'context' => [
+                    'provider_price_phase' => $mapping->price_phase,
+                    'paid_monthly_cycles' => $locked->introductory_cycles_completed,
+                ],
                 'created_at' => now(),
             ]);
         });

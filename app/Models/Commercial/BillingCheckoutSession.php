@@ -9,13 +9,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BillingCheckoutSession extends Model
 {
     protected $fillable = [
-        'company_id', 'subscription_id', 'requested_price_id', 'payment_provider', 'operation',
+        'company_id', 'subscription_id', 'requested_price_id', 'price_phase',
+        'launch_offer_qualified', 'payment_provider', 'operation',
         'idempotency_key', 'provider_customer_id', 'provider_checkout_id',
         'provider_subscription_id', 'provider_price_id', 'checkout_url',
         'status', 'expires_at', 'completed_at',
     ];
 
-    protected $casts = ['expires_at' => 'datetime', 'completed_at' => 'datetime'];
+    protected $casts = [
+        'launch_offer_qualified' => 'boolean',
+        'expires_at' => 'datetime',
+        'completed_at' => 'datetime',
+    ];
 
     public function company(): BelongsTo
     {

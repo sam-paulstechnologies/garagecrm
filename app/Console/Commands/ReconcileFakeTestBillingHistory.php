@@ -43,14 +43,15 @@ class ReconcileFakeTestBillingHistory extends Command
                     return;
                 }
 
+                $providerCustomerId = (string) ($checkout->provider_customer_id ?: $subscription->provider_customer_id);
+                $providerSubscriptionId = (string) ($checkout->provider_subscription_id ?: $subscription->provider_subscription_id);
+                $providerPriceId = (string) ($checkout->provider_price_id ?: $subscription->provider_price_id);
                 $mapping = PriceProviderMapping::query()
                     ->where('price_id', $price->id)
                     ->where('payment_provider', 'fake')
+                    ->where('provider_price_id', $providerPriceId)
                     ->where('status', 'active')
                     ->first();
-                $providerCustomerId = (string) ($checkout->provider_customer_id ?: $subscription->provider_customer_id);
-                $providerSubscriptionId = (string) ($checkout->provider_subscription_id ?: $subscription->provider_subscription_id);
-                $providerPriceId = (string) ($checkout->provider_price_id ?: $subscription->provider_price_id ?: $mapping?->provider_price_id);
                 if ($providerCustomerId === '' || $providerSubscriptionId === '' || $providerPriceId === '') {
                     return;
                 }
@@ -62,7 +63,10 @@ class ReconcileFakeTestBillingHistory extends Command
                 }
                 $periodStart = ($subscription->current_period_start ?? $paidAt)->copy();
                 $periodEnd = ($subscription->current_period_end ?? $periodStart->copy()->addMonth())->copy();
-                $amountMinor = (int) round(((float) $price->amountAt($paidAt, $subscription->promotion_started_at)) * 100);
+                $amount = $mapping?->price_phase === 'launch'
+                    ? $price->promotional_amount
+                    : $price->list_amount;
+                $amountMinor = (int) round(((float) $amount) * 100);
                 $invoiceId = 'in_fake_test_legacy_'.$checkout->id;
                 [$payload, $signature] = $gateway->signedEvent(
                     'invoice.paid',

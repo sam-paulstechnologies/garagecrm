@@ -25,7 +25,7 @@ The clean release worktree started from staging commit `e8f2aecbf9571c7b43d57770
 
 ## Phase 1 completion record
 
-Phase 1 introduced stable plan codes (`free`, `service`, `growth`, `performance`, `ai_pro`), immutable plan versions and explicit AED price records, subscription lifecycle foundations, canonical fail-closed capabilities, tenant overrides, usage/audit records, centralized company status enforcement, explicit Free registration assignment, and server-side role/entitlement boundaries. Database IDs have no commercial meaning. Launch and standard prices are explicit records; paid promotional pricing lasts a configurable 12 billing cycles. Marketing and autonomous WhatsApp remain disabled.
+Phase 1 introduced stable plan codes (`free`, `service`, `growth`, `performance`, `ai_pro`), immutable plan versions and explicit AED price records, subscription lifecycle foundations, canonical fail-closed capabilities, tenant overrides, usage/audit records, centralized company status enforcement, explicit Free registration assignment, and server-side role/entitlement boundaries. Database IDs have no commercial meaning. Launch and standard prices are explicit records. The original 12-cycle policy was superseded on 2026-08-12 by the approved three-successful-paid-cycle policy described below. Marketing and autonomous WhatsApp remain disabled.
 
 ## Phase 2 decisions and validation
 
@@ -131,7 +131,7 @@ Validation evidence:
 ## Phase 10 decisions and validation
 
 - The public catalogue now comes from active immutable plan-version and price records. Marketing configuration contains positioning, benefits and calls to action only; it contains no duplicate price amounts.
-- The page presents Free, Service, Growth, Performance and AI Pro with the approved launch and standard AED amounts. AI Pro is explicitly “from” pricing. Paid plans describe the configurable 12-cycle introductory period and renewal at the displayed standard price without claiming a percentage discount.
+- The page presents Free, Service, Growth, Performance and AI Pro with the approved launch and standard AED amounts. AI Pro is explicitly “from” pricing. The current page follows the audited Launch Offer state: three verified paid launch months when ON, standard-only pricing for new subscriptions when OFF, without claiming a percentage discount.
 - The primary proposition is “Connect your WhatsApp. Stop losing bookings.” Free and Service remain self-service entry points; higher plans can use upgrade/contact positioning without fake testimonials or fabricated outcomes.
 - The public legal page points to the versioned catalogue and verified checkout terms instead of hard-coded legacy prices.
 - Locked-feature upsells use tenant-scoped counts already present in the application. They render no usage claim when no real usage exists, and never manufacture a metric.
@@ -190,6 +190,19 @@ Validation evidence:
 - `checkout.session.expired` is additionally normalized. It moves an open local checkout to the terminal `expired` state, records a non-activation audit, does not change the subscription, and blocks later checkout/subscription/payment events from confirming or activating that terminal checkout. The Sandbox event destination must subscribe to this seventh event as well.
 - This readiness change has no migration and creates no live mapping. Staging remains on the fake provider until eight real Sandbox Price IDs, Key Vault references, and the exact-version event destination are supplied and separately authorized.
 - Focused Stripe readiness and billing coverage passed 31 tests with 231 assertions. The complete suite passed 290 tests with 1,839 assertions; modified PHP lint, Pint, JSON fixture parsing and the frontend production build passed. Existing warning classification remains limited to the known test-harness notices and one PHPUnit doc-comment deprecation.
+
+## Stripe Sandbox price mapping and three-month Launch Offer
+
+- The eight externally created Sandbox Prices remain provider mappings only. `billing:map-stripe-sandbox-price` validates stable plan code, `launch|standard` phase, the canonical configured amount, AED currency, monthly interval, identifier format, slot uniqueness, and exact-rerun idempotency without a Stripe API call or secret.
+- One audited `commercial_settings.launch_offer_enabled` value controls eligibility for future paid subscriptions. Only platform administration can change it. The warning and price table are available independently of Stripe configuration; tenant administrators cannot reach the route.
+- Each checkout snapshots its server-selected `launch|standard` phase and whether it represents a new qualification. Verified paid activation persists qualification on the tenant subscription. Cancelling or expiring checkout, browser return, provider checkout confirmation, failed invoice, and unpaid invoice never enroll or consume the offer.
+- A qualified subscription keeps its remaining introductory cycles when the global offer is later disabled. Re-enabling cannot reset or regrant an offer because qualification and consumption history remain on the same tenant subscription. Existing paid standard subscribers remain standard.
+- Only a newly recorded, verified paid provider invoice increments the introductory counter. Both provider event IDs and provider invoice IDs are idempotency boundaries, so a replay or a second paid-event notification for the same invoice cannot count twice.
+- After the third successful paid monthly invoice, the controlled transition job resolves the same plan's standard mapping, requests an idempotent provider update, and only after provider success records the standard Price ID, transition timestamp, consumption timestamp and audit entry. A provider exception leaves those fields unset for queue retry.
+- Public, tenant billing and contextual locked-feature pricing derive from the canonical catalogue plus Launch Offer policy. ON shows the launch amount for three successful paid months and the standard renewal amount; OFF shows standard pricing only for newly eligible customers. Historical invoices remain immutable.
+- The additive migration creates one settings table, checkout snapshots and subscription history, and applies the approved 12-to-3 catalogue correction. Two clean MySQL cycles produced 128 base tables, two views, 49 migration records, 166 foreign keys, 464 routes and identical fingerprint `30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8`.
+- Local focused coverage passed 51 tests with 409 assertions before the final de-duplication extension; the complete suite passed 296 tests (285 warning-classified view-manifest cases plus 11 ordinary passes) with 1,905 assertions. Changed-file Pint, repository PHP lint and the frontend production build passed.
+- Staging release evidence, exact commit, workflow, live mapping import, ON/OFF verification and final provider state are recorded after deployment below/with the release handoff. `BILLING_PROVIDER` remains `fake`; Stripe credentials, webhooks, card charges, annual pricing, Meta and production remain unchanged.
 
 ## Human dependency queue
 

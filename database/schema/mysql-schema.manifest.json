@@ -176,7 +176,8 @@
     "2026_08_10_000004_create_mobile_notification_foundation",
     "2026_08_10_000005_create_product_events",
     "2026_08_10_000006_create_messaging_number_claims",
-    "2026_08_11_000001_harden_billing_payment_lifecycle"
+    "2026_08_11_000001_harden_billing_payment_lifecycle",
+    "2026_08_12_000001_add_launch_offer_commercial_policy"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -492,12 +493,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Separates provider-confirmed checkout from verified payment activation and adds immutable checkout, price, and test-mode attribution to provider invoice history."
+    },
+    {
+      "migration": "2026_08_12_000001_add_launch_offer_commercial_policy",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds audited platform launch-offer state, checkout/subscription promotional snapshots, and corrects the canonical introductory policy to three verified paid monthly cycles."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd",
-    "cycle_two_fingerprint": "b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd",
+    "cycle_one_fingerprint": "30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8",
+    "cycle_two_fingerprint": "30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

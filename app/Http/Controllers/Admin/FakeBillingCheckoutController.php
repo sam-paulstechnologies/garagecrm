@@ -28,7 +28,7 @@ class FakeBillingCheckoutController extends Controller
         $mapping = PriceProviderMapping::query()
             ->where('price_id', $billingCheckoutSession->requested_price_id)
             ->where('payment_provider', 'fake')
-            ->where('price_phase', 'launch')
+            ->where('price_phase', $billingCheckoutSession->price_phase)
             ->firstOrFail();
         $eventId = 'evt_fake_test_checkout_'.$billingCheckoutSession->id;
         $isChange = $billingCheckoutSession->operation === 'plan_change';
@@ -59,7 +59,10 @@ class FakeBillingCheckoutController extends Controller
 
         $price = $billingCheckoutSession->requestedPrice;
         $invoiceId = 'in_fake_test_'.$billingCheckoutSession->id;
-        $amountMinor = (int) round(((float) $price->amountAt($periodStart)) * 100);
+        $amount = $billingCheckoutSession->price_phase === 'launch'
+            ? $price->promotional_amount
+            : $price->list_amount;
+        $amountMinor = (int) round(((float) $amount) * 100);
         [$invoicePayload, $invoiceSignature] = $gateway->signedEvent(
             'invoice.paid',
             'invoice',

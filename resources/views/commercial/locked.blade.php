@@ -17,11 +17,11 @@
         @if($upsell['next_plan'])
             <div class="mt-7 rounded-2xl border border-white/10 bg-white/5 p-5">
                 <p class="font-bold text-white">Upgrade to {{ ucfirst(str_replace('_', ' ', $upsell['next_plan'])) }}</p>
-                @if($upsell['launch_amount'] !== null)
+                @if($upsell['display_amount'] !== null)
                     <p class="mt-1 text-sm text-slate-300">
-                        {{ $upsell['currency'] }} {{ number_format((float) $upsell['launch_amount'], 0) }}/month launch price
-                        @if($upsell['standard_amount'] !== $upsell['launch_amount'])
-                            · {{ $upsell['currency'] }} {{ number_format((float) $upsell['standard_amount'], 0) }} standard
+                        {{ $upsell['currency'] }} {{ number_format((float) $upsell['display_amount'], 0) }}/month{{ $upsell['price_phase'] === 'launch' ? ' launch price' : '' }}
+                        @if($upsell['price_phase'] === 'launch' && $upsell['standard_amount'] !== $upsell['launch_amount'])
+                            · first {{ $upsell['promotion_cycles'] }} paid months, then {{ $upsell['currency'] }} {{ number_format((float) $upsell['standard_amount'], 0) }} standard
                         @endif
                     </p>
                 @endif

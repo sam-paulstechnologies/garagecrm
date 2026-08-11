@@ -160,8 +160,14 @@ class BillingWebhookProcessor
             if (! $subscription) {
                 throw new BillingConfigurationException('Paid invoice does not map to a tenant subscription.');
             }
-            $completedCycles = min(65535, ((int) $subscription->introductory_cycles_completed) + 1);
-            $this->upsertInvoice($subscription, $event, 'paid', $checkout);
+            $isNewPaidCycle = $this->upsertInvoice($subscription, $event, 'paid', $checkout);
+            $countsForLaunchOffer = $isNewPaidCycle
+                && $subscription->launch_offer_qualified_at
+                && ! $subscription->launch_offer_consumed_at
+                && ! $subscription->standard_price_transition_requested_at;
+            $completedCycles = $countsForLaunchOffer
+                ? min(65535, ((int) $subscription->introductory_cycles_completed) + 1)
+                : (int) $subscription->introductory_cycles_completed;
             $subscription->update([
                 'status' => $subscription->cancel_at_period_end ? 'cancel_at_period_end' : 'active',
                 'payment_status' => 'paid',
@@ -172,9 +178,13 @@ class BillingWebhookProcessor
                 'provider_state_updated_at' => $event->occurredAt,
                 'introductory_cycles_completed' => $completedCycles,
             ]);
-            $this->audit($subscription, 'billing.invoice_paid', $provider, ['introductory_cycles_completed' => $subscription->introductory_cycles_completed]);
+            $this->audit($subscription, 'billing.invoice_paid', $provider, [
+                'introductory_cycles_completed' => $subscription->introductory_cycles_completed,
+                'counted_as_introductory_cycle' => $countsForLaunchOffer,
+            ]);
             $duration = (int) ($subscription->price?->promotion_duration_months ?? 0);
-            if ($duration > 0 && $completedCycles >= $duration && ! $subscription->standard_price_transition_requested_at) {
+            if ($countsForLaunchOffer && $duration > 0 && $completedCycles >= $duration
+                && ! $subscription->standard_price_transition_requested_at) {
                 DB::afterCommit(fn () => TransitionIntroductoryBillingPrice::dispatch($subscription->id));
             }
 
@@ -333,11 +343,16 @@ class BillingWebhookProcessor
         NormalizedBillingEvent $event,
         string $status,
         ?BillingCheckoutSession $checkout = null,
-    ): void {
+    ): bool {
         $invoiceId = (string) ($event->data['provider_invoice_id'] ?? $event->objectId);
         $url = (string) ($event->data['hosted_invoice_url'] ?? '');
         $price = $checkout?->requestedPrice()->first() ?? $subscription->price;
         $paymentProvider = (string) ($checkout?->payment_provider ?? $subscription->payment_provider);
+        $wasAlreadyPaid = BillingInvoice::query()
+            ->where('payment_provider', $paymentProvider)
+            ->where('provider_invoice_id', $invoiceId)
+            ->where('status', 'paid')
+            ->exists();
         BillingInvoice::query()->updateOrCreate(
             ['payment_provider' => $paymentProvider, 'provider_invoice_id' => $invoiceId],
             [
@@ -357,6 +372,8 @@ class BillingWebhookProcessor
                 'hosted_invoice_url' => str_starts_with($url, 'https://') ? $url : null,
             ],
         );
+
+        return $status === 'paid' && ! $wasAlreadyPaid;
     }
 
     /** @param array<string, mixed> $context */

@@ -201,16 +201,16 @@ class CommercialFoundationTest extends TestCase
         $service = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
         $this->assertSame('399.00', $service->list_amount);
         $this->assertSame('199.00', $service->promotional_amount);
-        $this->assertSame(12, $service->promotion_duration_months);
+        $this->assertSame(3, $service->promotion_duration_months);
 
         $started = CarbonImmutable::parse('2026-08-10');
-        $this->assertSame('199.00', $service->amountAt($started->addMonths(11), $started));
-        $this->assertSame('399.00', $service->amountAt($started->addMonths(12), $started));
+        $this->assertSame('199.00', $service->amountAt($started->addMonths(2), $started));
+        $this->assertSame('399.00', $service->amountAt($started->addMonths(3), $started));
 
         $subscription = $this->companyOn(Plans::SERVICE, 'Price Lock Garage')->subscription()->firstOrFail();
         $this->assertSame($service->id, $subscription->price_id);
         $this->assertTrue($subscription->promotion_started_at->isSameDay(now()));
-        $this->assertTrue($subscription->promotion_ends_at->isSameDay(now()->addMonths(12)));
+        $this->assertTrue($subscription->promotion_ends_at->isSameDay(now()->addMonths(3)));
 
         $this->expectException(LogicException::class);
         $service->list_amount = 400;

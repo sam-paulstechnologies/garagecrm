@@ -90,7 +90,7 @@
                         '@type' => 'Offer',
                         'name' => $plan['name'],
                         'priceCurrency' => $plan['currency'],
-                        'price' => (string) $plan['launch_amount'],
+                        'price' => (string) $plan['display_amount'],
                         'url' => 'https://sayaraforce.com/#pricing',
                     ], $commercialPlans),
                 ],
@@ -2936,7 +2936,13 @@
                 <div class="pricing-heading">
                     <p class="section-label">Pricing</p>
                     <h2 id="pricing-title">Start free. Expand when value is clear.</h2>
-                    <p class="section-intro">Launch prices are explicit introductory catalogue prices for the first 12 billing cycles—not an implied percentage discount.</p>
+                    <p class="section-intro">
+                        @if(($commercialPlans[0]['launch_offer_enabled'] ?? false))
+                            Launch prices apply to qualifying new subscriptions for their first {{ $commercialPlans[0]['promotion_cycles'] }} successful paid monthly cycles.
+                        @else
+                            New subscriptions use the standard monthly catalogue prices.
+                        @endif
+                    </p>
                 </div>
 
                 <div class="pricing-grid">
@@ -2947,16 +2953,16 @@
                             @endif
                             <h3 class="plan-name">{{ $plan['name'] }}</h3>
                             <p class="plan-positioning">{{ $plan['positioning'] }}</p>
-                            @if($plan['launch_amount'] > 0)
+                            @if($plan['launch_offer_enabled'] && $plan['launch_amount'] > 0)
                                 <p class="plan-launch-label">Launch price</p>
                             @endif
                             <div class="plan-price">
-                                <strong>{{ $plan['currency'] }} {{ number_format($plan['launch_amount'], 0) }}{{ $plan['custom_from'] ? '+' : '' }}</strong>
+                                <strong>{{ $plan['currency'] }} {{ number_format($plan['display_amount'], 0) }}{{ $plan['custom_from'] ? '+' : '' }}</strong>
                                 <span>/month</span>
                             </div>
-                            @if($plan['standard_amount'] !== $plan['launch_amount'])
+                            @if($plan['launch_offer_enabled'] && $plan['standard_amount'] !== $plan['launch_amount'])
                                 <p class="plan-standard">Standard: {{ $plan['currency'] }} {{ number_format($plan['standard_amount'], 0) }}{{ $plan['custom_from'] ? '+' : '' }}/month</p>
-                                <p class="plan-price-terms">Launch price applies for the first {{ $plan['promotion_cycles'] }} billing cycles, then the standard catalogue price applies.</p>
+                                <p class="plan-price-terms">For your first {{ $plan['promotion_cycles'] }} successful paid months, then the standard catalogue price applies.</p>
                             @endif
                             <ul class="plan-features">
                                 @foreach($plan['features'] as $feature)

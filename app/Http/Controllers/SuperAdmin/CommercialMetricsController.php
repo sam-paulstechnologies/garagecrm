@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers\SuperAdmin;
 
+use App\Commercial\LaunchOfferService;
 use App\Commercial\Plans;
 use App\Commercial\ProductEvents;
+use App\Models\Commercial\Price;
 use App\Models\Commercial\Subscription;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class CommercialMetricsController extends SuperAdminController
 {
-    public function __invoke()
+    public function index(LaunchOfferService $launchOffer)
     {
         $planCounts = array_fill_keys(Plans::codes(), 0);
         DB::table('subscriptions as s')
@@ -68,6 +72,27 @@ class CommercialMetricsController extends SuperAdminController
                 ->where('status', 'paid')->where('currency', 'AED')->sum('amount_paid'),
         ];
 
-        return view('super_admin.commercial.index', compact('planCounts', 'metrics'));
+        $launchOfferEnabled = $launchOffer->isEnabled();
+        $promotionCycles = $launchOffer->durationCycles();
+        $commercialPrices = Price::query()
+            ->where('status', 'active')
+            ->where('currency', config('commercial.pricing.currency'))
+            ->where('interval', config('commercial.pricing.interval'))
+            ->with('planVersion.plan')
+            ->get()
+            ->filter(fn (Price $price): bool => in_array((string) $price->planVersion?->plan?->code, Plans::codes(), true))
+            ->sortBy(fn (Price $price): int => (int) $price->planVersion->plan->rank);
+
+        return view('super_admin.commercial.index', compact(
+            'planCounts', 'metrics', 'launchOfferEnabled', 'promotionCycles', 'commercialPrices'
+        ));
+    }
+
+    public function updateLaunchOffer(Request $request, LaunchOfferService $launchOffer): RedirectResponse
+    {
+        $validated = $request->validate(['enabled' => ['required', 'boolean']]);
+        $launchOffer->setEnabled($request->user(), (bool) $validated['enabled']);
+
+        return back()->with('success', 'Launch Offer eligibility was updated for future subscriptions only.');
     }
 }

@@ -40,7 +40,7 @@ class PublicWebsiteLeadCaptureTest extends TestCase
             ->assertSee('AED 3,999')
             ->assertSee('Best place to start')
             ->assertSee('Start free')
-            ->assertSee('Launch price applies for the first 12 billing cycles')
+            ->assertSee('first 3 successful paid monthly cycles')
             ->assertSee('Prices exclude separately applicable WhatsApp, Meta, AI, payment-provider and other usage charges.')
             ->assertSee('/css/sayaraforce-brand.css', false)
             ->assertSee('/images/brand/sayaraforce-logo-horizontal.png', false)

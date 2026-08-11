@@ -18,7 +18,8 @@ class Subscription extends Model
         'provider_subscription_id', 'provider_price_id', 'payment_status',
         'grace_ends_at', 'suspended_at', 'cancellation_requested_at',
         'provider_state_updated_at', 'introductory_cycles_completed',
-        'standard_price_transition_requested_at',
+        'standard_price_transition_requested_at', 'launch_offer_qualified_at',
+        'launch_offer_consumed_at',
     ];
 
     protected $casts = [
@@ -31,6 +32,7 @@ class Subscription extends Model
         'cancellation_requested_at' => 'datetime', 'provider_state_updated_at' => 'datetime',
         'introductory_cycles_completed' => 'integer',
         'standard_price_transition_requested_at' => 'datetime',
+        'launch_offer_qualified_at' => 'datetime', 'launch_offer_consumed_at' => 'datetime',
     ];
 
     public function company(): BelongsTo

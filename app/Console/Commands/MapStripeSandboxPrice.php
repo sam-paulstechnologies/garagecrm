@@ -140,6 +140,12 @@ class MapStripeSandboxPrice extends Command
         if ($amount === null || (float) $amount <= 0) {
             throw new RuntimeException("canonical {$phase} amount must be greater than zero.");
         }
+        $definitionKey = $phase === 'launch' ? 'promotional_amount' : 'list_amount';
+        $configuredAmount = config("commercial.plans.{$planCode}.{$definitionKey}");
+        if ($configuredAmount === null
+            || number_format((float) $amount, 2, '.', '') !== number_format((float) $configuredAmount, 2, '.', '')) {
+            throw new RuntimeException("canonical {$phase} amount differs from the reviewed commercial catalogue.");
+        }
 
         return $price;
     }

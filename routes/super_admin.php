@@ -16,7 +16,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
     ->name('super-admin.')
     ->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
-        Route::get('commercial', CommercialMetricsController::class)->name('commercial.index');
+        Route::get('commercial', [CommercialMetricsController::class, 'index'])->name('commercial.index');
+        Route::patch('commercial/launch-offer', [CommercialMetricsController::class, 'updateLaunchOffer'])
+            ->name('commercial.launch-offer.update');
 
         Route::get('garages', [GarageController::class, 'index'])->name('garages.index');
         Route::get('garages/{garage}', [GarageController::class, 'show'])->name('garages.show');

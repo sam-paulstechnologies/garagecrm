@@ -3,6 +3,39 @@
 @section('title', 'Commercial Metrics')
 
 @section('super_admin_content')
+    @if(session('success'))
+        <div class="mb-6 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm font-bold text-green-300">{{ session('success') }}</div>
+    @endif
+
+    <section class="mb-6 rounded-3xl sa-card p-6">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <p class="text-xs font-extrabold uppercase tracking-wide text-orange-300">Commercial eligibility control</p>
+                <h1 class="mt-2 text-2xl font-black text-white">Launch Offer: {{ $launchOfferEnabled ? 'ON' : 'OFF' }}</h1>
+                <p class="mt-2 text-sm font-semibold sa-muted">Promotional duration: {{ $promotionCycles }} successful paid monthly cycles.</p>
+                <p class="mt-3 max-w-3xl text-sm font-bold text-yellow-200">Changing this setting affects eligibility for new subscriptions only. Existing promotional subscriptions retain their remaining introductory cycles.</p>
+            </div>
+            <form method="POST" action="{{ route('super-admin.commercial.launch-offer.update') }}">
+                @csrf
+                @method('PATCH')
+                <input type="hidden" name="enabled" value="{{ $launchOfferEnabled ? '0' : '1' }}">
+                <button class="rounded-xl border border-orange-400/30 bg-orange-500/10 px-5 py-3 text-sm font-black text-orange-200">
+                    Turn {{ $launchOfferEnabled ? 'OFF' : 'ON' }} for new subscriptions
+                </button>
+            </form>
+        </div>
+        <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            @foreach($commercialPrices as $price)
+                @if((float) $price->list_amount > 0)
+                    <div class="rounded-2xl border border-white/10 p-4">
+                        <div class="text-sm font-black text-white">{{ $price->planVersion->plan->name }}</div>
+                        <div class="mt-1 text-xs font-bold sa-muted">Launch AED {{ number_format((float) $price->promotional_amount, 0) }} &middot; Standard AED {{ number_format((float) $price->list_amount, 0) }} / month</div>
+                    </div>
+                @endif
+            @endforeach
+        </div>
+    </section>
+
     <section class="rounded-3xl sa-card p-6">
         <p class="text-xs font-extrabold uppercase tracking-wide text-orange-300">Platform-only commercial telemetry</p>
         <h1 class="mt-2 text-3xl font-black text-white">Commercial health</h1>

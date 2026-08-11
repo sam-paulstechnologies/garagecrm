@@ -3,6 +3,8 @@
 use App\Commercial\Capabilities;
 use App\Commercial\Plans;
 
+$introductoryPaidCycles = 3;
+
 $core = array_merge(Capabilities::CORE, [
     'whatsapp_connect', 'whatsapp_inbound', 'whatsapp_manual_reply', 'ai_observational',
 ]);
@@ -77,7 +79,10 @@ return [
     'pricing' => [
         'currency' => 'AED',
         'interval' => 'month',
-        'promotion_duration_months' => 12,
+        // Introductory eligibility is consumed only by verified paid monthly
+        // invoices. Calendar age, checkout returns and failed invoices do not count.
+        'promotion_duration_months' => $introductoryPaidCycles,
+        'promotion_duration_paid_cycles' => $introductoryPaidCycles,
         'renewal_behavior' => 'standard_after_promotion',
     ],
     'staging_assignments' => [

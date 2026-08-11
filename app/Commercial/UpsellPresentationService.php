@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Schema;
 
 class UpsellPresentationService
 {
+    public function __construct(private readonly LaunchOfferService $launchOffer) {}
+
     private const LADDER = [
         Plans::FREE => [
             'next' => Plans::SERVICE,
@@ -42,6 +44,9 @@ class UpsellPresentationService
             ->where('code', $next.':'.config('commercial.catalogue_version').':aed-monthly')
             ->where('status', 'active')
             ->first() : null;
+        $pricePhase = $subscription && $price
+            ? $this->launchOffer->phaseForCheckout($subscription, $price)
+            : 'standard';
 
         return [
             'capability' => $capability,
@@ -49,8 +54,11 @@ class UpsellPresentationService
             'next_plan' => $next,
             'message' => $step['message'],
             'usage_message' => $this->usageMessage($company, $current),
-            'launch_amount' => $price?->promotional_amount,
+            'launch_amount' => $pricePhase === 'launch' ? $price?->promotional_amount : null,
             'standard_amount' => $price?->list_amount,
+            'display_amount' => $pricePhase === 'launch' ? $price?->promotional_amount : $price?->list_amount,
+            'price_phase' => $pricePhase,
+            'promotion_cycles' => $this->launchOffer->durationCycles(),
             'currency' => $price?->currency,
         ];
     }

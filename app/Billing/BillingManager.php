@@ -5,6 +5,7 @@ namespace App\Billing;
 use App\Billing\Contracts\BillingGateway;
 use App\Billing\Data\ProviderCustomer;
 use App\Billing\Exceptions\BillingConfigurationException;
+use App\Commercial\LaunchOfferService;
 use App\Commercial\ProductEventRecorder;
 use App\Commercial\ProductEvents;
 use App\Models\Commercial\BillingCheckoutSession;
@@ -21,6 +22,7 @@ class BillingManager
     public function __construct(
         private readonly BillingGateway $gateway,
         private readonly ProductEventRecorder $productEvents,
+        private readonly LaunchOfferService $launchOffer,
     ) {}
 
     public function startCheckout(Company $company, Price $price, ?string $idempotencyKey = null): BillingCheckoutSession
@@ -33,10 +35,11 @@ class BillingManager
         }
         $subscription = $company->subscription()->firstOrFail();
         $provider = $this->gateway->provider();
+        $phase = $this->launchOffer->phaseForCheckout($subscription, $price);
         $mapping = PriceProviderMapping::query()
             ->where('price_id', $price->id)
             ->where('payment_provider', $provider)
-            ->where('price_phase', 'launch')
+            ->where('price_phase', $phase)
             ->where('status', 'active')
             ->first();
         if (! $mapping) {
@@ -63,6 +66,8 @@ class BillingManager
             'company_id' => $company->id,
             'subscription_id' => $subscription->id,
             'requested_price_id' => $price->id,
+            'price_phase' => $phase,
+            'launch_offer_qualified' => $this->launchOffer->isNewQualification($subscription, $phase),
             'payment_provider' => $provider,
             'operation' => $subscription->payment_provider === $provider && filled($subscription->provider_subscription_id)
                 ? 'plan_change'
@@ -79,6 +84,7 @@ class BillingManager
                 'local_checkout_id' => $checkout->id,
                 'company_id' => $company->id,
                 'provider_price_id' => $mapping->provider_price_id,
+                'price_phase' => $phase,
             ];
             if ($checkout->operation === 'plan_change') {
                 $this->gateway->changeSubscription(
@@ -122,7 +128,11 @@ class BillingManager
             'actor_id' => auth()->id(),
             'event' => 'billing.checkout_created',
             'source' => $provider,
-            'context' => ['price_code' => $price->code, 'checkout_id' => $checkout->id],
+            'context' => [
+                'price_code' => $price->code,
+                'price_phase' => $phase,
+                'checkout_id' => $checkout->id,
+            ],
             'created_at' => now(),
         ]);
         $this->productEvents->recordSafely(
@@ -187,6 +197,7 @@ class BillingManager
                 ->where('price_id', $checkout->requested_price_id)
                 ->where('payment_provider', $checkout->payment_provider)
                 ->where('provider_price_id', $providerPriceId)
+                ->where('price_phase', $checkout->price_phase)
                 ->where('status', 'active')
                 ->exists();
             if (! $mappingMatches) {
@@ -230,6 +241,7 @@ class BillingManager
                 ->where('price_id', $checkout->requested_price_id)
                 ->where('payment_provider', $checkout->payment_provider)
                 ->where('provider_price_id', $providerPriceId)
+                ->where('price_phase', $checkout->price_phase)
                 ->exists();
             if (! $mappingMatches) {
                 throw new BillingConfigurationException('Verified checkout price does not match the requested internal price.');
@@ -237,9 +249,17 @@ class BillingManager
 
             $price = $checkout->requestedPrice;
             $samePrice = (int) $subscription->price_id === (int) $price->id;
-            $promotionStartedAt = $samePrice
-                ? $subscription->promotion_started_at
-                : ($price->isPromotionAvailableAt(now()) ? now() : null);
+            $continuingPromotion = $checkout->price_phase === 'launch'
+                && $subscription->launch_offer_qualified_at
+                && ! $subscription->launch_offer_consumed_at;
+            $promotionStartedAt = $checkout->price_phase === 'launch'
+                ? ($subscription->launch_offer_qualified_at
+                    ? ($subscription->promotion_started_at ?? $subscription->launch_offer_qualified_at)
+                    : now())
+                : null;
+            $qualifiedAt = $checkout->price_phase === 'launch'
+                ? ($subscription->launch_offer_qualified_at ?? now())
+                : $subscription->launch_offer_qualified_at;
             $subscription->forceFill([
                 'plan_version_id' => $price->plan_version_id,
                 'price_id' => $price->id,
@@ -251,6 +271,8 @@ class BillingManager
                 'promotion_ends_at' => $promotionStartedAt && $price->promotion_duration_months
                     ? $promotionStartedAt->copy()->addMonths($price->promotion_duration_months)
                     : null,
+                'launch_offer_qualified_at' => $qualifiedAt,
+                'launch_offer_consumed_at' => $subscription->launch_offer_consumed_at,
                 'payment_provider' => $checkout->payment_provider,
                 'provider_customer_id' => $providerCustomerId,
                 'provider_subscription_id' => $providerSubscriptionId,
@@ -262,8 +284,12 @@ class BillingManager
                 'suspended_at' => null,
                 'cancellation_requested_at' => null,
                 'provider_state_updated_at' => $occurredAt,
-                'introductory_cycles_completed' => $samePrice ? $subscription->introductory_cycles_completed : 0,
-                'standard_price_transition_requested_at' => $samePrice ? $subscription->standard_price_transition_requested_at : null,
+                'introductory_cycles_completed' => ($samePrice || $continuingPromotion)
+                    ? $subscription->introductory_cycles_completed
+                    : 0,
+                'standard_price_transition_requested_at' => ($samePrice || $continuingPromotion)
+                    ? $subscription->standard_price_transition_requested_at
+                    : null,
             ])->save();
             $checkout->update(['status' => 'completed', 'completed_at' => now()]);
             $checkout->company()->update(['plan_id' => $price->planVersion->plan_id]);
@@ -272,7 +298,11 @@ class BillingManager
                 'subscription_id' => $subscription->id,
                 'event' => 'billing.subscription_activated',
                 'source' => $checkout->payment_provider,
-                'context' => ['price_code' => $price->code, 'checkout_id' => $checkout->id],
+                'context' => [
+                    'price_code' => $price->code,
+                    'price_phase' => $checkout->price_phase,
+                    'checkout_id' => $checkout->id,
+                ],
                 'created_at' => now(),
             ]);
             $nextPlan = (string) $price->planVersion?->plan?->code;

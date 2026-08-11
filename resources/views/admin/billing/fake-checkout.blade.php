@@ -12,7 +12,7 @@
         @endif
         <p class="mt-3 text-sm leading-6 text-slate-400">This deterministic fake provider exercises the same signed, idempotent webhook path as a real gateway. It never collects payment details or creates a charge.</p>
         <dl class="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm">
-            <div><dt class="text-slate-500">Launch price</dt><dd class="mt-1 font-black text-white">AED {{ number_format((float) ($checkout->requestedPrice->promotional_amount ?? $checkout->requestedPrice->list_amount), 2) }}</dd></div>
+            <div><dt class="text-slate-500">{{ $checkout->price_phase === 'launch' ? 'Launch price' : 'Standard price' }}</dt><dd class="mt-1 font-black text-white">AED {{ number_format((float) ($checkout->price_phase === 'launch' ? $checkout->requestedPrice->promotional_amount : $checkout->requestedPrice->list_amount), 2) }}</dd></div>
             <div><dt class="text-slate-500">Standard price</dt><dd class="mt-1 font-black text-white">AED {{ number_format((float) $checkout->requestedPrice->list_amount, 2) }}</dd></div>
         </dl>
         <form class="mt-7" method="POST" action="{{ route('admin.billing.fake.complete', $checkout) }}">

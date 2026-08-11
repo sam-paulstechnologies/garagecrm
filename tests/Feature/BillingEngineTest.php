@@ -572,11 +572,12 @@ class BillingEngineTest extends TestCase
     {
         [$company] = $this->activatedServiceTenant();
         $subscription = $company->fresh()->subscription;
-        $subscription->update(['introductory_cycles_completed' => 12]);
+        $subscription->update(['introductory_cycles_completed' => 3]);
 
         $job = new TransitionIntroductoryBillingPrice($subscription->id);
         $job->handle(app(BillingGatewayResolver::class));
         $this->assertNotNull($subscription->fresh()->standard_price_transition_requested_at);
+        $this->assertNotNull($subscription->fresh()->launch_offer_consumed_at);
         $this->assertSame('active', $subscription->fresh()->status);
         $this->assertSame(Plans::SERVICE, $subscription->fresh()->planVersion->plan->code);
         $this->assertDatabaseHas('entitlement_audit_logs', [

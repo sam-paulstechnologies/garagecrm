@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Billing\BillingManager;
 use App\Billing\Exceptions\BillingConfigurationException;
+use App\Commercial\LaunchOfferService;
 use App\Http\Controllers\Controller;
 use App\Models\Commercial\BillingInvoice;
 use App\Models\Commercial\Price;
@@ -14,7 +15,7 @@ use Illuminate\View\View;
 
 class BillingController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, LaunchOfferService $launchOffer): View
     {
         $company = $this->company($request);
         $subscription = $company->subscription()->with(['planVersion.plan', 'price'])->firstOrFail();
@@ -30,7 +31,15 @@ class BillingController extends Controller
             ->limit(24)
             ->get();
 
-        return view('admin.billing.index', compact('company', 'subscription', 'prices', 'invoices'));
+        $launchOfferEnabled = $launchOffer->isEnabled();
+        $promotionCycles = $launchOffer->durationCycles();
+        $checkoutPhases = $prices->mapWithKeys(
+            fn (Price $price): array => [$price->id => $launchOffer->phaseForCheckout($subscription, $price)]
+        );
+
+        return view('admin.billing.index', compact(
+            'company', 'subscription', 'prices', 'invoices', 'launchOfferEnabled', 'promotionCycles', 'checkoutPhases'
+        ));
     }
 
     public function checkout(Request $request, BillingManager $billing): RedirectResponse
