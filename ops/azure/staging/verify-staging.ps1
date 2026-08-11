@@ -68,9 +68,7 @@ $required = @{
     WEBSITE_SKIP_RUNNING_KUDUAGENT = 'false'
     WEBJOBS_STOPPED = '0'
     WEBJOBS_DISABLE_SCHEDULE = '1'
-    BILLING_PROVIDER = 'fake'
     BILLING_MODE = 'test'
-    BILLING_CHECKOUT_ENABLED = 'true'
     PUSH_NOTIFICATION_DRIVER = 'fake'
     PUSH_EXTERNAL_DELIVERY_ENABLED = 'false'
 }
@@ -84,6 +82,24 @@ if ($settingMap['STAGING_EXPECTED_HOST'] -ne $expectedHost -or $settingMap['SESS
 }
 foreach ($item in $required.GetEnumerator()) {
     if ($settingMap[$item.Key] -ne $item.Value) { throw "Unsafe or missing staging setting: $($item.Key)." }
+}
+
+if ($settingMap['BILLING_PROVIDER'] -notin @('fake', 'stripe')) {
+    throw 'Staging billing provider is not an approved test provider.'
+}
+if ($settingMap['BILLING_CHECKOUT_ENABLED'] -notin @('true', 'false')) {
+    throw 'Staging billing checkout switch is invalid.'
+}
+if ($settingMap['BILLING_PROVIDER'] -eq 'stripe') {
+    if ($settingMap['STRIPE_API_BASE'] -ne 'https://api.stripe.com' -or
+        $settingMap['STRIPE_API_VERSION'] -ne '2026-07-29.dahlia') {
+        throw 'Stripe staging provider is not pinned to the reviewed Sandbox API contract.'
+    }
+    foreach ($key in @('STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET')) {
+        if ($settingMap[$key] -notmatch '^@Microsoft.KeyVault\(') {
+            throw "$key is not a Key Vault reference."
+        }
+    }
 }
 
 if ($settingMap['DB_HOST'] -notmatch 'staging' -or $settingMap['DB_HOST'] -match 'app-sayaraforce($|\.)') {

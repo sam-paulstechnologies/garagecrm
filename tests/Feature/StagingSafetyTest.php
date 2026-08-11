@@ -147,4 +147,21 @@ class StagingSafetyTest extends TestCase
         $this->assertStringNotContainsString('non-synthetic tenant count', $source);
         $this->assertStringNotContainsString('non-synthetic user count', $source);
     }
+
+    public function test_live_verifier_accepts_only_reviewed_test_billing_providers(): void
+    {
+        $command = (string) file_get_contents(app_path('Console/Commands/VerifyLiveStaging.php'));
+        $script = (string) file_get_contents(base_path('ops/azure/staging/verify-staging.ps1'));
+
+        $this->assertStringContainsString("['fake', 'stripe']", $command);
+        $this->assertStringContainsString("config('billing.mode') !== 'test'", $command);
+        $this->assertStringContainsString('assertSandboxConfiguration()', $command);
+        $this->assertStringContainsString('active Stripe Sandbox price mapping count', $command);
+        $this->assertStringNotContainsString('must remain fake before Stripe Sandbox cutover approval', $command);
+
+        $this->assertStringContainsString("-notin @('fake', 'stripe')", $script);
+        $this->assertStringContainsString("STRIPE_API_BASE'] -ne 'https://api.stripe.com'", $script);
+        $this->assertStringContainsString("STRIPE_API_VERSION'] -ne '2026-07-29.dahlia'", $script);
+        $this->assertStringContainsString("@('STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET')", $script);
+    }
 }

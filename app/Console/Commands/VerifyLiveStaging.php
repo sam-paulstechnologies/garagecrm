@@ -84,11 +84,19 @@ class VerifyLiveStaging extends Command
             $this->assertSame(5, (int) DB::table('prices')
                 ->where('currency', 'AED')->where('interval', 'month')
                 ->where('promotion_duration_months', 3)->count(), 'three-cycle canonical price count');
-            if ((string) config('billing.provider') !== 'fake') {
-                throw new RuntimeException('Staging billing provider must remain fake before Stripe Sandbox cutover approval.');
+            $billingProvider = (string) config('billing.provider');
+            if (! in_array($billingProvider, ['fake', 'stripe'], true)) {
+                throw new RuntimeException('Staging billing provider must be an approved test provider.');
+            }
+            if ((string) config('billing.mode') !== 'test') {
+                throw new RuntimeException('Staging billing mode must remain test.');
             }
             if ((string) config('billing.stripe.api_version') !== StripeBillingGateway::SUPPORTED_API_VERSION) {
                 throw new RuntimeException('Stripe webhook/API fixture version is not the reviewed Dahlia contract.');
+            }
+            if ($billingProvider === 'stripe') {
+                app(StripeBillingGateway::class)->assertSandboxConfiguration();
+                $this->assertSame(8, $stripeMappingCount, 'active Stripe Sandbox price mapping count');
             }
             $this->assertSame(0, (int) DB::table('subscriptions as s')
                 ->where('s.payment_provider', 'fake')
@@ -165,6 +173,9 @@ class VerifyLiveStaging extends Command
                 'test_billing_invoices' => (int) DB::table('billing_invoices')->where('test_mode', true)->count(),
                 'stripe_price_mappings' => $stripeMappingCount,
                 'stripe_api_version' => (string) config('billing.stripe.api_version'),
+                'billing_provider' => $billingProvider,
+                'billing_mode' => (string) config('billing.mode'),
+                'billing_checkout_enabled' => (bool) config('billing.checkout_enabled'),
                 'notification_tables' => count($notificationTables),
                 'product_event_tables' => 1,
                 'synthetic_tenants' => $tenantCount,
