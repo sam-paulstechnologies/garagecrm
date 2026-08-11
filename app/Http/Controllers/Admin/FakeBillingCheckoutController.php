@@ -36,7 +36,7 @@ class FakeBillingCheckoutController extends Controller
         $providerSubscriptionId = $isChange
             ? (string) $subscription->provider_subscription_id
             : 'sub_fake_test_'.$billingCheckoutSession->id;
-        $periodStart = now()->startOfSecond();
+        $periodStart = $billingCheckoutSession->created_at->copy()->startOfSecond();
         $periodEnd = $periodStart->copy()->addMonth();
         [$payload, $signature] = $gateway->signedEvent(
             $isChange ? 'customer.subscription.updated' : 'checkout.session.completed',

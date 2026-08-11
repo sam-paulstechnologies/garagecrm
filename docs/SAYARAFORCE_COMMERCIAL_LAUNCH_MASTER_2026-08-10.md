@@ -173,6 +173,14 @@ Validation evidence:
 - Focused billing/commercial/staging validation passed 41 tests with 311 assertions. The complete suite passed 276 tests with 1,741 assertions; modified PHP lint and the frontend production build passed.
 - Two guarded disposable MySQL cycles passed with 127 base tables, two views, 48 migration records, 165 foreign keys, 463 routes and identical fingerprint `b763b44beb37674d819e3bee0c67f84c33a1832944ac6a706cb983f7e22b38fd`. The disposable database was removed after validation.
 
+## Stripe sandbox handoff safety correction
+
+- The handoff audit confirmed that Stripe API requests already required `BILLING_MODE=test` and an `sk_test_` secret, but webhook verification could not distinguish a test and live `whsec_` value. The Stripe event payload's authoritative `livemode` field was not rejected, so a correctly signed live event was a staging safety gap.
+- The Stripe adapter now validates test billing mode before API calls and webhook verification, rejects `sk_live_` and optional `pk_live_` credentials, restricts the staging API base to the official Stripe HTTPS endpoint, and rejects live-mode or mode-unclassified Stripe events before provider-event persistence.
+- The provider remains `fake`; no Stripe or Azure value was configured. Tests prove a valid signature cannot bypass the live-event guard and that invalid test/live configuration records no provider event.
+- The same audit exposed a timing-sensitive fake-event replay: retrying a checkout completion after the wall clock advanced reused an event ID with regenerated timestamps. Fake checkout timestamps now derive from the persisted checkout creation time, and a forced delayed replay proves the payload and two-event receipt set remain idempotent.
+- Focused billing coverage passed 21 tests with 141 assertions. The complete suite passed 280 tests with 1,749 assertions; modified-file PHP lint and the frontend production build passed. Existing clean-worktree Vite-manifest warnings and one PHPUnit doc-comment deprecation remain unchanged.
+
 ## Human dependency queue
 
 1. Stripe: create/verify the UAE business account, complete KYC/bank setup, provide test keys/webhook secret, later approve live credentials. Engineering uses a fake/test adapter until then.

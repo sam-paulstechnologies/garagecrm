@@ -83,6 +83,7 @@ class BillingEngineTest extends TestCase
             ->assertSeeText('Service')
             ->assertSeeText('AED 199.00');
 
+        $this->travel(2)->seconds();
         $this->actingAs($admin)->post(route('admin.billing.fake.complete', $checkout))->assertRedirect();
         $this->assertDatabaseCount('billing_provider_events', 2);
         $this->assertDatabaseCount('billing_invoices', 1);
@@ -199,6 +200,7 @@ class BillingEngineTest extends TestCase
     {
         $payload = json_encode([
             'id' => 'evt_stripe_replay_1', 'type' => 'customer.updated', 'created' => now()->timestamp,
+            'livemode' => false,
             'data' => ['object' => ['id' => 'cus_test_only', 'object' => 'customer']],
         ], JSON_THROW_ON_ERROR);
         config()->set('billing.stripe.webhook_secret', 'whsec_test_phase3');
@@ -324,6 +326,84 @@ class BillingEngineTest extends TestCase
         Http::fake();
         $this->expectException(BillingConfigurationException::class);
         app(StripeBillingGateway::class)->createCustomer(Company::query()->create(['name' => 'No Live Charges', 'status' => 'active']), 'stripe-live-refusal');
+    }
+
+    public function test_stripe_webhook_rejects_live_mode_event_even_with_a_valid_signature(): void
+    {
+        config()->set([
+            'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_test_sandbox_guard',
+            'billing.stripe.publishable_key' => 'pk_test_sandbox_guard',
+            'billing.stripe.webhook_secret' => 'whsec_sandbox_guard',
+        ]);
+        $payload = json_encode([
+            'id' => 'evt_live_forbidden',
+            'type' => 'invoice.paid',
+            'created' => now()->timestamp,
+            'livemode' => true,
+            'data' => ['object' => ['id' => 'in_live_forbidden', 'object' => 'invoice']],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->call('POST', route('billing.webhook', ['provider' => 'stripe']), [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => $this->stripeSignature($payload, 'whsec_sandbox_guard'),
+        ], $payload)->assertStatus(400)->assertJson(['received' => false]);
+
+        $this->assertDatabaseCount('billing_provider_events', 0);
+    }
+
+    public function test_stripe_adapter_refuses_live_publishable_key_even_with_test_secret_key(): void
+    {
+        config()->set([
+            'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_test_sandbox_guard',
+            'billing.stripe.publishable_key' => 'pk_live_forbidden',
+        ]);
+        Http::fake();
+
+        $this->expectException(BillingConfigurationException::class);
+        app(StripeBillingGateway::class)->createCustomer(
+            Company::query()->create(['name' => 'No Live Publishable Key', 'status' => 'active']),
+            'stripe-publishable-live-refusal',
+        );
+    }
+
+    public function test_stripe_adapter_refuses_live_secret_key_in_test_mode(): void
+    {
+        config()->set([
+            'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_live_forbidden',
+        ]);
+        Http::fake();
+
+        $this->expectException(BillingConfigurationException::class);
+        app(StripeBillingGateway::class)->createCustomer(
+            Company::query()->create(['name' => 'No Live Secret Key', 'status' => 'active']),
+            'stripe-secret-live-refusal',
+        );
+    }
+
+    public function test_stripe_webhook_refuses_non_test_billing_mode_before_recording_event(): void
+    {
+        config()->set([
+            'billing.mode' => 'live',
+            'billing.stripe.secret_key' => 'sk_test_sandbox_guard',
+            'billing.stripe.webhook_secret' => 'whsec_sandbox_guard',
+        ]);
+        $payload = json_encode([
+            'id' => 'evt_test_in_live_config_forbidden',
+            'type' => 'customer.updated',
+            'created' => now()->timestamp,
+            'livemode' => false,
+            'data' => ['object' => ['id' => 'cus_test_forbidden', 'object' => 'customer']],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->call('POST', route('billing.webhook', ['provider' => 'stripe']), [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => $this->stripeSignature($payload, 'whsec_sandbox_guard'),
+        ], $payload)->assertStatus(503)->assertJson(['received' => false]);
+
+        $this->assertDatabaseCount('billing_provider_events', 0);
     }
 
     public function test_stripe_test_adapter_implements_provider_neutral_customer_checkout_subscription_change_cancel_and_portal(): void
@@ -568,8 +648,7 @@ class BillingEngineTest extends TestCase
         array $data,
         ?int $created = null,
         ?string $eventId = null,
-    ): array
-    {
+    ): array {
         $gateway = app(FakeBillingGateway::class);
         [$payload, $signature] = $gateway->signedEvent($type, $objectType, $objectId, $data, $eventId, $created);
 

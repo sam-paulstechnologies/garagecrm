@@ -18,7 +18,10 @@ use Illuminate\Support\Facades\Http;
 
 class StripeBillingGateway implements BillingGateway
 {
-    public function provider(): string { return 'stripe'; }
+    public function provider(): string
+    {
+        return 'stripe';
+    }
 
     public function createCustomer(Company $company, string $idempotencyKey): ProviderCustomer
     {
@@ -120,6 +123,7 @@ class StripeBillingGateway implements BillingGateway
 
     public function verifyWebhook(string $payload, string $signature): void
     {
+        $this->assertSandboxConfiguration(requireSecretKey: false);
         $secret = (string) config('billing.stripe.webhook_secret');
         if (! str_starts_with($secret, 'whsec_')) {
             throw new InvalidBillingWebhook('Stripe webhook verification is not configured.');
@@ -148,6 +152,9 @@ class StripeBillingGateway implements BillingGateway
             $event = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
             throw new InvalidBillingWebhook('Stripe webhook JSON is invalid.', previous: $exception);
+        }
+        if (Arr::get($event, 'livemode') !== false) {
+            throw new InvalidBillingWebhook('Stripe live-mode or unclassified events are forbidden in this release.');
         }
         $id = (string) Arr::get($event, 'id');
         $type = (string) Arr::get($event, 'type');
@@ -204,14 +211,34 @@ class StripeBillingGateway implements BillingGateway
 
     private function request(?string $idempotencyKey = null): PendingRequest
     {
+        $this->assertSandboxConfiguration();
         $secret = (string) config('billing.stripe.secret_key');
-        if (config('billing.mode') !== 'test' || ! str_starts_with($secret, 'sk_test_')) {
-            throw new BillingConfigurationException('Stripe adapter refuses non-test credentials in this release.');
-        }
         $request = Http::baseUrl((string) config('billing.stripe.api_base', 'https://api.stripe.com'))
             ->asForm()->acceptJson()->withBasicAuth($secret, '')->timeout(30);
 
         return $idempotencyKey ? $request->withHeaders(['Idempotency-Key' => $idempotencyKey]) : $request;
+    }
+
+    public function assertSandboxConfiguration(bool $requireSecretKey = true): void
+    {
+        if (config('billing.mode') !== 'test') {
+            throw new BillingConfigurationException('Stripe adapter refuses non-test billing mode in this release.');
+        }
+
+        $secret = (string) config('billing.stripe.secret_key');
+        if (($requireSecretKey || $secret !== '') && ! str_starts_with($secret, 'sk_test_')) {
+            throw new BillingConfigurationException('Stripe adapter refuses non-test secret credentials in this release.');
+        }
+
+        $publishable = (string) config('billing.stripe.publishable_key');
+        if ($publishable !== '' && ! str_starts_with($publishable, 'pk_test_')) {
+            throw new BillingConfigurationException('Stripe adapter refuses non-test publishable credentials in this release.');
+        }
+
+        $apiBase = rtrim((string) config('billing.stripe.api_base', 'https://api.stripe.com'), '/');
+        if (app()->environment('staging') && $apiBase !== 'https://api.stripe.com') {
+            throw new BillingConfigurationException('Stripe staging API base must use the official Stripe endpoint.');
+        }
     }
 
     /** @param array<string, mixed> $data */
