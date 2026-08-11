@@ -1,0 +1,44 @@
+{
+  "id": "evt_test_invoice_paid",
+  "object": "event",
+  "api_version": "2026-07-29.dahlia",
+  "created": 1786464000,
+  "livemode": false,
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_test_sayaraforce_paid",
+      "object": "invoice",
+      "customer": "cus_test_sayaraforce",
+      "status": "paid",
+      "currency": "aed",
+      "amount_due": 19900,
+      "amount_paid": 19900,
+      "due_date": null,
+      "hosted_invoice_url": "https://invoice.stripe.test/in_test_sayaraforce_paid",
+      "status_transitions": {"paid_at": 1786464000},
+      "parent": {
+        "type": "subscription_details",
+        "subscription_details": {
+          "subscription": "sub_test_sayaraforce",
+          "metadata": {
+            "local_checkout_id": "42",
+            "provider_price_id": "price_testServiceLaunch001"
+          }
+        }
+      },
+      "lines": {
+        "data": [
+          {
+            "id": "il_test_sayaraforce_paid",
+            "period": {"start": 1786464000, "end": 1789142400},
+            "pricing": {
+              "type": "price_details",
+              "price_details": {"price": "price_testServiceLaunch001", "product": "prod_testService001"}
+            }
+          }
+        ]
+      }
+    }
+  }
+}

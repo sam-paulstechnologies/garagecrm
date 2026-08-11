@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Billing\Gateways\StripeBillingGateway;
 use App\Support\Staging\StagingSafety;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -76,8 +77,10 @@ class VerifyLiveStaging extends Command
             }
             $this->assertSame(10, (int) DB::table('price_provider_mappings')
                 ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
-            $this->assertSame(0, (int) DB::table('price_provider_mappings')
-                ->where('payment_provider', 'stripe')->count(), 'unapproved Stripe price mapping count');
+            $stripeMappingCount = $this->assertStripeMappingsAreAbsentOrCanonical();
+            if ((string) config('billing.stripe.api_version') !== StripeBillingGateway::SUPPORTED_API_VERSION) {
+                throw new RuntimeException('Stripe webhook/API fixture version is not the reviewed Dahlia contract.');
+            }
             $this->assertSame(0, (int) DB::table('subscriptions as s')
                 ->where('s.payment_provider', 'fake')
                 ->where('s.payment_status', 'paid')
@@ -151,6 +154,8 @@ class VerifyLiveStaging extends Command
                 'ai_metering_tables' => count($aiMeteringTables),
                 'billing_tables' => count($billingTables),
                 'test_billing_invoices' => (int) DB::table('billing_invoices')->where('test_mode', true)->count(),
+                'stripe_price_mappings' => $stripeMappingCount,
+                'stripe_api_version' => (string) config('billing.stripe.api_version'),
                 'notification_tables' => count($notificationTables),
                 'product_event_tables' => 1,
                 'synthetic_tenants' => $tenantCount,
@@ -183,5 +188,42 @@ class VerifyLiveStaging extends Command
         if ($actual < $minimum) {
             throw new RuntimeException("Unexpected {$label}: expected at least {$minimum}, found {$actual}.");
         }
+    }
+
+    private function assertStripeMappingsAreAbsentOrCanonical(): int
+    {
+        $mappings = DB::table('price_provider_mappings as ppm')
+            ->join('prices as pr', 'pr.id', '=', 'ppm.price_id')
+            ->join('plan_versions as pv', 'pv.id', '=', 'pr.plan_version_id')
+            ->join('plans as p', 'p.id', '=', 'pv.plan_id')
+            ->where('ppm.payment_provider', 'stripe')
+            ->get([
+                'p.code as plan_code', 'ppm.price_phase', 'ppm.provider_price_id',
+                'ppm.status', 'pr.currency', 'pr.interval',
+            ]);
+        if ($mappings->isEmpty()) {
+            return 0;
+        }
+
+        $expected = collect(['service', 'growth', 'performance', 'ai_pro'])
+            ->crossJoin(['launch', 'standard'])
+            ->map(fn (array $slot): string => implode(':', $slot))
+            ->sort()
+            ->values();
+        $actual = $mappings->map(function (object $mapping): string {
+            if ($mapping->status !== 'active'
+                || strtoupper((string) $mapping->currency) !== 'AED'
+                || $mapping->interval !== 'month'
+                || ! preg_match('/^price_[A-Za-z0-9]{8,}$/', (string) $mapping->provider_price_id)) {
+                throw new RuntimeException('Stripe price mapping is not an active AED monthly Sandbox mapping.');
+            }
+
+            return $mapping->plan_code.':'.$mapping->price_phase;
+        })->sort()->values();
+        if ($actual->all() !== $expected->all()) {
+            throw new RuntimeException('Stripe price mappings must be absent or contain all eight canonical paid-plan phases.');
+        }
+
+        return $mappings->count();
     }
 }

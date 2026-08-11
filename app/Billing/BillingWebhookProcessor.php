@@ -84,6 +84,29 @@ class BillingWebhookProcessor
             return 'ignored_out_of_order';
         }
 
+        if ($event->type === 'checkout.session.expired') {
+            if (! $checkout) {
+                throw new BillingConfigurationException('Expired provider checkout has no matching local checkout.');
+            }
+            if (! in_array($checkout->status, ['completed', 'cancelled', 'expired'], true)) {
+                $checkout->update(['status' => 'expired']);
+                $this->audit($checkout->subscription()->firstOrFail(), 'billing.checkout_expired', $provider, [
+                    'checkout_id' => $checkout->id,
+                    'activation' => 'none',
+                ]);
+            }
+
+            return 'processed';
+        }
+
+        if ($checkout && in_array($checkout->status, ['cancelled', 'expired'], true)
+            && in_array($event->type, [
+                'checkout.session.completed', 'customer.subscription.created',
+                'customer.subscription.updated', 'invoice.paid', 'invoice.payment_succeeded',
+            ], true)) {
+            throw new BillingConfigurationException('A terminal checkout cannot be confirmed or activated.');
+        }
+
         if (in_array($event->type, ['checkout.session.completed', 'customer.subscription.created'], true)) {
             if (! $checkout) {
                 throw new BillingConfigurationException('Verified checkout has no matching local checkout.');
@@ -310,8 +333,7 @@ class BillingWebhookProcessor
         NormalizedBillingEvent $event,
         string $status,
         ?BillingCheckoutSession $checkout = null,
-    ): void
-    {
+    ): void {
         $invoiceId = (string) ($event->data['provider_invoice_id'] ?? $event->objectId);
         $url = (string) ($event->data['hosted_invoice_url'] ?? '');
         $price = $checkout?->requestedPrice()->first() ?? $subscription->price;

@@ -1,0 +1,28 @@
+{
+  "id": "evt_test_subscription_updated",
+  "object": "event",
+  "api_version": "2026-07-29.dahlia",
+  "created": 1786464000,
+  "livemode": false,
+  "type": "customer.subscription.updated",
+  "data": {
+    "object": {
+      "id": "sub_test_sayaraforce",
+      "object": "subscription",
+      "customer": "cus_test_sayaraforce",
+      "status": "active",
+      "cancel_at_period_end": false,
+      "metadata": {"provider_price_id": "price_testServiceLaunch001"},
+      "items": {
+        "data": [
+          {
+            "id": "si_test_sayaraforce",
+            "current_period_start": 1786464000,
+            "current_period_end": 1789142400,
+            "price": {"id": "price_testServiceLaunch001", "currency": "aed", "recurring": {"interval": "month"}}
+          }
+        ]
+      }
+    }
+  }
+}

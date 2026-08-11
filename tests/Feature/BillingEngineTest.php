@@ -199,7 +199,9 @@ class BillingEngineTest extends TestCase
     public function test_invalid_signature_is_rejected_and_stripe_event_replay_is_idempotent(): void
     {
         $payload = json_encode([
-            'id' => 'evt_stripe_replay_1', 'type' => 'customer.updated', 'created' => now()->timestamp,
+            'id' => 'evt_stripe_replay_1', 'object' => 'event',
+            'api_version' => '2026-07-29.dahlia',
+            'type' => 'customer.updated', 'created' => now()->timestamp,
             'livemode' => false,
             'data' => ['object' => ['id' => 'cus_test_only', 'object' => 'customer']],
         ], JSON_THROW_ON_ERROR);
@@ -463,7 +465,7 @@ class BillingEngineTest extends TestCase
             'local_checkout_id' => 42,
             'provider_customer_id' => 'cus_test_contract',
             'provider_subscription_id' => 'sub_test_contract',
-            'provider_price_id' => 'price_test_contract',
+            'provider_price_id' => 'price_testContract001',
             'payment_status' => 'paid',
         ];
         [$fakeCheckoutPayload] = $fake->signedEvent(
@@ -472,6 +474,8 @@ class BillingEngineTest extends TestCase
         );
         $stripeCheckoutPayload = json_encode([
             'id' => 'evt_stripe_contract_checkout',
+            'object' => 'event',
+            'api_version' => '2026-07-29.dahlia',
             'type' => 'checkout.session.completed',
             'created' => $now,
             'livemode' => false,
@@ -481,7 +485,7 @@ class BillingEngineTest extends TestCase
                 'customer' => 'cus_test_contract',
                 'subscription' => 'sub_test_contract',
                 'payment_status' => 'paid',
-                'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_test_contract'],
+                'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_testContract001'],
             ]],
         ], JSON_THROW_ON_ERROR);
         $this->assertNormalizedContractMatches(
@@ -494,7 +498,7 @@ class BillingEngineTest extends TestCase
             'local_checkout_id' => 42,
             'provider_customer_id' => 'cus_test_contract',
             'provider_subscription_id' => 'sub_test_contract',
-            'provider_price_id' => 'price_test_contract',
+            'provider_price_id' => 'price_testContract001',
             'provider_invoice_id' => 'in_test_contract',
             'payment_status' => 'paid',
             'currency' => 'aed',
@@ -510,6 +514,8 @@ class BillingEngineTest extends TestCase
         );
         $stripeInvoicePayload = json_encode([
             'id' => 'evt_stripe_contract_invoice',
+            'object' => 'event',
+            'api_version' => '2026-07-29.dahlia',
             'type' => 'invoice.paid',
             'created' => $now,
             'livemode' => false,
@@ -524,12 +530,12 @@ class BillingEngineTest extends TestCase
                 'amount_paid' => 19900,
                 'status_transitions' => ['paid_at' => $now],
                 'lines' => ['data' => [[
-                    'price' => ['id' => 'price_test_contract'],
+                    'price' => ['id' => 'price_testContract001'],
                     'period' => ['start' => $now, 'end' => $now + 2592000],
                 ]]],
                 'parent' => ['subscription_details' => [
                     'subscription' => 'sub_test_contract',
-                    'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_test_contract'],
+                    'metadata' => ['local_checkout_id' => 42, 'provider_price_id' => 'price_testContract001'],
                 ]],
             ]],
         ], JSON_THROW_ON_ERROR);

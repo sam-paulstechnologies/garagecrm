@@ -17,6 +17,7 @@ return [
         'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
         'api_base' => env('STRIPE_API_BASE', 'https://api.stripe.com'),
+        'api_version' => env('STRIPE_API_VERSION', '2026-07-29.dahlia'),
         'webhook_tolerance' => (int) env('STRIPE_WEBHOOK_TOLERANCE', 300),
     ],
 ];

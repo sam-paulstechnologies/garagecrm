@@ -1,0 +1,22 @@
+{
+  "id": "evt_test_checkout_completed",
+  "object": "event",
+  "api_version": "2026-07-29.dahlia",
+  "created": 1786464000,
+  "livemode": false,
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_sayaraforce_completed",
+      "object": "checkout.session",
+      "customer": "cus_test_sayaraforce",
+      "subscription": "sub_test_sayaraforce",
+      "payment_status": "paid",
+      "status": "complete",
+      "metadata": {
+        "local_checkout_id": "42",
+        "provider_price_id": "price_testServiceLaunch001"
+      }
+    }
+  }
+}

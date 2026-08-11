@@ -1,0 +1,22 @@
+{
+  "id": "evt_test_checkout_expired",
+  "object": "event",
+  "api_version": "2026-07-29.dahlia",
+  "created": 1786464000,
+  "livemode": false,
+  "type": "checkout.session.expired",
+  "data": {
+    "object": {
+      "id": "cs_test_sayaraforce_expired",
+      "object": "checkout.session",
+      "customer": "cus_test_sayaraforce",
+      "subscription": null,
+      "payment_status": "unpaid",
+      "status": "expired",
+      "metadata": {
+        "local_checkout_id": "42",
+        "provider_price_id": "price_testServiceLaunch001"
+      }
+    }
+  }
+}

@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Http;
 
 class StripeBillingGateway implements BillingGateway
 {
+    public const SUPPORTED_API_VERSION = '2026-07-29.dahlia';
+
     public function provider(): string
     {
         return 'stripe';
@@ -156,12 +158,23 @@ class StripeBillingGateway implements BillingGateway
         if (Arr::get($event, 'livemode') !== false) {
             throw new InvalidBillingWebhook('Stripe live-mode or unclassified events are forbidden in this release.');
         }
+        $expectedVersion = (string) config('billing.stripe.api_version');
+        $eventVersion = (string) Arr::get($event, 'api_version');
+        if ($expectedVersion === '' || $eventVersion !== $expectedVersion) {
+            throw new InvalidBillingWebhook(sprintf(
+                'Stripe webhook API version is incompatible; expected %s and received %s.',
+                $expectedVersion !== '' ? $expectedVersion : '<unconfigured>',
+                $eventVersion !== '' ? $eventVersion : '<missing>',
+            ));
+        }
         $id = (string) Arr::get($event, 'id');
         $type = (string) Arr::get($event, 'type');
         $object = (array) Arr::get($event, 'data.object', []);
         $objectId = (string) Arr::get($object, 'id');
         $objectType = (string) Arr::get($object, 'object');
-        if ($id === '' || $type === '' || $objectId === '' || $objectType === '') {
+        $created = Arr::get($event, 'created');
+        if (Arr::get($event, 'object') !== 'event' || $id === '' || $type === ''
+            || ! is_numeric($created) || (int) $created <= 0 || $objectId === '' || $objectType === '') {
             throw new InvalidBillingWebhook('Stripe webhook envelope is incomplete.');
         }
 
@@ -175,9 +188,14 @@ class StripeBillingGateway implements BillingGateway
             ?? ($objectType === 'subscription' ? $objectId : null);
         $priceId = Arr::get($object, 'items.data.0.price.id')
             ?? Arr::get($object, 'lines.data.0.price.id')
+            ?? Arr::get($object, 'lines.data.0.pricing.price_details.price')
             ?? Arr::get($metadata, 'provider_price_id');
-        $periodStart = Arr::get($object, 'current_period_start') ?? Arr::get($object, 'lines.data.0.period.start');
-        $periodEnd = Arr::get($object, 'current_period_end') ?? Arr::get($object, 'lines.data.0.period.end');
+        $periodStart = Arr::get($object, 'current_period_start')
+            ?? Arr::get($object, 'items.data.0.current_period_start')
+            ?? Arr::get($object, 'lines.data.0.period.start');
+        $periodEnd = Arr::get($object, 'current_period_end')
+            ?? Arr::get($object, 'items.data.0.current_period_end')
+            ?? Arr::get($object, 'lines.data.0.period.end');
 
         $data = array_filter([
             'local_checkout_id' => $metadata['local_checkout_id'] ?? null,
@@ -198,11 +216,12 @@ class StripeBillingGateway implements BillingGateway
             'hosted_invoice_url' => Arr::get($object, 'hosted_invoice_url'),
             'test_mode' => ! (bool) Arr::get($event, 'livemode', true),
         ], fn ($value) => $value !== null && $value !== '');
+        $this->assertSupportedEventShape($type, $objectType, $data);
 
         return new NormalizedBillingEvent(
             $id,
             $type,
-            CarbonImmutable::createFromTimestampUTC((int) Arr::get($event, 'created', now()->timestamp)),
+            CarbonImmutable::createFromTimestampUTC((int) $created),
             $objectType,
             $objectId,
             $data,
@@ -214,7 +233,11 @@ class StripeBillingGateway implements BillingGateway
         $this->assertSandboxConfiguration();
         $secret = (string) config('billing.stripe.secret_key');
         $request = Http::baseUrl((string) config('billing.stripe.api_base', 'https://api.stripe.com'))
-            ->asForm()->acceptJson()->withBasicAuth($secret, '')->timeout(30);
+            ->asForm()
+            ->acceptJson()
+            ->withHeaders(['Stripe-Version' => (string) config('billing.stripe.api_version')])
+            ->withBasicAuth($secret, '')
+            ->timeout(30);
 
         return $idempotencyKey ? $request->withHeaders(['Idempotency-Key' => $idempotencyKey]) : $request;
     }
@@ -238,6 +261,67 @@ class StripeBillingGateway implements BillingGateway
         $apiBase = rtrim((string) config('billing.stripe.api_base', 'https://api.stripe.com'), '/');
         if (app()->environment('staging') && $apiBase !== 'https://api.stripe.com') {
             throw new BillingConfigurationException('Stripe staging API base must use the official Stripe endpoint.');
+        }
+        if ((string) config('billing.stripe.api_version') !== self::SUPPORTED_API_VERSION) {
+            throw new BillingConfigurationException('Stripe API version must match the reviewed '.self::SUPPORTED_API_VERSION.' fixture contract.');
+        }
+    }
+
+    /** @param array<string, scalar|null> $data */
+    private function assertSupportedEventShape(string $type, string $objectType, array $data): void
+    {
+        $expectedObject = match ($type) {
+            'checkout.session.completed', 'checkout.session.expired' => 'checkout.session',
+            'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted' => 'subscription',
+            'invoice.paid', 'invoice.payment_succeeded', 'invoice.payment_failed' => 'invoice',
+            default => null,
+        };
+        if ($expectedObject === null) {
+            return;
+        }
+        if ($objectType !== $expectedObject) {
+            throw new InvalidBillingWebhook("Stripe {$type} must contain a {$expectedObject} object.");
+        }
+
+        $required = match ($type) {
+            'checkout.session.completed' => [
+                'local_checkout_id', 'provider_customer_id', 'provider_subscription_id',
+                'provider_price_id', 'payment_status',
+            ],
+            'checkout.session.expired' => ['local_checkout_id', 'provider_price_id'],
+            'customer.subscription.created' => [
+                'local_checkout_id', 'provider_customer_id', 'provider_subscription_id',
+                'provider_price_id', 'subscription_status', 'period_start', 'period_end',
+            ],
+            'customer.subscription.updated' => [
+                'provider_customer_id', 'provider_subscription_id', 'provider_price_id',
+                'subscription_status', 'period_start', 'period_end',
+            ],
+            'customer.subscription.deleted' => ['provider_subscription_id', 'subscription_status'],
+            'invoice.paid', 'invoice.payment_succeeded' => [
+                'provider_customer_id', 'provider_subscription_id', 'provider_price_id',
+                'provider_invoice_id', 'payment_status', 'currency', 'amount_due_minor',
+                'amount_paid_minor', 'period_start', 'period_end', 'paid_at',
+            ],
+            'invoice.payment_failed' => [
+                'provider_customer_id', 'provider_subscription_id', 'provider_price_id',
+                'provider_invoice_id', 'payment_status', 'currency', 'amount_due_minor',
+                'amount_paid_minor', 'period_start', 'period_end',
+            ],
+            default => [],
+        };
+        foreach ($required as $key) {
+            if (! array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                throw new InvalidBillingWebhook("Stripe {$type} is missing required {$key} data.");
+            }
+        }
+
+        if (isset($data['provider_price_id'])
+            && ! preg_match('/^price_[A-Za-z0-9]{8,}$/', (string) $data['provider_price_id'])) {
+            throw new InvalidBillingWebhook("Stripe {$type} contains an invalid Price identifier.");
+        }
+        if (isset($data['currency']) && strtolower((string) $data['currency']) !== 'aed') {
+            throw new InvalidBillingWebhook("Stripe {$type} contains a non-AED invoice.");
         }
     }
 
