@@ -82,6 +82,21 @@ class StripeSandboxReadinessTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_invalid_webhook_returns_only_a_safe_rejection_code(): void
+    {
+        $payload = $this->fixture('customer.subscription.deleted');
+
+        $this->call('POST', route('billing.webhook', ['provider' => 'stripe']), [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => 't='.now()->timestamp.',v1='.str_repeat('0', 64),
+        ], $payload)->assertStatus(400)->assertExactJson([
+            'received' => false,
+            'reason' => 'signature_mismatch',
+        ]);
+
+        $this->assertDatabaseCount('billing_provider_events', 0);
+    }
+
     public function test_mapping_command_dry_run_then_confirm_is_audited_and_idempotent(): void
     {
         $arguments = [

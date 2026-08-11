@@ -349,7 +349,10 @@ class BillingEngineTest extends TestCase
         $this->call('POST', route('billing.webhook', ['provider' => 'stripe']), [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_STRIPE_SIGNATURE' => $this->stripeSignature($payload, 'whsec_sandbox_guard'),
-        ], $payload)->assertStatus(400)->assertJson(['received' => false]);
+        ], $payload)->assertStatus(400)->assertJson([
+            'received' => false,
+            'reason' => 'live_mode_forbidden',
+        ]);
 
         $this->assertDatabaseCount('billing_provider_events', 0);
     }
