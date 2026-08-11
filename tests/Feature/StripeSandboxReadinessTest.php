@@ -68,6 +68,20 @@ class StripeSandboxReadinessTest extends TestCase
         $this->assertSame('not_required', $company->fresh()->subscription->payment_status);
     }
 
+    public function test_webhook_verification_accepts_any_valid_v1_signature_during_secret_rotation(): void
+    {
+        $payload = $this->fixture('customer.subscription.deleted');
+        $timestamp = now()->timestamp;
+        $valid = hash_hmac('sha256', $timestamp.'.'.$payload, 'whsec_fixture_test');
+
+        app(StripeBillingGateway::class)->verifyWebhook(
+            $payload,
+            't='.$timestamp.',v1='.$valid.',v1='.str_repeat('0', 64),
+        );
+
+        $this->addToAssertionCount(1);
+    }
+
     public function test_mapping_command_dry_run_then_confirm_is_audited_and_idempotent(): void
     {
         $arguments = [

@@ -131,19 +131,25 @@ class StripeBillingGateway implements BillingGateway
             throw new InvalidBillingWebhook('Stripe webhook verification is not configured.');
         }
 
-        $parts = collect(explode(',', $signature))->mapWithKeys(function (string $part): array {
+        $parts = collect(explode(',', $signature))->reduce(function (array $parts, string $part): array {
             [$key, $value] = array_pad(explode('=', trim($part), 2), 2, null);
+            if ($key && $value) {
+                $parts[$key][] = $value;
+            }
 
-            return $key && $value ? [$key => $value] : [];
-        });
-        $timestamp = (int) $parts->get('t');
-        $candidate = (string) $parts->get('v1');
+            return $parts;
+        }, []);
+        $timestamp = (int) ($parts['t'][0] ?? 0);
+        $candidates = $parts['v1'] ?? [];
         $tolerance = (int) config('billing.stripe.webhook_tolerance', 300);
         if ($timestamp <= 0 || abs(now()->timestamp - $timestamp) > $tolerance) {
             throw new InvalidBillingWebhook('Stripe webhook timestamp is outside the allowed tolerance.');
         }
         $expected = hash_hmac('sha256', $timestamp.'.'.$payload, $secret);
-        if ($candidate === '' || ! hash_equals($expected, $candidate)) {
+        $verified = collect($candidates)->contains(
+            fn (string $candidate): bool => hash_equals($expected, $candidate),
+        );
+        if (! $verified) {
             throw new InvalidBillingWebhook('Stripe webhook signature is invalid.');
         }
     }
