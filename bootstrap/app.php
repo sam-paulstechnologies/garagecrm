@@ -45,6 +45,9 @@ return Application::configure(basePath: dirname(__DIR__))
         */
         $middleware->validateCsrfTokens(except: [
             'webhooks/email/inbound',
+            // Billing providers authenticate with a signed raw payload, not a
+            // browser session. Keep this exception narrower than webhooks/*.
+            'webhooks/billing/*',
         ]);
 
         /*

@@ -12,6 +12,7 @@ use App\Models\Commercial\Price;
 use App\Models\Commercial\PriceProviderMapping;
 use App\Models\System\Company;
 use Database\Seeders\CommercialFoundationSeeder;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,37 @@ class StripeSandboxReadinessTest extends TestCase
             'billing.stripe.webhook_secret' => 'whsec_fixture_test',
         ]);
         $this->seed(CommercialFoundationSeeder::class);
+    }
+
+    public function test_billing_webhook_has_a_narrow_framework_csrf_exception(): void
+    {
+        $excluded = app(ValidateCsrfToken::class)->getExcludedPaths();
+
+        $this->assertContains('webhooks/billing/*', $excluded);
+        $this->assertNotContains('webhooks/*', $excluded);
+    }
+
+    public function test_signed_unknown_subscription_deletion_is_acknowledged_once_without_tenant_mutation(): void
+    {
+        $company = Company::query()->create(['name' => 'Unmatched Event Safety Garage', 'status' => 'active']);
+        app(SubscriptionManager::class)->assignPlan($company, Plans::FREE);
+        $payload = $this->fixture('customer.subscription.deleted');
+
+        $this->postStripeWebhook($payload)
+            ->assertOk()
+            ->assertJson(['status' => 'ignored_unmatched', 'duplicate' => false]);
+        $this->postStripeWebhook($payload)
+            ->assertOk()
+            ->assertJson(['status' => 'ignored_unmatched', 'duplicate' => true]);
+
+        $this->assertDatabaseCount('billing_provider_events', 1);
+        $this->assertDatabaseHas('billing_provider_events', [
+            'payment_provider' => 'stripe',
+            'event_type' => 'customer.subscription.deleted',
+            'status' => 'ignored_unmatched',
+        ]);
+        $this->assertSame(Plans::FREE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertSame('not_required', $company->fresh()->subscription->payment_status);
     }
 
     public function test_mapping_command_dry_run_then_confirm_is_audited_and_idempotent(): void

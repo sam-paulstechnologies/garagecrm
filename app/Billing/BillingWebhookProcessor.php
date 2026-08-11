@@ -56,7 +56,7 @@ class BillingWebhookProcessor
             if (! hash_equals((string) $record->payload_hash, $hash)) {
                 throw new InvalidBillingWebhook('A billing event ID was replayed with a different payload.');
             }
-            if (in_array($record->status, ['processed', 'ignored_out_of_order', 'ignored_unsupported'], true)) {
+            if (in_array($record->status, ['processed', 'ignored_out_of_order', 'ignored_unsupported', 'ignored_unmatched'], true)) {
                 return ['duplicate' => true, 'status' => $record->status];
             }
             $record->increment('attempt_count');
@@ -132,7 +132,11 @@ class BillingWebhookProcessor
 
         if ($event->type === 'customer.subscription.deleted') {
             if (! $subscription) {
-                throw new BillingConfigurationException('Deleted provider subscription does not map to a tenant subscription.');
+                // A valid signed sandbox/provider event may refer to an asset
+                // that SayaraForce never owned (for example a provider health
+                // fixture). Record it once, mutate nothing, and acknowledge it
+                // so the provider does not retry indefinitely.
+                return 'ignored_unmatched';
             }
             $subscription->update([
                 'status' => 'cancelled', 'payment_status' => 'cancelled',
