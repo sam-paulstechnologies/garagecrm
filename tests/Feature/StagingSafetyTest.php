@@ -152,6 +152,7 @@ class StagingSafetyTest extends TestCase
     {
         $command = (string) file_get_contents(app_path('Console/Commands/VerifyLiveStaging.php'));
         $script = (string) file_get_contents(base_path('ops/azure/staging/verify-staging.ps1'));
+        $postDeploy = (string) file_get_contents(base_path('ops/azure/staging/post-deploy.sh'));
 
         $this->assertStringContainsString("['fake', 'stripe']", $command);
         $this->assertStringContainsString("config('billing.mode') !== 'test'", $command);
@@ -163,5 +164,10 @@ class StagingSafetyTest extends TestCase
         $this->assertStringContainsString("STRIPE_API_BASE'] -ne 'https://api.stripe.com'", $script);
         $this->assertStringContainsString("STRIPE_API_VERSION'] -ne '2026-07-29.dahlia'", $script);
         $this->assertStringContainsString("@('STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET')", $script);
+
+        $this->assertStringContainsString('case "${BILLING_PROVIDER:-}" in', $postDeploy);
+        $this->assertStringContainsString('billing:reconcile-fake-test-history', $postDeploy);
+        $this->assertStringContainsString('Fake billing-history reconciliation skipped', $postDeploy);
+        $this->assertStringContainsString('BILLING_PROVIDER is not an approved staging provider', $postDeploy);
     }
 }

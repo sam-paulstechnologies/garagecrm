@@ -30,7 +30,18 @@ php artisan migrate --force --no-interaction
 php artisan db:seed --class='Database\Seeders\CommercialFoundationSeeder' --force --no-interaction
 php artisan db:seed --class='Database\Seeders\BillingFoundationSeeder' --force --no-interaction
 php artisan commercial:bootstrap-staging-subscriptions --confirm --no-interaction
-php artisan billing:reconcile-fake-test-history --confirm --no-interaction
+case "${BILLING_PROVIDER:-}" in
+  fake)
+    php artisan billing:reconcile-fake-test-history --confirm --no-interaction
+    ;;
+  stripe)
+    echo "Fake billing-history reconciliation skipped for the reviewed Stripe Sandbox provider."
+    ;;
+  *)
+    echo "Refused: BILLING_PROVIDER is not an approved staging provider." >&2
+    exit 42
+    ;;
+esac
 php artisan staging:schema-fingerprint --verify --no-interaction
 php artisan staging:verify-live --no-interaction
 php artisan optimize:clear
