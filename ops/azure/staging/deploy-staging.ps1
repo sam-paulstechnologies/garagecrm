@@ -165,7 +165,7 @@ try {
             'ops\azure\staging\webjobs\sayaraforce-staging-queue\settings.job'
         ) -DestinationPath $queuePackage -Force
         Invoke-WebRequest -Method Put `
-            -Uri "https://$webAppName.scm.azurewebsites.net/api/continuouswebjobs/sayaraforce-staging-queue" `
+            -Uri "https://$webAppName.scm.azurewebsites.net/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" `
             -Headers $headers -ContentType 'application/zip' -InFile $queuePackage -UseBasicParsing -TimeoutSec 60 | Out-Null
         $token = $null
 

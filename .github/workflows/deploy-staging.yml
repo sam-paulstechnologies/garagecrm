@@ -240,7 +240,7 @@ jobs:
           curl --fail --silent --show-error -X PUT \
             -H "Authorization: Bearer $token" -H 'Content-Type: application/zip' \
             --data-binary "@$queue_job_zip" \
-            "$kudu/api/continuouswebjobs/sayaraforce-staging-queue" >/dev/null
+            "$kudu/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" >/dev/null
           unset token
 
       - name: Record successful deployment marker on staging
