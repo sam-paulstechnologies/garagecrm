@@ -1,5 +1,14 @@
 <?php
 
+$packagedCommitPath = base_path('bootstrap/deployed-commit');
+$packagedCommit = is_file($packagedCommitPath)
+    ? trim((string) file_get_contents($packagedCommitPath))
+    : null;
+
+if (! is_string($packagedCommit) || preg_match('/^[0-9a-f]{40}$/', $packagedCommit) !== 1) {
+    $packagedCommit = null;
+}
+
 return [
     'expected_host' => env('STAGING_EXPECTED_HOST', 'staging.sayaraforce.com'),
     'expected_database' => env('STAGING_EXPECTED_DB_DATABASE', 'sayaraforce_staging'),
@@ -32,7 +41,7 @@ return [
 
     'deployment' => [
         'branch' => env('DEPLOYED_BRANCH'),
-        'commit' => env('DEPLOYED_COMMIT'),
+        'commit' => $packagedCommit ?? env('DEPLOYED_COMMIT'),
         'time' => env('DEPLOYED_AT'),
     ],
 ];

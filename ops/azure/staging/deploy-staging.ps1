@@ -92,7 +92,8 @@ try {
         foreach ($file in @('artisan','composer.json','composer.lock')) {
             Copy-Item $file -Destination $packageRoot -Force
         }
-        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-configcache', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
+        Set-Content -LiteralPath (Join-Path $packageRoot 'bootstrap\deployed-commit') -Value $commit -NoNewline
+        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
             $jobTarget = Join-Path $packageRoot "App_Data\jobs\triggered\$jobName"
             New-Item -ItemType Directory -Path $jobTarget -Force | Out-Null
             Copy-Item "ops\azure\staging\webjobs\$jobName\*" -Destination $jobTarget -Force
@@ -172,51 +173,6 @@ try {
         $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
         az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
-
-        az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors
-        $markerHealthDeadline = [DateTime]::UtcNow.AddMinutes(8)
-        do {
-            Start-Sleep -Seconds 10
-            try {
-                $markerHealth = Invoke-WebRequest -Uri "https://$($web.host)/healthz" -UseBasicParsing -TimeoutSec 30
-            }
-            catch {
-                $markerHealth = $null
-            }
-        } while ((!$markerHealth -or $markerHealth.StatusCode -ne 200) -and [DateTime]::UtcNow -lt $markerHealthDeadline)
-        if (-not $markerHealth -or $markerHealth.StatusCode -ne 200) {
-            throw 'Staging did not become healthy after recording the deployed build marker.'
-        }
-
-        $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
-        $headers = @{ Authorization = "Bearer $token" }
-        $configCacheName = 'sayaraforce-staging-configcache'
-        $configCacheDeadline = [DateTime]::UtcNow.AddMinutes(4)
-        do {
-            Start-Sleep -Seconds 5
-            $triggeredJobs = @(Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs" `
-                -Headers $headers -TimeoutSec 60 | ForEach-Object { $_ })
-            $configCacheJob = $triggeredJobs | Where-Object { $_.name -eq $configCacheName } | Select-Object -First 1
-        } while (-not $configCacheJob -and [DateTime]::UtcNow -lt $configCacheDeadline)
-        if (-not $configCacheJob) { throw 'Staging config-cache WebJob was not discovered after the build marker restart.' }
-        $requestedAt = [DateTime]::UtcNow.AddSeconds(-5)
-        $runUri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$webAppName/triggeredwebjobs/$configCacheName/run?api-version=2024-11-01"
-        az rest --method post --uri $runUri --output none
-        if ($LASTEXITCODE -ne 0) { throw 'Staging config-cache WebJob could not be started.' }
-        $runDeadline = [DateTime]::UtcNow.AddMinutes(5)
-        do {
-            Start-Sleep -Seconds 5
-            $history = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs/$configCacheName/history" `
-                -Headers $headers -TimeoutSec 60
-            $run = $history.runs | Where-Object { [DateTime] $_.start_time -ge $requestedAt } |
-                Sort-Object start_time -Descending | Select-Object -First 1
-        } while ((-not $run -or $run.status -in @('Initializing', 'Running')) -and [DateTime]::UtcNow -lt $runDeadline)
-        if (-not $run -or $run.status -ne 'Success') { throw 'Staging config-cache WebJob failed or timed out.' }
-        $configCacheOutput = (Invoke-WebRequest -Uri $run.output_url -Headers $headers -UseBasicParsing -TimeoutSec 60).Content
-        if ($configCacheOutput -notmatch [regex]::Escape("Staging Laravel configuration cached for deployment $commit.")) {
-            throw 'Staging config cache does not contain the reviewed deployed commit.'
-        }
-        $token = $null
 
         az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors
         $healthDeadline = [DateTime]::UtcNow.AddMinutes(8)
