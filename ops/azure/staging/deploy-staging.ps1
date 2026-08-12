@@ -188,6 +188,17 @@ try {
             }
         } while ((!$health -or $health.StatusCode -ne 200) -and [DateTime]::UtcNow -lt $healthDeadline)
         if (-not $health -or $health.StatusCode -ne 200) { throw 'Staging health check failed.' }
+
+        az webapp webjob continuous start --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+            --webjob-name sayaraforce-staging-queue --only-show-errors --output none
+        if ($LASTEXITCODE -ne 0) { throw 'Staging queue WebJob could not be started after deployment.' }
+        $queueDeadline = [DateTime]::UtcNow.AddMinutes(2)
+        do {
+            Start-Sleep -Seconds 5
+            $queueStatus = (az webapp webjob continuous list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+                --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" --output tsv).Trim()
+        } while ($queueStatus -ne 'Running' -and [DateTime]::UtcNow -lt $queueDeadline)
+        if ($queueStatus -ne 'Running') { throw "Staging queue WebJob did not reach Running after deployment (status: $queueStatus)." }
     }
     finally {
         if (Test-Path -LiteralPath $temporaryRoot) {
