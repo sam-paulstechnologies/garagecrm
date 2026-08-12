@@ -159,17 +159,14 @@ try {
             throw 'Staging post-deployment output did not pass the schema and cache gates.'
         }
 
-        $mkdirBody = @{ command = 'mkdir -p App_Data/jobs/continuous/sayaraforce-staging-queue'; dir = '/home/site/wwwroot' } | ConvertTo-Json
-        $mkdirResult = Invoke-RestMethod -Method Post -Uri "https://$webAppName.scm.azurewebsites.net/api/command" `
-            -Headers $headers -ContentType 'application/json' -Body $mkdirBody -TimeoutSec 60
-        if ([int] $mkdirResult.ExitCode -ne 0) { throw 'Could not create the staging queue WebJob directory.' }
-        foreach ($fileName in @('run.sh', 'settings.job')) {
-            $sourcePath = Join-Path "ops\azure\staging\webjobs\sayaraforce-staging-queue" $fileName
-            $fileBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $sourcePath).Path)
-            Invoke-RestMethod -Method Put `
-                -Uri "https://$webAppName.scm.azurewebsites.net/api/vfs/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/$fileName" `
-                -Headers ($headers + @{ 'If-Match' = '*' }) -ContentType 'application/octet-stream' -Body $fileBytes -TimeoutSec 60 | Out-Null
-        }
+        $queuePackage = Join-Path $temporaryRoot 'sayaraforce-staging-queue.zip'
+        Compress-Archive -Path @(
+            'ops\azure\staging\webjobs\sayaraforce-staging-queue\run.sh',
+            'ops\azure\staging\webjobs\sayaraforce-staging-queue\settings.job'
+        ) -DestinationPath $queuePackage -Force
+        Invoke-WebRequest -Method Put `
+            -Uri "https://$webAppName.scm.azurewebsites.net/api/continuouswebjobs/sayaraforce-staging-queue" `
+            -Headers $headers -ContentType 'application/zip' -InFile $queuePackage -UseBasicParsing -TimeoutSec 60 | Out-Null
         $token = $null
 
         $deployedAt = (Get-Date).ToUniversalTime().ToString('o')

@@ -232,18 +232,15 @@ jobs:
           grep -F 'Schema fingerprint matches the approved canonical schema.' "$postdeploy_output"
           grep -F 'Staging migration, commercial catalogue bootstrap, and Laravel cache rebuild completed without reseeding operational data.' "$postdeploy_output"
 
-          mkdir_response="$RUNNER_TEMP/kudu-mkdir.json"
-          curl --fail --silent --show-error -X POST \
-            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-            --data '{"command":"mkdir -p App_Data/jobs/continuous/sayaraforce-staging-queue","dir":"/home/site/wwwroot"}' \
-            "$kudu/api/command" > "$mkdir_response"
-          [[ "$(jq -r '.ExitCode' "$mkdir_response")" == '0' ]]
-          for file in run.sh settings.job; do
-            curl --fail --silent --show-error -X PUT \
-              -H "Authorization: Bearer $token" -H 'If-Match: *' -H 'Content-Type: application/octet-stream' \
-              --data-binary "@ops/azure/staging/webjobs/sayaraforce-staging-queue/$file" \
-              "$kudu/api/vfs/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/$file" >/dev/null
-          done
+          queue_job_zip="$RUNNER_TEMP/sayaraforce-staging-queue.zip"
+          (
+            cd ops/azure/staging/webjobs/sayaraforce-staging-queue
+            zip -q "$queue_job_zip" run.sh settings.job
+          )
+          curl --fail --silent --show-error -X PUT \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/zip' \
+            --data-binary "@$queue_job_zip" \
+            "$kudu/api/continuouswebjobs/sayaraforce-staging-queue" >/dev/null
           unset token
 
       - name: Record successful deployment marker on staging
