@@ -123,6 +123,10 @@ try {
         az webapp deploy --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --src-path $zipPath --type zip --clean true --restart false --track-status false --only-show-errors --output none
 
+        $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
+        az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
+
         $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
         if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging Kudu.' }
         $headers = @{ Authorization = "Bearer $token" }
@@ -168,10 +172,6 @@ try {
             -Uri "https://$webAppName.scm.azurewebsites.net/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" `
             -Headers $headers -ContentType 'application/zip' -InFile $queuePackage -UseBasicParsing -TimeoutSec 60 | Out-Null
         $token = $null
-
-        $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
-        az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
-            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
 
         az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors
         $healthDeadline = [DateTime]::UtcNow.AddMinutes(8)

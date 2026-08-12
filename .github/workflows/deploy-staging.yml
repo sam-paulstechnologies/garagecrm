@@ -180,6 +180,15 @@ jobs:
             exit 1
           fi
 
+      - name: Record deployed build marker on staging
+        shell: bash
+        run: |
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --only-show-errors --output none
+
       - name: Run staging migration and cache rebuild
         shell: bash
         run: |
@@ -242,15 +251,6 @@ jobs:
             --data-binary "@$queue_job_zip" \
             "$kudu/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" >/dev/null
           unset token
-
-      - name: Record successful deployment marker on staging
-        shell: bash
-        run: |
-          az webapp config appsettings set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --only-show-errors --output none
 
       - name: Restart staging and verify health
         shell: bash
