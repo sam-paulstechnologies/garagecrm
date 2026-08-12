@@ -270,8 +270,15 @@ jobs:
           curl --fail --silent --show-error -H "Authorization: Bearer $token" "$kudu/api/triggeredwebjobs" \
             | jq -e --arg job "$job" 'any(.[]; .name == $job)' >/dev/null
           history="$RUNNER_TEMP/configcache-history.json"
-          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
-            "$kudu/api/triggeredwebjobs/$job/history" > "$history"
+          history_status="$(curl --silent --show-error -H "Authorization: Bearer $token" \
+            --output "$history" --write-out '%{http_code}' \
+            "$kudu/api/triggeredwebjobs/$job/history")"
+          if [[ "$history_status" == '404' ]]; then
+            printf '{"runs":[]}\n' > "$history"
+          elif [[ "$history_status" != '200' ]]; then
+            echo "Unable to read the staging config-cache WebJob history (HTTP $history_status)." >&2
+            exit 1
+          fi
           previous_id="$(jq -r '.runs[0].id // ""' "$history")"
           subscription_id="$(az account show --query id --output tsv)"
           az rest --method post --uri \
