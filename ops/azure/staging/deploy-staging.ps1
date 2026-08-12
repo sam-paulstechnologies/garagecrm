@@ -173,6 +173,21 @@ try {
         az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
 
+        az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors
+        $markerHealthDeadline = [DateTime]::UtcNow.AddMinutes(8)
+        do {
+            Start-Sleep -Seconds 10
+            try {
+                $markerHealth = Invoke-WebRequest -Uri "https://$($web.host)/healthz" -UseBasicParsing -TimeoutSec 30
+            }
+            catch {
+                $markerHealth = $null
+            }
+        } while ((!$markerHealth -or $markerHealth.StatusCode -ne 200) -and [DateTime]::UtcNow -lt $markerHealthDeadline)
+        if (-not $markerHealth -or $markerHealth.StatusCode -ne 200) {
+            throw 'Staging did not become healthy after recording the deployed build marker.'
+        }
+
         $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
         $headers = @{ Authorization = "Bearer $token" }
         $configCacheName = 'sayaraforce-staging-configcache'
