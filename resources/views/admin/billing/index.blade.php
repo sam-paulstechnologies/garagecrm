@@ -17,6 +17,25 @@
         <div class="rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-4 py-3 text-sm font-bold text-yellow-300">{{ session('warning') }}</div>
     @endif
 
+    @if($pendingPlanChange)
+        <section class="rounded-3xl border border-blue-400/25 bg-blue-500/10 p-5" data-testid="pending-plan-change">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="text-xs font-extrabold uppercase tracking-wider text-blue-300">Plan change pending</div>
+                    <h2 class="mt-2 text-xl font-black text-white">
+                        {{ $subscription->planVersion->plan->name }} to {{ $pendingPlanChange->requestedPrice->planVersion->plan->name }}
+                    </h2>
+                    <p class="mt-1 text-sm text-slate-300">Your current {{ $subscription->planVersion->plan->name }} access remains active until Stripe confirms a successful payment.</p>
+                </div>
+                @if($pendingPlanChange->isResumable())
+                    <a href="{{ $pendingPlanChange->checkout_url }}" class="rounded-xl bg-blue-500 px-4 py-2 text-center text-sm font-black text-white hover:bg-blue-400" data-testid="resume-plan-change">Resume secure plan change</a>
+                @else
+                    <span class="rounded-xl border border-blue-400/20 px-4 py-2 text-sm font-bold text-blue-200">Provider confirmation is being prepared. Refresh shortly.</span>
+                @endif
+            </div>
+        </section>
+    @endif
+
     <section class="rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-xl shadow-black/20">
         <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -71,12 +90,18 @@
                     <div class="mt-auto pt-5">
                         @if($subscription->price_id === $price->id)
                             <span class="block rounded-xl border border-orange-400/20 px-3 py-2 text-center text-sm font-extrabold text-orange-300">Current plan</span>
+                        @elseif($pendingPlanChange && (int) $pendingPlanChange->requested_price_id === (int) $price->id)
+                            @if($pendingPlanChange->isResumable())
+                                <a href="{{ $pendingPlanChange->checkout_url }}" class="block rounded-xl bg-blue-500 px-3 py-2 text-center text-sm font-black text-white transition hover:bg-blue-400">Resume plan change</a>
+                            @else
+                                <span class="block rounded-xl border border-blue-400/20 px-3 py-2 text-center text-sm font-extrabold text-blue-300">Plan change pending</span>
+                            @endif
                         @elseif((float) $price->list_amount > 0)
                             <form method="POST" action="{{ route('admin.billing.checkout') }}">
                                 @csrf
                                 <input type="hidden" name="price_code" value="{{ $price->code }}">
                                 <input type="hidden" name="idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
-                                <button class="w-full rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white transition hover:bg-orange-400" {{ config('billing.checkout_enabled') ? '' : 'disabled' }}>Upgrade</button>
+                                <button class="w-full rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50" {{ config('billing.checkout_enabled') && ! $pendingPlanChange ? '' : 'disabled' }}>{{ $pendingPlanChange ? 'Another change pending' : 'Upgrade' }}</button>
                             </form>
                         @endif
                     </div>

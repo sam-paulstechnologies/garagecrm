@@ -25,6 +25,17 @@ interface BillingGateway
         array $metadata = [],
     ): CheckoutResult;
 
+    /** @param array<string, scalar|null> $metadata */
+    public function createPlanChangeCheckout(
+        ProviderCustomer $customer,
+        string $providerSubscriptionId,
+        PriceProviderMapping $mapping,
+        string $successUrl,
+        string $cancelUrl,
+        string $idempotencyKey,
+        array $metadata = [],
+    ): CheckoutResult;
+
     public function createSubscription(
         ProviderCustomer $customer,
         PriceProviderMapping $mapping,

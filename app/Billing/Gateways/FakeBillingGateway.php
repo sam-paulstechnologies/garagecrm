@@ -14,7 +14,10 @@ use Carbon\CarbonImmutable;
 
 class FakeBillingGateway implements BillingGateway
 {
-    public function provider(): string { return 'fake'; }
+    public function provider(): string
+    {
+        return 'fake';
+    }
 
     public function createCustomer(Company $company, string $idempotencyKey): ProviderCustomer
     {
@@ -30,6 +33,11 @@ class FakeBillingGateway implements BillingGateway
             route('admin.billing.fake.show', ['billingCheckoutSession' => $localId]),
             CarbonImmutable::now()->addMinutes(30),
         );
+    }
+
+    public function createPlanChangeCheckout(ProviderCustomer $customer, string $providerSubscriptionId, PriceProviderMapping $mapping, string $successUrl, string $cancelUrl, string $idempotencyKey, array $metadata = []): CheckoutResult
+    {
+        return $this->createCheckout($customer, $mapping, $successUrl, $cancelUrl, $idempotencyKey, $metadata);
     }
 
     public function createSubscription(ProviderCustomer $customer, PriceProviderMapping $mapping, string $idempotencyKey): ProviderSubscription

@@ -63,6 +63,64 @@ class StripeBillingGateway implements BillingGateway
         );
     }
 
+    public function createPlanChangeCheckout(ProviderCustomer $customer, string $providerSubscriptionId, PriceProviderMapping $mapping, string $successUrl, string $cancelUrl, string $idempotencyKey, array $metadata = []): CheckoutResult
+    {
+        $subscription = $this->request()->get(
+            '/v1/subscriptions/'.$this->segment($providerSubscriptionId),
+            ['expand[]' => 'latest_invoice'],
+        )->throw()->json();
+        $itemId = (string) Arr::get($subscription, 'items.data.0.id');
+        if ($itemId === '') {
+            throw new BillingConfigurationException('Stripe subscription item could not be resolved for the plan change.');
+        }
+
+        $currentPriceId = (string) Arr::get($subscription, 'items.data.0.price.id');
+        $pendingPriceId = (string) (Arr::get($subscription, 'pending_update.subscription_items.0.price.id')
+            ?: Arr::get($subscription, 'pending_update.subscription_items.0.price'));
+        if ($currentPriceId === $mapping->provider_price_id && $pendingPriceId === '') {
+            return new CheckoutResult(
+                $providerSubscriptionId,
+                $successUrl,
+                CarbonImmutable::now()->addMinutes(5),
+            );
+        }
+
+        if ($pendingPriceId !== $mapping->provider_price_id) {
+            $subscription = $this->request($idempotencyKey)->post(
+                '/v1/subscriptions/'.$this->segment($providerSubscriptionId),
+                [
+                    'items[0][id]' => $itemId,
+                    'items[0][price]' => $mapping->provider_price_id,
+                    'items[0][quantity]' => 1,
+                    'payment_behavior' => 'pending_if_incomplete',
+                    'proration_behavior' => 'always_invoice',
+                    'expand[0]' => 'latest_invoice',
+                ],
+            )->throw()->json();
+        }
+
+        $invoiceId = (string) Arr::get($subscription, 'latest_invoice.id');
+        $invoiceUrl = (string) Arr::get($subscription, 'latest_invoice.hosted_invoice_url');
+        $pendingExpiresAt = $this->timestamp(Arr::get($subscription, 'pending_update.expires_at'));
+        $effectivePriceId = (string) Arr::get($subscription, 'items.data.0.price.id');
+        $pendingPriceId = (string) (Arr::get($subscription, 'pending_update.subscription_items.0.price.id')
+            ?: Arr::get($subscription, 'pending_update.subscription_items.0.price'));
+        if ($effectivePriceId !== $mapping->provider_price_id && $pendingPriceId !== $mapping->provider_price_id) {
+            throw new BillingConfigurationException('Stripe did not confirm the requested price as effective or pending.');
+        }
+
+        $requiresPayment = $pendingPriceId === $mapping->provider_price_id;
+        if ($requiresPayment && ($invoiceId === '' || ! str_starts_with($invoiceUrl, 'https://invoice.stripe.com/'))) {
+            throw new BillingConfigurationException('Stripe did not return a resumable hosted invoice for the pending plan change.');
+        }
+
+        return new CheckoutResult(
+            $invoiceId !== '' ? $invoiceId : $providerSubscriptionId,
+            $requiresPayment ? $invoiceUrl : $successUrl,
+            $pendingExpiresAt ?? CarbonImmutable::now()->addMinutes($requiresPayment ? 60 * 23 : 5),
+        );
+    }
+
     public function createSubscription(ProviderCustomer $customer, PriceProviderMapping $mapping, string $idempotencyKey): ProviderSubscription
     {
         $data = $this->request($idempotencyKey)->post('/v1/subscriptions', [

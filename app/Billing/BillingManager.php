@@ -14,7 +14,9 @@ use App\Models\Commercial\Price;
 use App\Models\Commercial\PriceProviderMapping;
 use App\Models\Commercial\Subscription;
 use App\Models\System\Company;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class BillingManager
@@ -33,48 +35,83 @@ class BillingManager
         if ((float) $price->list_amount <= 0 || $price->status !== 'active') {
             throw new BillingConfigurationException('The selected price is not eligible for paid checkout.');
         }
-        $subscription = $company->subscription()->firstOrFail();
         $provider = $this->gateway->provider();
-        $phase = $this->launchOffer->phaseForCheckout($subscription, $price);
-        $mapping = PriceProviderMapping::query()
-            ->where('price_id', $price->id)
-            ->where('payment_provider', $provider)
-            ->where('price_phase', $phase)
-            ->where('status', 'active')
-            ->first();
-        if (! $mapping) {
-            throw new BillingConfigurationException('The selected price is not mapped to the configured billing provider.');
-        }
-
         $key = $idempotencyKey ?: hash('sha256', Str::uuid()->toString());
         if (! preg_match('/^[A-Za-z0-9._:-]{16,64}$/', $key)) {
             throw new BillingConfigurationException('Checkout idempotency key has an invalid format.');
         }
-        $existing = BillingCheckoutSession::query()
-            ->where('payment_provider', $provider)
-            ->where('idempotency_key', $key)
-            ->first();
-        if ($existing) {
-            if ((int) $existing->company_id !== (int) $company->id || (int) $existing->requested_price_id !== (int) $price->id) {
-                throw new BillingConfigurationException('Checkout idempotency key was already used for another request.');
+
+        [$checkout, $subscription, $mapping, $phase, $created] = DB::transaction(function () use ($company, $price, $provider, $key): array {
+            $subscription = Subscription::query()
+                ->with(['planVersion.plan', 'price'])
+                ->where('company_id', $company->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $phase = $this->launchOffer->phaseForCheckout($subscription, $price);
+            $mapping = PriceProviderMapping::query()
+                ->where('price_id', $price->id)
+                ->where('payment_provider', $provider)
+                ->where('price_phase', $phase)
+                ->where('status', 'active')
+                ->first();
+            if (! $mapping) {
+                throw new BillingConfigurationException('The selected price is not mapped to the configured billing provider.');
             }
 
-            return $existing;
-        }
+            $this->closeStaleCheckouts($subscription);
+            $existing = BillingCheckoutSession::query()
+                ->where('payment_provider', $provider)
+                ->where('idempotency_key', $key)
+                ->first();
+            if ($existing) {
+                if ((int) $existing->company_id !== (int) $company->id || (int) $existing->requested_price_id !== (int) $price->id) {
+                    throw new BillingConfigurationException('Checkout idempotency key was already used for another request.');
+                }
 
-        $checkout = BillingCheckoutSession::query()->create([
-            'company_id' => $company->id,
-            'subscription_id' => $subscription->id,
-            'requested_price_id' => $price->id,
-            'price_phase' => $phase,
-            'launch_offer_qualified' => $this->launchOffer->isNewQualification($subscription, $phase),
-            'payment_provider' => $provider,
-            'operation' => $subscription->payment_provider === $provider && filled($subscription->provider_subscription_id)
+                return [$existing, $subscription, $mapping, $phase, false];
+            }
+
+            $operation = $subscription->payment_provider === $provider && filled($subscription->provider_subscription_id)
                 ? 'plan_change'
-                : 'checkout',
-            'idempotency_key' => $key,
-            'status' => 'creating',
-        ]);
+                : 'checkout';
+            if ($operation === 'plan_change') {
+                $pending = BillingCheckoutSession::query()
+                    ->where('subscription_id', $subscription->id)
+                    ->where('payment_provider', $provider)
+                    ->where('operation', 'plan_change')
+                    ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+                    ->orderByDesc('id')
+                    ->first();
+                if ($pending) {
+                    if ((int) $pending->requested_price_id === (int) $price->id && $pending->price_phase === $phase) {
+                        return [$pending, $subscription, $mapping, $phase, false];
+                    }
+
+                    throw new BillingConfigurationException('Another plan change is already pending. Resume or finish it before selecting a different plan.');
+                }
+            }
+
+            $checkout = BillingCheckoutSession::query()->create([
+                'company_id' => $company->id,
+                'subscription_id' => $subscription->id,
+                'requested_price_id' => $price->id,
+                'price_phase' => $phase,
+                'launch_offer_qualified' => $this->launchOffer->isNewQualification($subscription, $phase),
+                'payment_provider' => $provider,
+                'operation' => $operation,
+                'idempotency_key' => $key,
+                'provider_customer_id' => $operation === 'plan_change' ? $subscription->provider_customer_id : null,
+                'provider_subscription_id' => $operation === 'plan_change' ? $subscription->provider_subscription_id : null,
+                'provider_price_id' => $operation === 'plan_change' ? $mapping->provider_price_id : null,
+                'status' => 'creating',
+            ]);
+
+            return [$checkout, $subscription, $mapping, $phase, true];
+        });
+
+        if (! $created) {
+            return $checkout->fresh();
+        }
 
         try {
             $customer = $subscription->payment_provider === $provider && filled($subscription->provider_customer_id)
@@ -87,19 +124,28 @@ class BillingManager
                 'price_phase' => $phase,
             ];
             if ($checkout->operation === 'plan_change') {
-                $this->gateway->changeSubscription(
+                $result = $this->gateway->createPlanChangeCheckout(
+                    $customer,
                     (string) $subscription->provider_subscription_id,
                     $mapping,
+                    route('admin.billing.success', ['checkout' => $checkout->id]),
+                    route('admin.billing.index'),
                     'plan-change:'.$key,
                     $metadata,
                 );
-                $checkout->update([
+                $checkout->refresh();
+                $attributes = [
                     'provider_customer_id' => $customer->id,
-                    'checkout_url' => $provider === 'fake'
-                        ? route('admin.billing.fake.show', ['billingCheckoutSession' => $checkout->id])
-                        : null,
-                    'status' => 'pending_provider',
-                ]);
+                    'provider_checkout_id' => $result->id,
+                    'provider_subscription_id' => $subscription->provider_subscription_id,
+                    'provider_price_id' => $mapping->provider_price_id,
+                    'checkout_url' => $result->url,
+                    'expires_at' => $result->expiresAt,
+                ];
+                if ($checkout->status === 'creating') {
+                    $attributes['status'] = 'open';
+                }
+                $checkout->update($attributes);
             } else {
                 $result = $this->gateway->createCheckout(
                     $customer,
@@ -118,8 +164,29 @@ class BillingManager
                 ]);
             }
         } catch (\Throwable $exception) {
-            $checkout->update(['status' => 'failed']);
-            throw $exception;
+            BillingCheckoutSession::query()
+                ->whereKey($checkout->id)
+                ->where('status', 'creating')
+                ->update(['status' => 'failed', 'updated_at' => now()]);
+            Log::warning('Billing checkout preparation failed safely.', [
+                'environment' => app()->environment(),
+                'provider' => $provider,
+                'operation' => $checkout->operation,
+                'checkout_id' => $checkout->id,
+                'exception' => class_basename($exception),
+                'provider_status' => $exception instanceof RequestException ? $exception->response->status() : null,
+                'provider_error_type' => $exception instanceof RequestException ? $exception->response->json('error.type') : null,
+                'provider_error_code' => $exception instanceof RequestException ? $exception->response->json('error.code') : null,
+                'provider_error_param' => $exception instanceof RequestException ? $exception->response->json('error.param') : null,
+            ]);
+            if ($exception instanceof BillingConfigurationException) {
+                throw $exception;
+            }
+
+            throw new BillingConfigurationException(
+                'The billing provider could not prepare this plan change. Your current plan remains active; please retry shortly.',
+                previous: $exception,
+            );
         }
 
         EntitlementAuditLog::query()->create([
@@ -148,6 +215,35 @@ class BillingManager
         );
 
         return $checkout->fresh();
+    }
+
+    public function pendingPlanChange(Company $company): ?BillingCheckoutSession
+    {
+        $subscription = $company->subscription()->firstOrFail();
+        $this->closeStaleCheckouts($subscription);
+
+        return BillingCheckoutSession::query()
+            ->with('requestedPrice.planVersion.plan')
+            ->where('subscription_id', $subscription->id)
+            ->where('operation', 'plan_change')
+            ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+            ->latest('id')
+            ->first();
+    }
+
+    private function closeStaleCheckouts(Subscription $subscription): void
+    {
+        BillingCheckoutSession::query()
+            ->where('subscription_id', $subscription->id)
+            ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->update(['status' => 'expired', 'updated_at' => now()]);
+        BillingCheckoutSession::query()
+            ->where('subscription_id', $subscription->id)
+            ->where('status', 'creating')
+            ->where('created_at', '<=', now()->subMinutes(5))
+            ->update(['status' => 'failed', 'updated_at' => now()]);
     }
 
     public function requestCancellation(Company $company): Subscription

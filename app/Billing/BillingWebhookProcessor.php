@@ -233,10 +233,28 @@ class BillingWebhookProcessor
     {
         $localId = (int) ($event->data['local_checkout_id'] ?? 0);
         $query = BillingCheckoutSession::query()->where('payment_provider', $provider);
+        if ($localId > 0) {
+            return $query->whereKey($localId)->first();
+        }
 
-        return $localId > 0
-            ? $query->whereKey($localId)->first()
-            : $query->where('provider_checkout_id', $event->objectId)->first();
+        $byProviderCheckout = (clone $query)->where('provider_checkout_id', $event->objectId)->first();
+        if ($byProviderCheckout) {
+            return $byProviderCheckout;
+        }
+
+        $providerSubscriptionId = (string) ($event->data['provider_subscription_id'] ?? '');
+        $providerPriceId = (string) ($event->data['provider_price_id'] ?? '');
+        if ($providerSubscriptionId === '' || $providerPriceId === '') {
+            return null;
+        }
+
+        return (clone $query)
+            ->where('operation', 'plan_change')
+            ->where('provider_subscription_id', $providerSubscriptionId)
+            ->where('provider_price_id', $providerPriceId)
+            ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+            ->latest('id')
+            ->first();
     }
 
     private function subscription(string $provider, NormalizedBillingEvent $event, ?BillingCheckoutSession $checkout): ?Subscription

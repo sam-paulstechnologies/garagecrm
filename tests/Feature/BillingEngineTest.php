@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Billing\BillingGatewayResolver;
 use App\Billing\BillingWebhookProcessor;
+use App\Billing\Contracts\BillingGateway;
 use App\Billing\Exceptions\BillingConfigurationException;
 use App\Billing\Gateways\FakeBillingGateway;
 use App\Billing\Gateways\StripeBillingGateway;
@@ -304,7 +305,180 @@ class BillingEngineTest extends TestCase
         $after = $company->fresh()->subscription;
         $this->assertSame(Plans::GROWTH, $after->planVersion->plan->code);
         $this->assertSame($before->provider_subscription_id, $after->provider_subscription_id);
+        $this->assertSame('active', $after->status);
+        $this->assertSame('paid', $after->payment_status);
+        $this->assertSame(2, $after->introductory_cycles_completed);
         $this->assertDatabaseCount('subscriptions', 1);
+        $this->assertSame(1, BillingInvoice::query()
+            ->where('company_id', $company->id)
+            ->where('status', 'paid')
+            ->whereHas('price.planVersion.plan', fn ($query) => $query->where('code', Plans::GROWTH))
+            ->count());
+
+        $this->actingAs($admin)->post(route('admin.billing.fake.complete', $change))->assertRedirect();
+        $replayed = $company->fresh()->subscription;
+        $this->assertSame(Plans::GROWTH, $replayed->planVersion->plan->code);
+        $this->assertSame(2, $replayed->introductory_cycles_completed);
+        $this->assertDatabaseCount('subscriptions', 1);
+        $this->assertSame(1, BillingInvoice::query()
+            ->where('company_id', $company->id)
+            ->where('status', 'paid')
+            ->whereHas('price.planVersion.plan', fn ($query) => $query->where('code', Plans::GROWTH))
+            ->count());
+    }
+
+    public function test_equivalent_plan_change_double_click_duplicate_post_and_refresh_resume_one_checkout(): void
+    {
+        [$company, $admin] = $this->activatedServiceTenant();
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->firstOrFail();
+        $first = [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-double-click-000000000001',
+        ];
+        $second = [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-double-click-000000000002',
+        ];
+
+        $firstResponse = $this->actingAs($admin)->post(route('admin.billing.checkout'), $first);
+        $checkout = BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->sole();
+        $firstResponse->assertRedirect(route('admin.billing.fake.show', $checkout));
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), $second)
+            ->assertRedirect(route('admin.billing.fake.show', $checkout));
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), $first)
+            ->assertRedirect(route('admin.billing.fake.show', $checkout));
+
+        $this->assertSame(1, BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->count());
+        $this->actingAs($admin)->get(route('admin.billing.index'))
+            ->assertOk()
+            ->assertSee('Plan change pending')
+            ->assertSee('Service to Growth')
+            ->assertSee('Resume secure plan change')
+            ->assertSee('Resume plan change');
+        $this->actingAs($admin)->get(route('admin.billing.success', ['checkout' => $checkout->id]))
+            ->assertRedirect(route('admin.billing.index'))
+            ->assertSessionHas('warning');
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+    }
+
+    public function test_expired_plan_change_is_closed_and_a_retry_creates_one_new_resumable_checkout(): void
+    {
+        [$company, $admin] = $this->activatedServiceTenant();
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->firstOrFail();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-expired-retry-00000000001',
+        ])->assertRedirect();
+        $expired = BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->sole();
+        $expired->update(['expires_at' => now()->subMinute()]);
+
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-expired-retry-00000000002',
+        ])->assertRedirect();
+
+        $this->assertSame('expired', $expired->fresh()->status);
+        $this->assertSame(2, BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->count());
+        $this->assertSame(1, BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->where('status', 'open')->count());
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+    }
+
+    public function test_cancelled_and_declined_plan_changes_preserve_service_and_never_create_paid_growth_invoice(): void
+    {
+        [$company, $admin] = $this->activatedServiceTenant();
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->firstOrFail();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-cancelled-000000000000001',
+        ])->assertRedirect();
+        $cancelled = BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->sole();
+        $this->actingAs($admin)->post(route('admin.billing.fake.cancel', $cancelled))->assertRedirect();
+        $this->assertSame('cancelled', $cancelled->fresh()->status);
+
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'growth-declined-0000000000000001',
+        ])->assertRedirect();
+        $declined = BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->latest('id')->firstOrFail();
+        $mapping = PriceProviderMapping::query()->where('price_id', $growth->id)->where('payment_provider', 'fake')->firstOrFail();
+        $result = $this->fakeEvent('invoice.payment_failed', 'invoice', 'in_fake_growth_declined', [
+            'provider_customer_id' => $declined->provider_customer_id,
+            'provider_subscription_id' => $declined->provider_subscription_id,
+            'provider_price_id' => $mapping->provider_price_id,
+            'provider_invoice_id' => 'in_fake_growth_declined',
+            'currency' => 'aed',
+            'amount_due_minor' => 99900,
+            'amount_paid_minor' => 0,
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+        ], eventId: 'evt_fake_growth_declined');
+
+        $this->assertSame('processed', $result['status']);
+        $this->assertSame('payment_failed', $declined->fresh()->status);
+        $subscription = $company->fresh()->subscription;
+        $this->assertSame(Plans::SERVICE, $subscription->planVersion->plan->code);
+        $this->assertSame('active', $subscription->status);
+        $this->assertSame('paid', $subscription->payment_status);
+        $this->assertSame(1, $subscription->introductory_cycles_completed);
+        $this->assertSame(0, BillingInvoice::query()->where('company_id', $company->id)->where('status', 'paid')->whereHas('price.planVersion.plan', fn ($query) => $query->where('code', Plans::GROWTH))->count());
+        $replay = $this->fakeEvent('invoice.payment_failed', 'invoice', 'in_fake_growth_declined', [
+            'provider_customer_id' => $declined->provider_customer_id,
+            'provider_subscription_id' => $declined->provider_subscription_id,
+            'provider_price_id' => $mapping->provider_price_id,
+            'provider_invoice_id' => 'in_fake_growth_declined',
+            'currency' => 'aed',
+            'amount_due_minor' => 99900,
+            'amount_paid_minor' => 0,
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+        ], eventId: 'evt_fake_growth_declined');
+        $this->assertTrue($replay['duplicate']);
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+    }
+
+    public function test_stripe_plan_change_provider_error_returns_warning_not_500_and_preserves_service(): void
+    {
+        [$company, $admin] = $this->activatedServiceTenant();
+        $subscription = $company->fresh()->subscription;
+        $subscription->update([
+            'payment_provider' => 'stripe',
+            'provider_customer_id' => 'cus_test_plan_change',
+            'provider_subscription_id' => 'sub_test_plan_change',
+            'provider_price_id' => 'price_test_service_launch',
+        ]);
+        config()->set([
+            'billing.provider' => 'stripe',
+            'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_test_plan_change_error',
+            'billing.stripe.api_base' => 'https://api.stripe.test',
+        ]);
+        app()->forgetInstance(BillingGateway::class);
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->firstOrFail();
+        PriceProviderMapping::query()->create([
+            'price_id' => $growth->id,
+            'payment_provider' => 'stripe',
+            'price_phase' => 'launch',
+            'provider_price_id' => 'price_test_growth_launch',
+            'status' => 'active',
+        ]);
+        Http::fake(function (Request $request) {
+            if ($request->method() === 'GET') {
+                return Http::response($this->stripeSubscriptionPayload(), 200);
+            }
+
+            return Http::response([
+                'error' => ['type' => 'invalid_request_error', 'code' => 'subscription_update_invalid', 'param' => 'items'],
+            ], 400);
+        });
+
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'stripe-provider-error-000000000001',
+        ])->assertRedirect()->assertSessionHas('warning', 'The billing provider could not prepare this plan change. Your current plan remains active; please retry shortly.');
+
+        $this->assertSame('failed', BillingCheckoutSession::query()->where('company_id', $company->id)->where('operation', 'plan_change')->sole()->status);
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertSame(1, $company->fresh()->subscription->introductory_cycles_completed);
     }
 
     public function test_billing_ui_is_tenant_admin_only_and_scoped(): void
@@ -421,7 +595,7 @@ class BillingEngineTest extends TestCase
         $price = Price::query()->where('code', 'service:2026-launch-v1:aed-monthly')->firstOrFail();
         $mapping = PriceProviderMapping::query()->create([
             'price_id' => $price->id, 'payment_provider' => 'stripe', 'price_phase' => 'launch',
-            'provider_price_id' => 'price_test_service_launch', 'status' => 'active',
+            'provider_price_id' => 'price_test_growth_launch', 'status' => 'active',
         ]);
         Http::fake(function (Request $request) {
             $path = parse_url($request->url(), PHP_URL_PATH);
@@ -432,13 +606,24 @@ class BillingEngineTest extends TestCase
                 return Http::response(['id' => 'cs_test_phase3', 'url' => 'https://checkout.stripe.test/cs_test_phase3', 'expires_at' => now()->addHour()->timestamp]);
             }
             if ($path === '/v1/billing_portal/sessions') {
-                return Http::response(['url' => 'https://billing.stripe.test/session']);
+                return Http::response(['id' => 'bps_test_phase3', 'url' => 'https://billing.stripe.com/p/session/test_phase3']);
             }
             if ($path === '/v1/subscriptions') {
                 return Http::response($this->stripeSubscriptionPayload());
             }
             if ($path === '/v1/subscriptions/sub_test_phase3') {
-                return Http::response($this->stripeSubscriptionPayload());
+                if ($request->method() === 'GET') {
+                    return Http::response($this->stripeSubscriptionPayload());
+                }
+
+                $updated = $this->stripeSubscriptionPayload();
+                $updated['items']['data'][0]['price']['id'] = 'price_test_growth_launch';
+                $updated['latest_invoice'] = [
+                    'id' => 'in_test_growth_change',
+                    'hosted_invoice_url' => 'https://invoice.stripe.com/i/test_growth_change',
+                ];
+
+                return Http::response($updated);
             }
 
             return Http::response([], 404);
@@ -453,10 +638,32 @@ class BillingEngineTest extends TestCase
         $this->assertSame('https://checkout.stripe.test/cs_test_phase3', $checkout->url);
         $this->assertSame('sub_test_phase3', $gateway->createSubscription($customer, $mapping, 'subscription-test-idempotency')->id);
         $this->assertSame('sub_test_phase3', $gateway->retrieveSubscription('sub_test_phase3')->id);
-        $this->assertSame('price_test_service_launch', $gateway->changeSubscription('sub_test_phase3', $mapping, 'change-test-idempotency')->priceId);
+        $planChange = $gateway->createPlanChangeCheckout(
+            $customer,
+            'sub_test_phase3',
+            $mapping,
+            'https://example.test/plan-change/success',
+            'https://example.test/billing',
+            'plan-change-test-idempotency',
+        );
+        $this->assertSame('in_test_growth_change', $planChange->id);
+        $this->assertSame('https://example.test/plan-change/success', $planChange->url);
+        $this->assertSame('price_test_growth_launch', $gateway->changeSubscription('sub_test_phase3', $mapping, 'change-test-idempotency')->priceId);
         $this->assertTrue($gateway->cancelSubscription('sub_test_phase3')->cancelAtPeriodEnd);
-        $this->assertSame('https://billing.stripe.test/session', $gateway->createBillingPortal($customer->id, 'https://example.test/billing'));
-        Http::assertSentCount(8);
+        $this->assertSame('https://billing.stripe.com/p/session/test_phase3', $gateway->createBillingPortal($customer->id, 'https://example.test/billing'));
+        Http::assertSent(function (Request $request): bool {
+            if (parse_url($request->url(), PHP_URL_PATH) !== '/v1/subscriptions/sub_test_phase3'
+                || $request->method() !== 'POST'
+                || ! isset($request['payment_behavior'])) {
+                return false;
+            }
+
+            return $request['payment_behavior'] === 'pending_if_incomplete'
+                && $request['proration_behavior'] === 'always_invoice'
+                && $request['items[0][id]'] === 'si_test_phase3'
+                && $request['items[0][price]'] === 'price_test_growth_launch';
+        });
+        Http::assertSentCount(10);
     }
 
     public function test_fake_and_stripe_adapters_normalize_the_same_checkout_and_invoice_contract(): void
@@ -547,6 +754,77 @@ class BillingEngineTest extends TestCase
             $stripe->normalizeEvent($stripeInvoicePayload),
             array_keys($commonInvoice + ['test_mode' => true]),
         );
+    }
+
+    public function test_stripe_pending_plan_change_preserves_current_price_and_returns_one_resumable_invoice(): void
+    {
+        config()->set([
+            'billing.provider' => 'stripe',
+            'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_test_pending_change',
+            'billing.stripe.api_base' => 'https://api.stripe.test',
+        ]);
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->firstOrFail();
+        $mapping = PriceProviderMapping::query()->create([
+            'price_id' => $growth->id,
+            'payment_provider' => 'stripe',
+            'price_phase' => 'launch',
+            'provider_price_id' => 'price_test_growth_pending',
+            'status' => 'active',
+        ]);
+        $pending = false;
+        Http::fake(function (Request $request) use (&$pending) {
+            $subscription = $this->stripeSubscriptionPayload();
+            if ($pending) {
+                $subscription['pending_update'] = [
+                    'expires_at' => now()->addHours(23)->timestamp,
+                    'subscription_items' => [[
+                        'id' => 'si_test_phase3',
+                        'price' => 'price_test_growth_pending',
+                    ]],
+                ];
+                $subscription['latest_invoice'] = [
+                    'id' => 'in_test_growth_pending',
+                    'hosted_invoice_url' => 'https://invoice.stripe.com/i/test_growth_pending',
+                ];
+            }
+            if ($request->method() === 'POST') {
+                $pending = true;
+                $subscription['pending_update'] = [
+                    'expires_at' => now()->addHours(23)->timestamp,
+                    'subscription_items' => [[
+                        'id' => 'si_test_phase3',
+                        'price' => 'price_test_growth_pending',
+                    ]],
+                ];
+                $subscription['latest_invoice'] = [
+                    'id' => 'in_test_growth_pending',
+                    'hosted_invoice_url' => 'https://invoice.stripe.com/i/test_growth_pending',
+                ];
+            }
+
+            return Http::response($subscription);
+        });
+
+        $gateway = app(StripeBillingGateway::class);
+        $customer = new \App\Billing\Data\ProviderCustomer('cus_test_phase3');
+        $first = $gateway->createPlanChangeCheckout(
+            $customer, 'sub_test_phase3', $mapping,
+            'https://example.test/success', 'https://example.test/cancel', 'pending-change-one',
+        );
+        $resumed = $gateway->createPlanChangeCheckout(
+            $customer, 'sub_test_phase3', $mapping,
+            'https://example.test/success', 'https://example.test/cancel', 'pending-change-two',
+        );
+
+        $this->assertSame('in_test_growth_pending', $first->id);
+        $this->assertSame('https://invoice.stripe.com/i/test_growth_pending', $first->url);
+        $this->assertSame($first->id, $resumed->id);
+        $this->assertSame($first->url, $resumed->url);
+        Http::assertSentCount(3);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+            && $request['payment_behavior'] === 'pending_if_incomplete'
+            && $request['proration_behavior'] === 'always_invoice');
     }
 
     public function test_legacy_fake_paid_checkout_reconciliation_uses_a_verified_idempotent_invoice_event(): void

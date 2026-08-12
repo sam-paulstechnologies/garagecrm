@@ -15,7 +15,7 @@ use Illuminate\View\View;
 
 class BillingController extends Controller
 {
-    public function index(Request $request, LaunchOfferService $launchOffer): View
+    public function index(Request $request, LaunchOfferService $launchOffer, BillingManager $billing): View
     {
         $company = $this->company($request);
         $subscription = $company->subscription()->with(['planVersion.plan', 'price'])->firstOrFail();
@@ -36,9 +36,11 @@ class BillingController extends Controller
         $checkoutPhases = $prices->mapWithKeys(
             fn (Price $price): array => [$price->id => $launchOffer->phaseForCheckout($subscription, $price)]
         );
+        $pendingPlanChange = $billing->pendingPlanChange($company);
 
         return view('admin.billing.index', compact(
-            'company', 'subscription', 'prices', 'invoices', 'launchOfferEnabled', 'promotionCycles', 'checkoutPhases'
+            'company', 'subscription', 'prices', 'invoices', 'launchOfferEnabled', 'promotionCycles', 'checkoutPhases',
+            'pendingPlanChange'
         ));
     }
 

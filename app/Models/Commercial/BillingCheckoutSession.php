@@ -8,6 +8,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BillingCheckoutSession extends Model
 {
+    public const ACTIVE_STATUSES = ['creating', 'open', 'pending_provider', 'payment_pending'];
+
+    public const TERMINAL_STATUSES = ['completed', 'cancelled', 'expired', 'payment_failed', 'failed'];
+
     protected $fillable = [
         'company_id', 'subscription_id', 'requested_price_id', 'price_phase',
         'launch_offer_qualified', 'payment_provider', 'operation',
@@ -35,5 +39,16 @@ class BillingCheckoutSession extends Model
     public function requestedPrice(): BelongsTo
     {
         return $this->belongsTo(Price::class, 'requested_price_id');
+    }
+
+    public function isActive(): bool
+    {
+        return in_array($this->status, self::ACTIVE_STATUSES, true)
+            && (! $this->expires_at || $this->expires_at->isFuture());
+    }
+
+    public function isResumable(): bool
+    {
+        return $this->isActive() && filled($this->checkout_url);
     }
 }
