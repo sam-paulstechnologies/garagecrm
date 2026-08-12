@@ -92,7 +92,7 @@ try {
         foreach ($file in @('artisan','composer.json','composer.lock')) {
             Copy-Item $file -Destination $packageRoot -Force
         }
-        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
+        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-configcache', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
             $jobTarget = Join-Path $packageRoot "App_Data\jobs\triggered\$jobName"
             New-Item -ItemType Directory -Path $jobTarget -Force | Out-Null
             Copy-Item "ops\azure\staging\webjobs\$jobName\*" -Destination $jobTarget -Force
@@ -122,10 +122,6 @@ try {
 
         az webapp deploy --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
             --src-path $zipPath --type zip --clean true --restart false --track-status false --only-show-errors --output none
-
-        $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
-        az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
-            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
 
         $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
         if (-not $token) { throw 'Could not acquire a short-lived Entra token for staging Kudu.' }
@@ -171,6 +167,40 @@ try {
         Invoke-WebRequest -Method Put `
             -Uri "https://$webAppName.scm.azurewebsites.net/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" `
             -Headers $headers -ContentType 'application/zip' -InFile $queuePackage -UseBasicParsing -TimeoutSec 60 | Out-Null
+        $token = $null
+
+        $deployedAt = (Get-Date).ToUniversalTime().ToString('o')
+        az webapp config appsettings set --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT=$commit DEPLOYED_AT=$deployedAt --only-show-errors --output none
+
+        $token = (az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv).Trim()
+        $headers = @{ Authorization = "Bearer $token" }
+        $configCacheName = 'sayaraforce-staging-configcache'
+        $configCacheDeadline = [DateTime]::UtcNow.AddMinutes(4)
+        do {
+            Start-Sleep -Seconds 5
+            $triggeredJobs = @(Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs" `
+                -Headers $headers -TimeoutSec 60 | ForEach-Object { $_ })
+            $configCacheJob = $triggeredJobs | Where-Object { $_.name -eq $configCacheName } | Select-Object -First 1
+        } while (-not $configCacheJob -and [DateTime]::UtcNow -lt $configCacheDeadline)
+        if (-not $configCacheJob) { throw 'Staging config-cache WebJob was not discovered after the build marker restart.' }
+        $requestedAt = [DateTime]::UtcNow.AddSeconds(-5)
+        $runUri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$webAppName/triggeredwebjobs/$configCacheName/run?api-version=2024-11-01"
+        az rest --method post --uri $runUri --output none
+        if ($LASTEXITCODE -ne 0) { throw 'Staging config-cache WebJob could not be started.' }
+        $runDeadline = [DateTime]::UtcNow.AddMinutes(5)
+        do {
+            Start-Sleep -Seconds 5
+            $history = Invoke-RestMethod -Method Get -Uri "https://$webAppName.scm.azurewebsites.net/api/triggeredwebjobs/$configCacheName/history" `
+                -Headers $headers -TimeoutSec 60
+            $run = $history.runs | Where-Object { [DateTime] $_.start_time -ge $requestedAt } |
+                Sort-Object start_time -Descending | Select-Object -First 1
+        } while ((-not $run -or $run.status -in @('Initializing', 'Running')) -and [DateTime]::UtcNow -lt $runDeadline)
+        if (-not $run -or $run.status -ne 'Success') { throw 'Staging config-cache WebJob failed or timed out.' }
+        $configCacheOutput = (Invoke-WebRequest -Uri $run.output_url -Headers $headers -UseBasicParsing -TimeoutSec 60).Content
+        if ($configCacheOutput -notmatch [regex]::Escape("Staging Laravel configuration cached for deployment $commit.")) {
+            throw 'Staging config cache does not contain the reviewed deployed commit.'
+        }
         $token = $null
 
         az webapp restart --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName --only-show-errors

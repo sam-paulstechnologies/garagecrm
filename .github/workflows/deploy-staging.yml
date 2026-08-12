@@ -106,7 +106,7 @@ jobs:
             fi
           done
           cp artisan composer.json composer.lock "$package/"
-          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke; do
+          for job in sayaraforce-staging-postdeploy sayaraforce-staging-configcache sayaraforce-staging-verify sayaraforce-staging-smoke; do
             target="$package/App_Data/jobs/triggered/$job"
             mkdir -p "$target"
             cp "ops/azure/staging/webjobs/$job/"* "$target/"
@@ -115,6 +115,7 @@ jobs:
           unzip -l release.zip | grep -F 'public/build/manifest.json'
           unzip -l release.zip | grep -F 'ops/azure/staging/post-deploy.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-postdeploy/run.sh'
+          unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-configcache/run.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-verify/run.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-smoke/run.php'
           if unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-scheduler/'; then
@@ -180,15 +181,6 @@ jobs:
             exit 1
           fi
 
-      - name: Record deployed build marker on staging
-        shell: bash
-        run: |
-          az webapp config appsettings set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --only-show-errors --output none
-
       - name: Run staging migration and cache rebuild
         shell: bash
         run: |
@@ -250,6 +242,55 @@ jobs:
             -H "Authorization: Bearer $token" -H 'Content-Type: application/zip' \
             --data-binary "@$queue_job_zip" \
             "$kudu/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" >/dev/null
+          unset token
+
+      - name: Record deployed build marker on staging
+        shell: bash
+        run: |
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings DEPLOYED_BRANCH=staging DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --only-show-errors --output none
+
+      - name: Cache the deployed build marker
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          token="$(az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv)"
+          kudu="https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net"
+          job='sayaraforce-staging-configcache'
+          for attempt in {1..48}; do
+            if curl --fail --silent --show-error -H "Authorization: Bearer $token" "$kudu/api/triggeredwebjobs" \
+              | jq -e --arg job "$job" 'any(.[]; .name == $job)' >/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" "$kudu/api/triggeredwebjobs" \
+            | jq -e --arg job "$job" 'any(.[]; .name == $job)' >/dev/null
+          history="$RUNNER_TEMP/configcache-history.json"
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            "$kudu/api/triggeredwebjobs/$job/history" > "$history"
+          previous_id="$(jq -r '.runs[0].id // ""' "$history")"
+          subscription_id="$(az account show --query id --output tsv)"
+          az rest --method post --uri \
+            "https://management.azure.com/subscriptions/$subscription_id/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.Web/sites/$AZURE_WEBAPP_NAME/triggeredwebjobs/$job/run?api-version=2024-11-01" \
+            --output none
+          for attempt in {1..60}; do
+            sleep 5
+            curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+              "$kudu/api/triggeredwebjobs/$job/history" > "$history"
+            run_id="$(jq -r '.runs[0].id // ""' "$history")"
+            run_status="$(jq -r '.runs[0].status // ""' "$history")"
+            if [[ -n "$run_id" && "$run_id" != "$previous_id" && "$run_status" != 'Running' && "$run_status" != 'Initializing' ]]; then
+              output_url="$(jq -r '.runs[0].output_url // ""' "$history")"
+              break
+            fi
+          done
+          [[ "${run_status:-}" == 'Success' && -n "${output_url:-}" ]]
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" "$output_url" \
+            | grep -F "Staging Laravel configuration cached for deployment $GITHUB_SHA."
           unset token
 
       - name: Restart staging and verify health
