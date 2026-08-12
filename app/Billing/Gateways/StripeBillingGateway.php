@@ -326,7 +326,9 @@ class StripeBillingGateway implements BillingGateway
             && ! preg_match('/^price_[A-Za-z0-9]{8,}$/', (string) $data['provider_price_id'])) {
             throw new InvalidBillingWebhook("Stripe {$type} contains an invalid Price identifier.");
         }
-        if (isset($data['currency']) && strtolower((string) $data['currency']) !== 'aed') {
+        if (in_array($type, ['invoice.paid', 'invoice.payment_succeeded', 'invoice.payment_failed'], true)
+            && isset($data['currency'])
+            && strtolower((string) $data['currency']) !== 'aed') {
             throw new InvalidBillingWebhook("Stripe {$type} contains a non-AED invoice.");
         }
     }

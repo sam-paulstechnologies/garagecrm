@@ -49,7 +49,9 @@ class StripeSandboxReadinessTest extends TestCase
     {
         $company = Company::query()->create(['name' => 'Unmatched Event Safety Garage', 'status' => 'active']);
         app(SubscriptionManager::class)->assignPlan($company, Plans::FREE);
-        $payload = $this->fixture('customer.subscription.deleted');
+        $event = json_decode($this->fixture('customer.subscription.deleted'), true, flags: JSON_THROW_ON_ERROR);
+        $event['data']['object']['currency'] = 'usd';
+        $payload = json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         $this->postStripeWebhook($payload)
             ->assertOk()
