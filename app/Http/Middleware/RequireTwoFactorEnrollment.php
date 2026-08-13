@@ -42,6 +42,7 @@ class RequireTwoFactorEnrollment
         return $request->routeIs(
             'security.two-factor.*',
             'password.confirm',
+            'password.confirm.store',
             'logout',
         );
     }

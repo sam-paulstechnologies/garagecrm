@@ -41,6 +41,84 @@ class TwoFactorSecurityTest extends TestCase
         $this->get(route('security.two-factor.show'))->assertOk()->assertSee('Required for your role');
     }
 
+    public function test_required_admin_can_confirm_password_once_and_continue_to_enrollment_setup(): void
+    {
+        $admin = $this->user('admin');
+
+        $this->actingAs($admin)
+            ->get(route('security.two-factor.show'))
+            ->assertOk()
+            ->assertSee('Confirm password to begin')
+            ->assertDontSee('Generate secure setup QR');
+
+        $this->get(route('password.confirm', [
+            'return_to' => route('security.two-factor.show', absolute: false),
+        ]))
+            ->assertOk()
+            ->assertSee('ConfirmPassword', false);
+
+        $this->post(route('password.confirm.store'), ['password' => 'password'])
+            ->assertRedirect(route('security.two-factor.show', absolute: false))
+            ->assertSessionHas('auth.password_confirmed_at');
+
+        $this->get(route('security.two-factor.show'))
+            ->assertOk()
+            ->assertSee('Generate secure setup QR')
+            ->assertDontSee('Confirm password to begin')
+            ->assertDontSee('<iframe', false);
+
+        $this->get(route('security.two-factor.show'))
+            ->assertOk()
+            ->assertSee('Generate secure setup QR')
+            ->assertDontSee('Confirm password to begin');
+    }
+
+    public function test_password_confirmation_post_is_narrowly_accessible_during_mandatory_enrollment(): void
+    {
+        $admin = $this->user('admin');
+
+        $response = $this->actingAs($admin)
+            ->withSession(['url.intended' => route('security.two-factor.show', absolute: false)])
+            ->withHeaders([
+                'X-Inertia' => 'true',
+                'X-Requested-With' => 'XMLHttpRequest',
+            ])
+            ->post(route('password.confirm.store'), ['password' => 'password']);
+
+        $response
+            ->assertRedirect(route('security.two-factor.show', absolute: false))
+            ->assertSessionHas('auth.password_confirmed_at');
+        $this->assertNotSame(423, $response->getStatusCode());
+    }
+
+    public function test_wrong_password_does_not_confirm_or_escape_mandatory_enrollment(): void
+    {
+        $admin = $this->user('admin');
+
+        $this->actingAs($admin)
+            ->withSession(['url.intended' => route('security.two-factor.show', absolute: false)])
+            ->post(route('password.confirm.store'), ['password' => 'incorrect-password'])
+            ->assertSessionHasErrors('password')
+            ->assertSessionMissing('auth.password_confirmed_at');
+
+        $this->get('/dashboard')->assertRedirect(route('security.two-factor.show'));
+        $this->get(route('security.two-factor.show'))
+            ->assertOk()
+            ->assertSee('Confirm password to begin')
+            ->assertDontSee('Generate secure setup QR');
+    }
+
+    public function test_enrollment_gate_allows_only_required_support_routes_and_logout(): void
+    {
+        $admin = $this->user('admin');
+
+        $this->actingAs($admin)->get(route('password.confirm'))->assertOk();
+        $this->get(route('security.two-factor.show'))->assertOk();
+        $this->get('/dashboard')->assertRedirect(route('security.two-factor.show'));
+        $this->post(route('logout'))->assertRedirect('/');
+        $this->assertGuest();
+    }
+
     public function test_operational_user_two_factor_is_optional(): void
     {
         $manager = $this->user('manager');
