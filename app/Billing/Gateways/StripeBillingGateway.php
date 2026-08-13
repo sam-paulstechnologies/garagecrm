@@ -171,6 +171,43 @@ class StripeBillingGateway implements BillingGateway
         return $this->subscriptionFrom((array) $data);
     }
 
+    /**
+     * Retrieve verified provider state for an idempotent, local-only
+     * reconciliation. This performs Stripe GET requests only.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveReconciliationSnapshot(string $providerSubscriptionId): array
+    {
+        $providerSubscriptionId = $this->segment($providerSubscriptionId);
+        $subscription = (array) $this->request()->get(
+            '/v1/subscriptions/'.$providerSubscriptionId,
+            ['expand' => ['items.data.price.product', 'latest_invoice.lines.data']],
+        )->throw()->json();
+        $invoices = (array) $this->request()->get('/v1/invoices', [
+            'subscription' => $providerSubscriptionId,
+            'limit' => 20,
+            'expand' => ['data.lines.data'],
+        ])->throw()->json();
+
+        return [
+            'provider_customer_id' => (string) Arr::get($subscription, 'customer'),
+            'provider_subscription_id' => (string) Arr::get($subscription, 'id'),
+            'provider_price_id' => (string) Arr::get($subscription, 'items.data.0.price.id'),
+            'subscription_status' => (string) Arr::get($subscription, 'status'),
+            'cancel_at_period_end' => (bool) Arr::get($subscription, 'cancel_at_period_end', false),
+            'period_start' => Arr::get($subscription, 'items.data.0.current_period_start')
+                ?? Arr::get($subscription, 'current_period_start'),
+            'period_end' => Arr::get($subscription, 'items.data.0.current_period_end')
+                ?? Arr::get($subscription, 'current_period_end'),
+            'pending_update' => Arr::get($subscription, 'pending_update'),
+            'livemode' => (bool) Arr::get($subscription, 'livemode', true),
+            'invoices' => collect((array) Arr::get($invoices, 'data', []))
+                ->map(fn (array $invoice): array => $this->invoiceSnapshot($invoice))
+                ->all(),
+        ];
+    }
+
     public function createBillingPortal(string $providerCustomerId, string $returnUrl): string
     {
         $data = $this->request()->post('/v1/billing_portal/sessions', [
@@ -250,10 +287,10 @@ class StripeBillingGateway implements BillingGateway
         $subscriptionId = Arr::get($object, 'subscription')
             ?? Arr::get($object, 'parent.subscription_details.subscription')
             ?? ($objectType === 'subscription' ? $objectId : null);
-        $priceId = Arr::get($object, 'items.data.0.price.id')
-            ?? Arr::get($object, 'lines.data.0.price.id')
-            ?? Arr::get($object, 'lines.data.0.pricing.price_details.price')
-            ?? Arr::get($metadata, 'provider_price_id');
+        $invoiceLines = $objectType === 'invoice' ? $this->invoiceLines($object) : [];
+        $priceId = $objectType === 'invoice'
+            ? $this->invoiceProviderPriceId($object, $invoiceLines, $metadata)
+            : (Arr::get($object, 'items.data.0.price.id') ?? Arr::get($metadata, 'provider_price_id'));
         $periodStart = Arr::get($object, 'current_period_start')
             ?? Arr::get($object, 'items.data.0.current_period_start')
             ?? Arr::get($object, 'lines.data.0.period.start');
@@ -278,6 +315,8 @@ class StripeBillingGateway implements BillingGateway
             'due_at' => Arr::get($object, 'due_date'),
             'paid_at' => Arr::get($object, 'status_transitions.paid_at'),
             'hosted_invoice_url' => Arr::get($object, 'hosted_invoice_url'),
+            'billing_reason' => Arr::get($object, 'billing_reason'),
+            'invoice_lines' => $invoiceLines ?: null,
             'test_mode' => ! (bool) Arr::get($event, 'livemode', true),
         ], fn ($value) => $value !== null && $value !== '');
         $this->assertSupportedEventShape($type, $objectType, $data);
@@ -403,6 +442,96 @@ class StripeBillingGateway implements BillingGateway
             $this->timestamp(Arr::get($data, 'current_period_end')),
             (bool) Arr::get($data, 'cancel_at_period_end', false),
         );
+    }
+
+    /** @return array<int, array<string, scalar|null>> */
+    private function invoiceLines(array $invoice): array
+    {
+        return collect((array) Arr::get($invoice, 'lines.data', []))
+            ->map(fn (array $line): array => [
+                'provider_price_id' => Arr::get($line, 'price.id')
+                    ?? Arr::get($line, 'pricing.price_details.price'),
+                'provider_product_id' => is_string(Arr::get($line, 'price.product'))
+                    ? Arr::get($line, 'price.product')
+                    : (Arr::get($line, 'price.product.id') ?? Arr::get($line, 'pricing.price_details.product')),
+                'amount_minor' => Arr::get($line, 'amount'),
+                'currency' => Arr::get($line, 'currency'),
+                'period_start' => Arr::get($line, 'period.start'),
+                'period_end' => Arr::get($line, 'period.end'),
+                'proration' => Arr::get($line, 'proration')
+                    ?? Arr::get($line, 'parent.subscription_item_details.proration'),
+            ])
+            ->filter(fn (array $line): bool => filled($line['provider_price_id']))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Stripe upgrade invoices contain a credit for the old Price followed by
+     * a positive charge for the target Price. The positive mapped charge is
+     * the immutable commercial attribution for the invoice.
+     *
+     * @param  array<int, array<string, scalar|null>>  $lines
+     * @param  array<string, mixed>  $metadata
+     */
+    private function invoiceProviderPriceId(array $invoice, array $lines, array $metadata): ?string
+    {
+        $metadataPriceId = (string) ($metadata['provider_price_id'] ?? '');
+        $linePriceIds = collect($lines)->pluck('provider_price_id')->filter()->unique()->values();
+        $positivePriceIds = collect($lines)
+            ->filter(fn (array $line): bool => (int) ($line['amount_minor'] ?? 0) > 0)
+            ->pluck('provider_price_id')->filter()->unique()->values();
+
+        if (Arr::get($invoice, 'billing_reason') === 'subscription_update') {
+            if ($metadataPriceId !== '' && $positivePriceIds->contains($metadataPriceId)) {
+                return $metadataPriceId;
+            }
+            if ($positivePriceIds->count() === 1) {
+                return (string) $positivePriceIds->first();
+            }
+            if ($positivePriceIds->count() > 1) {
+                throw new InvalidBillingWebhook('Stripe subscription-update invoice contains ambiguous positive Price lines.');
+            }
+        }
+
+        if ($metadataPriceId !== '' && ($linePriceIds->isEmpty() || $linePriceIds->contains($metadataPriceId))) {
+            return $metadataPriceId;
+        }
+        if ($linePriceIds->count() === 1) {
+            return (string) $linePriceIds->first();
+        }
+
+        return $linePriceIds->first() ? (string) $linePriceIds->first() : null;
+    }
+
+    /** @return array<string, mixed> */
+    private function invoiceSnapshot(array $invoice): array
+    {
+        $metadata = array_merge(
+            (array) Arr::get($invoice, 'subscription_details.metadata', []),
+            (array) Arr::get($invoice, 'parent.subscription_details.metadata', []),
+            (array) Arr::get($invoice, 'metadata', []),
+        );
+        $lines = $this->invoiceLines($invoice);
+
+        return [
+            'provider_invoice_id' => (string) Arr::get($invoice, 'id'),
+            'provider_subscription_id' => (string) (Arr::get($invoice, 'subscription')
+                ?? Arr::get($invoice, 'parent.subscription_details.subscription')),
+            'provider_price_id' => $this->invoiceProviderPriceId($invoice, $lines, $metadata),
+            'status' => (string) Arr::get($invoice, 'status'),
+            'currency' => (string) Arr::get($invoice, 'currency'),
+            'amount_due_minor' => (int) Arr::get($invoice, 'amount_due', 0),
+            'amount_paid_minor' => (int) Arr::get($invoice, 'amount_paid', 0),
+            'period_start' => Arr::get($invoice, 'period_start')
+                ?? Arr::get($invoice, 'lines.data.0.period.start'),
+            'period_end' => Arr::get($invoice, 'period_end')
+                ?? Arr::get($invoice, 'lines.data.0.period.end'),
+            'paid_at' => Arr::get($invoice, 'status_transitions.paid_at'),
+            'billing_reason' => Arr::get($invoice, 'billing_reason'),
+            'invoice_lines' => $lines,
+            'test_mode' => ! (bool) Arr::get($invoice, 'livemode', true),
+        ];
     }
 
     private function timestamp(mixed $value): ?CarbonImmutable

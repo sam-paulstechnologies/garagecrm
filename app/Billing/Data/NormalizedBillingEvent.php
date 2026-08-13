@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 final readonly class NormalizedBillingEvent
 {
     /**
-     * @param array<string, scalar|null> $data
+     * @param  array<string, mixed>  $data
      */
     public function __construct(
         public string $id,

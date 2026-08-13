@@ -11,13 +11,16 @@ class BillingInvoice extends Model
     protected $fillable = [
         'company_id', 'subscription_id', 'billing_checkout_session_id', 'price_id',
         'payment_provider', 'test_mode', 'provider_invoice_id',
-        'status', 'currency', 'amount_due', 'amount_paid', 'period_start', 'period_end',
+        'status', 'billing_reason', 'introductory_cycle_counted', 'provider_line_snapshot',
+        'currency', 'amount_due', 'amount_paid', 'period_start', 'period_end',
         'due_at', 'paid_at', 'hosted_invoice_url',
     ];
 
     protected $casts = [
         'amount_due' => 'decimal:2', 'amount_paid' => 'decimal:2',
         'test_mode' => 'boolean',
+        'introductory_cycle_counted' => 'boolean',
+        'provider_line_snapshot' => 'array',
         'period_start' => 'datetime', 'period_end' => 'datetime',
         'due_at' => 'datetime', 'paid_at' => 'datetime',
     ];

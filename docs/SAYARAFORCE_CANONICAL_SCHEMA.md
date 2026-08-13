@@ -13,7 +13,7 @@ Authoritative artifacts:
 - `database/schema/mysql-schema.safety.json`: machine-readable data-safety result.
 - `ops/azure/staging/production-view-remediation.sql`: unexecuted production repair plan.
 
-The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. The commercial, AI metering, billing, mobile notification, product-event, WhatsApp number-claim, verified-payment, and Launch Offer migrations culminated in fingerprint `30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8`. The additive Fortify-compatible two-factor security migration now produces the current reproducible staging fingerprint `05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc`.
+The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. The commercial, AI metering, billing, mobile notification, product-event, WhatsApp number-claim, verified-payment, and Launch Offer migrations culminated in fingerprint `30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8`. Fortify-compatible two-factor security produced `05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc`; the additive provider-subscription reconciliation and immutable invoice-attribution migration now produces the current reproducible staging fingerprint `a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606`.
 
 ## Reconciled inventories
 
@@ -105,7 +105,7 @@ Cycle results:
 | Synthetic companies/garages | 2 / 2 | 2 / 2 |
 | Foreign-key constraints checked | 169 | 169 |
 | Foreign-key violations | 0 | 0 |
-| Structural fingerprint | `05821bb5...a5fc` | `05821bb5...a5fc` |
+| Structural fingerprint | `a005cb06...3606` | `a005cb06...3606` |
 
 For Commercial Foundation Phase 1, the full suite passed 204 tests with 1,260 assertions and one intentional integration skip. Phase 2 then passed the full 211-test execution (200 warning-classified because the clean release worktree intentionally has no committed Vite manifest, plus 11 ordinary passes) with 1,290 assertions. The guarded MySQL surface test passed 33 assertions in both Phase 2 cycles. PHP lint and the Vite production build also passed.
 

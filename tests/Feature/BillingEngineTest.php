@@ -307,7 +307,7 @@ class BillingEngineTest extends TestCase
         $this->assertSame($before->provider_subscription_id, $after->provider_subscription_id);
         $this->assertSame('active', $after->status);
         $this->assertSame('paid', $after->payment_status);
-        $this->assertSame(2, $after->introductory_cycles_completed);
+        $this->assertSame(1, $after->introductory_cycles_completed);
         $this->assertDatabaseCount('subscriptions', 1);
         $this->assertSame(1, BillingInvoice::query()
             ->where('company_id', $company->id)
@@ -318,13 +318,101 @@ class BillingEngineTest extends TestCase
         $this->actingAs($admin)->post(route('admin.billing.fake.complete', $change))->assertRedirect();
         $replayed = $company->fresh()->subscription;
         $this->assertSame(Plans::GROWTH, $replayed->planVersion->plan->code);
-        $this->assertSame(2, $replayed->introductory_cycles_completed);
+        $this->assertSame(1, $replayed->introductory_cycles_completed);
         $this->assertDatabaseCount('subscriptions', 1);
         $this->assertSame(1, BillingInvoice::query()
             ->where('company_id', $company->id)
             ->where('status', 'paid')
             ->whereHas('price.planVersion.plan', fn ($query) => $query->where('code', Plans::GROWTH))
             ->count());
+    }
+
+    public function test_paid_growth_proration_then_subscription_update_converges_once_from_provider_truth(): void
+    {
+        [$company, $change, $originalCheckout, $growth, $mapping] = $this->pendingGrowthChange();
+        $subscription = $company->fresh()->subscription;
+        $created = now()->addMinute()->timestamp;
+        $invoiceData = $this->growthProrationData($subscription, $change, $originalCheckout, $mapping);
+        $subscriptionData = $this->growthSubscriptionData($subscription, $originalCheckout, $mapping);
+        $change->update(['status' => 'expired']);
+
+        $paid = $this->fakeEvent(
+            'invoice.paid', 'invoice', (string) $change->provider_checkout_id,
+            $invoiceData, $created, 'evt_fake_growth_invoice_first',
+        );
+        $this->assertSame('processed', $paid['status']);
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertDatabaseHas('billing_invoices', [
+            'provider_invoice_id' => $change->provider_checkout_id,
+            'price_id' => $growth->id,
+            'billing_reason' => 'subscription_update',
+            'introductory_cycle_counted' => false,
+            'amount_paid' => '759.25',
+        ]);
+
+        $updated = $this->fakeEvent(
+            'customer.subscription.updated', 'subscription', (string) $subscription->provider_subscription_id,
+            $subscriptionData, $created, 'evt_fake_growth_subscription_second',
+        );
+        $this->assertSame('processed', $updated['status']);
+        $this->assertGrowthConverged($company, $growth, $subscription);
+
+        $paidReplay = $this->fakeEvent(
+            'invoice.paid', 'invoice', (string) $change->provider_checkout_id,
+            $invoiceData, $created, 'evt_fake_growth_invoice_first',
+        );
+        $updatedReplay = $this->fakeEvent(
+            'customer.subscription.updated', 'subscription', (string) $subscription->provider_subscription_id,
+            $subscriptionData, $created, 'evt_fake_growth_subscription_second',
+        );
+        $this->assertTrue($paidReplay['duplicate']);
+        $this->assertTrue($updatedReplay['duplicate']);
+        $this->assertGrowthConverged($company, $growth, $subscription);
+    }
+
+    public function test_subscription_update_then_paid_growth_proration_remains_pending_and_eventually_converges(): void
+    {
+        [$company, $change, $originalCheckout, $growth, $mapping] = $this->pendingGrowthChange();
+        $subscription = $company->fresh()->subscription;
+        $created = now()->addMinute()->timestamp;
+
+        $updated = $this->fakeEvent(
+            'customer.subscription.updated', 'subscription', (string) $subscription->provider_subscription_id,
+            $this->growthSubscriptionData($subscription, $originalCheckout, $mapping),
+            $created, 'evt_fake_growth_subscription_first',
+        );
+        $this->assertSame('processed', $updated['status']);
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertSame('payment_pending', $change->fresh()->status);
+
+        $paid = $this->fakeEvent(
+            'invoice.paid', 'invoice', (string) $change->provider_checkout_id,
+            $this->growthProrationData($subscription, $change, $originalCheckout, $mapping),
+            $created, 'evt_fake_growth_invoice_second',
+        );
+        $this->assertSame('processed', $paid['status']);
+        $this->assertGrowthConverged($company, $growth, $subscription);
+    }
+
+    public function test_provider_price_mismatch_fails_closed_without_changing_service(): void
+    {
+        [$company, $change, $originalCheckout, , $mapping] = $this->pendingGrowthChange();
+        $subscription = $company->fresh()->subscription;
+        $data = $this->growthSubscriptionData($subscription, $originalCheckout, $mapping);
+        $data['provider_price_id'] = 'price_fake_unmapped_growth';
+
+        try {
+            $this->fakeEvent(
+                'customer.subscription.updated', 'subscription', (string) $subscription->provider_subscription_id,
+                $data, now()->addMinute()->timestamp, 'evt_fake_unmapped_growth',
+            );
+            $this->fail('An unmapped provider Price was accepted.');
+        } catch (BillingConfigurationException $exception) {
+            $this->assertStringContainsString('unapproved price mapping', $exception->getMessage());
+        }
+
+        $this->assertSame(Plans::SERVICE, $company->fresh()->subscription->planVersion->plan->code);
+        $this->assertNotSame('completed', $change->fresh()->status);
     }
 
     public function test_equivalent_plan_change_double_click_duplicate_post_and_refresh_resume_one_checkout(): void
@@ -926,6 +1014,98 @@ class BillingEngineTest extends TestCase
         $this->actingAs($admin)->post(route('admin.billing.fake.complete', $checkout))->assertRedirect();
 
         return [$company->fresh(), $admin];
+    }
+
+    /** @return array{Company, BillingCheckoutSession, BillingCheckoutSession, Price, PriceProviderMapping} */
+    private function pendingGrowthChange(): array
+    {
+        [$company, $admin] = $this->activatedServiceTenant();
+        $originalCheckout = BillingCheckoutSession::query()
+            ->where('company_id', $company->id)
+            ->where('operation', 'checkout')
+            ->sole();
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->sole();
+        $mapping = PriceProviderMapping::query()
+            ->where('price_id', $growth->id)
+            ->where('payment_provider', 'fake')
+            ->where('price_phase', 'launch')
+            ->where('status', 'active')
+            ->sole();
+        $this->actingAs($admin)->post(route('admin.billing.checkout'), [
+            'price_code' => $growth->code,
+            'idempotency_key' => 'provider-truth-growth-'.bin2hex(random_bytes(12)),
+        ])->assertRedirect();
+        $change = BillingCheckoutSession::query()
+            ->where('company_id', $company->id)
+            ->where('operation', 'plan_change')
+            ->sole();
+
+        return [$company, $change, $originalCheckout, $growth, $mapping];
+    }
+
+    /** @return array<string, scalar|null> */
+    private function growthSubscriptionData(
+        \App\Models\Commercial\Subscription $subscription,
+        BillingCheckoutSession $staleCheckout,
+        PriceProviderMapping $mapping,
+    ): array {
+        return [
+            'local_checkout_id' => $staleCheckout->id,
+            'provider_customer_id' => $subscription->provider_customer_id,
+            'provider_subscription_id' => $subscription->provider_subscription_id,
+            'provider_price_id' => $mapping->provider_price_id,
+            'subscription_status' => 'active',
+            'payment_status' => 'paid',
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+        ];
+    }
+
+    /** @return array<string, scalar|null> */
+    private function growthProrationData(
+        \App\Models\Commercial\Subscription $subscription,
+        BillingCheckoutSession $change,
+        BillingCheckoutSession $staleCheckout,
+        PriceProviderMapping $mapping,
+    ): array {
+        return [
+            'local_checkout_id' => $staleCheckout->id,
+            'provider_customer_id' => $subscription->provider_customer_id,
+            'provider_subscription_id' => $subscription->provider_subscription_id,
+            'provider_price_id' => $mapping->provider_price_id,
+            'provider_invoice_id' => $change->provider_checkout_id,
+            'currency' => 'aed',
+            'amount_due_minor' => 75925,
+            'amount_paid_minor' => 75925,
+            'billing_reason' => 'subscription_update',
+            'period_start' => now()->timestamp,
+            'period_end' => now()->addMonth()->timestamp,
+            'paid_at' => now()->timestamp,
+        ];
+    }
+
+    private function assertGrowthConverged(Company $company, Price $growth, \App\Models\Commercial\Subscription $before): void
+    {
+        $subscription = $company->fresh()->subscription;
+        $this->assertSame(Plans::GROWTH, $subscription->planVersion->plan->code);
+        $this->assertSame($growth->id, $subscription->price_id);
+        $this->assertSame($before->provider_subscription_id, $subscription->provider_subscription_id);
+        $this->assertSame(0, $subscription->introductory_cycles_completed);
+        $this->assertDatabaseCount('subscriptions', 1);
+        $this->assertSame('completed', BillingCheckoutSession::query()
+            ->where('company_id', $company->id)
+            ->where('operation', 'plan_change')
+            ->sole()->status);
+        $this->assertSame(1, BillingInvoice::query()
+            ->where('company_id', $company->id)
+            ->where('price_id', $growth->id)
+            ->where('status', 'paid')
+            ->count());
+        $this->assertSame(1, BillingInvoice::query()
+            ->where('company_id', $company->id)
+            ->whereHas('price.planVersion.plan', fn ($query) => $query->where('code', Plans::SERVICE))
+            ->where('status', 'paid')
+            ->count());
     }
 
     /** @param array<string, scalar|null> $data */

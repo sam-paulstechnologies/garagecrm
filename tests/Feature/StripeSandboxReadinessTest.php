@@ -410,6 +410,39 @@ class StripeSandboxReadinessTest extends TestCase
         $gateway->normalizeEvent(json_encode($incomplete, JSON_THROW_ON_ERROR));
     }
 
+    public function test_subscription_update_invoice_uses_positive_target_price_not_stale_credit_metadata(): void
+    {
+        $payload = json_decode($this->fixture('invoice.paid'), true, flags: JSON_THROW_ON_ERROR);
+        $payload['data']['object']['billing_reason'] = 'subscription_update';
+        $payload['data']['object']['amount_due'] = 75925;
+        $payload['data']['object']['amount_paid'] = 75925;
+        $payload['data']['object']['parent']['subscription_details']['metadata']['provider_price_id'] = 'price_testServiceLaunch001';
+        $payload['data']['object']['lines']['data'] = [
+            [
+                'amount' => -18887,
+                'currency' => 'aed',
+                'price' => ['id' => 'price_testServiceLaunch001', 'product' => 'prod_testService'],
+                'period' => ['start' => 1786464000, 'end' => 1789142400],
+                'proration' => true,
+            ],
+            [
+                'amount' => 94812,
+                'currency' => 'aed',
+                'price' => ['id' => 'price_testGrowthLaunch001', 'product' => 'prod_testGrowth'],
+                'period' => ['start' => 1786550400, 'end' => 1789142400],
+                'proration' => true,
+            ],
+        ];
+
+        $event = app(StripeBillingGateway::class)->normalizeEvent(json_encode($payload, JSON_THROW_ON_ERROR));
+
+        $this->assertSame('price_testGrowthLaunch001', $event->data['provider_price_id']);
+        $this->assertSame('subscription_update', $event->data['billing_reason']);
+        $this->assertCount(2, $event->data['invoice_lines']);
+        $this->assertSame(-18887, $event->data['invoice_lines'][0]['amount_minor']);
+        $this->assertSame(94812, $event->data['invoice_lines'][1]['amount_minor']);
+    }
+
     public function test_stripe_api_requests_pin_the_reviewed_version_header(): void
     {
         config()->set([

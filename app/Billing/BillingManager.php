@@ -345,7 +345,8 @@ class BillingManager
 
             $price = $checkout->requestedPrice;
             $samePrice = (int) $subscription->price_id === (int) $price->id;
-            $continuingPromotion = $checkout->price_phase === 'launch'
+            $samePlanVersion = (int) $subscription->plan_version_id === (int) $price->plan_version_id;
+            $continuingPromotion = $samePlanVersion && $checkout->price_phase === 'launch'
                 && $subscription->launch_offer_qualified_at
                 && ! $subscription->launch_offer_consumed_at;
             $promotionStartedAt = $checkout->price_phase === 'launch'

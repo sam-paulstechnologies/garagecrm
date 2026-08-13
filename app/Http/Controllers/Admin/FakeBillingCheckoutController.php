@@ -76,6 +76,7 @@ class FakeBillingCheckoutController extends Controller
                 'currency' => strtolower((string) $price->currency),
                 'amount_due_minor' => $amountMinor,
                 'amount_paid_minor' => $amountMinor,
+                'billing_reason' => $isChange ? 'subscription_cycle' : 'subscription_create',
                 'period_start' => $periodStart->timestamp,
                 'period_end' => $periodEnd->timestamp,
                 'paid_at' => $periodStart->copy()->addSecond()->timestamp,

@@ -22,6 +22,7 @@ class BillingWebhookProcessor
     public function __construct(
         private readonly BillingGatewayResolver $gateways,
         private readonly BillingManager $billing,
+        private readonly ProviderSubscriptionReconciler $reconciler,
         private readonly ProductEventRecorder $productEvents,
     ) {}
 
@@ -56,7 +57,7 @@ class BillingWebhookProcessor
             if (! hash_equals((string) $record->payload_hash, $hash)) {
                 throw new InvalidBillingWebhook('A billing event ID was replayed with a different payload.');
             }
-            if (in_array($record->status, ['processed', 'ignored_out_of_order', 'ignored_unsupported', 'ignored_unmatched'], true)) {
+            if (in_array($record->status, ['processed', 'processed_reconciled', 'ignored_out_of_order', 'ignored_unsupported', 'ignored_unmatched'], true)) {
                 return ['duplicate' => true, 'status' => $record->status];
             }
             $record->increment('attempt_count');
@@ -80,9 +81,6 @@ class BillingWebhookProcessor
     {
         $checkout = $this->checkout($provider, $event);
         $subscription = $this->subscription($provider, $event, $checkout);
-        if ($subscription?->provider_state_updated_at?->greaterThan($event->occurredAt)) {
-            return 'ignored_out_of_order';
-        }
 
         if ($event->type === 'checkout.session.expired') {
             if (! $checkout) {
@@ -99,7 +97,13 @@ class BillingWebhookProcessor
             return 'processed';
         }
 
+        $reconcilableExpiredPlanChange = $checkout?->operation === 'plan_change'
+            && $checkout->status === 'expired'
+            && in_array($event->type, [
+                'customer.subscription.updated', 'invoice.paid', 'invoice.payment_succeeded',
+            ], true);
         if ($checkout && in_array($checkout->status, ['cancelled', 'expired'], true)
+            && ! $reconcilableExpiredPlanChange
             && in_array($event->type, [
                 'checkout.session.completed', 'customer.subscription.created',
                 'customer.subscription.updated', 'invoice.paid', 'invoice.payment_succeeded',
@@ -117,15 +121,38 @@ class BillingWebhookProcessor
         }
 
         if ($event->type === 'customer.subscription.updated') {
-            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
-                $this->recordCheckoutCompleted($checkout, $event);
-
-                return 'processed';
-            }
             if (! $subscription) {
                 throw new BillingConfigurationException('Provider subscription does not map to a tenant subscription.');
             }
-            $this->updateSubscriptionState($subscription, $event);
+            if (! $this->isLatestSubscriptionEvidence($provider, $event)) {
+                return 'ignored_out_of_order';
+            }
+            $providerPriceId = (string) ($event->data['provider_price_id'] ?? '');
+            if ($providerPriceId === '') {
+                if ($subscription->provider_state_updated_at?->greaterThan($event->occurredAt)) {
+                    return 'ignored_out_of_order';
+                }
+                $this->updateSubscriptionState($subscription, $event);
+
+                return 'processed';
+            }
+            if ($providerPriceId === (string) $subscription->provider_price_id
+                && $subscription->provider_state_updated_at?->greaterThan($event->occurredAt)) {
+                return 'ignored_out_of_order';
+            }
+            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
+                $this->recordCheckoutCompleted($checkout, $event);
+            }
+            $result = $this->reconciler->reconcile(
+                $subscription,
+                $provider,
+                $event->data,
+                $event->occurredAt,
+                $checkout,
+            );
+            if ($result === 'same_price') {
+                $this->updateSubscriptionState($subscription, $event);
+            }
 
             return 'processed';
         }
@@ -137,6 +164,9 @@ class BillingWebhookProcessor
                 // fixture). Record it once, mutate nothing, and acknowledge it
                 // so the provider does not retry indefinitely.
                 return 'ignored_unmatched';
+            }
+            if ($subscription->provider_state_updated_at?->greaterThan($event->occurredAt)) {
+                return 'ignored_out_of_order';
             }
             $subscription->update([
                 'status' => 'cancelled', 'payment_status' => 'cancelled',
@@ -158,36 +188,43 @@ class BillingWebhookProcessor
         }
 
         if (in_array($event->type, ['invoice.paid', 'invoice.payment_succeeded'], true)) {
-            if ($checkout && $this->checkoutNeedsPayment($checkout, $subscription)) {
-                $subscription = $this->activateFromPaidInvoice($checkout, $event);
-            }
             if (! $subscription) {
                 throw new BillingConfigurationException('Paid invoice does not map to a tenant subscription.');
             }
-            $isNewPaidCycle = $this->upsertInvoice($subscription, $event, 'paid', $checkout);
-            $countsForLaunchOffer = $isNewPaidCycle
-                && $subscription->launch_offer_qualified_at
-                && ! $subscription->launch_offer_consumed_at
-                && ! $subscription->standard_price_transition_requested_at;
-            $completedCycles = $countsForLaunchOffer
-                ? min(65535, ((int) $subscription->introductory_cycles_completed) + 1)
-                : (int) $subscription->introductory_cycles_completed;
-            $subscription->update([
-                'status' => $subscription->cancel_at_period_end ? 'cancel_at_period_end' : 'active',
-                'payment_status' => 'paid',
-                'current_period_start' => $this->date($event->data['period_start'] ?? null) ?? $subscription->current_period_start,
-                'current_period_end' => $this->date($event->data['period_end'] ?? null) ?? $subscription->current_period_end,
-                'grace_ends_at' => null,
-                'suspended_at' => null,
-                'provider_state_updated_at' => $event->occurredAt,
-                'introductory_cycles_completed' => $completedCycles,
-            ]);
+            $invoice = $this->upsertInvoice($subscription, $event, 'paid', $checkout);
+            if ($checkout?->operation === 'checkout' && $this->checkoutNeedsPayment($checkout, $subscription)) {
+                $subscription = $this->activateFromPaidInvoice($checkout, $event);
+            }
+            if ($checkout?->operation === 'plan_change') {
+                $providerState = $this->latestSubscriptionState($provider, (string) ($event->data['provider_subscription_id'] ?? ''));
+                if ($providerState) {
+                    $this->reconciler->reconcile(
+                        $subscription,
+                        $provider,
+                        $providerState['data'],
+                        $providerState['occurred_at'],
+                        $checkout,
+                    );
+                    $subscription = $subscription->fresh();
+                }
+            }
+            $countsForLaunchOffer = $this->countIntroductoryCycle($subscription, $invoice);
+            if ((int) $invoice->price_id === (int) $subscription->price_id) {
+                $subscription->update([
+                    'status' => $subscription->cancel_at_period_end ? 'cancel_at_period_end' : 'active',
+                    'payment_status' => 'paid',
+                    'current_period_start' => $this->date($event->data['period_start'] ?? null) ?? $subscription->current_period_start,
+                    'current_period_end' => $this->date($event->data['period_end'] ?? null) ?? $subscription->current_period_end,
+                    'grace_ends_at' => null,
+                    'suspended_at' => null,
+                ]);
+            }
             $this->audit($subscription, 'billing.invoice_paid', $provider, [
                 'introductory_cycles_completed' => $subscription->introductory_cycles_completed,
                 'counted_as_introductory_cycle' => $countsForLaunchOffer,
             ]);
             $duration = (int) ($subscription->price?->promotion_duration_months ?? 0);
-            if ($countsForLaunchOffer && $duration > 0 && $completedCycles >= $duration
+            if ($countsForLaunchOffer && $duration > 0 && $subscription->introductory_cycles_completed >= $duration
                 && ! $subscription->standard_price_transition_requested_at) {
                 DB::afterCommit(fn () => TransitionIntroductoryBillingPrice::dispatch($subscription->id));
             }
@@ -234,7 +271,10 @@ class BillingWebhookProcessor
         $localId = (int) ($event->data['local_checkout_id'] ?? 0);
         $query = BillingCheckoutSession::query()->where('payment_provider', $provider);
         if ($localId > 0) {
-            return $query->whereKey($localId)->first();
+            $candidate = (clone $query)->whereKey($localId)->first();
+            if ($candidate && $this->checkoutMatchesEvent($candidate, $provider, $event)) {
+                return $candidate;
+            }
         }
 
         $byProviderCheckout = (clone $query)->where('provider_checkout_id', $event->objectId)->first();
@@ -251,10 +291,40 @@ class BillingWebhookProcessor
         return (clone $query)
             ->where('operation', 'plan_change')
             ->where('provider_subscription_id', $providerSubscriptionId)
-            ->where('provider_price_id', $providerPriceId)
-            ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+            ->where(function ($query) use ($provider, $providerPriceId): void {
+                $query->where('provider_price_id', $providerPriceId)
+                    ->orWhereHas('requestedPrice.providerMappings', function ($query) use ($provider, $providerPriceId): void {
+                        $query->where('payment_provider', $provider)
+                            ->where('provider_price_id', $providerPriceId)
+                            ->where('status', 'active');
+                    });
+            })
+            ->whereNotIn('status', ['cancelled', 'payment_failed'])
             ->latest('id')
             ->first();
+    }
+
+    private function checkoutMatchesEvent(
+        BillingCheckoutSession $checkout,
+        string $provider,
+        NormalizedBillingEvent $event,
+    ): bool {
+        $providerSubscriptionId = (string) ($event->data['provider_subscription_id'] ?? '');
+        if ($providerSubscriptionId !== '' && filled($checkout->provider_subscription_id)
+            && ! hash_equals((string) $checkout->provider_subscription_id, $providerSubscriptionId)) {
+            return false;
+        }
+        $providerPriceId = (string) ($event->data['provider_price_id'] ?? '');
+        if ($providerPriceId === '') {
+            return true;
+        }
+
+        return \App\Models\Commercial\PriceProviderMapping::query()
+            ->where('price_id', $checkout->requested_price_id)
+            ->where('payment_provider', $provider)
+            ->where('provider_price_id', $providerPriceId)
+            ->where('status', 'active')
+            ->exists();
     }
 
     private function subscription(string $provider, NormalizedBillingEvent $event, ?BillingCheckoutSession $checkout): ?Subscription
@@ -365,17 +435,19 @@ class BillingWebhookProcessor
         NormalizedBillingEvent $event,
         string $status,
         ?BillingCheckoutSession $checkout = null,
-    ): bool {
+    ): BillingInvoice {
         $invoiceId = (string) ($event->data['provider_invoice_id'] ?? $event->objectId);
         $url = (string) ($event->data['hosted_invoice_url'] ?? '');
-        $price = $checkout?->requestedPrice()->first() ?? $subscription->price;
+        $providerPriceId = (string) ($event->data['provider_price_id'] ?? '');
         $paymentProvider = (string) ($checkout?->payment_provider ?? $subscription->payment_provider);
-        $wasAlreadyPaid = BillingInvoice::query()
-            ->where('payment_provider', $paymentProvider)
-            ->where('provider_invoice_id', $invoiceId)
-            ->where('status', 'paid')
-            ->exists();
-        BillingInvoice::query()->updateOrCreate(
+        $price = $providerPriceId !== ''
+            ? $this->priceFromProviderMapping($paymentProvider, $providerPriceId)
+            : ($checkout?->requestedPrice()->first() ?? $subscription->price);
+        if ($checkout && (int) $checkout->requested_price_id !== (int) $price?->id) {
+            $checkout = null;
+        }
+
+        return BillingInvoice::query()->updateOrCreate(
             ['payment_provider' => $paymentProvider, 'provider_invoice_id' => $invoiceId],
             [
                 'company_id' => $subscription->company_id,
@@ -384,6 +456,8 @@ class BillingWebhookProcessor
                 'price_id' => $price?->id,
                 'test_mode' => filter_var($event->data['test_mode'] ?? false, FILTER_VALIDATE_BOOL),
                 'status' => $status,
+                'billing_reason' => $event->data['billing_reason'] ?? null,
+                'provider_line_snapshot' => $event->data['invoice_lines'] ?? null,
                 'currency' => strtoupper((string) ($event->data['currency'] ?? 'AED')),
                 'amount_due' => $this->major($event->data['amount_due_minor'] ?? 0),
                 'amount_paid' => $this->major($event->data['amount_paid_minor'] ?? 0),
@@ -394,8 +468,85 @@ class BillingWebhookProcessor
                 'hosted_invoice_url' => str_starts_with($url, 'https://') ? $url : null,
             ],
         );
+    }
 
-        return $status === 'paid' && ! $wasAlreadyPaid;
+    private function priceFromProviderMapping(string $provider, string $providerPriceId): \App\Models\Commercial\Price
+    {
+        $mapping = \App\Models\Commercial\PriceProviderMapping::query()
+            ->with('price')
+            ->where('payment_provider', $provider)
+            ->where('provider_price_id', $providerPriceId)
+            ->where('status', 'active')
+            ->first();
+        if (! $mapping) {
+            throw new BillingConfigurationException('Verified invoice references an unapproved price mapping.');
+        }
+
+        return $mapping->price;
+    }
+
+    private function countIntroductoryCycle(Subscription $subscription, BillingInvoice $invoice): bool
+    {
+        $isFullPaidCycle = ! in_array($invoice->billing_reason, ['subscription_update', 'manual'], true);
+        if (! $isFullPaidCycle
+            || $invoice->introductory_cycle_counted
+            || (int) $invoice->price_id !== (int) $subscription->price_id
+            || ! $subscription->launch_offer_qualified_at
+            || $subscription->launch_offer_consumed_at
+            || $subscription->standard_price_transition_requested_at) {
+            return false;
+        }
+
+        $claimed = BillingInvoice::query()
+            ->whereKey($invoice->id)
+            ->where('status', 'paid')
+            ->where('introductory_cycle_counted', false)
+            ->update(['introductory_cycle_counted' => true]);
+        if ($claimed !== 1) {
+            return false;
+        }
+        $subscription->increment('introductory_cycles_completed');
+        $subscription->refresh();
+
+        return true;
+    }
+
+    private function isLatestSubscriptionEvidence(string $provider, NormalizedBillingEvent $event): bool
+    {
+        $providerSubscriptionId = (string) ($event->data['provider_subscription_id'] ?? '');
+        $latest = $this->subscriptionEvidence($provider, $providerSubscriptionId)->first();
+
+        return ! $latest || hash_equals((string) $latest->provider_event_id, $event->id);
+    }
+
+    /** @return array{data: array<string, mixed>, occurred_at: CarbonImmutable}|null */
+    private function latestSubscriptionState(string $provider, string $providerSubscriptionId): ?array
+    {
+        $event = $this->subscriptionEvidence($provider, $providerSubscriptionId)->first();
+        if (! $event) {
+            return null;
+        }
+
+        return [
+            'data' => (array) $event->normalized_payload,
+            'occurred_at' => CarbonImmutable::instance($event->event_created_at),
+        ];
+    }
+
+    private function subscriptionEvidence(string $provider, string $providerSubscriptionId): \Illuminate\Support\Collection
+    {
+        if ($providerSubscriptionId === '') {
+            return collect();
+        }
+
+        return BillingProviderEvent::query()
+            ->where('payment_provider', $provider)
+            ->whereIn('event_type', ['customer.subscription.created', 'customer.subscription.updated'])
+            ->orderByDesc('event_created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (BillingProviderEvent $event): bool => ($event->normalized_payload['provider_subscription_id'] ?? null) === $providerSubscriptionId)
+            ->values();
     }
 
     /** @param array<string, mixed> $context */

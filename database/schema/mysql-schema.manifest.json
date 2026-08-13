@@ -178,7 +178,8 @@
     "2026_08_10_000006_create_messaging_number_claims",
     "2026_08_11_000001_harden_billing_payment_lifecycle",
     "2026_08_12_000001_add_launch_offer_commercial_policy",
-    "2026_08_13_000001_add_two_factor_security_to_users"
+    "2026_08_13_000001_add_two_factor_security_to_users",
+    "2026_08_14_000001_harden_provider_subscription_reconciliation"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -506,12 +507,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds encrypted Fortify-compatible two-factor state to users and a sensitive-value-free security lifecycle audit ledger."
+    },
+    {
+      "migration": "2026_08_14_000001_harden_provider_subscription_reconciliation",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds immutable provider invoice-line attribution, billing reason, and invoice-level introductory-cycle idempotency for deterministic paid plan-change reconciliation."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc",
-    "cycle_two_fingerprint": "05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc",
+    "cycle_one_fingerprint": "a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606",
+    "cycle_two_fingerprint": "a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true
