@@ -42,7 +42,17 @@ class AuthenticatedSessionController extends Controller
             ]);
             app(SecurityAudit::class)->record('two_factor.challenge_started', $user, $user, [], $request);
 
-            return redirect()->route('two-factor.login');
+            $target = route('two-factor.login', absolute: false);
+
+            // The login page is an Inertia screen while the challenge is a
+            // deliberately isolated Blade document. Force a top-level visit
+            // so the challenge can never be rendered in Inertia's invalid
+            // response iframe while the address bar remains on /login.
+            if ($request->header('X-Inertia')) {
+                return Inertia::location($target);
+            }
+
+            return redirect()->to($target);
         }
 
         Auth::guard('web')->login($user, $request->boolean('remember'));
@@ -79,10 +89,12 @@ class AuthenticatedSessionController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        $target = route('login', absolute: false);
+
         if ($request->header('X-Inertia')) {
-            return Inertia::location('/');
+            return Inertia::location($target);
         }
 
-        return redirect('/');
+        return redirect()->to($target);
     }
 }

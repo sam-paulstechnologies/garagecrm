@@ -115,7 +115,7 @@ class TwoFactorSecurityTest extends TestCase
         $this->actingAs($admin)->get(route('password.confirm'))->assertOk();
         $this->get(route('security.two-factor.show'))->assertOk();
         $this->get('/dashboard')->assertRedirect(route('security.two-factor.show'));
-        $this->post(route('logout'))->assertRedirect('/');
+        $this->post(route('logout'))->assertRedirect(route('login', absolute: false));
         $this->assertGuest();
     }
 
@@ -185,6 +185,81 @@ class TwoFactorSecurityTest extends TestCase
             ->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($admin);
         $this->assertNotSame($oldSession, session()->getId());
+    }
+
+    public function test_inertia_password_login_uses_top_level_two_factor_navigation(): void
+    {
+        $admin = $this->confirmedUser('admin');
+
+        $this->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])->post('/login', [
+            'email' => $admin->email,
+            'password' => 'password',
+        ])->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('two-factor.login', absolute: false));
+
+        $this->assertGuest();
+        $this->assertTrue(session()->has('login.id'));
+    }
+
+    public function test_totp_login_preserves_safe_intended_destination_and_back_target_is_not_reusable(): void
+    {
+        $admin = $this->confirmedUser('admin');
+        $intended = '/admin/clients?status=active';
+
+        $this->withSession(['url.intended' => $intended])
+            ->post('/login', ['email' => $admin->email, 'password' => 'password'])
+            ->assertRedirect(route('two-factor.login'));
+
+        Cache::flush();
+        $oldSession = session()->getId();
+        $this->post(route('two-factor.login.store'), ['code' => $this->currentCode($admin)])
+            ->assertRedirect($intended);
+
+        $this->assertAuthenticatedAs($admin);
+        $this->assertNotSame($oldSession, session()->getId());
+        $this->get(route('two-factor.login'))->assertRedirect(route('dashboard'));
+    }
+
+    public function test_inertia_totp_completion_uses_canonical_top_level_location(): void
+    {
+        $admin = $this->confirmedUser('admin');
+        $this->post('/login', ['email' => $admin->email, 'password' => 'password']);
+
+        Cache::flush();
+        $this->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])->post(route('two-factor.login.store'), ['code' => $this->currentCode($admin)])
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_recovery_code_login_preserves_intended_destination(): void
+    {
+        $admin = $this->confirmedUser('admin');
+        $code = $admin->recoveryCodes()[0];
+        $intended = '/admin/billing';
+
+        $this->withSession(['url.intended' => $intended])
+            ->post('/login', ['email' => $admin->email, 'password' => 'password']);
+        $this->post(route('two-factor.login.store'), ['recovery_code' => $code])
+            ->assertRedirect($intended);
+
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_authenticated_login_and_completed_challenge_routes_redirect_to_dashboard(): void
+    {
+        $admin = $this->confirmedUser('admin');
+
+        $this->actingAs($admin)->get('/login')->assertRedirect(route('dashboard'));
+        $this->get(route('two-factor.login'))->assertRedirect(route('dashboard'));
+        $this->get(route('dashboard'))->assertRedirect(route('admin.dashboard'));
     }
 
     public function test_remember_me_does_not_bypass_two_factor_challenge(): void

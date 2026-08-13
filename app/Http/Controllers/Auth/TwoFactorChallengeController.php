@@ -12,13 +12,19 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Inertia\Inertia;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Laravel\Fortify\Fortify;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class TwoFactorChallengeController extends Controller
 {
     public function create(Request $request): View|RedirectResponse
     {
+        if ($request->user()) {
+            return redirect()->route('dashboard');
+        }
+
         if (! $request->session()->has('login.id')) {
             return redirect()->route('login');
         }
@@ -26,7 +32,7 @@ class TwoFactorChallengeController extends Controller
         return view('auth.two-factor-challenge');
     }
 
-    public function store(Request $request, TwoFactorAuthenticationProvider $provider): RedirectResponse
+    public function store(Request $request, TwoFactorAuthenticationProvider $provider): SymfonyResponse
     {
         $request->validate([
             'code' => ['nullable', 'digits:6', 'required_without:recovery_code'],
@@ -89,6 +95,45 @@ class TwoFactorChallengeController extends Controller
             $request,
         );
 
-        return redirect()->route('dashboard');
+        $target = $this->intendedDestination($request);
+
+        if ($request->header('X-Inertia')) {
+            return Inertia::location($target);
+        }
+
+        return redirect()->to($target);
+    }
+
+    private function intendedDestination(Request $request): string
+    {
+        $fallback = route('dashboard', absolute: false);
+        $intended = $request->session()->pull('url.intended');
+
+        if (! is_string($intended) || $intended === '') {
+            return $fallback;
+        }
+
+        if (str_starts_with($intended, '/') && ! str_starts_with($intended, '//')) {
+            $target = $intended;
+        } else {
+            $candidate = parse_url($intended);
+            $application = parse_url((string) config('app.url'));
+
+            if (! is_array($candidate) || ! is_array($application)
+                || ! isset($candidate['host'], $application['host'])
+                || ! hash_equals(strtolower((string) $application['host']), strtolower((string) $candidate['host']))
+                || ($candidate['scheme'] ?? null) !== ($application['scheme'] ?? null)
+                || ($candidate['port'] ?? null) !== ($application['port'] ?? null)) {
+                return $fallback;
+            }
+
+            $target = ($candidate['path'] ?? '/').(isset($candidate['query']) ? '?'.$candidate['query'] : '');
+        }
+
+        $path = '/'.ltrim((string) parse_url($target, PHP_URL_PATH), '/');
+
+        return in_array($path, ['/login', '/two-factor-challenge'], true)
+            ? $fallback
+            : $target;
     }
 }
