@@ -25,7 +25,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(128, $baseTables, 'base-table count');
+            $this->assertSame(129, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -76,6 +76,23 @@ class VerifyLiveStaging extends Command
             if (! Schema::hasTable('product_events')) {
                 throw new RuntimeException('Missing commercial product-event table.');
             }
+            if (! Schema::hasTable('security_audit_logs')) {
+                throw new RuntimeException('Missing security audit table.');
+            }
+            foreach ([
+                'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
+                'two_factor_recovery_codes_acknowledged_at', 'two_factor_reenrollment_required_at',
+            ] as $column) {
+                if (! Schema::hasColumn('users', $column)) {
+                    throw new RuntimeException("Missing two-factor user column: {$column}.");
+                }
+            }
+
+            $twoFactorEnforcement = (string) config('security.two_factor_enforcement');
+            if (! in_array($twoFactorEnforcement, ['off', 'audit', 'required_admins'], true)) {
+                throw new RuntimeException('Two-factor enforcement mode is invalid.');
+            }
+            $this->assertSame(15, (int) config('security.step_up_window_minutes'), 'security step-up window');
             $this->assertSame(10, (int) DB::table('price_provider_mappings')
                 ->where('payment_provider', 'fake')->where('status', 'active')->count(), 'fake billing price mapping count');
             $stripeMappingCount = $this->assertStripeMappingsAreAbsentOrCanonical();
@@ -178,6 +195,8 @@ class VerifyLiveStaging extends Command
                 'billing_checkout_enabled' => (bool) config('billing.checkout_enabled'),
                 'notification_tables' => count($notificationTables),
                 'product_event_tables' => 1,
+                'security_audit_tables' => 1,
+                'two_factor_enforcement' => $twoFactorEnforcement,
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,
                 'self_service_staging_tenants' => max(0, $tenantCount - 2),

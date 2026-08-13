@@ -2,26 +2,26 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\Vite;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Mail\Events\MessageSending;
-use Illuminate\Support\Facades\Blade;
-use App\Commercial\EntitlementService;
-
-// ✅ R2 Observer wiring
-use App\Models\MessageLog;
-use App\Observers\MessageLogObserver;
-use App\Messaging\Services\ProductAdapterRegistry;
-use App\Messaging\Models\MessagingConnection;
-use App\Messaging\Models\MessagingPhoneNumber;
-use App\Models\System\Company;
-use App\SayaraForce\Messaging\SayaraForceMessagingAdapter;
-use App\Support\Staging\StagingSafety;
 use App\Billing\BillingGatewayResolver;
 use App\Billing\Contracts\BillingGateway;
+use App\Commercial\EntitlementService;
+use App\Messaging\Models\MessagingConnection;
+use App\Messaging\Models\MessagingPhoneNumber;
+use App\Messaging\Services\ProductAdapterRegistry;
+use App\Models\MessageLog;
+use App\Models\System\Company;
+// ✅ R2 Observer wiring
+use App\Observers\MessageLogObserver;
+use App\SayaraForce\Messaging\SayaraForceMessagingAdapter;
+use App\Support\Staging\StagingSafety;
+use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Vite;
+use Illuminate\Support\ServiceProvider;
+use Laravel\Fortify\Fortify;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,8 +30,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(BillingGateway::class, fn ($app): BillingGateway =>
-            $app->make(BillingGatewayResolver::class)->configured()
+        // Keep the existing Breeze-style controllers and use Fortify only for
+        // its audited TOTP, recovery-code, encryption, and QR primitives.
+        Fortify::ignoreRoutes();
+
+        $this->app->singleton(BillingGateway::class, fn ($app): BillingGateway => $app->make(BillingGatewayResolver::class)->configured()
         );
 
         // AI services singletons
@@ -42,7 +45,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->app->singleton(ProductAdapterRegistry::class, function (): ProductAdapterRegistry {
-            $registry = new ProductAdapterRegistry();
+            $registry = new ProductAdapterRegistry;
             $registry->register('sayaraforce', SayaraForceMessagingAdapter::class);
 
             return $registry;
@@ -103,7 +106,7 @@ class AppServiceProvider extends ServiceProvider
                 app(StagingSafety::class)->assertProviderAssetsAllowed(null, $phone->phone_number_id);
             });
 
-            Event::listen(MessageSending::class, function (MessageSending $event): bool|null {
+            Event::listen(MessageSending::class, function (MessageSending $event): ?bool {
                 $addresses = collect([
                     ...$event->message->getTo(),
                     ...$event->message->getCc(),

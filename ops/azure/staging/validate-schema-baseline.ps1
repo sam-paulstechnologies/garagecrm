@@ -157,9 +157,9 @@ COMMIT;
 '@ | Out-Null
 
     $assertions = @(Invoke-MySql @'
-SELECT COUNT(*)=128 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
+SELECT COUNT(*)=129 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=49 FROM migrations;
+SELECT COUNT(*)=50 FROM migrations;
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
 SELECT COUNT(*)=1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='messaging_number_claims';
 SELECT COUNT(*)=8 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('plan_versions','prices','plan_entitlements','subscriptions','company_entitlement_overrides','entitlement_usages','entitlement_audit_logs','billing_provider_events');
@@ -168,6 +168,8 @@ SELECT COUNT(*)=2 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() A
 SELECT COUNT(*)=3 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('price_provider_mappings','billing_checkout_sessions','billing_invoices');
 SELECT COUNT(*)=2 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('push_devices','notification_intents');
 SELECT COUNT(*)=1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='product_events';
+SELECT COUNT(*)=1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='security_audit_logs';
+SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME IN ('two_factor_secret','two_factor_recovery_codes','two_factor_confirmed_at','two_factor_recovery_codes_acknowledged_at','two_factor_reenrollment_required_at');
 SELECT COUNT(*)=5 FROM plans WHERE code IN ('free','service','growth','performance','ai_pro');
 SELECT COUNT(*)=(SELECT COUNT(*) FROM companies) FROM subscriptions;
 SELECT COUNT(*)=2 FROM companies;
@@ -199,7 +201,7 @@ SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() 
     return [ordered] @{
         cycle = $CycleName
         fingerprint = $match.Value
-        base_tables = 128
+        base_tables = 129
         views = 2
         foreign_keys_checked = $foreignKeys
         routes = $routeCount
@@ -239,7 +241,8 @@ try {
         '2026_08_10_000005_create_product_events',
         '2026_08_10_000006_create_messaging_number_claims',
         '2026_08_11_000001_harden_billing_payment_lifecycle',
-        '2026_08_12_000001_add_launch_offer_commercial_policy'
+        '2026_08_12_000001_add_launch_offer_commercial_policy',
+        '2026_08_13_000001_add_two_factor_security_to_users'
     )
     if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
         -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {

@@ -145,11 +145,18 @@
     $settingsActive =
         request()->routeIs('admin.settings.launch-setup.*') ||
         request()->routeIs('admin.settings.index') ||
+        request()->routeIs('security.two-factor.*') ||
         request()->routeIs('admin.billing.*') ||
         request()->routeIs('admin.ai.*') ||
         request()->routeIs('admin.whatsapp.settings.*');
 
     $settingsItems = [
+        [
+            'label' => 'Security',
+            'description' => 'Two-factor authentication and recovery codes',
+            'route' => 'security.two-factor.show',
+            'active' => 'security.two-factor.*',
+        ],
         [
             'label' => 'Launch Setup',
             'description' => 'Garage setup, manager handoff, working hours',

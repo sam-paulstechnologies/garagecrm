@@ -1,66 +1,49 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\ServiceDashboardController;
-
-use App\Http\Controllers\Admin\{
-    AjaxController,
-    BookingController,
-    ClientController,
-    ClientDocumentController,
-    CommunicationController,
-    DashboardController,
-    DemoController,
-    FileController,
-    GarageController,
-    GarageSummaryReportController,
-    InvoiceController,
-    JobController,
-    LeadController,
-    LeadCampaignJourneyMappingController,
-    LeadImportController,
-    LeadDuplicateController,
-    LeadSourceController,
-    GoogleLeadSourceController,
-    OpportunityController,
-    PlanController,
-    SettingsController,
-    LaunchSetupController,
-    UserController,
-    VehicleController,
-    CalendarController,
-    TemplateController,
-    AiSettingController,
-    BusinessProfileController,
-    AiPolicyController,
-    AiInsightsController,
-    AiSuggestionsController,
-    SlaDashboardController,
-    WhatsAppPerformanceController,
-    WhatsAppSettingController,
-    WhatsAppEmbeddedSignupController,
-    MessagingWhatsAppOnboardingController,
-    InboxController,
-    ConversationController,
-    SmartReplyController,
-    JourneyTimelineController,
-    AudienceController,
-    AudienceSegmentationController,
-    DuplicateClientsController,
-    MetaConnectController,
-    DocumentInboxController,
-    CommunicationLogController,
-    RetentionActionController,
-    BillingController,
-    FakeBillingCheckoutController
-};
-
+use App\Http\Controllers\Admin\AiInsightsController;
+use App\Http\Controllers\Admin\AiPolicyController;
+use App\Http\Controllers\Admin\AiSettingController;
+use App\Http\Controllers\Admin\AiSuggestionsController;
+use App\Http\Controllers\Admin\AudienceSegmentationController;
+use App\Http\Controllers\Admin\BillingController;
+use App\Http\Controllers\Admin\BookingController;
+use App\Http\Controllers\Admin\CalendarController;
+use App\Http\Controllers\Admin\ClientController;
+use App\Http\Controllers\Admin\ClientDocumentController;
+use App\Http\Controllers\Admin\CommunicationController;
+use App\Http\Controllers\Admin\CommunicationLogController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DocumentInboxController;
+use App\Http\Controllers\Admin\FakeBillingCheckoutController;
+use App\Http\Controllers\Admin\GarageSummaryReportController;
+use App\Http\Controllers\Admin\GoogleLeadSourceController;
+use App\Http\Controllers\Admin\InboxController;
+use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\JobController;
+use App\Http\Controllers\Admin\LaunchSetupController;
+use App\Http\Controllers\Admin\LeadCampaignJourneyMappingController;
+use App\Http\Controllers\Admin\LeadController;
+use App\Http\Controllers\Admin\LeadDuplicateController;
+use App\Http\Controllers\Admin\LeadImportController;
+use App\Http\Controllers\Admin\LeadSourceController;
 use App\Http\Controllers\Admin\Marketing\CampaignController as MarketingCampaignController;
 use App\Http\Controllers\Admin\Marketing\TriggerController as MarketingTriggerController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Tenant\ClientBookingController;
-use App\Http\Controllers\Public\ManagerBookingController;
+use App\Http\Controllers\Admin\MessagingWhatsAppOnboardingController;
+use App\Http\Controllers\Admin\MetaConnectController;
+use App\Http\Controllers\Admin\OpportunityController;
+use App\Http\Controllers\Admin\RetentionActionController;
+use App\Http\Controllers\Admin\ServiceDashboardController;
+use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SlaDashboardController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\VehicleController;
+use App\Http\Controllers\Admin\WhatsAppEmbeddedSignupController;
+use App\Http\Controllers\Admin\WhatsAppSettingController;
 use App\Http\Controllers\NotificationCenterController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Public\ManagerBookingController;
+use App\Http\Controllers\Tenant\ClientBookingController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -134,21 +117,26 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
                 ->name('meta');
 
             Route::get('/meta/connect', [MetaConnectController::class, 'start'])
+                ->middleware('security.step-up')
                 ->name('meta.connect');
 
             Route::get('/meta/callback', [MetaConnectController::class, 'callback'])
                 ->name('meta.callback');
 
             Route::post('/meta/select-page', [MetaConnectController::class, 'selectPage'])
+                ->middleware('security.step-up')
                 ->name('meta.select-page');
 
             Route::post('/meta/refresh', [MetaConnectController::class, 'refresh'])
+                ->middleware('security.step-up')
                 ->name('meta.refresh');
 
             Route::patch('/meta/forms/{leadSource}/capture', [LeadSourceController::class, 'updateMetaCapture'])
+                ->middleware('security.step-up')
                 ->name('meta.forms.capture');
 
             Route::post('/meta/disconnect', [MetaConnectController::class, 'disconnect'])
+                ->middleware('security.step-up')
                 ->name('meta.disconnect');
 
             /*
@@ -218,9 +206,10 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->middleware('entitled:service_dashboard')
             ->name('service-dashboard');
 
-        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggleStatus');
-        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.resetPassword');
-        Route::resource('users', UserController::class)->except(['show']);
+        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->middleware('security.step-up')->name('users.toggleStatus');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('security.step-up')->name('users.resetPassword');
+        Route::resource('users', UserController::class)->except(['show'])
+            ->middlewareFor(['store', 'update', 'destroy'], 'security.step-up');
 
         Route::get('sla-dashboard', [SlaDashboardController::class, 'index'])
             ->name('sla_dashboard');
@@ -248,9 +237,11 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('profile.edit');
 
         Route::patch('profile', [ProfileController::class, 'update'])
+            ->middleware('security.step-up')
             ->name('profile.update');
 
         Route::delete('profile', [ProfileController::class, 'destroy'])
+            ->middleware('security.step-up')
             ->name('profile.destroy');
 
         /*
@@ -262,20 +253,23 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('settings.index');
 
         Route::post('settings', [SettingsController::class, 'update'])
+            ->middleware('security.step-up')
             ->name('settings.update');
 
         Route::post('settings/test-meta', [SettingsController::class, 'testMetaInline'])
+            ->middleware('security.step-up')
             ->name('settings.test-meta');
 
         Route::post('settings/test-twilio', [SettingsController::class, 'testTwilioInline'])
+            ->middleware('security.step-up')
             ->name('settings.test-twilio');
 
         Route::middleware('role:admin')->prefix('billing')->name('billing.')->group(function () {
             Route::get('/', [BillingController::class, 'index'])->name('index');
-            Route::post('checkout', [BillingController::class, 'checkout'])->middleware('throttle:10,1')->name('checkout');
+            Route::post('checkout', [BillingController::class, 'checkout'])->middleware(['security.step-up', 'throttle:10,1'])->name('checkout');
             Route::get('success/{checkout}', [BillingController::class, 'success'])->whereNumber('checkout')->name('success');
-            Route::post('cancel', [BillingController::class, 'cancel'])->middleware('throttle:5,1')->name('cancel');
-            Route::post('portal', [BillingController::class, 'portal'])->middleware('throttle:10,1')->name('portal');
+            Route::post('cancel', [BillingController::class, 'cancel'])->middleware(['security.step-up', 'throttle:5,1'])->name('cancel');
+            Route::post('portal', [BillingController::class, 'portal'])->middleware(['security.step-up', 'throttle:10,1'])->name('portal');
             Route::get('fake/{billingCheckoutSession}', [FakeBillingCheckoutController::class, 'show'])
                 ->whereNumber('billingCheckoutSession')->name('fake.show');
             Route::post('fake/{billingCheckoutSession}/complete', [FakeBillingCheckoutController::class, 'complete'])
@@ -299,18 +293,22 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('whatsapp.settings.edit');
 
         Route::put('whatsapp/settings', [WhatsAppSettingController::class, 'update'])
+            ->middleware('security.step-up')
             ->name('whatsapp.settings.update');
 
         Route::post('whatsapp/settings/uat-reset', [WhatsAppSettingController::class, 'resetUatByPhone'])
+            ->middleware('security.step-up')
             ->name('whatsapp.settings.uat-reset');
 
         Route::get('settings/whatsapp', [WhatsAppSettingController::class, 'edit'])
             ->name('whatsapp.settings.edit.alt');
 
         Route::put('settings/whatsapp', [WhatsAppSettingController::class, 'update'])
+            ->middleware('security.step-up')
             ->name('whatsapp.settings.update.alt');
 
         Route::post('settings/whatsapp/uat-reset', [WhatsAppSettingController::class, 'resetUatByPhone'])
+            ->middleware('security.step-up')
             ->name('whatsapp.settings.uat-reset.alt');
 
         /*
@@ -328,7 +326,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('whatsapp.connect.status');
 
         Route::post('whatsapp/embedded-signup/callback', [WhatsAppEmbeddedSignupController::class, 'callback'])
-            ->middleware('throttle:10,1')
+            ->middleware(['security.step-up', 'throttle:10,1'])
             ->name('whatsapp.connect.callback');
 
         Route::post('whatsapp/connect/diagnostics', [WhatsAppEmbeddedSignupController::class, 'diagnostics'])
@@ -336,14 +334,15 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('whatsapp.connect.diagnostics');
 
         Route::post('whatsapp/connect/sync/contacts', [WhatsAppEmbeddedSignupController::class, 'requestContactSync'])
-            ->middleware('throttle:3,1')
+            ->middleware(['security.step-up', 'throttle:3,1'])
             ->name('whatsapp.connect.sync.contacts');
 
         Route::post('whatsapp/connect/sync/history', [WhatsAppEmbeddedSignupController::class, 'requestHistorySync'])
-            ->middleware('throttle:2,1')
+            ->middleware(['security.step-up', 'throttle:2,1'])
             ->name('whatsapp.connect.sync.history');
 
         Route::post('whatsapp/disconnect', [WhatsAppEmbeddedSignupController::class, 'disconnect'])
+            ->middleware('security.step-up')
             ->name('whatsapp.connect.disconnect');
 
         /*
@@ -357,28 +356,28 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::middleware(['role:admin', 'entitled:whatsapp_connect'])->prefix('messaging/whatsapp')->name('messaging.whatsapp.')->group(function () {
             Route::get('/', [MessagingWhatsAppOnboardingController::class, 'index'])->name('index');
             Route::post('number', [MessagingWhatsAppOnboardingController::class, 'storeNumber'])
-                ->middleware('throttle:10,1')
+                ->middleware(['security.step-up', 'throttle:10,1'])
                 ->name('number.store');
             Route::patch('number/{numberClaim}', [MessagingWhatsAppOnboardingController::class, 'updateNumber'])
-                ->middleware('throttle:10,1')
+                ->middleware(['security.step-up', 'throttle:10,1'])
                 ->name('number.update');
             Route::delete('number/{numberClaim}', [MessagingWhatsAppOnboardingController::class, 'destroyNumber'])
-                ->middleware('throttle:10,1')
+                ->middleware(['security.step-up', 'throttle:10,1'])
                 ->name('number.destroy');
             Route::post('onboarding/session', [MessagingWhatsAppOnboardingController::class, 'start'])
-                ->middleware('throttle:5,1')
+                ->middleware(['security.step-up', 'throttle:5,1'])
                 ->name('start');
             Route::post('onboarding/complete', [MessagingWhatsAppOnboardingController::class, 'complete'])
-                ->middleware('throttle:10,1')
+                ->middleware(['security.step-up', 'throttle:10,1'])
                 ->name('complete');
             Route::post('health', [MessagingWhatsAppOnboardingController::class, 'health'])
                 ->middleware('throttle:10,1')
                 ->name('health');
             Route::post('retry', [MessagingWhatsAppOnboardingController::class, 'retry'])
-                ->middleware('throttle:5,1')
+                ->middleware(['security.step-up', 'throttle:5,1'])
                 ->name('retry');
             Route::post('disconnect', [MessagingWhatsAppOnboardingController::class, 'disconnect'])
-                ->middleware('throttle:3,1')
+                ->middleware(['security.step-up', 'throttle:3,1'])
                 ->name('disconnect');
         });
 
@@ -800,8 +799,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         | Health
         |--------------------------------------------------------------------------
         */
-        Route::get('example', fn () =>
-            response()->json(['message' => 'Garage CRM Admin routes working'])
+        Route::get('example', fn () => response()->json(['message' => 'Garage CRM Admin routes working'])
         );
 
         /*

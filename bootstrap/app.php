@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
             \App\Http\Middleware\EnforceRouteCapability::class,
+            \App\Http\Middleware\RequireTwoFactorEnrollment::class,
         ]);
 
         /*
@@ -61,6 +62,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'force_password' => \App\Http\Middleware\ForcePasswordChange::class,
             'media_team.scope' => \App\Http\Middleware\EnsureMediaTeamMetaOnly::class,
             'entitled' => \App\Http\Middleware\RequireCapability::class,
+            'two_factor.enforced' => \App\Http\Middleware\RequireTwoFactorEnrollment::class,
+            'security.step-up' => \App\Http\Middleware\RequireRecentSecurityStepUp::class,
         ]);
 
     })

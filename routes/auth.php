@@ -8,9 +8,19 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Security\SecurityStepUpController;
+use App\Http\Controllers\Security\TwoFactorAdministrativeResetController;
+use App\Http\Controllers\Security\TwoFactorController;
 use App\Http\Middleware\EnsurePublicRegistrationEnabled;
 use Illuminate\Support\Facades\Route;
+
+Route::get('two-factor-challenge', [TwoFactorChallengeController::class, 'create'])
+    ->name('two-factor.login');
+Route::post('two-factor-challenge', [TwoFactorChallengeController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('two-factor.login.store');
 
 Route::middleware('guest')->group(function () {
     Route::middleware(EnsurePublicRegistrationEnabled::class)->group(function () {
@@ -56,7 +66,31 @@ Route::middleware('auth')->group(function () {
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
-    Route::put('password', [PasswordController::class, 'update'])->name('password.update');
+    Route::put('password', [PasswordController::class, 'update'])
+        ->middleware('security.step-up')->name('password.update');
+
+    Route::prefix('security')->name('security.')->group(function () {
+        Route::get('two-factor', [TwoFactorController::class, 'show'])->name('two-factor.show');
+        Route::post('two-factor/enable', [TwoFactorController::class, 'enable'])
+            ->middleware('password.confirm')->name('two-factor.enable');
+        Route::post('two-factor/confirm', [TwoFactorController::class, 'confirm'])
+            ->middleware('password.confirm')->name('two-factor.confirm');
+        Route::get('two-factor/recovery-codes', [TwoFactorController::class, 'recoveryCodes'])
+            ->name('two-factor.recovery-codes');
+        Route::post('two-factor/recovery-codes/acknowledge', [TwoFactorController::class, 'acknowledgeRecoveryCodes'])
+            ->name('two-factor.recovery-codes.acknowledge');
+        Route::post('two-factor/recovery-codes/regenerate', [TwoFactorController::class, 'regenerate'])
+            ->middleware('security.step-up')->name('two-factor.recovery-codes.regenerate');
+        Route::delete('two-factor', [TwoFactorController::class, 'disable'])
+            ->middleware('security.step-up')->name('two-factor.disable');
+
+        Route::get('step-up', [SecurityStepUpController::class, 'show'])->name('step-up.show');
+        Route::post('step-up', [SecurityStepUpController::class, 'store'])
+            ->middleware('throttle:10,1')->name('step-up.store');
+
+        Route::post('users/{user}/two-factor/reset', TwoFactorAdministrativeResetController::class)
+            ->middleware('security.step-up')->name('two-factor.admin-reset');
+    });
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');

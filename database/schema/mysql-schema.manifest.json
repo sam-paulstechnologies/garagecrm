@@ -177,7 +177,8 @@
     "2026_08_10_000005_create_product_events",
     "2026_08_10_000006_create_messaging_number_claims",
     "2026_08_11_000001_harden_billing_payment_lifecycle",
-    "2026_08_12_000001_add_launch_offer_commercial_policy"
+    "2026_08_12_000001_add_launch_offer_commercial_policy",
+    "2026_08_13_000001_add_two_factor_security_to_users"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -499,12 +500,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds audited platform launch-offer state, checkout/subscription promotional snapshots, and corrects the canonical introductory policy to three verified paid monthly cycles."
+    },
+    {
+      "migration": "2026_08_13_000001_add_two_factor_security_to_users",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds encrypted Fortify-compatible two-factor state to users and a sensitive-value-free security lifecycle audit ledger."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8",
-    "cycle_two_fingerprint": "30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8",
+    "cycle_one_fingerprint": "05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc",
+    "cycle_two_fingerprint": "05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

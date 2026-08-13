@@ -18,20 +18,21 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::get('/', DashboardController::class)->name('dashboard');
         Route::get('commercial', [CommercialMetricsController::class, 'index'])->name('commercial.index');
         Route::patch('commercial/launch-offer', [CommercialMetricsController::class, 'updateLaunchOffer'])
+            ->middleware('security.step-up')
             ->name('commercial.launch-offer.update');
 
         Route::get('garages', [GarageController::class, 'index'])->name('garages.index');
         Route::get('garages/{garage}', [GarageController::class, 'show'])->name('garages.show');
-        Route::patch('garages/{garage}', [GarageController::class, 'update'])->name('garages.update');
-        Route::post('garages/{garage}/activate', [GarageController::class, 'activate'])->name('garages.activate');
-        Route::post('garages/{garage}/suspend', [GarageController::class, 'suspend'])->name('garages.suspend');
+        Route::patch('garages/{garage}', [GarageController::class, 'update'])->middleware('security.step-up')->name('garages.update');
+        Route::post('garages/{garage}/activate', [GarageController::class, 'activate'])->middleware('security.step-up')->name('garages.activate');
+        Route::post('garages/{garage}/suspend', [GarageController::class, 'suspend'])->middleware('security.step-up')->name('garages.suspend');
         Route::get('garages/{garage}/users', [GarageController::class, 'users'])->name('garages.users');
         Route::get('garages/{garage}/modules', [GarageController::class, 'modules'])->name('garages.modules');
-        Route::patch('garages/{garage}/modules', [GarageController::class, 'updateModule'])->name('garages.modules.update');
+        Route::patch('garages/{garage}/modules', [GarageController::class, 'updateModule'])->middleware('security.step-up')->name('garages.modules.update');
         Route::get('garages/{garage}/channels', [GarageController::class, 'channels'])->name('garages.channels');
 
-        Route::post('platform-users', [PlatformUserController::class, 'store'])->name('platform-users.store');
-        Route::patch('platform-users/{platformUser}', [PlatformUserController::class, 'update'])->name('platform-users.update');
+        Route::post('platform-users', [PlatformUserController::class, 'store'])->middleware('security.step-up')->name('platform-users.store');
+        Route::patch('platform-users/{platformUser}', [PlatformUserController::class, 'update'])->middleware('security.step-up')->name('platform-users.update');
 
         Route::get('logs/messages', [LogController::class, 'messages'])->name('logs.messages');
         Route::get('logs/leads', [LogController::class, 'leads'])->name('logs.leads');
@@ -40,7 +41,7 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::get('messaging-connections', [MessagingConnectionController::class, 'index'])->name('messaging-connections.index');
         Route::get('messaging-connections/{messagingConnection}', [MessagingConnectionController::class, 'show'])->name('messaging-connections.show');
         Route::post('messaging-connections/{messagingConnection}/retry', [MessagingConnectionController::class, 'retry'])
-            ->middleware('throttle:3,1')
+            ->middleware(['security.step-up', 'throttle:3,1'])
             ->name('messaging-connections.retry');
 
         Route::prefix('operations-center')->name('operations.')->group(function () {

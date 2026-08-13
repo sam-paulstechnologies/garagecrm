@@ -1,38 +1,35 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\Api\BookingSummaryController;
 /*
 |--------------------------------------------------------------------------
 | Webhook Controllers
 |--------------------------------------------------------------------------
 */
-use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
-use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
-use App\Http\Controllers\Webhooks\MetaWebhookController;
-use App\Http\Controllers\Webhooks\GoogleLeadWebhookController;
-
+use App\Http\Controllers\Api\BookingTransitionController;
+use App\Http\Controllers\Api\LeadSummaryController;
+use App\Http\Controllers\Api\MeController;
+use App\Http\Controllers\Api\PushDeviceController;
 /*
 |--------------------------------------------------------------------------
 | Public API Controllers
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\Api\WebsiteLeadController;
-
 /*
 |--------------------------------------------------------------------------
 | Authenticated API Controllers
 |--------------------------------------------------------------------------
 */
-use App\Http\Controllers\Api\WhatsAppTemplateApiController;
 use App\Http\Controllers\Api\WhatsAppCampaignApiController;
 use App\Http\Controllers\Api\WhatsAppMessageApiController;
 use App\Http\Controllers\Api\WhatsAppSettingApiController;
-use App\Http\Controllers\Api\BookingSummaryController;
-use App\Http\Controllers\Api\BookingTransitionController;
-use App\Http\Controllers\Api\LeadSummaryController;
-use App\Http\Controllers\Api\MeController;
-use App\Http\Controllers\Api\PushDeviceController;
+use App\Http\Controllers\Api\WhatsAppTemplateApiController;
+use App\Http\Controllers\Webhooks\GoogleLeadWebhookController;
+use App\Http\Controllers\Webhooks\MetaWebhookController;
+use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
+use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -132,7 +129,7 @@ Route::prefix('v1')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'active', 'throttle:60,1'])
+    ->middleware(['auth:sanctum', 'active', 'two_factor.enforced', 'throttle:60,1'])
     ->group(function () {
 
         Route::get('/me', MeController::class)
@@ -213,7 +210,8 @@ Route::prefix('v1')
             ->middleware('entitled:whatsapp_connect')
             ->group(function () {
                 Route::get('/', [WhatsAppSettingApiController::class, 'show'])->name('show');
-                Route::post('/', [WhatsAppSettingApiController::class, 'update'])->name('update');
+                Route::post('/', [WhatsAppSettingApiController::class, 'update'])
+                    ->middleware('security.step-up')->name('update');
             });
 
         Route::get('/leads/{id}/summary', [LeadSummaryController::class, 'show'])

@@ -93,7 +93,7 @@ try {
             Copy-Item $file -Destination $packageRoot -Force
         }
         Set-Content -LiteralPath (Join-Path $packageRoot 'bootstrap\deployed-commit') -Value $commit -NoNewline
-        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
+        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-configcache', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke')) {
             $jobTarget = Join-Path $packageRoot "App_Data\jobs\triggered\$jobName"
             New-Item -ItemType Directory -Path $jobTarget -Force | Out-Null
             Copy-Item "ops\azure\staging\webjobs\$jobName\*" -Destination $jobTarget -Force

@@ -1,0 +1,94 @@
+<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Security\SecurityAudit;
+use App\Security\SecurityStepUp;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
+use Laravel\Fortify\Fortify;
+
+class TwoFactorChallengeController extends Controller
+{
+    public function create(Request $request): View|RedirectResponse
+    {
+        if (! $request->session()->has('login.id')) {
+            return redirect()->route('login');
+        }
+
+        return view('auth.two-factor-challenge');
+    }
+
+    public function store(Request $request, TwoFactorAuthenticationProvider $provider): RedirectResponse
+    {
+        $request->validate([
+            'code' => ['nullable', 'digits:6', 'required_without:recovery_code'],
+            'recovery_code' => ['nullable', 'string', 'max:100', 'required_without:code'],
+        ]);
+
+        $user = User::query()->find($request->session()->get('login.id'));
+        abort_unless($user && $user->hasEnabledTwoFactorAuthentication(), 401);
+
+        $key = 'two-factor-login:'.$user->id.'|'.$request->ip();
+        $max = max(3, (int) config('security.challenge_attempts_per_minute', 5));
+
+        if (RateLimiter::tooManyAttempts($key, $max)) {
+            app(SecurityAudit::class)->record('two_factor.challenge_throttled', $user, $user, [], $request);
+            throw ValidationException::withMessages(['code' => 'Too many attempts. Try again shortly.']);
+        }
+
+        $usedRecoveryCode = false;
+        $valid = false;
+
+        if ($request->filled('code')) {
+            $valid = $provider->verify(
+                Fortify::currentEncrypter()->decrypt($user->two_factor_secret),
+                (string) $request->input('code'),
+            );
+        } else {
+            $submitted = trim((string) $request->input('recovery_code'));
+            $matched = collect($user->recoveryCodes())->first(
+                fn (string $stored): bool => hash_equals($stored, $submitted)
+            );
+
+            if ($matched !== null) {
+                $user->replaceRecoveryCode($matched);
+                $valid = true;
+                $usedRecoveryCode = true;
+            }
+        }
+
+        if (! $valid) {
+            RateLimiter::hit($key, 60);
+            app(SecurityAudit::class)->record('two_factor.challenge_failed', $user, $user, [], $request);
+            throw ValidationException::withMessages(['code' => 'The authentication code was invalid.']);
+        }
+
+        RateLimiter::clear($key);
+        $remember = (bool) $request->session()->pull('login.remember', false);
+        $request->session()->forget('login.id');
+        Auth::guard('web')->login($user, $remember);
+        $request->session()->regenerate();
+
+        if (! $usedRecoveryCode) {
+            app(SecurityStepUp::class)->mark($request);
+        }
+
+        app(SecurityAudit::class)->record(
+            $usedRecoveryCode ? 'two_factor.recovery_code_used' : 'two_factor.challenge_completed',
+            $user,
+            $user,
+            [],
+            $request,
+        );
+
+        return redirect()->route('dashboard');
+    }
+}
