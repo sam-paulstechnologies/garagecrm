@@ -31,6 +31,8 @@ class StripeSandboxReadinessTest extends TestCase
         config()->set([
             'billing.provider' => 'fake',
             'billing.mode' => 'test',
+            'billing.stripe.secret_key' => 'sk_test_fixture_mapping_guard',
+            'billing.stripe.api_base' => 'https://api.stripe.com',
             'billing.stripe.api_version' => self::API_VERSION,
             'billing.stripe.webhook_secret' => 'whsec_fixture_test',
         ]);
@@ -236,6 +238,112 @@ class StripeSandboxReadinessTest extends TestCase
         $this->assertDatabaseCount('price_provider_mappings', 1);
         $this->assertSame('price_testExistingSlot001', PriceProviderMapping::query()->sole()->provider_price_id);
         $this->assertDatabaseCount('entitlement_audit_logs', 0);
+    }
+
+    public function test_mapping_command_safely_replaces_a_reviewed_typo_after_provider_validation(): void
+    {
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->sole();
+        PriceProviderMapping::query()->create([
+            'price_id' => $growth->id,
+            'payment_provider' => 'stripe',
+            'price_phase' => 'launch',
+            'provider_price_id' => 'price_testGrowthTypo001',
+            'status' => 'active',
+        ]);
+        Http::fake([
+            'https://api.stripe.com/v1/prices/price_testGrowthValid001' => Http::response([
+                'id' => 'price_testGrowthValid001',
+                'active' => true,
+                'livemode' => false,
+                'currency' => 'aed',
+                'unit_amount' => 99900,
+                'recurring' => ['interval' => 'month', 'interval_count' => 1],
+            ]),
+        ]);
+        $arguments = [
+            'plan' => Plans::GROWTH,
+            'phase' => 'launch',
+            'provider_price_id' => 'price_testGrowthValid001',
+            '--replace-current' => 'price_testGrowthTypo001',
+        ];
+
+        $this->artisan('billing:map-stripe-sandbox-price', $arguments + ['--dry-run' => true])
+            ->expectsOutputToContain('Dry run replacement passed')
+            ->assertSuccessful();
+        $this->assertSame('price_testGrowthTypo001', PriceProviderMapping::query()->sole()->provider_price_id);
+
+        $this->artisan('billing:map-stripe-sandbox-price', $arguments + ['--confirm' => true])
+            ->expectsOutputToContain('Mapping corrected and audited')
+            ->assertSuccessful();
+        $this->artisan('billing:map-stripe-sandbox-price', $arguments + ['--confirm' => true])
+            ->expectsOutputToContain('already corrected; no change')
+            ->assertSuccessful();
+
+        $this->assertSame('price_testGrowthValid001', PriceProviderMapping::query()->sole()->provider_price_id);
+        $audit = EntitlementAuditLog::query()
+            ->where('event', 'billing.stripe_price_mapping_corrected')
+            ->sole();
+        $this->assertSame('growth', $audit->context['plan_code']);
+        $this->assertSame('price_testGrowthTypo001', $audit->context['previous_provider_price_id']);
+        $this->assertSame('price_testGrowthValid001', $audit->context['provider_price_id']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_mapping_correction_refuses_provider_mismatch_and_subscription_references(): void
+    {
+        $growth = Price::query()->where('code', 'growth:2026-launch-v1:aed-monthly')->sole();
+        $mapping = PriceProviderMapping::query()->create([
+            'price_id' => $growth->id,
+            'payment_provider' => 'stripe',
+            'price_phase' => 'launch',
+            'provider_price_id' => 'price_testGrowthTypo001',
+            'status' => 'active',
+        ]);
+        Http::fake([
+            'https://api.stripe.com/v1/prices/price_testGrowthWrong001' => Http::response([
+                'id' => 'price_testGrowthWrong001',
+                'active' => true,
+                'livemode' => false,
+                'currency' => 'aed',
+                'unit_amount' => 99800,
+                'recurring' => ['interval' => 'month', 'interval_count' => 1],
+            ]),
+            'https://api.stripe.com/v1/prices/price_testGrowthValid001' => Http::response([
+                'id' => 'price_testGrowthValid001',
+                'active' => true,
+                'livemode' => false,
+                'currency' => 'aed',
+                'unit_amount' => 99900,
+                'recurring' => ['interval' => 'month', 'interval_count' => 1],
+            ]),
+        ]);
+
+        $this->artisan('billing:map-stripe-sandbox-price', [
+            'plan' => Plans::GROWTH,
+            'phase' => 'launch',
+            'provider_price_id' => 'price_testGrowthWrong001',
+            '--replace-current' => 'price_testGrowthTypo001',
+            '--confirm' => true,
+        ])->expectsOutputToContain('does not match the canonical')->assertFailed();
+
+        $company = Company::query()->create(['name' => 'Mapping Reference Guard Garage', 'status' => 'active']);
+        $subscription = app(SubscriptionManager::class)->assignPlan($company, Plans::FREE);
+        $subscription->update([
+            'payment_provider' => 'stripe',
+            'provider_price_id' => $mapping->provider_price_id,
+        ]);
+        $this->artisan('billing:map-stripe-sandbox-price', [
+            'plan' => Plans::GROWTH,
+            'phase' => 'launch',
+            'provider_price_id' => 'price_testGrowthValid001',
+            '--replace-current' => 'price_testGrowthTypo001',
+            '--confirm' => true,
+        ])->expectsOutputToContain('existing Stripe subscription references')->assertFailed();
+
+        $this->assertSame('price_testGrowthTypo001', $mapping->fresh()->provider_price_id);
+        $this->assertDatabaseMissing('entitlement_audit_logs', [
+            'event' => 'billing.stripe_price_mapping_corrected',
+        ]);
     }
 
     public function test_mapping_command_validates_internal_aed_monthly_catalogue(): void

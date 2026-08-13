@@ -3,11 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Commercial\Plans;
+use App\Models\Commercial\BillingCheckoutSession;
 use App\Models\Commercial\EntitlementAuditLog;
 use App\Models\Commercial\Price;
 use App\Models\Commercial\PriceProviderMapping;
+use App\Models\Commercial\Subscription;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class MapStripeSandboxPrice extends Command
@@ -17,7 +20,8 @@ class MapStripeSandboxPrice extends Command
         {phase : Price phase: launch or standard}
         {provider_price_id : Stripe Sandbox Price identifier beginning price_}
         {--dry-run : Validate and report without writing}
-        {--confirm : Persist the mapping after all validation passes}';
+        {--confirm : Persist the mapping after all validation passes}
+        {--replace-current= : Explicit current Price ID required for an audited mapping correction}';
 
     protected $description = 'Map one canonical SayaraForce price phase to a Stripe Sandbox Price ID';
 
@@ -40,6 +44,7 @@ class MapStripeSandboxPrice extends Command
         $planCode = (string) $this->argument('plan');
         $phase = (string) $this->argument('phase');
         $providerPriceId = (string) $this->argument('provider_price_id');
+        $replaceCurrent = trim((string) $this->option('replace-current'));
 
         try {
             $price = $this->canonicalPrice($planCode, $phase, $providerPriceId);
@@ -51,6 +56,18 @@ class MapStripeSandboxPrice extends Command
                 $providerPriceId,
                 number_format((float) $amount, 2, '.', ','),
             );
+
+            if ($replaceCurrent !== '') {
+                return $this->replaceMapping(
+                    $price,
+                    $planCode,
+                    $phase,
+                    $providerPriceId,
+                    $replaceCurrent,
+                    (float) $amount,
+                    $dryRun,
+                );
+            }
 
             if ($dryRun) {
                 $this->inspectConflicts($price, $phase, $providerPriceId);
@@ -98,6 +115,168 @@ class MapStripeSandboxPrice extends Command
             $this->error('Refused: '.$exception->getMessage());
 
             return self::FAILURE;
+        }
+    }
+
+    private function replaceMapping(
+        Price $price,
+        string $planCode,
+        string $phase,
+        string $providerPriceId,
+        string $replaceCurrent,
+        float $amount,
+        bool $dryRun,
+    ): int {
+        if (! preg_match('/^price_[A-Za-z0-9]{8,}$/', $replaceCurrent)) {
+            throw new RuntimeException('replace-current must be a Stripe Price identifier in price_... format.');
+        }
+        if ($replaceCurrent === $providerPriceId) {
+            throw new RuntimeException('replace-current must differ from the replacement Stripe Price ID.');
+        }
+
+        $this->assertStripeSandboxPrice($providerPriceId, $amount);
+        $state = $this->inspectReplacement($price, $phase, $providerPriceId, $replaceCurrent);
+        if ($dryRun) {
+            $this->info(($state === 'unchanged' ? 'Dry run passed; mapping is already corrected: ' : 'Dry run replacement passed: ')
+                ."{$planCode} / {$phase} -> {$providerPriceId}");
+
+            return self::SUCCESS;
+        }
+
+        $result = DB::transaction(function () use (
+            $price,
+            $planCode,
+            $phase,
+            $providerPriceId,
+            $replaceCurrent,
+            $amount,
+        ): string {
+            $state = $this->inspectReplacement(
+                $price,
+                $phase,
+                $providerPriceId,
+                $replaceCurrent,
+                lock: true,
+            );
+            if ($state === 'unchanged') {
+                return $state;
+            }
+
+            $mapping = PriceProviderMapping::query()
+                ->where('price_id', $price->id)
+                ->where('payment_provider', 'stripe')
+                ->where('price_phase', $phase)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $mapping->update(['provider_price_id' => $providerPriceId]);
+            EntitlementAuditLog::query()->create([
+                'event' => 'billing.stripe_price_mapping_corrected',
+                'source' => 'artisan',
+                'context' => [
+                    'plan_code' => $planCode,
+                    'price_code' => $price->code,
+                    'price_phase' => $phase,
+                    'previous_provider_price_id' => $replaceCurrent,
+                    'provider_price_id' => $providerPriceId,
+                    'currency' => 'AED',
+                    'interval' => 'month',
+                    'expected_amount' => number_format($amount, 2, '.', ''),
+                    'environment' => app()->environment(),
+                ],
+                'created_at' => now(),
+            ]);
+
+            return 'corrected';
+        });
+
+        $this->info(($result === 'unchanged' ? 'Mapping already corrected; no change: ' : 'Mapping corrected and audited: ')
+            ."{$planCode} / {$phase} -> {$providerPriceId}");
+
+        return self::SUCCESS;
+    }
+
+    private function inspectReplacement(
+        Price $price,
+        string $phase,
+        string $providerPriceId,
+        string $replaceCurrent,
+        bool $lock = false,
+    ): string {
+        $slotQuery = PriceProviderMapping::query()
+            ->where('price_id', $price->id)
+            ->where('payment_provider', 'stripe')
+            ->where('price_phase', $phase);
+        $externalQuery = PriceProviderMapping::query()
+            ->where('payment_provider', 'stripe')
+            ->where('provider_price_id', $providerPriceId);
+        if ($lock) {
+            $slotQuery->lockForUpdate();
+            $externalQuery->lockForUpdate();
+        }
+
+        $slot = $slotQuery->first();
+        if (! $slot || $slot->status !== 'active') {
+            throw new RuntimeException('the canonical plan/phase does not have an active mapping to correct.');
+        }
+        if ($slot->provider_price_id === $providerPriceId) {
+            return 'unchanged';
+        }
+        if ($slot->provider_price_id !== $replaceCurrent) {
+            throw new RuntimeException('the current mapping differs from the explicitly reviewed replace-current value.');
+        }
+
+        $external = $externalQuery->first();
+        if ($external && $external->id !== $slot->id) {
+            throw new RuntimeException('the replacement Stripe Price ID is already mapped to another canonical plan/phase.');
+        }
+        if (Subscription::query()
+            ->where('payment_provider', 'stripe')
+            ->where('provider_price_id', $replaceCurrent)
+            ->exists()) {
+            throw new RuntimeException('an existing Stripe subscription references the current mapping; automatic replacement is unsafe.');
+        }
+        if (BillingCheckoutSession::query()
+            ->where('payment_provider', 'stripe')
+            ->where('provider_price_id', $replaceCurrent)
+            ->whereIn('status', BillingCheckoutSession::ACTIVE_STATUSES)
+            ->exists()) {
+            throw new RuntimeException('an active checkout references the current mapping; complete or expire it before replacement.');
+        }
+
+        return 'replace';
+    }
+
+    private function assertStripeSandboxPrice(string $providerPriceId, float $amount): void
+    {
+        $secret = (string) config('billing.stripe.secret_key');
+        $apiBase = rtrim((string) config('billing.stripe.api_base'), '/');
+        $apiVersion = (string) config('billing.stripe.api_version');
+        if ((string) config('billing.mode') !== 'test' || ! str_starts_with($secret, 'sk_test_')) {
+            throw new RuntimeException('a resolved Stripe test key and BILLING_MODE=test are required for mapping correction.');
+        }
+        if ($apiBase !== 'https://api.stripe.com') {
+            throw new RuntimeException('mapping correction requires the official Stripe API base.');
+        }
+
+        $response = Http::withBasicAuth($secret, '')
+            ->acceptJson()
+            ->withHeaders(['Stripe-Version' => $apiVersion])
+            ->get($apiBase.'/v1/prices/'.$providerPriceId);
+        if (! $response->successful()) {
+            $type = (string) $response->json('error.type', 'unknown_error');
+            $code = (string) $response->json('error.code', 'unknown_code');
+            throw new RuntimeException("Stripe rejected the replacement Price ID ({$response->status()} {$type}/{$code}).");
+        }
+
+        $expectedCents = (int) round($amount * 100);
+        if ($response->json('id') !== $providerPriceId
+            || $response->json('active') !== true
+            || $response->json('livemode') !== false
+            || strtolower((string) $response->json('currency')) !== 'aed'
+            || (int) $response->json('unit_amount') !== $expectedCents
+            || $response->json('recurring.interval') !== 'month'
+            || (int) $response->json('recurring.interval_count') !== 1) {
+            throw new RuntimeException('the replacement Price does not match the canonical active AED monthly Sandbox price.');
         }
     }
 
