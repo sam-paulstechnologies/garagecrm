@@ -93,7 +93,7 @@ try {
             Copy-Item $file -Destination $packageRoot -Force
         }
         Set-Content -LiteralPath (Join-Path $packageRoot 'bootstrap\deployed-commit') -Value $commit -NoNewline
-        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-configcache', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke', 'sayaraforce-staging-history-uat')) {
+        foreach ($jobName in @('sayaraforce-staging-postdeploy', 'sayaraforce-staging-configcache', 'sayaraforce-staging-verify', 'sayaraforce-staging-smoke', 'sayaraforce-staging-history-uat', 'sayaraforce-staging-quick-scan-uat')) {
             $jobTarget = Join-Path $packageRoot "App_Data\jobs\triggered\$jobName"
             New-Item -ItemType Directory -Path $jobTarget -Force | Out-Null
             Copy-Item "ops\azure\staging\webjobs\$jobName\*" -Destination $jobTarget -Force
@@ -187,9 +187,13 @@ try {
         } while ((!$health -or $health.StatusCode -ne 200) -and [DateTime]::UtcNow -lt $healthDeadline)
         if (-not $health -or $health.StatusCode -ne 200) { throw 'Staging health check failed.' }
 
-        az webapp webjob continuous start --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
-            --webjob-name sayaraforce-staging-queue --only-show-errors --output none
-        if ($LASTEXITCODE -ne 0) { throw 'Staging queue WebJob could not be started after deployment.' }
+        $queueStatus = (az webapp webjob continuous list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+            --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" --output tsv).Trim()
+        if ($queueStatus -notin @('Running', 'Initializing', 'PendingRestart')) {
+            az webapp webjob continuous start --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `
+                --webjob-name sayaraforce-staging-queue --only-show-errors --output none
+            if ($LASTEXITCODE -ne 0) { throw 'Staging queue WebJob could not be started after deployment.' }
+        }
         $queueDeadline = [DateTime]::UtcNow.AddMinutes(2)
         do {
             Start-Sleep -Seconds 5

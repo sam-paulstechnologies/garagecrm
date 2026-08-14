@@ -107,7 +107,7 @@ jobs:
           done
           cp artisan composer.json composer.lock "$package/"
           printf '%s\n' "$GITHUB_SHA" > "$package/bootstrap/deployed-commit"
-          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat; do
+          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat sayaraforce-staging-quick-scan-uat; do
             target="$package/App_Data/jobs/triggered/$job"
             mkdir -p "$target"
             cp "ops/azure/staging/webjobs/$job/"* "$target/"
@@ -120,6 +120,7 @@ jobs:
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-verify/run.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-smoke/run.php'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-history-uat/run.sh'
+          unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-quick-scan-uat/run.sh'
           if unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-scheduler/'; then
             echo 'Staging scheduler must not be packaged during initial bring-up.' >&2
             exit 1
@@ -268,11 +269,18 @@ jobs:
             sleep 10
           done
           curl --fail --silent --show-error --max-time 20 "https://$host/healthz" >/dev/null
-          az webapp webjob continuous start \
+          queue_status="$(az webapp webjob continuous list \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
-            --webjob-name sayaraforce-staging-queue \
-            --only-show-errors --output none
+            --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" \
+            --output tsv)"
+          if [[ "$queue_status" != 'Running' && "$queue_status" != 'Initializing' && "$queue_status" != 'PendingRestart' ]]; then
+            az webapp webjob continuous start \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --webjob-name sayaraforce-staging-queue \
+              --only-show-errors --output none
+          fi
           for attempt in {1..24}; do
             queue_status="$(az webapp webjob continuous list \
               --resource-group "$AZURE_RESOURCE_GROUP" \
