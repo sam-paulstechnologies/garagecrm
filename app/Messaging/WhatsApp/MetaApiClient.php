@@ -112,13 +112,20 @@ class MetaApiClient
 
     public function subscribeWaba(string $wabaId, string $token): void
     {
+        $callbackOverride = $this->callbackOverride();
         $payload = $this->json(
-            Http::timeout(30)->withToken($token)->acceptJson()->post($this->url($wabaId.'/subscribed_apps')),
+            Http::timeout(30)->withToken($token)->acceptJson()->post(
+                $this->url($wabaId.'/subscribed_apps'),
+                $callbackOverride ?? [],
+            ),
             'subscription_failed',
             'Meta did not accept the webhook subscription.',
         );
 
-        if (! filter_var($payload['success'] ?? false, FILTER_VALIDATE_BOOL)) {
+        $confirmed = filter_var($payload['success'] ?? false, FILTER_VALIDATE_BOOL)
+            || ($callbackOverride !== null && $this->appIsSubscribed($payload));
+
+        if (! $confirmed) {
             throw new MessagingProvisioningException('subscription_unconfirmed', 'Meta did not confirm the webhook subscription.');
         }
     }
@@ -156,6 +163,7 @@ class MetaApiClient
     public function appIsSubscribed(array $payload): bool
     {
         $expected = $this->appId();
+        $expectedCallback = $this->callbackOverride()['override_callback_uri'] ?? null;
 
         foreach ((array) ($payload['data'] ?? []) as $row) {
             if (! is_array($row)) {
@@ -164,11 +172,55 @@ class MetaApiClient
 
             $id = data_get($row, 'whatsapp_business_api_data.id') ?? ($row['id'] ?? null);
             if ((string) $id === $expected) {
-                return true;
+                if ($expectedCallback === null) {
+                    return true;
+                }
+
+                $actualCallback = trim((string) ($row['override_callback_uri'] ?? ''));
+                if ($actualCallback !== '' && hash_equals($expectedCallback, $actualCallback)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Return the per-WABA callback override payload, or null when the feature is
+     * deliberately disabled. Values are never included in exception context.
+     */
+    private function callbackOverride(): ?array
+    {
+        if (! (bool) config('messaging.providers.meta_whatsapp.waba_callback_override_enabled', false)) {
+            return null;
+        }
+
+        $callback = trim((string) config('messaging.providers.meta_whatsapp.webhook_callback_url'));
+        $verifyToken = trim((string) config('messaging.providers.meta_whatsapp.webhook_verify_token'));
+        $canonical = rtrim((string) config('app.url'), '/').'/api/v1/webhooks/meta/whatsapp';
+        $parts = parse_url($callback);
+
+        $validCallback = is_array($parts)
+            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && filled($parts['host'] ?? null)
+            && ! isset($parts['user'])
+            && ! isset($parts['pass'])
+            && ! isset($parts['query'])
+            && ! isset($parts['fragment'])
+            && $callback === $canonical;
+
+        if (! $validCallback || $verifyToken === '') {
+            throw new MessagingProvisioningException(
+                'unsafe_webhook_callback_override',
+                'The staging-specific Meta webhook callback is not configured safely.',
+            );
+        }
+
+        return [
+            'override_callback_uri' => $callback,
+            'verify_token' => $verifyToken,
+        ];
     }
 
     public function getAppWebhookFields(): array

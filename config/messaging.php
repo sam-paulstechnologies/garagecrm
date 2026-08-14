@@ -6,7 +6,7 @@ return [
     'providers' => [
         'meta_whatsapp' => [
             'graph_base' => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
-            'api_version' => env('META_GRAPH_API_VERSION', 'v25.0'),
+            'api_version' => env('META_GRAPH_API_VERSION', env('META_GRAPH_VERSION', 'v25.0')),
             'app_id' => env('META_APP_ID'),
             'app_secret' => env('META_APP_SECRET'),
             'system_user_id' => env('META_WHATSAPP_SYSTEM_USER_ID'),
@@ -16,8 +16,14 @@ return [
             'embedded_signup_version' => env('META_WHATSAPP_EMBEDDED_SIGNUP_VERSION', 'v4'),
             'session_info_version' => env('META_WHATSAPP_SESSION_INFO_VERSION', '3'),
             'session_ttl_minutes' => (int) env('META_WHATSAPP_SIGNUP_SESSION_TTL', 15),
+            'webhook_verify_token' => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
+            'waba_callback_override_enabled' => (bool) env('META_WHATSAPP_WABA_CALLBACK_OVERRIDE_ENABLED', false),
+            'webhook_callback_url' => env('META_WHATSAPP_WEBHOOK_CALLBACK_URL'),
             'required_webhook_fields' => [
                 'messages',
+            ],
+            'required_coexistence_webhook_fields' => [
+                'history',
                 'smb_app_state_sync',
                 'smb_message_echoes',
             ],

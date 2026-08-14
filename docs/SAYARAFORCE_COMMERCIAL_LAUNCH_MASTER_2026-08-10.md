@@ -108,6 +108,13 @@ Validation evidence:
 - Phase 7 focused readiness/staging/webhook/Embedded Signup coverage passed 39 tests with 207 assertions. The complete regression suite passed 246 tests with 1,495 assertions. No migration or frontend change was introduced; the approved fingerprint remains `62e255336ee6f481ed2178673defcb9d264a8199971349771dcdb380631c1e5b`.
 - Commit `bd63053f6fee3dcf9514820bf1b0ee1253a6c2dd` deployed through workflow `31348427916`. The guarded live verifier passed with the exact marker and fingerprint, queue running, scheduler disabled, outbound guards closed, and no production write. It correctly reported live Meta guard configuration incomplete; this remains the documented human-owned dependency.
 
+### Phase 7 controlled live-UAT follow-up (2026-08-14)
+
+- The approved Meta app can coexist safely only through Meta's per-WABA callback override. The canonical onboarding client now posts the exact staging callback and staging verification token while subscribing the test WABA, then requires the same `override_callback_uri` in the provider read-back before the connection can become ready. The feature is disabled by default and fails closed on a missing, non-HTTPS, non-canonical, or credential-bearing URL.
+- The canonical readiness report now uses the same `messaging.providers.meta_whatsapp` configuration consumed by provisioning, reports the canonical owner/completion/webhook endpoints, and distinguishes inbound-only readiness from the separately authorized outbound recipient allowlist.
+- Coexistence health now requires `messages`, `history`, `smb_app_state_sync`, and `smb_message_echoes`; dedicated Cloud API health requires `messages`. No Meta request was made and no app, WABA, phone, callback, or production configuration was changed.
+- Focused Meta/WhatsApp/security/billing regression coverage passed 166 tests with 1,090 assertions. The complete suite passed 346 tests with 2,304 assertions (one intentional skip and one upstream PHPUnit deprecation); PHP lint, Pint, Bicep compilation, and the frontend production build passed.
+
 ## Phase 8 decisions and validation
 
 - The composite launch rehearsal starts at the real public-registration endpoint, asserts exactly one tenant, garage, admin, active Free subscription, zero messaging connections, WhatsApp-ready onboarding access, and the Free AI allowance.

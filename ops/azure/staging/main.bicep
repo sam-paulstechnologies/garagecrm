@@ -13,6 +13,8 @@ param logAnalyticsWorkspaceName string = 'log-sayaraforce-staging'
 param applicationInsightsName string = 'appi-sayaraforce-staging'
 param virtualNetworkName string = 'vnet-sayaraforce-staging'
 param mysqlAdministratorLogin string = 'sayaraforce_staging_app'
+@description('Canonical HTTPS Meta webhook URL. Leave empty until the staging custom domain and TLS are active.')
+param metaWhatsappWebhookCallbackUrl string = ''
 
 @secure()
 param mysqlAdministratorPassword string
@@ -399,6 +401,8 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'TWO_FACTOR_CHALLENGE_ATTEMPTS_PER_MINUTE', value: '5' }
         { name: 'META_WHATSAPP_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
         { name: 'META_VERIFY_TOKEN', value: '${keyVaultReference}meta-webhook-verification-token)' }
+        { name: 'META_WHATSAPP_WABA_CALLBACK_OVERRIDE_ENABLED', value: empty(metaWhatsappWebhookCallbackUrl) ? 'false' : 'true' }
+        { name: 'META_WHATSAPP_WEBHOOK_CALLBACK_URL', value: metaWhatsappWebhookCallbackUrl }
         { name: 'STAGING_EXPECTED_HOST', value: initialWebHost }
         { name: 'STAGING_EXPECTED_DB_DATABASE', value: mysqlDatabaseName }
         { name: 'STAGING_SCHEMA_BASELINE_APPROVED', value: 'true' }

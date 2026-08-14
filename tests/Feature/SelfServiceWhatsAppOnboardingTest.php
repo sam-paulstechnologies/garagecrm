@@ -44,7 +44,8 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
             'messaging.providers.meta_whatsapp.system_user_access_token' => null,
             'messaging.providers.meta_whatsapp.business_app_config_id' => 'business-config',
             'messaging.providers.meta_whatsapp.cloud_api_config_id' => 'cloud-config',
-            'messaging.providers.meta_whatsapp.required_webhook_fields' => ['messages', 'smb_app_state_sync', 'smb_message_echoes'],
+            'messaging.providers.meta_whatsapp.required_webhook_fields' => ['messages'],
+            'messaging.providers.meta_whatsapp.required_coexistence_webhook_fields' => ['history', 'smb_app_state_sync', 'smb_message_echoes'],
             'services.meta.app_secret' => 'test-app-secret',
             'services.meta_leads.app_secret' => 'test-app-secret',
         ]);
@@ -481,7 +482,7 @@ class SelfServiceWhatsAppOnboardingTest extends TestCase
                 ]),
                 str_contains($url, '/925717083333434/subscriptions') => Http::response(['data' => [[
                     'object' => 'whatsapp_business_account',
-                    'fields' => [['name' => 'messages'], ['name' => 'smb_app_state_sync'], ['name' => 'smb_message_echoes']],
+                    'fields' => [['name' => 'messages'], ['name' => 'history'], ['name' => 'smb_app_state_sync'], ['name' => 'smb_message_echoes']],
                 ]]]),
                 str_contains($url, '/100100') => Http::response(['id' => '100100', 'name' => 'Demo Business']),
                 str_contains($url, '/300300') => Http::response([

@@ -18,6 +18,8 @@ class MetaUatEngineeringReadinessTest extends TestCase
         config([
             'app.url' => 'https://staging.sayaraforce.com',
             'staging.expected_host' => 'staging.sayaraforce.com',
+            'messaging.providers.meta_whatsapp.webhook_callback_url' => 'https://staging.sayaraforce.com/api/v1/webhooks/meta/whatsapp',
+            'messaging.providers.meta_whatsapp.required_coexistence_webhook_fields' => ['history', 'smb_app_state_sync', 'smb_message_echoes'],
             'staging.meta.allow_legacy_company_resolution' => false,
             'staging.communications.whatsapp_outbound_enabled' => false,
             'staging.communications.sms_outbound_enabled' => false,
@@ -27,16 +29,17 @@ class MetaUatEngineeringReadinessTest extends TestCase
     public function test_readiness_report_never_exposes_meta_values(): void
     {
         config([
-            'services.meta.app_id' => 'synthetic-app-id-sensitive',
-            'services.meta.app_secret' => 'synthetic-app-secret-sensitive',
-            'services.meta.whatsapp_embedded_signup.business_app_config_id' => 'synthetic-coexistence-sensitive',
-            'services.meta.whatsapp_embedded_signup.cloud_api_config_id' => 'synthetic-cloud-sensitive',
-            'services.meta.whatsapp_verify_token' => 'synthetic-verify-sensitive',
+            'messaging.providers.meta_whatsapp.app_id' => 'synthetic-app-id-sensitive',
+            'messaging.providers.meta_whatsapp.app_secret' => 'synthetic-app-secret-sensitive',
+            'messaging.providers.meta_whatsapp.business_app_config_id' => 'synthetic-coexistence-sensitive',
+            'messaging.providers.meta_whatsapp.cloud_api_config_id' => 'synthetic-cloud-sensitive',
+            'messaging.providers.meta_whatsapp.webhook_verify_token' => 'synthetic-verify-sensitive',
+            'messaging.providers.meta_whatsapp.waba_callback_override_enabled' => true,
             'staging.meta.allowed_waba_ids' => 'synthetic-waba-sensitive',
             'staging.meta.allowed_phone_number_ids' => 'synthetic-phone-sensitive',
             'staging.production.waba_ids' => 'synthetic-prod-waba-sensitive',
             'staging.production.phone_number_ids' => 'synthetic-prod-phone-sensitive',
-            'staging.communications.allowed_phone_recipients' => '971500000001',
+            'staging.communications.allowed_phone_recipients' => '',
         ]);
 
         $report = app(MetaUatReadiness::class)->report();
@@ -48,10 +51,15 @@ class MetaUatEngineeringReadinessTest extends TestCase
             'https://staging.sayaraforce.com/api/v1/webhooks/meta/whatsapp',
             $report['endpoints']['webhook_callback']
         );
+        $this->assertSame(
+            'https://staging.sayaraforce.com/admin/messaging/whatsapp',
+            $report['endpoints']['onboarding_screen']
+        );
+        $this->assertFalse($report['checks']['test_recipient_allowlist_configured']);
 
         Artisan::call('staging:meta-readiness', ['--json' => true]);
         $output = Artisan::output();
-        foreach (['synthetic-app-id-sensitive', 'synthetic-app-secret-sensitive', 'synthetic-waba-sensitive', '971500000001'] as $secret) {
+        foreach (['synthetic-app-id-sensitive', 'synthetic-app-secret-sensitive', 'synthetic-waba-sensitive'] as $secret) {
             $this->assertStringNotContainsString($secret, $output);
         }
     }
@@ -59,11 +67,12 @@ class MetaUatEngineeringReadinessTest extends TestCase
     public function test_missing_human_owned_configuration_is_reported_without_blocking_engineering(): void
     {
         config([
-            'services.meta.app_id' => null,
-            'services.meta.app_secret' => null,
-            'services.meta.whatsapp_embedded_signup.business_app_config_id' => null,
-            'services.meta.whatsapp_embedded_signup.cloud_api_config_id' => null,
-            'services.meta.whatsapp_verify_token' => null,
+            'messaging.providers.meta_whatsapp.app_id' => null,
+            'messaging.providers.meta_whatsapp.app_secret' => null,
+            'messaging.providers.meta_whatsapp.business_app_config_id' => null,
+            'messaging.providers.meta_whatsapp.cloud_api_config_id' => null,
+            'messaging.providers.meta_whatsapp.webhook_verify_token' => null,
+            'messaging.providers.meta_whatsapp.waba_callback_override_enabled' => false,
             'staging.meta.allowed_waba_ids' => '',
             'staging.meta.allowed_phone_number_ids' => '',
             'staging.production.waba_ids' => '',

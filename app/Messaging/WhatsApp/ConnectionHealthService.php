@@ -23,8 +23,7 @@ class ConnectionHealthService
         private readonly SubscriptionService $subscriptions,
         private readonly PhoneRegistrationService $phoneRegistration,
         private readonly TokenService $tokens,
-    ) {
-    }
+    ) {}
 
     public function run(MessagingConnection $connection): array
     {
@@ -35,22 +34,26 @@ class ConnectionHealthService
 
         $results['token_decryption'] = $this->capture($connection, 'token_decryption', function () use ($connection, &$token): array {
             $token = $this->tokens->retrieve($connection);
+
             return ['status' => HealthCheckStatus::Passed, 'summary' => 'Stored authorization can be read securely.'];
         });
 
         if ($token !== null) {
             $results['token_validity'] = $this->capture($connection, 'token_validity', function () use ($token): array {
                 $this->meta->inspectToken($token);
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'Meta authorization is valid for this application.'];
             });
             $results['waba_access'] = $this->capture($connection, 'waba_access', function () use ($connection, $token): array {
                 $this->meta->getWaba((string) $connection->waba_id, $token);
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'WhatsApp Business Account is accessible.'];
             });
             $results['app_subscription'] = $this->capture($connection, 'app_subscription', function () use ($connection, $token): array {
                 if (! $this->subscriptions->isSubscribed((string) $connection->waba_id, $token)) {
                     throw new MessagingProvisioningException('app_not_subscribed', 'Meta has not confirmed webhook delivery for this account.');
                 }
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'SayaraForce is subscribed to the WhatsApp account.'];
             });
             $results['phone_access'] = $this->capture($connection, 'phone_access', function () use ($phone, $token): array {
@@ -58,6 +61,7 @@ class ConnectionHealthService
                     throw new MessagingProvisioningException('missing_phone', 'No WhatsApp number is mapped to this connection.');
                 }
                 $this->meta->getPhone($phone->phone_number_id, $token);
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'Connected WhatsApp number is accessible.'];
             });
             $results['phone_registration'] = $this->capture($connection, 'phone_registration', function () use ($connection, $phone, $token): array {
@@ -68,17 +72,25 @@ class ConnectionHealthService
                 if (! $registration['ready']) {
                     throw new MessagingProvisioningException((string) $registration['reason'], 'The WhatsApp number still requires action in Meta.');
                 }
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'WhatsApp number registration is ready.'];
             });
-            $results['webhook_fields'] = $this->capture($connection, 'webhook_fields', function (): array {
+            $results['webhook_fields'] = $this->capture($connection, 'webhook_fields', function () use ($connection): array {
                 $configured = $this->meta->getAppWebhookFields();
                 $required = (array) config('messaging.providers.meta_whatsapp.required_webhook_fields', []);
+                if ($connection->connection_mode === ConnectionMode::BusinessApp->value) {
+                    $required = array_merge(
+                        $required,
+                        (array) config('messaging.providers.meta_whatsapp.required_coexistence_webhook_fields', []),
+                    );
+                }
                 $missing = array_values(array_diff($required, $configured));
                 if ($missing !== []) {
                     throw new MessagingProvisioningException('missing_webhook_fields', 'Required WhatsApp webhook fields are not enabled.', [
                         'missing_fields' => $missing,
                     ]);
                 }
+
                 return ['status' => HealthCheckStatus::Passed, 'summary' => 'Required WhatsApp webhook fields are enabled.'];
             });
         } else {
@@ -99,6 +111,7 @@ class ConnectionHealthService
             if ($conflicts > 0) {
                 throw new MessagingProvisioningException('tenant_mapping_conflict', 'The WhatsApp number is mapped more than once.');
             }
+
             return ['status' => HealthCheckStatus::Passed, 'summary' => 'Provider assets map to exactly one garage.'];
         });
 
@@ -147,6 +160,7 @@ class ConnectionHealthService
     {
         try {
             $result = $callback();
+
             return $this->persist($connection, $key, $result['status'], $result['summary']);
         } catch (MessagingProvisioningException $exception) {
             return $this->persist(

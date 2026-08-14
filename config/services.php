@@ -17,7 +17,7 @@ return [
     ],
 
     'ses' => [
-        'key'    => env('AWS_ACCESS_KEY_ID'),
+        'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
@@ -25,7 +25,7 @@ return [
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
-            'channel'              => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
 
@@ -37,9 +37,9 @@ return [
 
     'openai' => [
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
-        'model'    => env('OPENAI_MODEL', 'gpt-4o-mini'),
-        'api_key'  => env('OPENAI_API_KEY'),
-        'timeout'  => (int) env('OPENAI_TIMEOUT', 20),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'api_key' => env('OPENAI_API_KEY'),
+        'timeout' => (int) env('OPENAI_TIMEOUT', 20),
     ],
 
     /*
@@ -54,7 +54,7 @@ return [
     */
 
     'meta' => [
-        'app_id'     => env('META_APP_ID'),
+        'app_id' => env('META_APP_ID'),
         'app_secret' => env('META_APP_SECRET'),
 
         'graph_base' => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
@@ -64,8 +64,8 @@ return [
         | Keep both names because different parts of the app may read either.
         |--------------------------------------------------------------------------
         */
-        'api_version'   => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0')),
-        'graph_version' => env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0')),
+        'api_version' => env('META_GRAPH_API_VERSION', env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0'))),
+        'graph_version' => env('META_GRAPH_API_VERSION', env('META_GRAPH_VERSION', env('WHATSAPP_META_API_VERSION', 'v25.0'))),
 
         /*
         |--------------------------------------------------------------------------
@@ -73,7 +73,7 @@ return [
         |--------------------------------------------------------------------------
         */
         'whatsapp_embedded_signup_config_id' => env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
-        'whatsapp_verify_token'              => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
+        'whatsapp_verify_token' => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
 
         'whatsapp_embedded_signup' => [
             'version' => env('META_WHATSAPP_EMBEDDED_SIGNUP_VERSION', 'v4'),
@@ -87,6 +87,8 @@ return [
             'business_app_config_id' => env('META_WHATSAPP_BUSINESS_APP_CONFIG_ID'),
             'business_app_feature_type' => 'whatsapp_business_app_onboarding',
             'session_ttl_minutes' => (int) env('META_WHATSAPP_SIGNUP_SESSION_TTL', 15),
+            'waba_callback_override_enabled' => (bool) env('META_WHATSAPP_WABA_CALLBACK_OVERRIDE_ENABLED', false),
+            'webhook_callback_url' => env('META_WHATSAPP_WEBHOOK_CALLBACK_URL'),
         ],
     ],
 
@@ -102,7 +104,7 @@ return [
         'provider' => env('WHATSAPP_PROVIDER', 'meta'),
 
         'meta' => [
-            'graph_base'  => env('WHATSAPP_META_GRAPH_BASE', env('META_GRAPH_BASE', 'https://graph.facebook.com')),
+            'graph_base' => env('WHATSAPP_META_GRAPH_BASE', env('META_GRAPH_BASE', 'https://graph.facebook.com')),
             'api_version' => env('WHATSAPP_META_API_VERSION', env('META_GRAPH_VERSION', 'v25.0')),
 
             /*
@@ -111,7 +113,7 @@ return [
             |--------------------------------------------------------------------------
             */
             'embedded_signup_config_id' => env('META_WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
-            'verify_token'              => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
+            'verify_token' => env('META_WHATSAPP_VERIFY_TOKEN', env('META_VERIFY_TOKEN')),
         ],
 
         'twilio' => [
@@ -133,10 +135,10 @@ return [
     */
 
     'meta_leads' => [
-        'app_id'        => env('META_APP_ID'),
-        'app_secret'    => env('META_APP_SECRET'),
-        'verify_token'  => env('META_VERIFY_TOKEN'),
-        'graph_base'    => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'verify_token' => env('META_VERIFY_TOKEN'),
+        'graph_base' => env('META_GRAPH_BASE', 'https://graph.facebook.com'),
         'graph_version' => env('META_GRAPH_VERSION', 'v25.0'),
     ],
 
@@ -155,7 +157,7 @@ return [
 
     'google_leads' => [
         'default_webhook_key' => env('GOOGLE_LEADS_WEBHOOK_KEY'),
-        'source_type'         => env('GOOGLE_LEADS_SOURCE_TYPE', 'google'),
+        'source_type' => env('GOOGLE_LEADS_SOURCE_TYPE', 'google'),
         'default_source_name' => env('GOOGLE_LEADS_DEFAULT_SOURCE_NAME', 'Google Ads'),
     ],
 
