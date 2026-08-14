@@ -25,7 +25,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(135, $baseTables, 'base-table count');
+            $this->assertSame(141, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -89,6 +89,19 @@ class VerifyLiveStaging extends Command
                     throw new RuntimeException("Missing history intelligence table: {$table}.");
                 }
             }
+            $quickScanTables = [
+                'quick_scan_workspaces', 'quick_scan_provider_sessions', 'quick_scan_candidates',
+                'quick_scan_messages', 'quick_scan_provider_events', 'quick_scan_events',
+            ];
+            foreach ($quickScanTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    throw new RuntimeException("Missing Quick Scan table: {$table}.");
+                }
+            }
+            if (! config('quick_scan.enabled')) {
+                throw new RuntimeException('Quick Scan must be explicitly enabled in staging.');
+            }
+            $this->assertSame(500, (int) config('quick_scan.analysis_contact_limit'), 'Quick Scan internal analysis limit');
             foreach ([
                 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
                 'two_factor_recovery_codes_acknowledged_at', 'two_factor_reenrollment_required_at',
@@ -235,6 +248,9 @@ class VerifyLiveStaging extends Command
                 'product_event_tables' => 1,
                 'security_audit_tables' => 1,
                 'history_intelligence_tables' => count($historyIntelligenceTables),
+                'quick_scan_tables' => count($quickScanTables),
+                'quick_scan_enabled' => (bool) config('quick_scan.enabled'),
+                'quick_scan_analysis_contact_limit' => (int) config('quick_scan.analysis_contact_limit'),
                 'two_factor_enforcement' => $twoFactorEnforcement,
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,

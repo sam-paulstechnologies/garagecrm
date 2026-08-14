@@ -33,9 +33,11 @@ class HistoryImporter
 
                 return $candidate;
             }
-            $usage = $this->quota->claim($candidate);
+            // Import is deliberately not a metering point. Deep analysis has
+            // already consumed the tenant-scoped unique-contact allowance.
+            $usage = $this->quota->usageFor($candidate);
             if (! $usage) {
-                $candidate->forceFill(['import_status' => 'locked'])->save();
+                $candidate->forceFill(['import_status' => 'analysis_required'])->save();
 
                 return $candidate;
             }

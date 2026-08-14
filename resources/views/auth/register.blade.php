@@ -46,22 +46,22 @@
 
                 <div class="sm:col-span-2">
                     <label for="garage_name" class="mb-2 block text-sm font-semibold text-[#D2DAEA]">Garage or business name</label>
-                    <input id="garage_name" name="garage_name" value="{{ old('garage_name') }}" required autofocus autocomplete="organization" maxlength="191" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="Example Test Garage">
+                    <input id="garage_name" name="garage_name" value="{{ old('garage_name', $quickScan?->garage_name) }}" required autofocus autocomplete="organization" maxlength="191" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="Example Test Garage">
                 </div>
 
                 <div>
                     <label for="name" class="mb-2 block text-sm font-semibold text-[#D2DAEA]">Administrator name</label>
-                    <input id="name" name="name" value="{{ old('name') }}" required autocomplete="name" maxlength="255" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="Garage administrator">
+                    <input id="name" name="name" value="{{ old('name', $quickScan?->garage_contact_name) }}" required autocomplete="name" maxlength="255" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="Garage administrator">
                 </div>
 
                 <div>
                     <label for="email" class="mb-2 block text-sm font-semibold text-[#D2DAEA]">Administrator email</label>
-                    <input id="email" type="email" name="email" value="{{ old('email') }}" required autocomplete="email" maxlength="255" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="admin@example.test">
+                    <input id="email" type="email" name="email" value="{{ old('email', $quickScan?->garage_email) }}" required autocomplete="email" maxlength="255" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="admin@example.test">
                 </div>
 
                 <div>
                     <label for="phone" class="mb-2 block text-sm font-semibold text-[#D2DAEA]">Business phone</label>
-                    <input id="phone" name="phone" value="{{ old('phone') }}" required autocomplete="tel" maxlength="30" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="+971 50 000 0000">
+                    <input id="phone" name="phone" value="{{ old('phone', $quickScan?->garage_phone) }}" required autocomplete="tel" maxlength="30" class="w-full rounded-xl border border-white/15 bg-[#09142E] px-4 py-3 text-white outline-none placeholder:text-[#75849D]" placeholder="+971 50 000 0000">
                 </div>
 
                 <div>
@@ -83,6 +83,13 @@
                     <input type="checkbox" name="terms" value="1" required class="mt-1 h-4 w-4 rounded border-white/20 bg-[#09142E] text-[#FF6A00] focus:ring-[#FF6A00]">
                     <span>I confirm these are authorised garage details and accept the <a href="{{ route('terms') }}" class="font-semibold text-[#FF9A52]">terms</a>.</span>
                 </label>
+
+                @if($quickScanToken)
+                    <input type="hidden" name="quick_scan_token" value="{{ $quickScanToken }}">
+                    <div class="sm:col-span-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                        Your Quick Scan is ready for normal onboarding. History stays quarantined and no Client is created until you review and choose Track.
+                    </div>
+                @endif
 
                 <button type="submit" class="sm:col-span-2 rounded-xl bg-[#FF6A00] px-6 py-3.5 text-base font-semibold text-white shadow-xl shadow-[#FF6A00]/20 transition hover:bg-[#E85F00]">
                     Create garage workspace

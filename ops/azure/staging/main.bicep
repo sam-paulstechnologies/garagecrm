@@ -396,6 +396,12 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'PUSH_NOTIFICATION_DRIVER', value: 'fake' }
         { name: 'PUSH_EXTERNAL_DELIVERY_ENABLED', value: 'false' }
         { name: 'PUBLIC_REGISTRATION_ENABLED', value: 'true' }
+        { name: 'QUICK_SCAN_ENABLED', value: 'true' }
+        { name: 'QUICK_SCAN_ANALYSIS_CONTACT_LIMIT', value: '500' }
+        { name: 'QUICK_SCAN_LINK_TTL_HOURS', value: '24' }
+        { name: 'QUICK_SCAN_REPORT_TTL_HOURS', value: '72' }
+        { name: 'QUICK_SCAN_DECLINE_PURGE_DELAY_HOURS', value: '24' }
+        { name: 'QUICK_SCAN_CONSENT_POLICY_VERSION', value: '2026-08-14' }
         { name: 'TWO_FACTOR_ENFORCEMENT', value: 'required_admins' }
         { name: 'SECURITY_STEP_UP_WINDOW_MINUTES', value: '15' }
         { name: 'TWO_FACTOR_CHALLENGE_ATTEMPTS_PER_MINUTE', value: '5' }

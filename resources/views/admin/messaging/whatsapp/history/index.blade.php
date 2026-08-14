@@ -6,7 +6,8 @@
 @php
     $limitLabel = $quota['limit'] === null ? 'Custom / fair use' : number_format($quota['limit']);
     $remaining = $quota['remaining'];
-    $locked = $batch ? max(0, $batch->contacts_discovered - $batch->contacts_eligible) : 0;
+    $locked = $batch ? $batch->candidates()->where('intelligence_status', 'locked')->count() : 0;
+    $stillInHistory = $batch ? max(0, $batch->contacts_discovered - $quota['used']) : 0;
     $modeLabel = str($intelligence->mode ?: 'preview')->replace('_', ' ')->title();
     $classificationLabels = [
         'likely_customer' => 'Likely Customer',
@@ -48,11 +49,11 @@
                 <div>
                     <div class="{{ in_array($batch->status, ['completed'], true) ? 'sf-badge-green' : 'sf-badge-yellow' }}">{{ str($batch->status)->replace('_', ' ')->title() }}</div>
                     <h2 class="sf-section-title mt-3 text-2xl">{{ number_format($batch->contacts_discovered) }} contacts discovered</h2>
-                    <p class="sf-section-subtitle mt-1 text-sm">{{ $limitLabel }} historical contacts under the current plan · {{ $modeLabel }} retention intelligence</p>
+                    <p class="sf-section-subtitle mt-1 text-sm">{{ number_format($quota['used']) }} / {{ $limitLabel }} unique contacts deeply analysed · {{ $modeLabel }} retention intelligence</p>
                 </div>
                 <div class="text-left lg:text-right">
-                    <div class="text-sm font-semibold text-[color:var(--sf-text-strong)]">{{ number_format($batch->contacts_eligible) }} available</div>
-                    <div class="text-sm text-[color:var(--sf-muted)]">{{ number_format($locked) }} additional contacts locked</div>
+                    <div class="text-sm font-semibold text-[color:var(--sf-text-strong)]">{{ $remaining === null ? 'Custom / fair-use allowance' : number_format($remaining).' analysis slots remaining' }}</div>
+                    <div class="text-sm text-[color:var(--sf-muted)]">{{ number_format($stillInHistory) }} discovered contacts remain in history</div>
                 </div>
             </div>
             <div class="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-5">
@@ -66,10 +67,10 @@
                     <div class="sf-mini-card p-4"><span class="{{ $badge }}">{{ $label }}</span><div class="mt-3 text-2xl font-extrabold text-[color:var(--sf-text-strong)]">{{ number_format($value) }}</div></div>
                 @endforeach
             </div>
-            @if($locked > 0)
+            @if($locked > 0 || ($remaining !== null && $remaining < 1 && $stillInHistory > 0))
                 <div class="mx-6 mb-6 rounded-xl border border-[color:var(--sf-orange)]/30 bg-[color:var(--sf-orange)]/10 p-4 text-sm">
-                    <strong>{{ number_format($batch->contacts_discovered) }} WhatsApp contacts found.</strong>
-                    {{ number_format($batch->contacts_eligible) }} are available now and {{ number_format($locked) }} more can be unlocked with a higher plan.
+                    <strong>{{ number_format($batch->contacts_discovered) }} WhatsApp contacts discovered.</strong>
+                    {{ number_format($quota['used']) }} have received deep intelligence. Upgrade to expand the cumulative unique-contact allowance; Track and Don't Track never change this meter.
                     @if(Route::has('admin.billing.index'))<a href="{{ route('admin.billing.index') }}" class="ml-2 font-semibold text-[color:var(--sf-orange)]">Compare plans</a>@endif
                 </div>
             @endif

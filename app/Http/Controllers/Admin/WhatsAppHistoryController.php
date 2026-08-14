@@ -9,7 +9,6 @@ use App\Jobs\AnalyzeWhatsAppHistoryCandidate;
 use App\Jobs\ImportTrackedWhatsAppHistory;
 use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppHistoryCandidate;
-use App\Models\WhatsApp\WhatsAppHistoryContactUsage;
 use App\Models\WhatsApp\WhatsAppHistoryImportBatch;
 use App\Services\WhatsApp\History\HistoryQuota;
 use App\Services\WhatsApp\History\HistoryReview;
@@ -56,16 +55,14 @@ class WhatsAppHistoryController extends Controller
     {
         $company = $this->company($request);
         $candidate = $this->candidate($company, $candidate)->load(['batch', 'messages']);
-        $hasUsage = WhatsAppHistoryContactUsage::query()
-            ->where('company_id', $company->id)
-            ->where('external_identity_hash', $candidate->external_identity_hash)
-            ->exists();
+        $hasUsage = $this->quota->hasUsage($candidate);
         $canPreview = $hasUsage || $candidate->intelligence_status === 'deterministic';
 
         return view('admin.messaging.whatsapp.history.show', [
             'company' => $company,
             'candidate' => $candidate,
             'canPreview' => $canPreview,
+            'canTrack' => $hasUsage,
             'quota' => $this->quota->summary($company->id),
         ]);
     }
@@ -120,8 +117,7 @@ class WhatsAppHistoryController extends Controller
             'decision' => ['required', Rule::in(['track', 'dont_track'])],
             'remove_imported_history' => ['nullable', 'boolean'],
         ]);
-        if ($data['decision'] === 'track'
-            && ! in_array($candidate->intelligence_status, ['analysed', 'deterministic'], true)) {
+        if ($data['decision'] === 'track' && ! $this->quota->hasUsage($candidate)) {
             return back()->with('error', 'Analyse this contact before approving it for CRM tracking.');
         }
         $this->review->decide(
@@ -150,8 +146,7 @@ class WhatsAppHistoryController extends Controller
             ->whereIn('public_id', $data['candidates'])
             ->get();
         foreach ($candidates as $candidate) {
-            if ($data['decision'] === 'track'
-                && ! in_array($candidate->intelligence_status, ['analysed', 'deterministic'], true)) {
+            if ($data['decision'] === 'track' && ! $this->quota->hasUsage($candidate)) {
                 continue;
             }
             $this->review->decide($candidate, $request->user(), $data['decision']);

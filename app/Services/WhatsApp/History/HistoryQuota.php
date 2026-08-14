@@ -73,4 +73,17 @@ class HistoryQuota
             ]);
         }, 3);
     }
+
+    public function usageFor(WhatsAppHistoryCandidate $candidate): ?WhatsAppHistoryContactUsage
+    {
+        return WhatsAppHistoryContactUsage::query()
+            ->where('company_id', $candidate->company_id)
+            ->where('external_identity_hash', $candidate->external_identity_hash)
+            ->first();
+    }
+
+    public function hasUsage(WhatsAppHistoryCandidate $candidate): bool
+    {
+        return $this->usageFor($candidate) !== null;
+    }
 }

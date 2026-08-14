@@ -511,6 +511,44 @@ class MetaEmbeddedSignupService
         return ['accepted' => true, 'request_id_present' => filled(data_get($payload, 'data.request_id'))];
     }
 
+    /**
+     * Verify provider-controlled Embedded Signup assets without persisting a
+     * tenant connection. Quick Scan uses this same contract in its isolated
+     * temporary workspace.
+     */
+    public function verifyGrantedSignupAssets(array $input, string $accessToken, array $tokenInspection, string $mode): array
+    {
+        $mode = $this->normalizeConnectionMode($mode);
+        $this->assertExpectedSessionEvent($mode, (string) ($input['session_event'] ?? ''));
+        $wabaId = $this->resolveWabaId($input['waba_id'] ?? null, $tokenInspection);
+
+        return [
+            'waba_id' => $wabaId,
+            'business_id' => $this->validateBusinessId($input['business_id'] ?? null, $accessToken),
+            'phone' => $this->resolveAndValidatePhoneNumber(
+                $wabaId,
+                $input['phone_number_id'] ?? null,
+                $accessToken,
+                $mode,
+            ),
+        ];
+    }
+
+    /** @return array{accepted:bool,request_id_present:bool} */
+    public function requestHistorySyncForPhone(string $phoneNumberId, string $accessToken): array
+    {
+        $response = Http::timeout(30)
+            ->withToken($accessToken)
+            ->acceptJson()
+            ->post($this->graphUrl($phoneNumberId.'/smb_app_data'), [
+                'messaging_product' => 'whatsapp',
+                'sync_type' => 'history',
+            ]);
+        $payload = $this->successfulJson($response, 'sync_request_failed', 'Meta did not accept the synchronization request.');
+
+        return ['accepted' => true, 'request_id_present' => filled(data_get($payload, 'data.request_id'))];
+    }
+
     public function diagnostics(Company $company, ?int $userId = null): array
     {
         $callbackVerification = $this->callbackVerificationStatus();

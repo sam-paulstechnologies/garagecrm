@@ -182,11 +182,14 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
         );
         $candidate = $batch->candidates()->firstOrFail();
         app(HistoryIntelligence::class)->analyse($candidate);
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
         $existing = $this->legacyCompatibleClient($company, '+971500001021');
         app(HistoryReview::class)->decide($candidate, $admin, 'track');
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
 
         $imported = app(HistoryImporter::class)->import($candidate);
         app(HistoryImporter::class)->import($candidate);
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
 
         $this->assertSame($existing->id, $imported->imported_client_id);
         $this->assertSame('matched_client', $imported->import_status);
@@ -213,6 +216,7 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
         $candidate = $batch->candidates()->firstOrFail();
         app(HistoryIntelligence::class)->analyse($candidate);
         app(HistoryReview::class)->decide($candidate, $admin, 'dont_track');
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
 
         $policy = app(HistoryTrackingPolicy::class);
         $this->assertSame('dont_track', $policy->decision($company, '971500001031'));
@@ -221,6 +225,7 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
         $this->assertDatabaseCount('clients', 0);
 
         app(HistoryReview::class)->decide($candidate, $admin, 'track');
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
         $this->assertSame('track', $policy->decision($company, '971500001031'));
         $this->assertSame('requires_resync', $candidate->fresh()->import_status);
         $this->assertDatabaseCount('clients', 0);
@@ -278,6 +283,40 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
         $this->assertSame('deterministic', $candidate->intelligence_status);
         $this->assertSame('possible_colleague', $candidate->classification);
         $this->assertDatabaseCount('whatsapp_history_contact_usages', 0);
+
+        try {
+            app(HistoryReview::class)->decide($candidate, $staff, 'track');
+            $this->fail('Deterministic metadata was incorrectly treated as paid deep analysis.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 0);
+    }
+
+    public function test_resync_reconnect_and_billing_rollover_do_not_reset_cumulative_history_usage(): void
+    {
+        $company = $this->metaCompany(Plans::FREE, 'Cumulative History Garage');
+        $batch = app(HistoryIngestion::class)->ingest(
+            $company,
+            $this->historyPayload('971500001099', ['Need an oil service quote']),
+            true,
+        );
+        app(HistoryIntelligence::class)->analyse($batch->candidates()->firstOrFail());
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
+
+        $batch->forceFill(['status' => 'completed'])->save();
+        $company->forceFill(['meta_phone_number_id' => '400500601'])->save();
+        $payload = $this->historyPayload('971500001099', ['Need an oil service quote']);
+        data_set($payload, 'metadata.phone_number_id', '400500601');
+        $resync = app(HistoryIngestion::class)->ingest($company->fresh(), $payload, true);
+        app(HistoryIntelligence::class)->analyse($resync->candidates()->firstOrFail());
+        $this->assertDatabaseCount('whatsapp_history_contact_usages', 1);
+
+        DB::table('subscriptions')->where('company_id', $company->id)->update([
+            'current_period_start' => now()->addMonth(), 'current_period_end' => now()->addMonths(2),
+        ]);
+        $this->assertSame(1, app(HistoryQuota::class)->summary($company->id)['used']);
+        $this->assertDatabaseCount('ai_customer_usages', 0);
     }
 
     public function test_cross_tenant_history_decision_is_refused(): void

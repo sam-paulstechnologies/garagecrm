@@ -10,7 +10,8 @@ Meta coexistence history
   -> bounded observational analysis
   -> administrator review
        -> Don't Track: suppress CRM processing and purge staged content
-       -> Track: consume one cumulative history-contact allowance
+       -> Deep analysis: consume one cumulative history-contact allowance
+       -> Track: no additional allowance consumption
            -> create/match Client
            -> attach historical Conversation/messages
            -> retain insight-only retention evidence
@@ -41,7 +42,7 @@ Pending candidates remain quarantined when new live messages arrive. A brand-new
 - Users, locations, WhatsApp numbers and active workflows are concurrent-resource limits.
 - AI monitored customers and campaign creation use the current subscription billing period.
 - Campaign recipients are checked per campaign at edit, enqueue and background execution time.
-- History contacts are unique tenant-scoped HMAC identities and cumulative. Reconnect, resync or a new batch does not reset consumption. An exact candidate retry is idempotent.
+- History contacts consume allowance when deep intelligence is first produced for their unique tenant-scoped HMAC identity. Track never consumes again, Don't Track never refunds, and deterministic staff detection alone does not consume. Reconnect, resync, a new batch or a billing-period rollover does not reset cumulative consumption. An exact analysis retry is idempotent.
 - Limits never discard raw normal inbound messages or prevent access to existing business records. A limit only locks premium analysis/import or creation of the limited resource.
 - AI Pro null allowances mean custom/fair-use entitlement, not a public promise of infinity.
 

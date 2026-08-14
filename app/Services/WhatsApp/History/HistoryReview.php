@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 class HistoryReview
 {
     public function __construct(
+        private readonly HistoryQuota $quota,
         private readonly HistoryBatchCounters $counters,
         private readonly HistoryAudit $audit,
     ) {}
@@ -26,6 +27,7 @@ class HistoryReview
         return DB::transaction(function () use ($candidate, $actor, $decision, $removeImportedHistory): WhatsAppHistoryCandidate {
             $candidate = WhatsAppHistoryCandidate::query()->with('batch')->lockForUpdate()->findOrFail($candidate->id);
             abort_unless((int) $candidate->company_id === (int) $actor->company_id, 403);
+            abort_if($decision === 'track' && ! $this->quota->hasUsage($candidate), 422, 'Deep history analysis is required before tracking this contact.');
             $previous = $candidate->review_decision;
             WhatsAppTrackingPreference::query()->updateOrCreate([
                 'company_id' => $candidate->company_id,

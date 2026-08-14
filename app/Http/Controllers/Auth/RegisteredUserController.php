@@ -9,6 +9,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Garage\Garage;
 use App\Models\System\Company;
 use App\Models\User;
+use App\QuickScan\QuickScanAccess;
+use App\QuickScan\QuickScanConversion;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,14 +26,23 @@ class RegisteredUserController extends Controller
     /**
      * Display the registration view.
      */
-    public function create(Request $request, ProductEventRecorder $events): View
+    public function create(Request $request, ProductEventRecorder $events, QuickScanAccess $quickScanAccess): View
     {
         $events->recordSafely(
             ProductEvents::REGISTRATION_STARTED,
             dedupeKey: 'registration-started:'.hash('sha256', $request->session()->getId()),
         );
 
-        return view('auth.register');
+        $quickScan = null;
+        if ($request->filled('quick_scan')) {
+            $quickScan = $quickScanAccess->resolve((string) $request->query('quick_scan'));
+            abort_unless($quickScan->status === 'accepted' && ! $quickScan->converted_company_id, 404);
+        }
+
+        return view('auth.register', [
+            'quickScan' => $quickScan,
+            'quickScanToken' => $quickScan ? (string) $request->query('quick_scan') : null,
+        ]);
     }
 
     /**
@@ -41,6 +52,8 @@ class RegisteredUserController extends Controller
         Request $request,
         SubscriptionManager $subscriptions,
         ProductEventRecorder $events,
+        QuickScanAccess $quickScanAccess,
+        QuickScanConversion $quickScanConversion,
     ): RedirectResponse {
         $request->merge([
             'email' => Str::lower(trim((string) $request->input('email'))),
@@ -58,10 +71,18 @@ class RegisteredUserController extends Controller
             'address' => ['required', 'string', 'min:5', 'max:255'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'terms' => ['accepted'],
+            'quick_scan_token' => ['nullable', 'string', 'size:64'],
         ]);
 
+        $quickScan = filled($validated['quick_scan_token'] ?? null)
+            ? $quickScanAccess->resolve((string) $validated['quick_scan_token'])
+            : null;
+        if ($quickScan) {
+            abort_unless($quickScan->status === 'accepted' && ! $quickScan->converted_company_id, 422);
+        }
+
         try {
-            $user = DB::transaction(function () use ($validated, $subscriptions): User {
+            $user = DB::transaction(function () use ($validated, $subscriptions, $quickScan, $quickScanConversion): User {
                 $company = Company::query()->create([
                     'name' => $validated['garage_name'],
                     'email' => $validated['email'],
@@ -78,7 +99,7 @@ class RegisteredUserController extends Controller
 
                 $subscriptions->assignFree($company);
 
-                return User::query()->create([
+                $user = User::query()->create([
                     'company_id' => $company->id,
                     'garage_id' => $garage->id,
                     'name' => $validated['name'],
@@ -89,6 +110,12 @@ class RegisteredUserController extends Controller
                     'must_change_password' => false,
                     'password' => $validated['password'],
                 ]);
+
+                if ($quickScan) {
+                    $quickScanConversion->bindToCompany($quickScan, $company);
+                }
+
+                return $user;
             }, 3);
         } catch (QueryException $exception) {
             if (in_array((string) $exception->getCode(), ['23000', '23505'], true)) {

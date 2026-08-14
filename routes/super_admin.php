@@ -8,6 +8,7 @@ use App\Http\Controllers\SuperAdmin\LogController;
 use App\Http\Controllers\SuperAdmin\MessagingConnectionController;
 use App\Http\Controllers\SuperAdmin\OperationsCenterController;
 use App\Http\Controllers\SuperAdmin\PlatformUserController;
+use App\Http\Controllers\SuperAdmin\QuickScanController;
 use App\Http\Controllers\SuperAdmin\SystemHealthController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +44,23 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:super_admin'
         Route::post('messaging-connections/{messagingConnection}/retry', [MessagingConnectionController::class, 'retry'])
             ->middleware(['security.step-up', 'throttle:3,1'])
             ->name('messaging-connections.retry');
+
+        Route::get('quick-scans', [QuickScanController::class, 'index'])->name('quick-scans.index');
+        Route::get('quick-scans/create', [QuickScanController::class, 'create'])->name('quick-scans.create');
+        Route::post('quick-scans', [QuickScanController::class, 'store'])
+            ->middleware(['security.step-up', 'throttle:10,1'])->name('quick-scans.store');
+        Route::post('quick-scans/synthetic', [QuickScanController::class, 'synthetic'])
+            ->middleware(['security.step-up', 'throttle:2,1'])->name('quick-scans.synthetic');
+        Route::get('quick-scans/{quickScan}', [QuickScanController::class, 'show'])->name('quick-scans.show');
+        Route::get('quick-scans/{quickScan}/qr', [QuickScanController::class, 'qr'])->name('quick-scans.qr');
+        Route::patch('quick-scans/{quickScan}/follow-up', [QuickScanController::class, 'followUp'])
+            ->middleware('security.step-up')->name('quick-scans.follow-up');
+        Route::post('quick-scans/{quickScan}/regenerate', [QuickScanController::class, 'regenerate'])
+            ->middleware('security.step-up')->name('quick-scans.regenerate');
+        Route::post('quick-scans/{quickScan}/revoke', [QuickScanController::class, 'revoke'])
+            ->middleware('security.step-up')->name('quick-scans.revoke');
+        Route::delete('quick-scans/{quickScan}/customer-data', [QuickScanController::class, 'purge'])
+            ->middleware('security.step-up')->name('quick-scans.purge');
 
         Route::prefix('operations-center')->name('operations.')->group(function () {
             Route::redirect('/', '/super-admin/operations-center/journey-flow')->name('index');

@@ -181,7 +181,8 @@
     "2026_08_13_000001_add_two_factor_security_to_users",
     "2026_08_14_000001_harden_provider_subscription_reconciliation",
     "2026_08_14_000002_create_whatsapp_history_intelligence",
-    "2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes"
+    "2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes",
+    "2026_08_14_000004_create_quick_scan_workspaces"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -527,12 +528,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Fail-closed mode-only correction for dotted custom/fair-use limit keys in an already reconciled pre-launch catalogue; it creates no tables and changes no price, subscription, invoice or provider mapping."
+    },
+    {
+      "migration": "2026_08_14_000004_create_quick_scan_workspaces",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds the temporary platform-created Quick Scan workspace, provider-session quarantine, candidate/message quarantine, idempotent provider-event ledger, and privacy-safe product audit without creating tenant CRM or subscription records."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63",
-    "cycle_two_fingerprint": "1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63",
+    "cycle_one_fingerprint": "995333181942e36ee3b141d996aa71d12fc502133447f75eda7ebec817d51005",
+    "cycle_two_fingerprint": "995333181942e36ee3b141d996aa71d12fc502133447f75eda7ebec817d51005",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

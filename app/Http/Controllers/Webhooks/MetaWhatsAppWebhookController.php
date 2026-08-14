@@ -13,6 +13,7 @@ use App\Models\Conversation;
 use App\Models\MessageLog;
 use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppWebhookEvent;
+use App\QuickScan\QuickScanWebhookRouter;
 use App\Services\WhatsApp\History\HistoryTrackingPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +131,9 @@ class MetaWhatsAppWebhookController extends Controller
         $phoneNumberId = (string) data_get($value, 'metadata.phone_number_id', '');
         $context = app(WebhookRouter::class)->resolve($entryWabaId, $phoneNumberId);
         if (! $context) {
+            if (app(QuickScanWebhookRouter::class)->capture($entryWabaId, $phoneNumberId, $field, $value)) {
+                return;
+            }
             app(WebhookRouter::class)->quarantine($entryWabaId, $phoneNumberId, $field, $value);
             Log::warning('[SF-WA Connect] Webhook tenant could not be resolved uniquely', [
                 'field' => $field,

@@ -41,7 +41,7 @@
     <section class="sf-card mt-6 p-6">
         <h2 class="sf-section-title">Your decision</h2><p class="mt-2 text-sm text-[color:var(--sf-muted)]">AI and deterministic signals are suggestions. You decide whether this relationship belongs in the CRM.</p>
         <div class="mt-5 flex flex-wrap gap-3">
-            @if($canPreview)<form method="POST" action="{{ route('admin.messaging.whatsapp.history.decision', $candidate) }}">@csrf<input type="hidden" name="decision" value="track"><button class="sf-btn-primary">Track</button></form>@endif
+            @if($canTrack)<form method="POST" action="{{ route('admin.messaging.whatsapp.history.decision', $candidate) }}">@csrf<input type="hidden" name="decision" value="track"><button class="sf-btn-primary">Track</button></form>@endif
             <form method="POST" action="{{ route('admin.messaging.whatsapp.history.decision', $candidate) }}" onsubmit="return confirm('Stop future CRM tracking for this number?');">@csrf<input type="hidden" name="decision" value="dont_track"><button class="sf-btn-danger">Don't Track</button></form>
         </div>
         @if($candidate->imported_client_id)

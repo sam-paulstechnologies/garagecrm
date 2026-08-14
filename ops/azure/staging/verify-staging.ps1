@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $resourceGroup = 'rg-sayaraforce-staging'
 $webAppName = 'app-sayaraforce-staging'
 $productionAppName = 'app-sayaraforce'
-$expectedFingerprint = '1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63'
+$expectedFingerprint = '995333181942e36ee3b141d996aa71d12fc502133447f75eda7ebec817d51005'
 
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
     throw 'Azure CLI is required. No verification was performed.'

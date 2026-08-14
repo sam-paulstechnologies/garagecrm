@@ -192,6 +192,8 @@ Route::post('/webhooks/billing/{provider}', BillingWebhookController::class)
 */
 require __DIR__.'/auth.php';
 
+require __DIR__.'/quick_scan.php';
+
 if (file_exists(__DIR__.'/admin.php')) {
     require __DIR__.'/admin.php';
 }
