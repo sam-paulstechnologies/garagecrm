@@ -78,7 +78,9 @@ class CommercialFoundationSeeder extends Seeder
             foreach (Capabilities::tenant() as $capability) {
                 $isLimit = Capabilities::isLimit($capability);
                 $allowance = $isLimit ? ($definition['limits'][$capability] ?? null) : null;
-                $enabled = $isLimit ? $allowance !== null : in_array($capability, $definition['capabilities'], true);
+                $enabled = $isLimit
+                    ? array_key_exists($capability, (array) ($definition['limits'] ?? []))
+                    : in_array($capability, $definition['capabilities'], true);
 
                 $entitlement = PlanEntitlement::query()->firstOrCreate(
                     ['plan_version_id' => $version->id, 'capability' => $capability],

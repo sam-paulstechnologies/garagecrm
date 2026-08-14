@@ -13,7 +13,7 @@ Authoritative artifacts:
 - `database/schema/mysql-schema.safety.json`: machine-readable data-safety result.
 - `ops/azure/staging/production-view-remediation.sql`: unexecuted production repair plan.
 
-The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. The commercial, AI metering, billing, mobile notification, product-event, WhatsApp number-claim, verified-payment, and Launch Offer migrations culminated in fingerprint `30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8`. Fortify-compatible two-factor security produced `05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc`; the additive provider-subscription reconciliation and immutable invoice-attribution migration now produces the current reproducible staging fingerprint `a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606`.
+The sanitized production structural fingerprint is `ccc57e2ed0b89978ade9cf9ee7bca374c33b77d7a6646bd18a23a13a4bf29299`. After the messaging migration, the pre-commercial application fingerprint was `379628225a4c72c4e7eb236e447c90d7dd1da592dc340a5a3ea9cf99e256c21e`. The commercial, AI metering, billing, mobile notification, product-event, WhatsApp number-claim, verified-payment, and Launch Offer migrations culminated in fingerprint `30898ba38ad4b1d9031e8cdd26d99eb0d09f99695ffeccb7fa2a9c0fe6d91ce8`. Fortify-compatible two-factor security produced `05821bb5a167857fd48222d8bb16fd98ed153db4c72c0681457f5c13d6dca5fc`; provider-subscription reconciliation produced `a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606`. The additive WhatsApp history intelligence and generic quota-ledger migration now produces the current reproducible staging fingerprint `1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63`.
 
 ## Reconciled inventories
 
@@ -64,7 +64,7 @@ The production ledger has 41 entries, but it is not copied blindly. Each tracked
 - `2026_08_11_000001_harden_billing_payment_lifecycle` keeps checkout confirmation non-entitling and adds historical checkout/price/test attribution to verified provider invoices.
 - `2026_08_12_000001_add_launch_offer_commercial_policy` adds the audited global offer state and per-subscription introductory history.
 - `2026_08_13_000001_add_two_factor_security_to_users` adds encrypted two-factor state to users and the security lifecycle audit ledger.
-- Together they produce 129 base tables in the current validated fresh database.
+- Together they produce 135 base tables in the current validated fresh database.
 - The queue-shaped `0001_01_01_000002_create_jobs_table` is marked represented because running it would conflict with operational `jobs`.
 - The static-data migration `2026_06_12_000001_add_vehicle_renewal_audience_segmentations` is represented structurally, but its rows are deliberately excluded by the data-free policy.
 - Laravel loads the schema SQL only when the target database is empty. A populated database continues from its `migrations` ledger, and a second `migrate --force` has no pending migration or duplicate-table effect.
@@ -93,7 +93,7 @@ Cycle results:
 
 | Check | Cycle one | Cycle two |
 |---|---:|---:|
-| Base tables | 129 | 129 |
+| Base tables | 135 | 135 |
 | Views | 2 | 2 |
 | Messaging tables | 7 exactly once | 7 exactly once |
 | Messaging number-claim tables | 1 | 1 |
@@ -105,7 +105,7 @@ Cycle results:
 | Synthetic companies/garages | 2 / 2 | 2 / 2 |
 | Foreign-key constraints checked | 169 | 169 |
 | Foreign-key violations | 0 | 0 |
-| Structural fingerprint | `a005cb06...3606` | `a005cb06...3606` |
+| Structural fingerprint | `1edb26c7...8d63` | `1edb26c7...8d63` |
 
 For Commercial Foundation Phase 1, the full suite passed 204 tests with 1,260 assertions and one intentional integration skip. Phase 2 then passed the full 211-test execution (200 warning-classified because the clean release worktree intentionally has no committed Vite manifest, plus 11 ordinary passes) with 1,290 assertions. The guarded MySQL surface test passed 33 assertions in both Phase 2 cycles. PHP lint and the Vite production build also passed.
 

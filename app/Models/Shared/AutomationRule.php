@@ -14,12 +14,15 @@ class AutomationRule extends Model
         'company_id',
         'name',
         'description',
-        'is_active',
+        'condition',
+        'action',
+        'template_id',
+        'active',
     ];
 
     protected $casts = [
         'company_id' => 'integer',
-        'is_active' => 'boolean',
+        'active' => 'boolean',
     ];
 
     public function company()

@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers\Shared;
 
+use App\Commercial\ResourceLimitService;
 use App\Http\Controllers\Controller;
 use App\Models\Shared\AutomationRule;
-use Illuminate\Http\Request;
+use App\Models\System\Company;
 use Illuminate\Support\Facades\Schema;
 
 class AutomationRuleController extends Controller
@@ -27,7 +28,7 @@ class AutomationRuleController extends Controller
         );
     }
 
-    public function index()
+    public function index(ResourceLimitService $limits)
     {
         $this->requireTenantColumn();
 
@@ -38,10 +39,12 @@ class AutomationRuleController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('automation_rules.index', compact('automationRules'));
+        $workflowUsage = $limits->workflowSummary(Company::query()->findOrFail($companyId));
+
+        return view('automation_rules.index', compact('automationRules', 'workflowUsage'));
     }
 
-    public function toggle($id)
+    public function toggle($id, ResourceLimitService $limits)
     {
         $this->requireTenantColumn();
 
@@ -52,7 +55,11 @@ class AutomationRuleController extends Controller
             ->where('id', $id)
             ->firstOrFail();
 
-        $rule->is_active = ! (bool) $rule->is_active;
+        if (! (bool) $rule->active) {
+            $limits->assertCanActivateWorkflow(Company::query()->findOrFail($companyId), (int) $rule->id);
+        }
+
+        $rule->active = ! (bool) $rule->active;
         $rule->save();
 
         return redirect()

@@ -18,6 +18,13 @@
         </a>
     </div>
 
+    <div class="mb-5 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-950">
+        <strong>Campaign allowance:</strong>
+        {{ $quotaSummary['used'] }} / {{ $quotaSummary['limit'] ?? 'Fair use' }} this billing period
+        <span class="mx-2">&bull;</span>
+        Maximum audience: {{ $quotaSummary['recipients'] ?? 'Custom' }} contacts per campaign
+    </div>
+
     @if (session('success'))
         <div class="mb-4 p-3 rounded bg-green-50 text-green-800">
             {{ session('success') }}

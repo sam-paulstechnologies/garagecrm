@@ -211,6 +211,15 @@ Validation evidence:
 - Local focused coverage passed 51 tests with 409 assertions before the final de-duplication extension; the complete suite passed 296 tests (285 warning-classified view-manifest cases plus 11 ordinary passes) with 1,905 assertions. Changed-file Pint, repository PHP lint and the frontend production build passed.
 - Staging release evidence, exact commit, workflow, live mapping import, ON/OFF verification and final provider state are recorded after deployment below/with the release handoff. `BILLING_PROVIDER` remains `fake`; Stripe credentials, webhooks, card charges, annual pricing, Meta and production remain unchanged.
 
+## WhatsApp coexistence history intelligence and package limits (2026-08-14)
+
+- The existing coexistence history webhook now terminates in an encrypted, tenant-scoped review quarantine. Discovery and analysis create no Client, Lead, Opportunity, Booking, Job, campaign, reminder, automation or outbound message. Only administrator-approved Track contacts can be imported into the existing Client/Conversation/MessageLog structure.
+- Don't Track becomes a tenant-scoped future-ingress policy, purges unnecessary staged bodies/media and is reversible only through a deliberate resync. Pending candidates quarantine subsequent live messages; genuinely new live senders retain the ordinary CRM lifecycle.
+- The canonical launch matrix now consistently enforces users, locations, WhatsApp numbers, billing-period AI customers, cumulative history contacts, billing-period campaign creation, per-campaign recipients and concurrent active workflows. AI Pro remains custom/fair-use rather than a hard-coded public allowance.
+- Bounded observational intelligence suggests customer/personal/colleague/unknown and high/medium/low/none retention evidence. It never emits or executes a CRM action, and deterministic staff matching precedes semantic analysis.
+- The additive migration creates six review/metering tables and historical-message attribution. Two clean MySQL cycles passed with 135 base tables, two valid views, 52 migrations, 191 foreign keys, 484 routes and identical fingerprint `1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63`.
+- The full architecture, privacy semantics, exact limits and controlled real-Meta stopping point are documented in `docs/SAYARAFORCE_WHATSAPP_HISTORY_INTELLIGENCE.md`.
+
 ## Human dependency queue
 
 1. Stripe: create/verify the UAE business account, complete KYC/bank setup, provide test keys/webhook secret, later approve live credentials. Engineering uses a fake/test adapter until then.

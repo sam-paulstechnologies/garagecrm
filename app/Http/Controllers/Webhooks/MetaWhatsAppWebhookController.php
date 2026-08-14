@@ -13,6 +13,7 @@ use App\Models\Conversation;
 use App\Models\MessageLog;
 use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppWebhookEvent;
+use App\Services\WhatsApp\History\HistoryTrackingPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -203,6 +204,17 @@ class MetaWhatsAppWebhookController extends Controller
         $from = $this->digits($message['from'] ?? null);
         if ($from === '') {
             $event->forceFill(['status' => 'ignored', 'error_code' => 'missing_sender', 'processed_at' => now()])->save();
+
+            return;
+        }
+
+        $trackingDecision = app(HistoryTrackingPolicy::class)->decision($company, $from);
+        if ($trackingDecision === 'dont_track') {
+            $event->forceFill([
+                'status' => 'suppressed', 'error_code' => 'dont_track', 'processed_at' => now(),
+            ])->save();
+            $company->forceFill(['whatsapp_last_inbound_at' => now()])->save();
+
             return;
         }
 
@@ -214,6 +226,29 @@ class MetaWhatsAppWebhookController extends Controller
         }
         if ($body === '') {
             $body = '[Unsupported WhatsApp message]';
+        }
+
+        if ($trackingDecision === 'pending') {
+            app(HistoryTrackingPolicy::class)->stagePendingLiveMessage(
+                $company,
+                (string) data_get($value, 'metadata.phone_number_id', ''),
+                $from,
+                $messageId,
+                'in',
+                $type,
+                $body,
+                [
+                    'media_id' => data_get($message, $type.'.id'),
+                    'mime_type' => data_get($message, $type.'.mime_type'),
+                ],
+                filled($message['timestamp'] ?? null) ? (int) $message['timestamp'] : null,
+            );
+            $event->forceFill([
+                'status' => 'quarantined', 'error_code' => 'pending_history_review', 'processed_at' => now(),
+            ])->save();
+            $company->forceFill(['whatsapp_last_inbound_at' => now()])->save();
+
+            return;
         }
 
         $profile = collect((array) ($value['contacts'] ?? []))
@@ -264,6 +299,12 @@ class MetaWhatsAppWebhookController extends Controller
         }
 
         $customer = $this->digits($echo['to'] ?? $echo['recipient_id'] ?? $echo['from'] ?? null);
+        $trackingDecision = $customer === '' ? 'normal' : app(HistoryTrackingPolicy::class)->decision($company, $customer);
+        if ($trackingDecision === 'dont_track') {
+            $event->forceFill(['status' => 'suppressed', 'error_code' => 'dont_track', 'processed_at' => now()])->save();
+
+            return;
+        }
         $lead = $customer === '' || ! Schema::hasTable('leads') ? null : Lead::query()
             ->where('company_id', $company->id)
             ->where('phone_norm', $customer)
@@ -276,6 +317,26 @@ class MetaWhatsAppWebhookController extends Controller
             ->first() : null;
         $type = (string) ($echo['type'] ?? 'unknown');
         $body = $this->messageBody($echo) ?: '['.ucfirst($type).']';
+
+        if ($trackingDecision === 'pending') {
+            app(HistoryTrackingPolicy::class)->stagePendingLiveMessage(
+                $company,
+                (string) data_get($value, 'metadata.phone_number_id', ''),
+                $customer,
+                $messageId,
+                'out',
+                $type,
+                $body,
+                [
+                    'media_id' => data_get($echo, $type.'.id'),
+                    'mime_type' => data_get($echo, $type.'.mime_type'),
+                ],
+                filled($echo['timestamp'] ?? null) ? (int) $echo['timestamp'] : null,
+            );
+            $event->forceFill(['status' => 'quarantined', 'error_code' => 'pending_history_review', 'processed_at' => now()])->save();
+
+            return;
+        }
 
         MessageLog::query()->firstOrCreate([
             'company_id' => $company->id,
@@ -325,6 +386,7 @@ class MetaWhatsAppWebhookController extends Controller
             ->first();
         if (! $message) {
             $event->forceFill(['status' => 'ignored', 'error_code' => 'message_not_found', 'processed_at' => now()])->save();
+
             return;
         }
 
@@ -333,6 +395,7 @@ class MetaWhatsAppWebhookController extends Controller
         $currentRank = self::STATUS_RANK[$current] ?? 0;
         if ($providerStatus !== 'failed' && $incomingRank < $currentRank) {
             $event->forceFill(['status' => 'ignored', 'error_code' => 'stale_status', 'processed_at' => now()])->save();
+
             return;
         }
 

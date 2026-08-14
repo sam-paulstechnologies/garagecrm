@@ -3,6 +3,13 @@
 return [
     'default_product' => env('MESSAGING_PRODUCT_KEY', 'sayaraforce'),
 
+    'history' => [
+        'hmac_key' => env('WHATSAPP_HISTORY_HMAC_KEY') ?: env('APP_KEY'),
+        'review_retention_days' => (int) env('WHATSAPP_HISTORY_REVIEW_RETENTION_DAYS', 30),
+        'analysis_message_limit' => (int) env('WHATSAPP_HISTORY_ANALYSIS_MESSAGE_LIMIT', 40),
+        'analysis_character_limit' => (int) env('WHATSAPP_HISTORY_ANALYSIS_CHARACTER_LIMIT', 12000),
+    ],
+
     'providers' => [
         'meta_whatsapp' => [
             'graph_base' => env('META_GRAPH_BASE', 'https://graph.facebook.com'),

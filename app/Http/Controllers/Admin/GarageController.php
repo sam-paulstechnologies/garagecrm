@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Commercial\ResourceLimitService;
 use App\Http\Controllers\Controller;
 use App\Models\Garage\Garage;
+use App\Models\System\Company;
 use Illuminate\Http\Request;
 
 class GarageController extends Controller
@@ -12,7 +14,7 @@ class GarageController extends Controller
     {
         $companyId = (int) (auth()->user()?->company_id ?? 0);
 
-        abort_if(!$companyId, 403);
+        abort_if(! $companyId, 403);
 
         return $companyId;
     }
@@ -33,20 +35,21 @@ class GarageController extends Controller
         return view('admin.garages.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ResourceLimitService $limits)
     {
         $companyId = $this->companyId();
+        $limits->assertCanCreateLocation(Company::query()->findOrFail($companyId));
 
         $data = $request->validate([
-            'name'       => 'required|string|max:191',
-            'phone'      => 'nullable|string|max:30',
-            'email'      => 'nullable|email|max:191',
-            'address'    => 'nullable|string|max:255',
+            'name' => 'required|string|max:191',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:191',
+            'address' => 'nullable|string|max:255',
             'is_default' => 'nullable|boolean',
         ]);
 
         $data['company_id'] = $companyId;
-        $data['is_default'] = !empty($data['is_default']) ? 1 : 0;
+        $data['is_default'] = ! empty($data['is_default']) ? 1 : 0;
 
         // If setting default, unset other defaults for the same company
         if ($data['is_default'] === 1) {
@@ -64,7 +67,7 @@ class GarageController extends Controller
     {
         $companyId = $this->companyId();
 
-        abort_unless((int)$garage->company_id === $companyId, 403);
+        abort_unless((int) $garage->company_id === $companyId, 403);
 
         return view('admin.garages.show', compact('garage'));
     }
@@ -73,7 +76,7 @@ class GarageController extends Controller
     {
         $companyId = $this->companyId();
 
-        abort_unless((int)$garage->company_id === $companyId, 403);
+        abort_unless((int) $garage->company_id === $companyId, 403);
 
         return view('admin.garages.edit', compact('garage'));
     }
@@ -82,17 +85,17 @@ class GarageController extends Controller
     {
         $companyId = $this->companyId();
 
-        abort_unless((int)$garage->company_id === $companyId, 403);
+        abort_unless((int) $garage->company_id === $companyId, 403);
 
         $data = $request->validate([
-            'name'       => 'required|string|max:191',
-            'phone'      => 'nullable|string|max:30',
-            'email'      => 'nullable|email|max:191',
-            'address'    => 'nullable|string|max:255',
+            'name' => 'required|string|max:191',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:191',
+            'address' => 'nullable|string|max:255',
             'is_default' => 'nullable|boolean',
         ]);
 
-        $data['is_default'] = !empty($data['is_default']) ? 1 : 0;
+        $data['is_default'] = ! empty($data['is_default']) ? 1 : 0;
 
         // If setting default, unset other defaults for the same company
         if ($data['is_default'] === 1) {
@@ -112,7 +115,7 @@ class GarageController extends Controller
     {
         $companyId = $this->companyId();
 
-        abort_unless((int)$garage->company_id === $companyId, 403);
+        abort_unless((int) $garage->company_id === $companyId, 403);
 
         $garage->delete();
 

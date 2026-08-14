@@ -2,11 +2,13 @@
 
 namespace App\Services\Marketing;
 
+use App\Commercial\CampaignQuotaService;
 use App\Commercial\EntitlementService;
 use App\Models\Client\Lead;
 use App\Models\Marketing\Campaign;
 use App\Models\Marketing\CampaignEnrollment;
 use App\Models\Marketing\CampaignLog;
+use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use Carbon\Carbon;
@@ -14,21 +16,39 @@ use Illuminate\Support\Facades\Log;
 
 class CampaignDispatcher
 {
-    public function __construct(private readonly EntitlementService $entitlements) {}
+    public function __construct(
+        private readonly EntitlementService $entitlements,
+        private readonly CampaignQuotaService $quota,
+    ) {}
 
     public function enroll(int $companyId, Campaign $campaign, $subjectType, $subjectId): CampaignEnrollment
     {
+        $existing = CampaignEnrollment::query()->where([
+            'company_id' => $companyId,
+            'campaign_id' => $campaign->id,
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+        ])->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $this->quota->assertRecipients(
+            Company::query()->findOrFail($companyId),
+            $campaign->enrollments()->count() + 1,
+        );
+
         return CampaignEnrollment::firstOrCreate(
             [
-                'company_id'   => $companyId,
-                'campaign_id'  => $campaign->id,
+                'company_id' => $companyId,
+                'campaign_id' => $campaign->id,
                 'subject_type' => $subjectType,
-                'subject_id'   => $subjectId,
+                'subject_id' => $subjectId,
             ],
             [
-                'status'       => 'in_progress',
+                'status' => 'in_progress',
                 'current_step' => 1,
-                'next_run_at'  => now(),
+                'next_run_at' => now(),
             ]
         );
     }
@@ -51,12 +71,27 @@ class CampaignDispatcher
             return;
         }
 
+        try {
+            $this->quota->assertRecipients(
+                Company::query()->findOrFail((int) $enrollment->company_id),
+                $campaign->enrollments()->count(),
+            );
+        } catch (\Illuminate\Validation\ValidationException) {
+            Log::notice('[CampaignDispatcher] Recipient entitlement denied campaign execution', [
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
+                'enrollment_id' => $enrollment->id,
+            ]);
+
+            return;
+        }
+
         if ((int) $campaign->company_id !== (int) $enrollment->company_id) {
             Log::warning('[CampaignDispatcher] Campaign company mismatch', [
-                'company_id'          => $enrollment->company_id,
-                'campaign_id'         => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'campaign_company_id' => $campaign->company_id,
-                'enrollment_id'       => $enrollment->id,
+                'enrollment_id' => $enrollment->id,
             ]);
 
             return;
@@ -108,18 +143,18 @@ class CampaignDispatcher
 
         if (! $template) {
             Log::warning('[CampaignDispatcher] WhatsApp template missing', [
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'step_id'       => $step->id ?? null,
-                'template_id'   => $step->template_id ?? null,
+                'step_id' => $step->id ?? null,
+                'template_id' => $step->template_id ?? null,
             ]);
 
             CampaignLog::create([
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'message'       => 'Skipped WhatsApp step: template missing',
+                'message' => 'Skipped WhatsApp step: template missing',
             ]);
 
             return;
@@ -130,18 +165,18 @@ class CampaignDispatcher
 
         if (! $phone || ! $lead) {
             Log::warning('[CampaignDispatcher] Missing phone or lead', [
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'subject_type'  => $enrollment->subject_type,
-                'subject_id'    => $enrollment->subject_id,
+                'subject_type' => $enrollment->subject_type,
+                'subject_id' => $enrollment->subject_id,
             ]);
 
             CampaignLog::create([
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'message'       => 'Skipped WhatsApp step: missing phone or lead',
+                'message' => 'Skipped WhatsApp step: missing phone or lead',
             ]);
 
             return;
@@ -151,19 +186,19 @@ class CampaignDispatcher
 
         if (! $eventKey) {
             Log::warning('[CampaignDispatcher] Missing WhatsApp event key', [
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'step_id'       => $step->id ?? null,
-                'template_id'   => $template->id,
+                'step_id' => $step->id ?? null,
+                'template_id' => $template->id,
                 'template_name' => $template->name,
             ]);
 
             CampaignLog::create([
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'message'       => "Skipped WhatsApp step: missing event key for template {$template->name}",
+                'message' => "Skipped WhatsApp step: missing event key for template {$template->name}",
             ]);
 
             return;
@@ -177,53 +212,53 @@ class CampaignDispatcher
                 (string) $eventKey,
                 (string) $phone,
                 array_merge($vars, [
-                    'company_id'    => (int) $enrollment->company_id,
-                    'campaign_id'   => (int) $campaign->id,
+                    'company_id' => (int) $enrollment->company_id,
+                    'campaign_id' => (int) $campaign->id,
                     'enrollment_id' => (int) $enrollment->id,
-                    'step_id'       => $step->id ?? null,
-                    'lead_id'       => (int) $lead->id,
-                    'event_key'     => (string) $eventKey,
-                    'template_id'   => (int) $template->id,
+                    'step_id' => $step->id ?? null,
+                    'lead_id' => (int) $lead->id,
+                    'event_key' => (string) $eventKey,
+                    'template_id' => (int) $template->id,
                     'template_name' => $template->name,
-                    'source'        => 'campaign_dispatcher',
-                    'action'        => 'campaign_send_template',
-                    'send_mode'     => 'meta_template',
+                    'source' => 'campaign_dispatcher',
+                    'action' => 'campaign_send_template',
+                    'send_mode' => 'meta_template',
                 ])
             );
 
             Log::info('[CampaignDispatcher] WhatsApp campaign event fired', [
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'lead_id'       => $lead->id,
-                'event_key'     => $eventKey,
-                'template_id'   => $template->id,
+                'lead_id' => $lead->id,
+                'event_key' => $eventKey,
+                'template_id' => $template->id,
                 'template_name' => $template->name,
             ]);
 
             CampaignLog::create([
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'message'       => "Fired WhatsApp event {$eventKey} using template {$template->name}",
+                'message' => "Fired WhatsApp event {$eventKey} using template {$template->name}",
             ]);
         } catch (\Throwable $e) {
             Log::error('[CampaignDispatcher] WhatsApp campaign event failed', [
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'lead_id'       => $lead->id,
-                'event_key'     => $eventKey,
-                'template_id'   => $template->id,
+                'lead_id' => $lead->id,
+                'event_key' => $eventKey,
+                'template_id' => $template->id,
                 'template_name' => $template->name,
-                'error'         => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             CampaignLog::create([
-                'company_id'    => $enrollment->company_id,
-                'campaign_id'   => $campaign->id,
+                'company_id' => $enrollment->company_id,
+                'campaign_id' => $campaign->id,
                 'enrollment_id' => $enrollment->id,
-                'message'       => "Failed WhatsApp event {$eventKey}: " . $e->getMessage(),
+                'message' => "Failed WhatsApp event {$eventKey}: ".$e->getMessage(),
             ]);
         }
     }
@@ -236,8 +271,8 @@ class CampaignDispatcher
 
         $enrollment->update([
             'current_step' => $next,
-            'status'       => $hasNext ? 'in_progress' : 'completed',
-            'next_run_at'  => $hasNext ? now()->addMinutes(1) : null,
+            'status' => $hasNext ? 'in_progress' : 'completed',
+            'next_run_at' => $hasNext ? now()->addMinutes(1) : null,
         ]);
     }
 
@@ -343,11 +378,11 @@ class CampaignDispatcher
             |--------------------------------------------------------------------------
             */
 
-            'name'          => $name,
+            'name' => $name,
             'customer_name' => $name,
-            'lead_name'     => $name,
-            'phone'         => $phone,
-            'app_name'      => $appName,
+            'lead_name' => $name,
+            'phone' => $phone,
+            'app_name' => $appName,
         ];
     }
 

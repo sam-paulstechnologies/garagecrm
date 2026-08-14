@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Commercial\CampaignQuotaService;
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\CampaignAudience;
+use App\Models\System\Company;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +29,7 @@ class WhatsAppCampaignController extends Controller
     /**
      * List WhatsApp campaigns.
      */
-    public function index(Request $request): View
+    public function index(Request $request, CampaignQuotaService $quota): View
     {
         $companyId = $this->companyId();
 
@@ -60,7 +62,9 @@ class WhatsAppCampaignController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.whatsapp.campaigns.index', compact('campaigns', 'q'));
+        $quotaSummary = $quota->summary(Company::query()->findOrFail($companyId));
+
+        return view('admin.whatsapp.campaigns.index', compact('campaigns', 'q', 'quotaSummary'));
     }
 
     /**
@@ -81,7 +85,7 @@ class WhatsAppCampaignController extends Controller
     /**
      * Store campaign.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, CampaignQuotaService $quota): RedirectResponse
     {
         $companyId = $this->companyId();
 
@@ -97,7 +101,11 @@ class WhatsAppCampaignController extends Controller
             'scheduled_at' => ['nullable', 'date'],
         ]);
 
-        DB::transaction(function () use ($data, $companyId) {
+        $company = Company::query()->findOrFail($companyId);
+        $audience = $this->normalizeAudience((string) ($data['audience'] ?? ''));
+        $quota->assertRecipients($company, $audience->count());
+
+        $quota->create($company, function () use ($data, $companyId, $audience): Campaign {
             $campaign = Campaign::create([
                 'company_id' => $companyId,
                 'name' => $data['name'],
@@ -111,7 +119,9 @@ class WhatsAppCampaignController extends Controller
                 'description' => $data['description'] ?? null,
             ]);
 
-            $this->syncManualAudience($campaign, (string) ($data['audience'] ?? ''));
+            $this->syncManualAudience($campaign, $audience);
+
+            return $campaign;
         });
 
         return redirect()
@@ -148,7 +158,7 @@ class WhatsAppCampaignController extends Controller
     /**
      * Update campaign.
      */
-    public function update(Request $request, int $id): RedirectResponse
+    public function update(Request $request, int $id, CampaignQuotaService $quota): RedirectResponse
     {
         $companyId = $this->companyId();
 
@@ -173,7 +183,10 @@ class WhatsAppCampaignController extends Controller
             'scheduled_at' => ['nullable', 'date'],
         ]);
 
-        DB::transaction(function () use ($campaign, $data) {
+        $audience = $this->normalizeAudience((string) ($data['audience'] ?? ''));
+        $quota->assertRecipients(Company::query()->findOrFail($companyId), $audience->count());
+
+        DB::transaction(function () use ($campaign, $data, $audience) {
             $campaign->update([
                 'name' => $data['name'],
                 'message_template_id' => $data['message_template_id'],
@@ -186,7 +199,7 @@ class WhatsAppCampaignController extends Controller
 
             $campaign->audience()->delete();
 
-            $this->syncManualAudience($campaign, (string) ($data['audience'] ?? ''));
+            $this->syncManualAudience($campaign, $audience);
         });
 
         return redirect()
@@ -219,7 +232,7 @@ class WhatsAppCampaignController extends Controller
     /**
      * Queue immediate send.
      */
-    public function sendNow(int $campaignId): RedirectResponse
+    public function sendNow(int $campaignId, CampaignQuotaService $quota): RedirectResponse
     {
         $companyId = $this->companyId();
 
@@ -227,6 +240,11 @@ class WhatsAppCampaignController extends Controller
             ->forCompany($companyId)
             ->whatsapp()
             ->findOrFail($campaignId);
+
+        $quota->assertRecipients(
+            Company::query()->findOrFail($companyId),
+            $campaign->audience()->count()
+        );
 
         if ($campaign->audience()->where('status', CampaignAudience::STATUS_QUEUED)->count() === 0) {
             return back()->with('error', 'No queued audience found for this campaign.');
@@ -243,7 +261,7 @@ class WhatsAppCampaignController extends Controller
     /**
      * Schedule campaign for later.
      */
-    public function schedule(Request $request, int $campaignId): RedirectResponse
+    public function schedule(Request $request, int $campaignId, CampaignQuotaService $quota): RedirectResponse
     {
         $companyId = $this->companyId();
 
@@ -251,6 +269,11 @@ class WhatsAppCampaignController extends Controller
             ->forCompany($companyId)
             ->whatsapp()
             ->findOrFail($campaignId);
+
+        $quota->assertRecipients(
+            Company::query()->findOrFail($companyId),
+            $campaign->audience()->count()
+        );
 
         $data = $request->validate([
             'scheduled_at' => ['required', 'date'],
@@ -263,7 +286,7 @@ class WhatsAppCampaignController extends Controller
             'status' => Campaign::STATUS_SCHEDULED,
         ]);
 
-        return back()->with('success', 'Campaign scheduled for ' . $when->toDayDateTimeString() . '.');
+        return back()->with('success', 'Campaign scheduled for '.$when->toDayDateTimeString().'.');
     }
 
     /**
@@ -314,16 +337,8 @@ class WhatsAppCampaignController extends Controller
         return back()->with('success', 'Campaign resumed.');
     }
 
-    private function syncManualAudience(Campaign $campaign, string $audience): void
+    private function syncManualAudience(Campaign $campaign, iterable $numbers): void
     {
-        $numbers = collect(preg_split('/[\r\n,;]+/', $audience))
-            ->map(fn ($number) => trim((string) $number))
-            ->filter()
-            ->map(fn ($number) => $this->normalizePhone($number))
-            ->filter()
-            ->unique()
-            ->values();
-
         foreach ($numbers as $number) {
             CampaignAudience::create([
                 'campaign_id' => $campaign->id,
@@ -338,6 +353,17 @@ class WhatsAppCampaignController extends Controller
         }
     }
 
+    private function normalizeAudience(string $audience)
+    {
+        return collect(preg_split('/[\r\n,;]+/', $audience))
+            ->map(fn ($number) => trim((string) $number))
+            ->filter()
+            ->map(fn ($number) => $this->normalizePhone($number))
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
     private function normalizePhone(string $phone): ?string
     {
         $phone = preg_replace('/\D+/', '', $phone);
@@ -347,11 +373,11 @@ class WhatsAppCampaignController extends Controller
         }
 
         if (str_starts_with($phone, '05')) {
-            $phone = '971' . substr($phone, 1);
+            $phone = '971'.substr($phone, 1);
         }
 
         if (str_starts_with($phone, '9710')) {
-            $phone = '971' . substr($phone, 3);
+            $phone = '971'.substr($phone, 3);
         }
 
         return $phone;

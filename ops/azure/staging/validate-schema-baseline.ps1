@@ -157,9 +157,10 @@ COMMIT;
 '@ | Out-Null
 
     $assertions = @(Invoke-MySql @'
-SELECT COUNT(*)=129 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
+SELECT COUNT(*)=135 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=51 FROM migrations;
+SELECT COUNT(*)=52 FROM migrations;
+SELECT COUNT(*)=6 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('whatsapp_history_import_batches','whatsapp_history_candidates','whatsapp_history_contact_usages','whatsapp_tracking_preferences','whatsapp_history_audit_logs','entitlement_usage_events');
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
 SELECT COUNT(*)=1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='messaging_number_claims';
 SELECT COUNT(*)=8 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('plan_versions','prices','plan_entitlements','subscriptions','company_entitlement_overrides','entitlement_usages','entitlement_audit_logs','billing_provider_events');
@@ -202,7 +203,7 @@ SELECT COUNT(*)=5 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() 
     return [ordered] @{
         cycle = $CycleName
         fingerprint = $match.Value
-        base_tables = 129
+        base_tables = 135
         views = 2
         foreign_keys_checked = $foreignKeys
         routes = $routeCount
@@ -244,7 +245,8 @@ try {
         '2026_08_11_000001_harden_billing_payment_lifecycle',
         '2026_08_12_000001_add_launch_offer_commercial_policy',
         '2026_08_13_000001_add_two_factor_security_to_users',
-        '2026_08_14_000001_harden_provider_subscription_reconciliation'
+        '2026_08_14_000001_harden_provider_subscription_reconciliation',
+        '2026_08_14_000002_create_whatsapp_history_intelligence'
     )
     if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
         -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {

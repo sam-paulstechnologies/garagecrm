@@ -2,30 +2,33 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use App\Models\Client\Lead;     // 🔥 ADDED
-use App\Models\User;            // 🔥 ADDED
+use App\Models\Client\Lead;
+use Illuminate\Database\Eloquent\Model;     // 🔥 ADDED
+
+// 🔥 ADDED
 
 class MessageLog extends Model
 {
     protected $fillable = [
-        'company_id','lead_id','conversation_id','user_id',
-        'direction','channel','source',
-        'to_number','from_number',
-        'template','template_id','body',
-        'provider_message_id','provider_status',
-        'meta','ai_analysis','ai_confidence','ai_intent',
-        'ai_propensity_score','ai_propensity_reason',
-        'read_at','is_ai'
+        'company_id', 'lead_id', 'conversation_id', 'user_id',
+        'direction', 'channel', 'source', 'is_historical', 'whatsapp_history_candidate_id', 'historical_message_timestamp',
+        'to_number', 'from_number',
+        'template', 'template_id', 'body',
+        'provider_message_id', 'provider_status',
+        'meta', 'ai_analysis', 'ai_confidence', 'ai_intent',
+        'ai_propensity_score', 'ai_propensity_reason',
+        'read_at', 'is_ai',
     ];
 
     protected $casts = [
-        'meta'                => 'array',
-        'ai_analysis'         => 'array',
+        'meta' => 'array',
+        'ai_analysis' => 'array',
         'ai_propensity_score' => 'integer',
-        'ai_confidence'       => 'decimal:2',
-        'read_at'             => 'datetime',
-        'is_ai'               => 'boolean',
+        'ai_confidence' => 'decimal:2',
+        'read_at' => 'datetime',
+        'is_ai' => 'boolean',
+        'is_historical' => 'boolean',
+        'historical_message_timestamp' => 'datetime',
     ];
 
     /* ---------- Helpers ---------- */
@@ -33,7 +36,7 @@ class MessageLog extends Model
     public static function in(array $data): self
     {
         $data['direction'] = 'in';
-        $data['source']    = 'human';
+        $data['source'] = 'human';
 
         return static::create($data);
     }
@@ -41,8 +44,8 @@ class MessageLog extends Model
     public static function out(array $data): self
     {
         $data['direction'] = 'out';
-        $data['source']    = $data['source'] ?? 'template';
-        $data['is_ai']     = $data['source'] === 'ai';
+        $data['source'] = $data['source'] ?? 'template';
+        $data['is_ai'] = $data['source'] === 'ai';
 
         return static::create($data);
     }
@@ -68,16 +71,25 @@ class MessageLog extends Model
     protected static function booted()
     {
         static::created(function (self $m) {
-            if (!$m->conversation_id) return;
+            // Imported history is context, never a new live event. The importer
+            // owns historical timestamps and unread state explicitly.
+            if ($m->is_historical) {
+                return;
+            }
+            if (! $m->conversation_id) {
+                return;
+            }
 
             $conv = $m->conversation;
-            if (!$conv) return;
+            if (! $conv) {
+                return;
+            }
 
             $conv->update([
-                'last_message_at'      => now(),
-                'latest_message_at'    => now(),
+                'last_message_at' => now(),
+                'latest_message_at' => now(),
                 'last_message_preview' => mb_strimwidth($m->body, 0, 140, '…'),
-                'unread_count'         => $m->direction === 'in'
+                'unread_count' => $m->direction === 'in'
                     ? ($conv->unread_count + 1)
                     : $conv->unread_count,
             ]);

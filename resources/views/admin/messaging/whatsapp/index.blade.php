@@ -179,6 +179,14 @@
             @endif
 
             @if($connection)
+                @if($connected && $selectedMode === 'business_app_onboarding')
+                    <section class="sf-card p-6">
+                        <div class="sf-badge-blue">Coexistence history</div>
+                        <h2 class="sf-section-title mt-3 text-xl">Discover customers in your WhatsApp history</h2>
+                        <p class="sf-section-subtitle mt-2 text-sm">History is quarantined for administrator review. Nothing becomes a Client, Lead, Opportunity or Booking automatically.</p>
+                        <a href="{{ route('admin.messaging.whatsapp.history.index') }}" class="sf-btn-primary mt-4 min-h-11">Open history review</a>
+                    </section>
+                @endif
                 <section class="sf-card p-6">
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>

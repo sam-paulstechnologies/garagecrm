@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Commercial\CampaignQuotaService;
+use App\Commercial\EntitlementService;
 use App\Models\Campaign;
+use App\Models\System\Company;
 use App\Models\WhatsAppMessage;
 use App\Services\WhatsApp\SendWhatsAppMessage;
 use Illuminate\Console\Command;
@@ -14,7 +17,7 @@ class CampaignDispatchCommand extends Command
 
     protected $description = 'Send scheduled/queued WhatsApp campaign messages';
 
-    public function handle(): int
+    public function handle(CampaignQuotaService $quota, EntitlementService $entitlements): int
     {
         $now = now();
         $limit = (int) $this->option('limit');
@@ -28,6 +31,27 @@ class CampaignDispatchCommand extends Command
             ->get();
 
         foreach ($campaigns as $campaign) {
+            $company = Company::query()->find((int) $campaign->company_id);
+            if (! $company || ! $entitlements->can($company, 'whatsapp_marketing')) {
+                Log::notice('[CampaignDispatchCommand] Commercial entitlement denied campaign execution', [
+                    'campaign_id' => $campaign->id,
+                    'company_id' => $campaign->company_id,
+                ]);
+
+                continue;
+            }
+
+            try {
+                $quota->assertRecipients($company, $campaign->audience()->count());
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                Log::notice('[CampaignDispatchCommand] Recipient entitlement denied campaign execution', [
+                    'campaign_id' => $campaign->id,
+                    'company_id' => $campaign->company_id,
+                ]);
+
+                continue;
+            }
+
             $campaign->update(['status' => 'running']);
 
             $batch = $campaign->audience()
@@ -49,7 +73,7 @@ class CampaignDispatchCommand extends Command
                 if (! $template) {
                     Log::warning('[CampaignDispatchCommand] Template missing', [
                         'campaign_id' => $campaign->id,
-                        'company_id'  => $campaign->company_id,
+                        'company_id' => $campaign->company_id,
                         'audience_id' => $row->id ?? null,
                     ]);
 
@@ -63,7 +87,7 @@ class CampaignDispatchCommand extends Command
                 if ($to === '') {
                     Log::warning('[CampaignDispatchCommand] Recipient phone missing', [
                         'campaign_id' => $campaign->id,
-                        'company_id'  => $campaign->company_id,
+                        'company_id' => $campaign->company_id,
                         'audience_id' => $row->id ?? null,
                     ]);
 
@@ -76,10 +100,10 @@ class CampaignDispatchCommand extends Command
 
                 if (! $eventKey) {
                     Log::warning('[CampaignDispatchCommand] WhatsApp event key missing', [
-                        'campaign_id'   => $campaign->id,
-                        'company_id'    => $campaign->company_id,
-                        'audience_id'   => $row->id ?? null,
-                        'template_id'   => $template->id ?? null,
+                        'campaign_id' => $campaign->id,
+                        'company_id' => $campaign->company_id,
+                        'audience_id' => $row->id ?? null,
+                        'template_id' => $template->id ?? null,
                         'template_name' => $template->name ?? null,
                     ]);
 
@@ -122,7 +146,7 @@ class CampaignDispatchCommand extends Command
 
                     if ($message instanceof WhatsAppMessage) {
                         $row->update([
-                            'status'              => 'sent',
+                            'status' => 'sent',
                             'whatsapp_message_id' => $message->id,
                         ]);
                     } else {
@@ -132,30 +156,30 @@ class CampaignDispatchCommand extends Command
                     }
 
                     Log::info('[CampaignDispatchCommand] WhatsApp campaign event fired', [
-                        'campaign_id'   => $campaign->id,
-                        'company_id'    => $campaign->company_id,
-                        'audience_id'   => $row->id ?? null,
-                        'event_key'     => $eventKey,
-                        'template_id'   => $template->id ?? null,
+                        'campaign_id' => $campaign->id,
+                        'company_id' => $campaign->company_id,
+                        'audience_id' => $row->id ?? null,
+                        'event_key' => $eventKey,
+                        'template_id' => $template->id ?? null,
                         'template_name' => $template->name ?? null,
                     ]);
                 } catch (\Throwable $e) {
                     $row->update(['status' => 'failed']);
 
                     Log::error('[CampaignDispatchCommand] WhatsApp campaign event failed', [
-                        'campaign_id'   => $campaign->id,
-                        'company_id'    => $campaign->company_id,
-                        'audience_id'   => $row->id ?? null,
-                        'event_key'     => $eventKey,
-                        'template_id'   => $template->id ?? null,
+                        'campaign_id' => $campaign->id,
+                        'company_id' => $campaign->company_id,
+                        'audience_id' => $row->id ?? null,
+                        'event_key' => $eventKey,
+                        'template_id' => $template->id ?? null,
                         'template_name' => $template->name ?? null,
-                        'error'         => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
         }
 
-        $this->info('Campaigns processed: ' . $campaigns->count());
+        $this->info('Campaigns processed: '.$campaigns->count());
 
         return self::SUCCESS;
     }
@@ -222,11 +246,11 @@ class CampaignDispatchCommand extends Command
             |--------------------------------------------------------------------------
             */
 
-            'name'          => $name,
+            'name' => $name,
             'customer_name' => $name,
-            'lead_name'     => $name,
-            'phone'         => $to,
-            'app_name'      => config('app.name', 'GarageCRM'),
+            'lead_name' => $name,
+            'phone' => $to,
+            'app_name' => config('app.name', 'GarageCRM'),
 
             /*
             |--------------------------------------------------------------------------
@@ -234,18 +258,18 @@ class CampaignDispatchCommand extends Command
             |--------------------------------------------------------------------------
             */
 
-            'company_id'           => (int) $campaign->company_id,
-            'campaign_id'          => (int) $campaign->id,
-            'audience_id'          => $row->id ?? null,
-            'target_type'          => $row->target_type ?? null,
-            'target_id'            => $row->target_id ?? null,
-            'message_template_id'  => $campaign->message_template_id ?? null,
-            'template_id'          => $template->id ?? null,
-            'template_name'        => $template->name ?? null,
-            'event_key'            => $eventKey,
-            'source'               => 'campaign_dispatch_command',
-            'action'               => 'campaign_dispatch',
-            'send_mode'            => 'meta_template',
+            'company_id' => (int) $campaign->company_id,
+            'campaign_id' => (int) $campaign->id,
+            'audience_id' => $row->id ?? null,
+            'target_type' => $row->target_type ?? null,
+            'target_id' => $row->target_id ?? null,
+            'message_template_id' => $campaign->message_template_id ?? null,
+            'template_id' => $template->id ?? null,
+            'template_name' => $template->name ?? null,
+            'event_key' => $eventKey,
+            'source' => 'campaign_dispatch_command',
+            'action' => 'campaign_dispatch',
+            'send_mode' => 'meta_template',
         ];
     }
 }

@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Commercial\Plans;
 use App\Commercial\OutboundEntitlementPolicy;
+use App\Commercial\Plans;
 use App\Commercial\ResourceLimitService;
 use App\Commercial\RouteCapabilityMap;
 use App\Commercial\SubscriptionManager;
@@ -154,14 +154,14 @@ class FreeServiceProductTest extends TestCase
         $policy->assertAllowed($free, OutboundEntitlementPolicy::MANUAL);
         $policy->assertAllowed($service, OutboundEntitlementPolicy::TRANSACTIONAL);
 
-        foreach ([OutboundEntitlementPolicy::MARKETING, OutboundEntitlementPolicy::AI_AUTONOMOUS] as $purpose) {
-            try {
-                $policy->assertAllowed($service, $purpose);
-                $this->fail("Service unexpectedly received {$purpose} outbound capability.");
-            } catch (\Illuminate\Auth\Access\AuthorizationException) {
-                $this->addToAssertionCount(1);
-            }
-        }
+        // Service now owns one approval-controlled campaign per billing period.
+        // Environment and recipient guards still independently block staging
+        // delivery, while autonomous AI outbound remains commercially denied.
+        $policy->assertAllowed($service, OutboundEntitlementPolicy::MARKETING);
+        $this->addToAssertionCount(1);
+
+        $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
+        $policy->assertAllowed($service, OutboundEntitlementPolicy::AI_AUTONOMOUS);
     }
 
     private function companyOn(string $plan, string $name): Company

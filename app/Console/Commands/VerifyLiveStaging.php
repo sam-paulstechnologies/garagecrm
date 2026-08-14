@@ -25,7 +25,7 @@ class VerifyLiveStaging extends Command
             $views = (int) DB::table('information_schema.tables')
                 ->where('table_schema', $database)->where('table_type', 'VIEW')->count();
 
-            $this->assertSame(129, $baseTables, 'base-table count');
+            $this->assertSame(135, $baseTables, 'base-table count');
             $this->assertSame(2, $views, 'view count');
 
             $messagingTables = [
@@ -78,6 +78,16 @@ class VerifyLiveStaging extends Command
             }
             if (! Schema::hasTable('security_audit_logs')) {
                 throw new RuntimeException('Missing security audit table.');
+            }
+            $historyIntelligenceTables = [
+                'whatsapp_history_import_batches', 'whatsapp_history_candidates',
+                'whatsapp_history_contact_usages', 'whatsapp_tracking_preferences',
+                'whatsapp_history_audit_logs', 'entitlement_usage_events',
+            ];
+            foreach ($historyIntelligenceTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    throw new RuntimeException("Missing history intelligence table: {$table}.");
+                }
             }
             foreach ([
                 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at',
@@ -149,6 +159,34 @@ class VerifyLiveStaging extends Command
                 ->count(), 'required synthetic user count');
             $this->assertSame(5, (int) DB::table('plans')
                 ->whereIn('code', ['free', 'service', 'growth', 'performance', 'ai_pro'])->count(), 'canonical plan count');
+            $expectedLimits = [
+                'free' => [1, 1, 1, 25, 25, 0, 0, 0],
+                'service' => [3, 1, 1, 300, 300, 1, 100, 0],
+                'growth' => [10, 2, 2, 1000, 1000, 5, 500, 5],
+                'performance' => [20, 5, 3, 2500, 2500, 20, 2000, 20],
+                'ai_pro' => [null, null, null, null, null, null, null, null],
+            ];
+            $limitCapabilities = [
+                'limit.users', 'limit.locations', 'limit.whatsapp_numbers',
+                'limit.ai_monitored_customers', 'limit.whatsapp_history_contacts',
+                'limit.campaigns_per_period', 'limit.campaign_recipients', 'limit.active_workflows',
+            ];
+            foreach ($expectedLimits as $planCode => $limits) {
+                foreach ($limitCapabilities as $index => $capability) {
+                    $entitlement = DB::table('plan_entitlements as pe')
+                        ->join('plan_versions as pv', 'pv.id', '=', 'pe.plan_version_id')
+                        ->join('plans as p', 'p.id', '=', 'pv.plan_id')
+                        ->where('pv.code', $planCode.':'.config('commercial.catalogue_version'))
+                        ->where('p.code', $planCode)
+                        ->where('pe.capability', $capability)
+                        ->first(['pe.enabled', 'pe.allowance']);
+                    if (! $entitlement || ! $entitlement->enabled
+                        || ($limits[$index] === null && $entitlement->allowance !== null)
+                        || ($limits[$index] !== null && (int) $entitlement->allowance !== $limits[$index])) {
+                        throw new RuntimeException("Unexpected {$planCode} {$capability} allowance.");
+                    }
+                }
+            }
             $this->assertSame($tenantCount, (int) DB::table('subscriptions')->count(), 'explicit subscription count');
             $this->assertSame(1, (int) DB::table('subscriptions as s')
                 ->join('companies as c', 'c.id', '=', 's.company_id')
@@ -196,6 +234,7 @@ class VerifyLiveStaging extends Command
                 'notification_tables' => count($notificationTables),
                 'product_event_tables' => 1,
                 'security_audit_tables' => 1,
+                'history_intelligence_tables' => count($historyIntelligenceTables),
                 'two_factor_enforcement' => $twoFactorEnforcement,
                 'synthetic_tenants' => $tenantCount,
                 'synthetic_users' => $userCount,

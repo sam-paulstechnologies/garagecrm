@@ -33,11 +33,14 @@ final class Capabilities
 
     public const WHATSAPP = [
         'whatsapp_connect', 'whatsapp_inbound', 'whatsapp_manual_reply', 'whatsapp_transactional',
-        'whatsapp_marketing', 'whatsapp_ai_autonomous',
+        'whatsapp_marketing', 'whatsapp_ai_autonomous', 'whatsapp_history_review',
+        'whatsapp_history_intelligence', 'whatsapp_history_import',
     ];
 
     public const LIMITS = [
         'limit.users', 'limit.locations', 'limit.whatsapp_numbers', 'limit.ai_monitored_customers',
+        'limit.whatsapp_history_contacts', 'limit.campaigns_per_period',
+        'limit.campaign_recipients', 'limit.active_workflows',
     ];
 
     /** Platform capabilities can never be granted by a tenant plan. */

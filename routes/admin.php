@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\SlaDashboardController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VehicleController;
 use App\Http\Controllers\Admin\WhatsAppEmbeddedSignupController;
+use App\Http\Controllers\Admin\WhatsAppHistoryController;
 use App\Http\Controllers\Admin\WhatsAppSettingController;
 use App\Http\Controllers\NotificationCenterController;
 use App\Http\Controllers\ProfileController;
@@ -379,6 +380,26 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             Route::post('disconnect', [MessagingWhatsAppOnboardingController::class, 'disconnect'])
                 ->middleware(['security.step-up', 'throttle:3,1'])
                 ->name('disconnect');
+            Route::get('history', [WhatsAppHistoryController::class, 'index'])
+                ->middleware('entitled:whatsapp_history_review')->name('history.index');
+            Route::get('history/contacts/{candidate}', [WhatsAppHistoryController::class, 'show'])
+                ->middleware('entitled:whatsapp_history_review')->name('history.show');
+            Route::post('history/sync', [WhatsAppHistoryController::class, 'requestSync'])
+                ->middleware(['entitled:whatsapp_history_review', 'security.step-up', 'throttle:2,1'])
+                ->name('history.sync');
+            Route::post('history/contacts/{candidate}/analyse', [WhatsAppHistoryController::class, 'analyse'])
+                ->middleware(['entitled:whatsapp_history_intelligence', 'throttle:20,1'])
+                ->name('history.analyse');
+            Route::post('history/{batch}/analyse', [WhatsAppHistoryController::class, 'bulkAnalyse'])
+                ->middleware(['entitled:whatsapp_history_intelligence', 'security.step-up', 'throttle:5,1'])
+                ->name('history.analyse.bulk');
+            Route::post('history/contacts/{candidate}/decision', [WhatsAppHistoryController::class, 'decide'])
+                ->middleware(['security.step-up', 'throttle:20,1'])->name('history.decision');
+            Route::post('history/{batch}/decisions', [WhatsAppHistoryController::class, 'bulkDecide'])
+                ->middleware(['security.step-up', 'throttle:5,1'])->name('history.decision.bulk');
+            Route::post('history/{batch}/import', [WhatsAppHistoryController::class, 'import'])
+                ->middleware(['entitled:whatsapp_history_import', 'security.step-up', 'throttle:2,1'])
+                ->name('history.import');
         });
 
         /*

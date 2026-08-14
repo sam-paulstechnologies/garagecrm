@@ -179,7 +179,8 @@
     "2026_08_11_000001_harden_billing_payment_lifecycle",
     "2026_08_12_000001_add_launch_offer_commercial_policy",
     "2026_08_13_000001_add_two_factor_security_to_users",
-    "2026_08_14_000001_harden_provider_subscription_reconciliation"
+    "2026_08_14_000001_harden_provider_subscription_reconciliation",
+    "2026_08_14_000002_create_whatsapp_history_intelligence"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -513,12 +514,18 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds immutable provider invoice-line attribution, billing reason, and invoice-level introductory-cycle idempotency for deterministic paid plan-change reconciliation."
+    },
+    {
+      "migration": "2026_08_14_000002_create_whatsapp_history_intelligence",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds bounded tenant-scoped WhatsApp history quarantine, review decisions, cumulative contact usage, privacy preferences, audit events, and generic commercial usage events without importing application rows into the baseline."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606",
-    "cycle_two_fingerprint": "a005cb0698977f884e22babc10d481b03126183eacfe78c2846c164a7e213606",
+    "cycle_one_fingerprint": "1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63",
+    "cycle_two_fingerprint": "1edb26c7d59c3687c8e3f74f073eebb3f3a0a9496dbe016ef3a3066096178d63",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true
