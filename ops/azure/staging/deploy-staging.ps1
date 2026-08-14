@@ -194,7 +194,9 @@ try {
                 --webjob-name sayaraforce-staging-queue --only-show-errors --output none
             if ($LASTEXITCODE -ne 0) { throw 'Staging queue WebJob could not be started after deployment.' }
         }
-        $queueDeadline = [DateTime]::UtcNow.AddMinutes(2)
+        # Linux App Service can need more than two minutes to restart a
+        # continuous WebJob after a full package replacement.
+        $queueDeadline = [DateTime]::UtcNow.AddMinutes(5)
         do {
             Start-Sleep -Seconds 5
             $queueStatus = (az webapp webjob continuous list --subscription $SubscriptionId --resource-group $resourceGroup --name $webAppName `

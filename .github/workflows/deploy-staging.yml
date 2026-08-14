@@ -212,7 +212,9 @@ jobs:
           token="$(az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv)"
           kudu="https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net"
           job='sayaraforce-staging-postdeploy'
-          for attempt in {1..24}; do
+          # Linux App Service can need more than two minutes to restart the
+          # continuous WebJob after a full package replacement.
+          for attempt in {1..60}; do
             if curl --fail --silent --show-error -H "Authorization: Bearer $token" "$kudu/api/triggeredwebjobs" \
               | jq -e --arg job "$job" 'any(.[]; .name == $job)' >/dev/null; then
               break

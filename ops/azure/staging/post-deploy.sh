@@ -30,6 +30,7 @@ php artisan migrate --force --no-interaction
 php artisan db:seed --class='Database\Seeders\CommercialFoundationSeeder' --force --no-interaction
 php artisan db:seed --class='Database\Seeders\BillingFoundationSeeder' --force --no-interaction
 php artisan commercial:bootstrap-staging-subscriptions --confirm --no-interaction
+php artisan security:encrypt-legacy-provider-tokens --apply --no-interaction
 case "${BILLING_PROVIDER:-}" in
   fake)
     php artisan billing:reconcile-fake-test-history --confirm --no-interaction
