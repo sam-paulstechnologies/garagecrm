@@ -180,7 +180,8 @@
     "2026_08_12_000001_add_launch_offer_commercial_policy",
     "2026_08_13_000001_add_two_factor_security_to_users",
     "2026_08_14_000001_harden_provider_subscription_reconciliation",
-    "2026_08_14_000002_create_whatsapp_history_intelligence"
+    "2026_08_14_000002_create_whatsapp_history_intelligence",
+    "2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -520,6 +521,12 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds bounded tenant-scoped WhatsApp history quarantine, review decisions, cumulative contact usage, privacy preferences, audit events, and generic commercial usage events without importing application rows into the baseline."
+    },
+    {
+      "migration": "2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Fail-closed mode-only correction for dotted custom/fair-use limit keys in an already reconciled pre-launch catalogue; it creates no tables and changes no price, subscription, invoice or provider mapping."
     }
   ],
   "validation": {

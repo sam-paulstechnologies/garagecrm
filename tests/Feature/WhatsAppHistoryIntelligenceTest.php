@@ -57,8 +57,10 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
             'limit.campaigns_per_period', 'limit.campaign_recipients', 'limit.active_workflows',
         ];
 
+        $companies = [];
         foreach ($expected as $plan => $limits) {
             $company = $this->companyOn($plan, 'Limits '.str_replace('_', ' ', $plan));
+            $companies[$plan] = $company;
             foreach ($keys as $index => $key) {
                 $decision = app(EntitlementService::class)->decide($company, $key);
                 $this->assertSame(
@@ -69,6 +71,35 @@ class WhatsAppHistoryIntelligenceTest extends TestCase
                 $this->assertSame($limits[$index], $decision->limit, "{$plan} {$key} mismatch.");
             }
         }
+
+        $entitlements = app(EntitlementService::class);
+        $this->assertSame('custom', $entitlements->decide($companies[Plans::AI_PRO], 'limit.users')->mode);
+        $this->assertSame('fair_use', $entitlements->decide($companies[Plans::AI_PRO], 'limit.ai_monitored_customers')->mode);
+        $this->assertSame('custom', $entitlements->decide($companies[Plans::AI_PRO], 'limit.campaign_recipients')->mode);
+    }
+
+    public function test_prelaunch_mode_repair_handles_dotted_limit_keys_without_touching_commercial_identity(): void
+    {
+        $version = DB::table('plan_versions')->where('code', Plans::AI_PRO.':'.config('commercial.catalogue_version'))->first();
+        $subscriptionCount = DB::table('subscriptions')->count();
+        $priceSnapshot = DB::table('prices')->orderBy('id')->get()->toJson();
+        $mappingSnapshot = DB::table('price_provider_mappings')->orderBy('id')->get()->toJson();
+        DB::table('plan_entitlements')->where('plan_version_id', $version->id)
+            ->whereIn('capability', ['limit.users', 'limit.ai_monitored_customers', 'limit.campaign_recipients'])
+            ->update(['mode' => 'enabled']);
+
+        $migration = require database_path('migrations/2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes.php');
+        $migration->up();
+
+        $modes = DB::table('plan_entitlements')->where('plan_version_id', $version->id)
+            ->whereIn('capability', ['limit.users', 'limit.ai_monitored_customers', 'limit.campaign_recipients'])
+            ->pluck('mode', 'capability');
+        $this->assertSame('custom', $modes['limit.users']);
+        $this->assertSame('fair_use', $modes['limit.ai_monitored_customers']);
+        $this->assertSame('custom', $modes['limit.campaign_recipients']);
+        $this->assertSame($subscriptionCount, DB::table('subscriptions')->count());
+        $this->assertSame($priceSnapshot, DB::table('prices')->orderBy('id')->get()->toJson());
+        $this->assertSame($mappingSnapshot, DB::table('price_provider_mappings')->orderBy('id')->get()->toJson());
     }
 
     public function test_history_sync_quarantines_contacts_and_is_idempotent_without_operational_records(): void

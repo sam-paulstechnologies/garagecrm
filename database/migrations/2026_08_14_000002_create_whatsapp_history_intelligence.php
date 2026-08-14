@@ -248,7 +248,10 @@ return new class extends Migration
                 $enabled = $isLimit
                     ? array_key_exists($capability, $limits)
                     : in_array($capability, (array) ($definition['capabilities'] ?? []), true);
-                $mode = data_get($definition, 'modes.'.$capability, $enabled ? 'enabled' : 'disabled');
+                // Capability names deliberately contain dots. Array access is
+                // required here; data_get() would interpret limit.users as a
+                // nested path and silently discard its custom/fair-use mode.
+                $mode = $definition['modes'][$capability] ?? ($enabled ? 'enabled' : 'disabled');
 
                 DB::table('plan_entitlements')->updateOrInsert(
                     ['plan_version_id' => $versionId, 'capability' => $capability],
