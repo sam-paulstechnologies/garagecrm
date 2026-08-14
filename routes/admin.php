@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\CommunicationLogController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentInboxController;
 use App\Http\Controllers\Admin\FakeBillingCheckoutController;
+use App\Http\Controllers\Admin\FileController;
 use App\Http\Controllers\Admin\GarageSummaryReportController;
 use App\Http\Controllers\Admin\GoogleLeadSourceController;
 use App\Http\Controllers\Admin\InboxController;
@@ -52,9 +53,11 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 Route::get('/manager/booking/{token}', [ManagerBookingController::class, 'show'])
+    ->middleware('throttle:30,1')
     ->name('manager.booking.show');
 
 Route::post('/manager/booking/{token}', [ManagerBookingController::class, 'store'])
+    ->middleware('throttle:10,1')
     ->name('manager.booking.store');
 
 /*
@@ -461,6 +464,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
         Route::get('documents/{doc}', [DocumentInboxController::class, 'show'])
             ->name('documents.show');
 
+        Route::get('documents/{doc}/content', [DocumentInboxController::class, 'content'])
+            ->name('documents.content');
+
         Route::post('documents/{doc}/assign', [DocumentInboxController::class, 'assign'])
             ->name('documents.assign');
 
@@ -489,6 +495,9 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
 
         Route::post('clients/{client}/documents', [ClientDocumentController::class, 'store'])
             ->name('clients.documents.store');
+
+        Route::get('clients/{client}/documents/{document}/download', [ClientDocumentController::class, 'download'])
+            ->name('clients.documents.download');
 
         Route::post('clients/{client}/documents/inbox-upload', [DocumentInboxController::class, 'uploadForClient'])
             ->name('documents.upload-for-client');
@@ -531,6 +540,8 @@ Route::middleware(['web', 'auth', 'active', 'force_password', 'role:admin,media_
             ->name('clients.import');
 
         Route::resource('clients', ClientController::class);
+        Route::get('files/{file}/download', [FileController::class, 'download'])
+            ->name('files.download');
         Route::resource('vehicles', VehicleController::class);
 
         /*

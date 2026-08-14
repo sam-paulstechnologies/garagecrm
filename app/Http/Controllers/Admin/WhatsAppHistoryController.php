@@ -85,7 +85,7 @@ class WhatsAppHistoryController extends Controller
         $candidate = $this->candidate($company, $candidate);
         abort_if($candidate->review_decision === 'dont_track', 422);
         $candidate->forceFill(['intelligence_status' => 'queued', 'analysis_requested_at' => now()])->save();
-        AnalyzeWhatsAppHistoryCandidate::dispatch($candidate->id);
+        AnalyzeWhatsAppHistoryCandidate::dispatch($candidate->id, (int) $company->id);
 
         return back()->with('success', 'History intelligence was queued for this contact.');
     }
@@ -103,7 +103,7 @@ class WhatsAppHistoryController extends Controller
             ->get();
         foreach ($candidates as $candidate) {
             $candidate->forceFill(['intelligence_status' => 'queued', 'analysis_requested_at' => now()])->save();
-            AnalyzeWhatsAppHistoryCandidate::dispatch($candidate->id);
+            AnalyzeWhatsAppHistoryCandidate::dispatch($candidate->id, (int) $company->id);
         }
 
         return back()->with('success', $candidates->count().' contact analyses were queued.');
@@ -160,7 +160,7 @@ class WhatsAppHistoryController extends Controller
         $company = $this->company($request);
         $batch = $this->batch($company, $batch);
         abort_unless($batch->candidates()->where('review_decision', 'track')->exists(), 422);
-        ImportTrackedWhatsAppHistory::dispatch($batch->id);
+        ImportTrackedWhatsAppHistory::dispatch($batch->id, (int) $company->id);
 
         return back()->with('success', 'The approved history import is queued. Historical messages cannot trigger leads or automation.');
     }

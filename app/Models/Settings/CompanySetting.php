@@ -2,8 +2,11 @@
 
 namespace App\Models\Settings;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
+use Throwable;
 
 /**
  * CompanySetting Model
@@ -21,6 +24,36 @@ class CompanySetting extends Model
         'is_encrypted',
         'updated_by',
     ];
+
+    protected function value(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value, array $attributes) {
+                if (empty($attributes['is_encrypted']) || $value === null || $value === '') {
+                    return $value;
+                }
+
+                try {
+                    return Crypt::decryptString((string) $value);
+                } catch (Throwable) {
+                    return (string) $value;
+                }
+            },
+            set: function ($value, array $attributes) {
+                if (empty($attributes['is_encrypted']) || $value === null || $value === '') {
+                    return $value;
+                }
+
+                try {
+                    Crypt::decryptString((string) $value);
+
+                    return (string) $value;
+                } catch (Throwable) {
+                    return Crypt::encryptString((string) $value);
+                }
+            },
+        );
+    }
 
     /**
      * Cache key for a given company
@@ -59,6 +92,7 @@ class CompanySetting extends Model
     public static function getValue(int $companyId, string $key, $default = null)
     {
         $all = static::allForCompanyCached($companyId);
+
         return array_key_exists($key, $all) ? $all[$key] : $default;
     }
 
@@ -68,9 +102,12 @@ class CompanySetting extends Model
     public static function getJsonValue(int $companyId, string $key, $default = null)
     {
         $val = static::getValue($companyId, $key, $default);
-        if ($val === null || $val === '') return $default;
+        if ($val === null || $val === '') {
+            return $default;
+        }
 
         $decoded = json_decode($val, true);
+
         return json_last_error() === JSON_ERROR_NONE ? $decoded : $default;
     }
 
@@ -81,7 +118,7 @@ class CompanySetting extends Model
     {
         static::updateOrCreate(
             ['company_id' => $companyId, 'key' => $key],
-            ['value' => is_scalar($value) || is_null($value) ? (string)($value ?? '') : json_encode($value)]
+            ['value' => is_scalar($value) || is_null($value) ? (string) ($value ?? '') : json_encode($value)]
         );
 
         static::forgetCache($companyId);

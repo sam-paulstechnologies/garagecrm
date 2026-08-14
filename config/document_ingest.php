@@ -6,7 +6,7 @@ return [
     | Storage
     |--------------------------------------------------------------------------
     */
-    'public_disk' => env('FILESYSTEM_DISK', 'public'),
+    'private_disk' => env('PRIVATE_UPLOAD_DISK', env('FILESYSTEM_DISK', 'local')),
 
     /*
     |--------------------------------------------------------------------------

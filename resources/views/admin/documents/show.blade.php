@@ -17,12 +17,12 @@
             <div class="p-4">
                 @php $mime = strtolower((string) $doc->mime); @endphp
 
-                @if($doc->public_url && str_starts_with($mime, 'image/'))
-                    <img src="{{ $doc->public_url }}" alt="{{ $doc->original_name }}" class="max-w-full rounded">
-                @elseif($doc->public_url && ($mime === 'application/pdf' || str_ends_with($doc->public_url, '.pdf')))
-                    <iframe src="{{ $doc->public_url }}" class="w-full" style="min-height: 70vh;"></iframe>
-                @elseif($doc->public_url)
-                    <a href="{{ $doc->public_url }}" class="text-blue-600 underline" target="_blank">Open file</a>
+                @if($doc->path && str_starts_with($mime, 'image/'))
+                    <img src="{{ route('admin.documents.content', $doc) }}" alt="{{ $doc->original_name }}" class="max-w-full rounded">
+                @elseif($doc->path && $mime === 'application/pdf')
+                    <iframe src="{{ route('admin.documents.content', $doc) }}" class="w-full" style="min-height: 70vh;"></iframe>
+                @elseif($doc->path)
+                    <a href="{{ route('admin.documents.content', $doc) }}" class="text-blue-600 underline" target="_blank" rel="noopener">Download file</a>
                 @else
                     <p class="text-gray-500">No preview available.</p>
                 @endif
@@ -47,8 +47,8 @@
                     <div><span class="font-medium">Size:</span> {{ number_format(($doc->size ?? 0)/1024,1) }} KB</div>
                     <div><span class="font-medium">Hash:</span> <code class="break-all">{{ $doc->hash }}</code></div>
                     <div><span class="font-medium">Received:</span> {{ $doc->received_at?->format('Y-m-d H:i') ?? $doc->created_at->format('Y-m-d H:i') }}</div>
-                    @if($doc->public_url)
-                        <div class="mt-2"><a href="{{ $doc->public_url }}" class="text-blue-600 underline" target="_blank">Open public URL</a></div>
+                    @if($doc->path)
+                        <div class="mt-2"><a href="{{ route('admin.documents.content', $doc) }}" class="text-blue-600 underline" target="_blank" rel="noopener">Open protected file</a></div>
                     @endif
                 </div>
             </div>

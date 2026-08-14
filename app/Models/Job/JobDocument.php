@@ -25,6 +25,7 @@ class JobDocument extends Model
         'mime',
         'size',
         'path',
+        'storage_disk',
         'url',
         'status',
         'received_at',

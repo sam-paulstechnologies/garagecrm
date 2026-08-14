@@ -67,6 +67,10 @@ class EmailInboundWebhookController extends Controller
         }
 
         $client = Http::timeout((int) config('document_ingest.http_timeout_seconds', 30))
+            ->withOptions([
+                'allow_redirects' => false,
+                'stream' => true,
+            ])
             ->withHeaders([
                 'User-Agent' => config('document_ingest.http_user_agent', 'GarageCRM/1.0'),
             ]);
@@ -80,7 +84,11 @@ class EmailInboundWebhookController extends Controller
 
             try {
                 if (! empty($att['base64'])) {
-                    $binary = base64_decode((string) $att['base64'], true) ?: null;
+                    $encoded = (string) $att['base64'];
+                    if (strlen($encoded) > $this->maximumBytes() * 2) {
+                        throw new \LengthException('Encoded attachment exceeds the approved limit.');
+                    }
+                    $binary = base64_decode($encoded, true) ?: null;
                 } elseif (! empty($att['url'])) {
                     $url = (string) $att['url'];
 
@@ -97,7 +105,19 @@ class EmailInboundWebhookController extends Controller
                     $resp = $client->get($url);
 
                     if ($resp->successful()) {
-                        $binary = $resp->body();
+                        $declaredLength = (int) $resp->header('Content-Length');
+                        if ($declaredLength > $this->maximumBytes()) {
+                            throw new \LengthException('Remote attachment exceeds the approved limit.');
+                        }
+
+                        $stream = $resp->toPsrResponse()->getBody();
+                        $binary = '';
+                        while (! $stream->eof()) {
+                            $binary .= $stream->read(65536);
+                            if (strlen($binary) > $this->maximumBytes()) {
+                                throw new \LengthException('Remote attachment exceeds the approved limit.');
+                            }
+                        }
                     } else {
                         Log::warning('email.inbound.fetch_failed', [
                             'company_id' => $companyId,
@@ -112,7 +132,7 @@ class EmailInboundWebhookController extends Controller
                     'company_id' => $companyId,
                     'message_id' => $this->safeLogValue($messageId),
                     'host' => ! empty($att['url']) ? parse_url((string) $att['url'], PHP_URL_HOST) : null,
-                    'err' => $e->getMessage(),
+                    'exception' => $e::class,
                 ]);
             }
 
@@ -228,19 +248,22 @@ class EmailInboundWebhookController extends Controller
 
         $allowedHosts = (array) config('document_ingest.allowed_attachment_hosts', []);
 
-        if (! empty($allowedHosts) && ! in_array($host, $allowedHosts, true)) {
+        if (empty($allowedHosts) || ! in_array($host, $allowedHosts, true)) {
             return false;
         }
 
-        $ip = gethostbyname($host);
-
-        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+        $records = dns_get_record($host, DNS_A | DNS_AAAA);
+        if (! is_array($records) || $records === []) {
             return false;
         }
 
-        // Block private/reserved/local IPs to reduce SSRF risk.
-        if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return false;
+        foreach ($records as $record) {
+            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+            if (! is_string($ip)
+                || ! filter_var($ip, FILTER_VALIDATE_IP)
+                || ! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return false;
+            }
         }
 
         return true;
@@ -273,9 +296,12 @@ class EmailInboundWebhookController extends Controller
 
     protected function isAllowedSize(int $size): bool
     {
-        $maxMb = (int) config('document_ingest.max_size_mb', 20);
+        return $size > 0 && $size <= $this->maximumBytes();
+    }
 
-        return $size > 0 && $size <= ($maxMb * 1024 * 1024);
+    protected function maximumBytes(): int
+    {
+        return max(1, (int) config('document_ingest.max_size_mb', 20)) * 1024 * 1024;
     }
 
     protected function hashValue(?string $value): ?string

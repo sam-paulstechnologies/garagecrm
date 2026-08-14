@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Commercial\ResourceLimitService;
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Models\System\Company;
 use App\Models\Garage\Garage;
+use App\Models\System\Company;
+use App\Models\User;
+use App\Security\SecurityAudit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 
 class UserController extends Controller
 {
@@ -32,8 +33,8 @@ class UserController extends Controller
 
         return view('admin.users.create', [
             'companies' => Company::where('id', $companyId)->get(),
-            'garages'   => Garage::where('company_id', $companyId)->get(),
-            'roles'     => User::tenantRoles(),
+            'garages' => Garage::where('company_id', $companyId)->get(),
+            'roles' => User::tenantRoles(),
         ]);
     }
 
@@ -43,20 +44,20 @@ class UserController extends Controller
         $company = Company::query()->findOrFail($companyId);
 
         $data = $request->validate([
-            'name'      => 'required|string|max:255',
-            'email'     => 'required|email|unique:users,email',
-            'phone'     => 'nullable|string|max:20',
-            'role'      => ['required', Rule::in(User::tenantRoles())],
-            'password'  => 'required|min:8|confirmed',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'phone' => 'nullable|string|max:20',
+            'role' => ['required', Rule::in(User::tenantRoles())],
+            'password' => ['required', 'confirmed', PasswordRule::defaults()],
             'garage_id' => 'nullable|exists:garages,id',
-            'status'    => 'required|boolean',
+            'status' => 'required|boolean',
         ]);
 
         $limits->assertCanCreateUser($company);
 
         $data['company_id'] = $companyId;
 
-        if (!empty($data['garage_id'])) {
+        if (! empty($data['garage_id'])) {
             $garageCompany = Garage::whereKey($data['garage_id'])->value('company_id');
             abort_if($garageCompany != $companyId, 422, 'Invalid garage selection');
         }
@@ -72,10 +73,10 @@ class UserController extends Controller
         $this->authorizeCompany($user);
 
         return view('admin.users.edit', [
-            'user'     => $user,
-            'companies'=> Company::where('id', $user->company_id)->get(),
-            'garages'  => Garage::where('company_id', $user->company_id)->get(),
-            'roles'    => User::tenantRoles(),
+            'user' => $user,
+            'companies' => Company::where('id', $user->company_id)->get(),
+            'garages' => Garage::where('company_id', $user->company_id)->get(),
+            'roles' => User::tenantRoles(),
         ]);
     }
 
@@ -84,16 +85,16 @@ class UserController extends Controller
         $this->authorizeCompany($user);
 
         $data = $request->validate([
-            'name'      => 'required|string|max:255',
-            'email'     => 'required|email|unique:users,email,' . $user->id,
-            'phone'     => 'nullable|string|max:20',
-            'role'      => ['required', Rule::in(User::tenantRoles())],
-            'password'  => 'nullable|min:8|confirmed',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'phone' => 'nullable|string|max:20',
+            'role' => ['required', Rule::in(User::tenantRoles())],
+            'password' => ['nullable', 'confirmed', PasswordRule::defaults()],
             'garage_id' => 'nullable|exists:garages,id',
-            'status'    => 'required|boolean',
+            'status' => 'required|boolean',
         ]);
 
-        if (!empty($data['garage_id'])) {
+        if (! empty($data['garage_id'])) {
             $garageCompany = Garage::whereKey($data['garage_id'])->value('company_id');
             abort_if($garageCompany != $user->company_id, 422, 'Invalid garage selection');
         }
@@ -127,7 +128,7 @@ class UserController extends Controller
         $this->authorizeCompany($user);
         $this->assertNotSelf($user);
 
-        $newStatus = !$user->status;
+        $newStatus = ! $user->status;
         $this->assertNotLastAdmin($user, ['status' => $newStatus]);
 
         $user->update(['status' => $newStatus]);
@@ -135,16 +136,27 @@ class UserController extends Controller
         return back()->with('success', 'User status updated.');
     }
 
-    public function resetPassword(User $user)
+    public function resetPassword(User $user, SecurityAudit $audit)
     {
         $this->authorizeCompany($user);
 
-        $temp = Str::random(12);
-        $user->password = $temp;
-        $user->must_change_password = true;
-        $user->save();
+        if (app()->environment('staging') && config('mail.default') === 'log') {
+            $audit->record('user.password_reset_blocked_log_mail', auth()->user(), $user);
 
-        return back()->with('success', "Temporary password: {$temp}");
+            return back()->with('warning', 'No reset token was generated because staging mail is log-only. Use an approved secure recovery channel.');
+        }
+
+        $status = Password::sendResetLink(['email' => $user->email]);
+        $audit->record('user.password_reset_requested', auth()->user(), $user, [
+            'delivery_accepted' => $status === Password::RESET_LINK_SENT,
+        ]);
+
+        return back()->with(
+            $status === Password::RESET_LINK_SENT ? 'success' : 'warning',
+            $status === Password::RESET_LINK_SENT
+                ? 'A secure password-reset link was requested for the user.'
+                : 'The password-reset request could not be delivered. No password was changed.'
+        );
     }
 
     /* ---------------- HELPERS ---------------- */
@@ -161,8 +173,8 @@ class UserController extends Controller
 
     protected function assertNotLastAdmin(User $user, array $newData)
     {
-        $demoting   = isset($newData['role']) && $newData['role'] !== 'admin';
-        $deactivating = isset($newData['status']) && !$newData['status'];
+        $demoting = isset($newData['role']) && $newData['role'] !== 'admin';
+        $deactivating = isset($newData['status']) && ! $newData['status'];
 
         if (($demoting || $deactivating) && $user->role === 'admin' && $user->status) {
             $count = User::where('company_id', $user->company_id)

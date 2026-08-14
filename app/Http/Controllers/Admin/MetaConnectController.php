@@ -29,6 +29,17 @@ class MetaConnectController extends Controller
     {
         $base = rtrim((string) $this->metaConfig('graph_base', 'https://graph.facebook.com'), '/');
 
+        if (app()->environment(['staging', 'production'])) {
+            $parts = parse_url($base);
+            abort_unless(
+                is_array($parts)
+                && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+                && strtolower((string) ($parts['host'] ?? '')) === 'graph.facebook.com',
+                500,
+                'Meta Graph endpoint configuration is not approved.'
+            );
+        }
+
         return "{$base}/{$this->graphVersion()}";
     }
 
@@ -46,11 +57,17 @@ class MetaConnectController extends Controller
         }
 
         $redirectUri = route('admin.lead-sources.meta.callback');
+        $state = Str::random(64);
+        $request->session()->put([
+            'meta_oauth_state_hash' => hash('sha256', $state),
+            'meta_oauth_started_at' => now()->getTimestamp(),
+        ]);
 
         $query = http_build_query([
-            'client_id'     => $appId,
-            'redirect_uri'  => $redirectUri,
+            'client_id' => $appId,
+            'redirect_uri' => $redirectUri,
             'response_type' => 'code',
+            'state' => $state,
 
             /*
             |--------------------------------------------------------------------------
@@ -61,9 +78,9 @@ class MetaConnectController extends Controller
             | and return a page token without the new permission.
             |--------------------------------------------------------------------------
             */
-            'auth_type'     => 'rerequest',
+            'auth_type' => 'rerequest',
 
-            'scope'         => implode(',', [
+            'scope' => implode(',', [
                 'pages_show_list',
                 'pages_read_engagement',
                 'pages_manage_metadata',
@@ -80,8 +97,31 @@ class MetaConnectController extends Controller
      */
     public function callback(Request $request)
     {
+        $expectedStateHash = (string) $request->session()->pull('meta_oauth_state_hash', '');
+        $startedAt = (int) $request->session()->pull('meta_oauth_started_at', 0);
+        $providedState = (string) $request->query('state', '');
+        $stateValid = $expectedStateHash !== ''
+            && $providedState !== ''
+            && hash_equals($expectedStateHash, hash('sha256', $providedState))
+            && $startedAt >= now()->subMinutes(10)->getTimestamp();
+
+        if (! $stateValid) {
+            Log::warning('[META_CONNECT][OAUTH_STATE_REJECTED]', [
+                'company_id' => auth()->user()?->company_id,
+                'state_present' => $providedState !== '',
+            ]);
+
+            return redirect()
+                ->route('admin.lead-sources.meta')
+                ->with('error', 'Facebook login verification expired or was invalid. Please start again.');
+        }
+
         if ($request->has('error')) {
-            Log::warning('[META_CONNECT][OAUTH_CANCELLED]', $request->all());
+            Log::warning('[META_CONNECT][OAUTH_CANCELLED]', [
+                'company_id' => auth()->user()?->company_id,
+                'error' => mb_substr((string) $request->query('error'), 0, 80),
+                'error_reason' => mb_substr((string) $request->query('error_reason'), 0, 80),
+            ]);
 
             return redirect()
                 ->route('admin.lead-sources.meta')
@@ -91,7 +131,11 @@ class MetaConnectController extends Controller
         $code = $request->query('code');
 
         if (! $code) {
-            Log::error('[META_CONNECT][CALLBACK_MISSING_CODE]', $request->all());
+            Log::error('[META_CONNECT][CALLBACK_MISSING_CODE]', [
+                'company_id' => auth()->user()?->company_id,
+                'has_state' => $request->filled('state'),
+                'query_keys' => array_values(array_diff(array_keys($request->query()), ['code', 'access_token'])),
+            ]);
 
             return redirect()
                 ->route('admin.lead-sources.meta')
@@ -113,15 +157,15 @@ class MetaConnectController extends Controller
 
         try {
             $tokenResponse = Http::timeout(20)->get("{$this->graphBase()}/oauth/access_token", [
-                'client_id'     => $appId,
+                'client_id' => $appId,
                 'client_secret' => $appSecret,
-                'redirect_uri'  => $redirectUri,
-                'code'          => $code,
+                'redirect_uri' => $redirectUri,
+                'code' => $code,
             ]);
         } catch (\Throwable $e) {
             Log::error('[META_CONNECT][TOKEN_REQUEST_EXCEPTION]', [
                 'company_id' => $companyId,
-                'error'      => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             return redirect()
@@ -132,8 +176,8 @@ class MetaConnectController extends Controller
         if (! $tokenResponse->ok()) {
             Log::error('[META_CONNECT][TOKEN_EXCHANGE_FAILED]', [
                 'company_id' => $companyId,
-                'status'     => $tokenResponse->status(),
-                'response'   => $tokenResponse->json(),
+                'status' => $tokenResponse->status(),
+                'provider_error' => $this->safeProviderError($tokenResponse->json()),
             ]);
 
             return redirect()
@@ -146,7 +190,7 @@ class MetaConnectController extends Controller
         if (! $userAccessToken) {
             Log::error('[META_CONNECT][TOKEN_MISSING_IN_RESPONSE]', [
                 'company_id' => $companyId,
-                'response'   => $tokenResponse->json(),
+                'response_keys' => array_keys((array) $tokenResponse->json()),
             ]);
 
             return redirect()
@@ -156,14 +200,14 @@ class MetaConnectController extends Controller
 
         try {
             $pagesResponse = Http::timeout(20)->get("{$this->graphBase()}/me/accounts", [
-                'fields'       => 'id,name,access_token',
+                'fields' => 'id,name,access_token',
                 'access_token' => $userAccessToken,
-                'limit'        => 100,
+                'limit' => 100,
             ]);
         } catch (\Throwable $e) {
             Log::error('[META_CONNECT][PAGES_REQUEST_EXCEPTION]', [
                 'company_id' => $companyId,
-                'error'      => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             return redirect()
@@ -174,8 +218,8 @@ class MetaConnectController extends Controller
         if (! $pagesResponse->ok()) {
             Log::error('[META_CONNECT][PAGES_FETCH_FAILED]', [
                 'company_id' => $companyId,
-                'status'     => $pagesResponse->status(),
-                'response'   => $pagesResponse->json(),
+                'status' => $pagesResponse->status(),
+                'provider_error' => $this->safeProviderError($pagesResponse->json()),
             ]);
 
             return redirect()
@@ -194,12 +238,30 @@ class MetaConnectController extends Controller
         session([
             'meta_company_id' => $companyId,
             'meta_user_token' => $userAccessToken,
-            'meta_pages'      => $pages,
+            'meta_pages' => $pages,
         ]);
 
         return redirect()
             ->route('admin.lead-sources.meta')
             ->with('success', 'Facebook connected. Please select the Page you want to use for Meta lead capture.');
+    }
+
+    private function safeProviderError(mixed $payload): array
+    {
+        $error = is_array($payload) && is_array($payload['error'] ?? null)
+            ? $payload['error']
+            : [];
+
+        return array_filter([
+            'type' => mb_substr((string) ($error['type'] ?? ''), 0, 80) ?: null,
+            'code' => is_numeric($error['code'] ?? null) ? (int) $error['code'] : null,
+            'subcode' => is_numeric($error['error_subcode'] ?? null) ? (int) $error['error_subcode'] : null,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+    }
+
+    private function providerReference(string $identifier): string
+    {
+        return substr(hash_hmac('sha256', $identifier, (string) config('app.key')), 0, 16);
     }
 
     /**
@@ -208,7 +270,7 @@ class MetaConnectController extends Controller
     public function selectPage(Request $request)
     {
         $request->validate([
-            'page_id'   => 'required|string',
+            'page_id' => 'required|string',
             'page_name' => 'nullable|string',
         ]);
 
@@ -226,14 +288,14 @@ class MetaConnectController extends Controller
 
         try {
             $pageInfo = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}", [
-                'fields'       => 'access_token,name',
+                'fields' => 'access_token,name',
                 'access_token' => $userToken,
             ])->throw()->json();
         } catch (\Throwable $e) {
             Log::error('[META_CONNECT][PAGE_TOKEN_FETCH_FAILED]', [
                 'company_id' => $companyId,
-                'page_id'    => $pageId,
-                'error'      => $e->getMessage(),
+                'provider_ref' => $this->providerReference($pageId),
+                'exception' => $e::class,
             ]);
 
             return redirect()
@@ -255,12 +317,12 @@ class MetaConnectController extends Controller
         $meta = MetaPage::updateOrCreate(
             [
                 'company_id' => $companyId,
-                'page_id'    => $pageId,
+                'page_id' => $pageId,
             ],
             [
-                'page_name'         => $resolvedPageName,
+                'page_name' => $resolvedPageName,
                 'page_access_token' => $pageAccessToken,
-                'forms_json'        => json_encode($forms),
+                'forms_json' => json_encode($forms),
             ]
         );
 
@@ -289,12 +351,12 @@ class MetaConnectController extends Controller
         if (! $subscriptionOk) {
             return redirect()
                 ->route('admin.lead-sources.meta')
-                ->with('warning', "Connected {$meta->page_name} and synced " . count($forms) . " forms, but leadgen webhook subscription failed. Please check Meta permissions and try Refresh Forms.");
+                ->with('warning', "Connected {$meta->page_name} and synced ".count($forms).' forms, but leadgen webhook subscription failed. Please check Meta permissions and try Refresh Forms.');
         }
 
         return redirect()
             ->route('admin.lead-sources.meta')
-            ->with('success', "Connected {$meta->page_name}, synced " . count($forms) . " forms, and prepared {$createdOrUpdatedSources} lead sources.");
+            ->with('success', "Connected {$meta->page_name}, synced ".count($forms)." forms, and prepared {$createdOrUpdatedSources} lead sources.");
     }
 
     /**
@@ -338,7 +400,7 @@ class MetaConnectController extends Controller
             return back()->with('warning', 'Forms refreshed, but leadgen webhook subscription failed. Please check Meta app permissions.');
         }
 
-        return back()->with('success', 'Forms refreshed: ' . count($forms) . '. Lead sources updated: ' . $createdOrUpdatedSources . '.');
+        return back()->with('success', 'Forms refreshed: '.count($forms).'. Lead sources updated: '.$createdOrUpdatedSources.'.');
     }
 
     /**
@@ -369,17 +431,17 @@ class MetaConnectController extends Controller
     {
         try {
             $response = Http::timeout(20)->get("{$this->graphBase()}/{$pageId}/leadgen_forms", [
-                'fields'       => 'id,name,status,created_time,questions',
+                'fields' => 'id,name,status,created_time,questions',
                 'access_token' => $pageAccessToken,
-                'limit'        => 200,
+                'limit' => 200,
             ]);
 
             if (! $response->ok()) {
                 Log::error('[META_CONNECT][FORMS_FETCH_FAILED]', [
                     'company_id' => $companyId,
-                    'page_id'    => $pageId,
-                    'status'     => $response->status(),
-                    'response'   => $response->json(),
+                    'provider_ref' => $this->providerReference($pageId),
+                    'status' => $response->status(),
+                    'provider_error' => $this->safeProviderError($response->json()),
                 ]);
 
                 return [];
@@ -391,8 +453,8 @@ class MetaConnectController extends Controller
         } catch (\Throwable $e) {
             Log::error('[META_CONNECT][FORMS_FETCH_EXCEPTION]', [
                 'company_id' => $companyId,
-                'page_id'    => $pageId,
-                'error'      => $e->getMessage(),
+                'provider_ref' => $this->providerReference($pageId),
+                'exception' => $e::class,
             ]);
 
             return [];
@@ -406,15 +468,15 @@ class MetaConnectController extends Controller
                 ->timeout(20)
                 ->post("{$this->graphBase()}/{$pageId}/subscribed_apps", [
                     'subscribed_fields' => 'leadgen',
-                    'access_token'      => $pageAccessToken,
+                    'access_token' => $pageAccessToken,
                 ]);
 
             if (! $response->ok()) {
                 Log::error('[META_CONNECT][LEADGEN_SUBSCRIPTION_FAILED]', [
                     'company_id' => $companyId,
-                    'page_id'    => $pageId,
-                    'status'     => $response->status(),
-                    'response'   => $response->json(),
+                    'provider_ref' => $this->providerReference($pageId),
+                    'status' => $response->status(),
+                    'provider_error' => $this->safeProviderError($response->json()),
                 ]);
 
                 return false;
@@ -422,16 +484,16 @@ class MetaConnectController extends Controller
 
             Log::info('[META_CONNECT][LEADGEN_SUBSCRIBED]', [
                 'company_id' => $companyId,
-                'page_id'    => $pageId,
-                'response'   => $response->json(),
+                'provider_ref' => $this->providerReference($pageId),
+                'provider_success' => $response->json('success') === true,
             ]);
 
             return true;
         } catch (\Throwable $e) {
             Log::error('[META_CONNECT][LEADGEN_SUBSCRIPTION_EXCEPTION]', [
                 'company_id' => $companyId,
-                'page_id'    => $pageId,
-                'error'      => $e->getMessage(),
+                'provider_ref' => $this->providerReference($pageId),
+                'exception' => $e::class,
             ]);
 
             return false;
@@ -457,24 +519,24 @@ class MetaConnectController extends Controller
                 ->first();
 
             if (! $leadSource) {
-                $leadSource = new LeadSource();
+                $leadSource = new LeadSource;
                 $leadSource->company_id = $companyId;
                 $leadSource->type = 'meta';
                 $leadSource->status = 'inactive';
-                $leadSource->form_token = 'meta_' . Str::random(32);
+                $leadSource->form_token = 'meta_'.Str::random(32);
             }
 
-            $leadSource->name = 'Meta - ' . $formName;
+            $leadSource->name = 'Meta - '.$formName;
             $leadSource->config = array_merge($leadSource->config ?? [], [
-                'provider'        => 'meta',
-                'platform'        => 'meta',
-                'page_id'         => $pageId,
-                'page_name'       => $pageName,
-                'form_id'         => (string) $formId,
-                'form_name'       => $formName,
-                'form_status'     => data_get($form, 'status'),
+                'provider' => 'meta',
+                'platform' => 'meta',
+                'page_id' => $pageId,
+                'page_name' => $pageName,
+                'form_id' => (string) $formId,
+                'form_name' => $formName,
+                'form_status' => data_get($form, 'status'),
                 'form_created_at' => data_get($form, 'created_time'),
-                'questions'       => data_get($form, 'questions', []),
+                'questions' => data_get($form, 'questions', []),
             ]);
 
             $leadSource->save();

@@ -316,11 +316,9 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
     {
         $verify = true;
 
-        $bundle = env('CURL_CA_BUNDLE');
+        $bundle = config('services.curl_ca_bundle');
 
-        if ($bundle === '0' || strtolower((string) $bundle) === 'false') {
-            $verify = false;
-        } elseif ($bundle && file_exists($bundle)) {
+        if (is_string($bundle) && $bundle !== '' && file_exists($bundle)) {
             $verify = $bundle;
         }
 
@@ -331,22 +329,22 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
 
     protected function apiKey(): string
     {
-        return (string) (config('services.openai.api_key') ?? env('OPENAI_API_KEY', ''));
+        return (string) config('services.openai.api_key', '');
     }
 
     protected function base(): string
     {
-        return rtrim((string) (config('services.openai.base_url') ?? env('OPENAI_BASE_URL', 'https://api.openai.com/v1')), '/');
+        return rtrim((string) config('services.openai.base_url', 'https://api.openai.com/v1'), '/');
     }
 
     protected function model(): string
     {
-        return (string) (config('services.openai.model') ?? env('OPENAI_MODEL', 'gpt-4o-mini'));
+        return (string) config('services.openai.model', 'gpt-4o-mini');
     }
 
     protected function timeout(): int
     {
-        return (int) (config('services.openai.timeout') ?? env('OPENAI_TIMEOUT', 20));
+        return (int) config('services.openai.timeout', 20);
     }
 
     protected function fallback(): array

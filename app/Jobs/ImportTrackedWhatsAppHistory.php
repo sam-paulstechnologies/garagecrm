@@ -20,20 +20,26 @@ class ImportTrackedWhatsAppHistory implements ShouldQueue
 
     public array $backoff = [15, 90, 300];
 
-    public function __construct(public readonly int $batchId, public readonly int $afterId = 0)
-    {
+    public function __construct(
+        public readonly int $batchId,
+        public readonly int $companyId,
+        public readonly int $afterId = 0,
+    ) {
         $this->onConnection('database');
         $this->onQueue('default');
     }
 
     public function handle(HistoryImporter $importer, HistoryBatchCounters $counters): void
     {
-        $batch = WhatsAppHistoryImportBatch::query()->find($this->batchId);
+        $batch = WhatsAppHistoryImportBatch::query()
+            ->where('company_id', $this->companyId)
+            ->find($this->batchId);
         if (! $batch) {
             return;
         }
         $batch->forceFill(['status' => 'importing', 'last_error_code' => null])->save();
         $candidates = WhatsAppHistoryCandidate::query()
+            ->where('company_id', $this->companyId)
             ->where('whatsapp_history_import_batch_id', $batch->id)
             ->where('review_decision', 'track')
             ->where('id', '>', $this->afterId)
@@ -51,7 +57,7 @@ class ImportTrackedWhatsAppHistory implements ShouldQueue
 
         $counters->refresh($batch);
         if ($candidates->count() === 50) {
-            self::dispatch($batch->id, (int) $candidates->last()->id);
+            self::dispatch($batch->id, $this->companyId, (int) $candidates->last()->id);
 
             return;
         }

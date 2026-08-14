@@ -81,15 +81,9 @@
                 </div>
 
                 @php
-                    $fileUrl = null;
-
-                    if (!empty($file->file_path)) {
-                        $fileUrl = asset($file->file_path);
-                    } elseif (!empty($file->path)) {
-                        $fileUrl = asset($file->path);
-                    } elseif (!empty($file->document_path)) {
-                        $fileUrl = asset('storage/' . $file->document_path);
-                    }
+                    $fileUrl = ! empty($file->file_path)
+                        ? route('admin.files.download', $file)
+                        : null;
                 @endphp
 
                 @if($fileUrl)

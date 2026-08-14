@@ -2,37 +2,41 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Support\Staging\StagingSafety;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Support\Staging\StagingSafety;
 
 class TwilioWhatsAppService
 {
     protected string $sid;
+
     protected string $token;
+
     protected string $from;
+
     protected array $contentSids;
+
     protected array $textTemplates;
 
     public function __construct()
     {
         $svc = Config::get('services.whatsapp.twilio', []);
-        $this->sid          = (string)($svc['sid']   ?? env('TWILIO_SID'));
-        $this->token        = (string)($svc['token'] ?? env('TWILIO_TOKEN'));
-        $this->from         = (string)($svc['from']  ?? env('TWILIO_WHATSAPP_FROM')); // e.g. "whatsapp:+14155238886"
-        $this->contentSids  = (array)($svc['content_sids'] ?? []);
+        $this->sid = (string) ($svc['sid'] ?? '');
+        $this->token = (string) ($svc['token'] ?? '');
+        $this->from = (string) ($svc['from'] ?? ''); // e.g. "whatsapp:+14155238886"
+        $this->contentSids = (array) ($svc['content_sids'] ?? []);
         $this->textTemplates = Config::get('services.whatsapp.templates_text', []);
     }
 
     /**
      * Send a templated WhatsApp message via Twilio.
      *
-     * @param string $to E.g. "+9715XXXXXXXX" or "whatsapp:+9715XXXXXXXX" (both okay)
-     * @param string $templateKey One of: lead_created, opp_confirmed, opp_cancelled, opp_rescheduled, job_completed, generic
-     * @param array<int|string, string> $vars Values to inject into template ({{1}}, {{2}}...) or vsprintf order
-     * @param array<int, string> $mediaUrls Optional array of absolute URLs for media
+     * @param  string  $to  E.g. "+9715XXXXXXXX" or "whatsapp:+9715XXXXXXXX" (both okay)
+     * @param  string  $templateKey  One of: lead_created, opp_confirmed, opp_cancelled, opp_rescheduled, job_completed, generic
+     * @param  array<int|string, string>  $vars  Values to inject into template ({{1}}, {{2}}...) or vsprintf order
+     * @param  array<int, string>  $mediaUrls  Optional array of absolute URLs for media
      * @return array{ok: bool, sid?: string, error?: string}
      */
     public function sendTemplate(string $to, string $templateKey, array $vars = [], array $mediaUrls = []): array
@@ -47,11 +51,11 @@ class TwilioWhatsAppService
 
         $payload = [
             'From' => $this->from,
-            'To'   => $to,
+            'To' => $to,
         ];
 
         if ($contentSid) {
-            $payload['ContentSid']       = $contentSid;
+            $payload['ContentSid'] = $contentSid;
             $payload['ContentVariables'] = $this->makeContentVariables($vars);
         } else {
             // Fallback to plain text template
@@ -63,7 +67,7 @@ class TwilioWhatsAppService
         }
 
         // Optional media
-        if (!empty($mediaUrls)) {
+        if (! empty($mediaUrls)) {
             // Twilio accepts multiple MediaUrl params
             $payload['MediaUrl'] = array_values($mediaUrls);
         }
@@ -74,11 +78,12 @@ class TwilioWhatsAppService
                 ->post($endpoint, $payload);
 
             if ($resp->successful()) {
-                $sid = (string)($resp->json('sid') ?? '');
+                $sid = (string) ($resp->json('sid') ?? '');
+
                 return ['ok' => true, 'sid' => $sid];
             }
 
-            $err = $resp->json('message') ?? $resp->body();
+            $err = $resp->json('message') ?? 'Twilio API request failed.';
             Log::error('Twilio WhatsApp send failed', [
                 'status' => $resp->status(),
                 'error' => $err,
@@ -87,10 +92,12 @@ class TwilioWhatsAppService
                 'template_key' => $templateKey,
                 'has_media' => ! empty($mediaUrls),
             ]);
-            return ['ok' => false, 'error' => is_string($err) ? $err : 'Twilio API error'];
+
+            return ['ok' => false, 'error' => 'The WhatsApp provider rejected the request.'];
         } catch (\Throwable $e) {
-            Log::error('Twilio WhatsApp exception', ['e' => $e->getMessage()]);
-            return ['ok' => false, 'error' => $e->getMessage()];
+            Log::error('Twilio WhatsApp exception', ['exception' => $e::class]);
+
+            return ['ok' => false, 'error' => 'The WhatsApp provider request failed.'];
         }
     }
 
@@ -106,6 +113,7 @@ class TwilioWhatsAppService
 
         // If $vars is associative, flatten to numeric order
         $ordered = $this->normalizeVarsToArray($vars);
+
         return vsprintf($tpl, $ordered);
     }
 
@@ -115,10 +123,11 @@ class TwilioWhatsAppService
     protected function makeContentVariables(array $vars): string
     {
         $ordered = $this->normalizeVarsToArray($vars);
-        $mapped  = [];
+        $mapped = [];
         foreach (array_values($ordered) as $i => $val) {
-            $mapped[(string)($i + 1)] = (string)$val;
+            $mapped[(string) ($i + 1)] = (string) $val;
         }
+
         return json_encode($mapped, JSON_UNESCAPED_UNICODE);
     }
 
@@ -128,13 +137,14 @@ class TwilioWhatsAppService
     protected function normalizeWhatsAppAddress(string $to): string
     {
         $t = trim($to);
-        if (!Str::startsWith($t, 'whatsapp:')) {
+        if (! Str::startsWith($t, 'whatsapp:')) {
             // Ensure it starts with "+"
-            if (!Str::startsWith($t, '+')) {
-                $t = '+' . ltrim($t, '+');
+            if (! Str::startsWith($t, '+')) {
+                $t = '+'.ltrim($t, '+');
             }
-            $t = 'whatsapp:' . $t;
+            $t = 'whatsapp:'.$t;
         }
+
         return $t;
     }
 
@@ -149,6 +159,7 @@ class TwilioWhatsAppService
             // Preserve insertion order
             return array_values($vars);
         }
+
         return $vars;
     }
 

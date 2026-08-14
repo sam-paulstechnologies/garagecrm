@@ -1,11 +1,11 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Middleware\VerifyCsrfToken;
 use App\Http\Controllers\Api\WebsiteLeadController;
 use App\Http\Controllers\Webhooks\MetaWebhookController;
 use App\Http\Controllers\Webhooks\MetaWhatsAppWebhookController;
 use App\Http\Controllers\Webhooks\TwilioWhatsAppWebhookController;
+use App\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +25,7 @@ Route::prefix('api/v1')->group(function () {
 
     Route::post('/website-leads/{token}', [WebsiteLeadController::class, 'store'])
         ->name('api.website-leads.store')
+        ->middleware('throttle:20,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     /*
@@ -34,10 +35,12 @@ Route::prefix('api/v1')->group(function () {
     */
     Route::get('/webhooks/meta/leads', [MetaWebhookController::class, 'verify'])
         ->name('api.webhooks.meta.leads.verify')
+        ->middleware('throttle:60,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     Route::post('/webhooks/meta/leads', [MetaWebhookController::class, 'handle'])
         ->name('api.webhooks.meta.leads.handle')
+        ->middleware('throttle:300,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     /*
@@ -47,10 +50,12 @@ Route::prefix('api/v1')->group(function () {
     */
     Route::get('/webhooks/meta/whatsapp', [MetaWhatsAppWebhookController::class, 'verify'])
         ->name('api.webhooks.meta.whatsapp.verify')
+        ->middleware('throttle:60,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     Route::post('/webhooks/meta/whatsapp', [MetaWhatsAppWebhookController::class, 'handle'])
         ->name('api.webhooks.meta.whatsapp.handle')
+        ->middleware('throttle:300,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     /*
@@ -60,10 +65,12 @@ Route::prefix('api/v1')->group(function () {
     */
     Route::match(['GET', 'POST', 'HEAD'], '/webhooks/twilio/whatsapp', [TwilioWhatsAppWebhookController::class, 'handle'])
         ->name('api.webhooks.twilio.whatsapp')
+        ->middleware('throttle:300,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     Route::match(['GET', 'POST', 'HEAD'], '/webhooks/twilio/whatsapp/status', [TwilioWhatsAppWebhookController::class, 'status'])
         ->name('api.webhooks.twilio.whatsapp.status')
+        ->middleware('throttle:300,1')
         ->withoutMiddleware(VerifyCsrfToken::class);
 
     Route::get('/webhooks/twilio/ping', function () {

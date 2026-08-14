@@ -58,6 +58,15 @@ jobs:
       - name: Install test dependencies
         run: composer install --prefer-dist --no-interaction --optimize-autoloader
 
+      - name: PHP dependency and secret security gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p storage/app/security
+          composer validate --strict --no-interaction
+          composer audit --locked --format=json | tee storage/app/security/composer-audit.json
+          php ops/security/scan-secrets.php --json=storage/app/security/secret-scan.json
+
       - name: Validate canonical schema baseline
         shell: pwsh
         run: ./ops/azure/staging/validate-schema-baseline.ps1
@@ -79,10 +88,22 @@ jobs:
           cache: npm
 
       - name: Build frontend assets
+        shell: bash
         run: |
+          set -Eeuo pipefail
           npm ci --no-audit --no-fund
+          npm audit --json | tee storage/app/security/npm-audit.json
+          php ops/security/generate-sbom.php --output=storage/app/security/sbom.cdx.json
           npm run build
           test -f public/build/manifest.json
+
+      - name: Preserve security gate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sayaraforce-security-evidence-${{ github.sha }}
+          path: storage/app/security/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Install production PHP dependencies
         run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Automation;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessInboundWhatsAppMessage;
+use App\Models\Shared\WhatsappMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use App\Models\Shared\WhatsappMessage;
-use App\Jobs\ProcessInboundWhatsAppMessage;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -19,6 +19,7 @@ class WhatsAppWebhookController extends Controller
                 return response($req->get('hub_challenge') ?? $req->get('hub.challenge'), 200);
             }
         }
+
         return response('Forbidden', 403);
     }
 
@@ -26,7 +27,10 @@ class WhatsAppWebhookController extends Controller
     public function receive(Request $req)
     {
         $payload = $req->all();
-        Log::info('WA inbound', $payload);
+        Log::info('WA inbound received', [
+            'entry_count' => is_array($payload['entry'] ?? null) ? count($payload['entry']) : 0,
+            'object' => mb_substr((string) ($payload['object'] ?? ''), 0, 40),
+        ]);
 
         // Status updates (sent/delivered/read/failed) may come here — store raw:
         // But when there is a user message:
@@ -53,6 +57,7 @@ class WhatsAppWebhookController extends Controller
                 }
             }
         }
+
         return response()->json(['ok' => true]);
     }
 }

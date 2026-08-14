@@ -384,11 +384,16 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'DB_QUEUE_TABLE', value: 'queue_jobs' }
         { name: 'QUEUE_FAILED_TABLE', value: 'failed_jobs' }
         { name: 'SESSION_DRIVER', value: 'database' }
+        { name: 'SESSION_ENCRYPT', value: 'true' }
+        { name: 'SANCTUM_EXPIRATION', value: '60' }
+        { name: 'SANCTUM_TOKEN_PREFIX', value: 'sf_' }
+        { name: 'CORS_ALLOWED_ORIGINS', value: 'https://${initialWebHost},https://staging.sayaraforce.com' }
         { name: 'SESSION_COOKIE', value: 'sayaraforce_staging_session' }
         { name: 'SESSION_SECURE_COOKIE', value: 'true' }
         { name: 'SESSION_DOMAIN', value: initialWebHost }
         { name: 'TRUSTED_PROXIES', value: '*' }
         { name: 'FILESYSTEM_DISK', value: 'staging' }
+        { name: 'PRIVATE_UPLOAD_DISK', value: 'staging' }
         { name: 'STAGING_STORAGE_PATH', value: '/mount/sayaraforce-staging' }
         { name: 'MAIL_MAILER', value: 'log' }
         { name: 'MAIL_FROM_ADDRESS', value: 'staging-no-reply@sayaraforce.test' }

@@ -48,7 +48,7 @@ Route::prefix('v1')->group(function () {
     Route::post(
         '/website-leads/{token}',
         [WebsiteLeadController::class, 'store']
-    )->name('api.website-leads.store');
+    )->middleware('throttle:20,1')->name('api.website-leads.store');
 
     /*
     |--------------------------------------------------------------------------
@@ -66,7 +66,7 @@ Route::prefix('v1')->group(function () {
     Route::post(
         '/webhooks/google/leads',
         [GoogleLeadWebhookController::class, 'handle']
-    )->name('api.webhooks.google.leads.handle');
+    )->middleware('throttle:60,1')->name('api.webhooks.google.leads.handle');
 
     /*
     |--------------------------------------------------------------------------
@@ -78,12 +78,12 @@ Route::prefix('v1')->group(function () {
     Route::get(
         '/webhooks/meta/leads',
         [MetaWebhookController::class, 'verify']
-    )->name('api.webhooks.meta.leads.verify');
+    )->middleware('throttle:60,1')->name('api.webhooks.meta.leads.verify');
 
     Route::post(
         '/webhooks/meta/leads',
         [MetaWebhookController::class, 'handle']
-    )->name('api.webhooks.meta.leads.handle');
+    )->middleware('throttle:300,1')->name('api.webhooks.meta.leads.handle');
 
     /*
     |--------------------------------------------------------------------------
@@ -94,12 +94,12 @@ Route::prefix('v1')->group(function () {
     Route::get(
         '/webhooks/meta/whatsapp',
         [MetaWhatsAppWebhookController::class, 'verify']
-    )->name('api.webhooks.meta.whatsapp.verify');
+    )->middleware('throttle:60,1')->name('api.webhooks.meta.whatsapp.verify');
 
     Route::post(
         '/webhooks/meta/whatsapp',
         [MetaWhatsAppWebhookController::class, 'handle']
-    )->name('api.webhooks.meta.whatsapp.handle');
+    )->middleware('throttle:300,1')->name('api.webhooks.meta.whatsapp.handle');
 
     /*
     |--------------------------------------------------------------------------
@@ -109,12 +109,12 @@ Route::prefix('v1')->group(function () {
     Route::match(['GET', 'POST', 'HEAD'],
         '/webhooks/twilio/whatsapp',
         [TwilioWhatsAppWebhookController::class, 'handle']
-    )->name('api.webhooks.twilio.whatsapp');
+    )->middleware('throttle:300,1')->name('api.webhooks.twilio.whatsapp');
 
     Route::match(['GET', 'POST', 'HEAD'],
         '/webhooks/twilio/whatsapp/status',
         [TwilioWhatsAppWebhookController::class, 'status']
-    )->name('api.webhooks.twilio.whatsapp.status');
+    )->middleware('throttle:300,1')->name('api.webhooks.twilio.whatsapp.status');
 
     Route::get('/webhooks/twilio/ping', function () {
         abort_unless(app()->environment('local'), 404);

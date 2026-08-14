@@ -7,16 +7,18 @@ use App\Models\Client\Client;
 use App\Models\Job\Invoice;
 use App\Models\Job\Job;
 use App\Models\User;
+use App\Security\Uploads\PrivateUploadStorage;
 use App\Support\InvoiceDetailPresenter;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class InvoiceController extends Controller
 {
+    public function __construct(private PrivateUploadStorage $storage) {}
+
     /*
     |--------------------------------------------------------------------------
     | Guards
@@ -61,13 +63,13 @@ class InvoiceController extends Controller
         $status = (string) $request->get('status', '');
 
         $invoiceFilters = [
-            'date_range'    => $request->get('date_range', 'all_time'),
-            'lead_source'   => $request->get('lead_source', 'all'),
+            'date_range' => $request->get('date_range', 'all_time'),
+            'lead_source' => $request->get('lead_source', 'all'),
             'assigned_user' => $request->get('assigned_user', 'all'),
-            'service_type'  => $request->get('service_type', 'all'),
+            'service_type' => $request->get('service_type', 'all'),
             'customer_type' => $request->get('customer_type', 'all'),
-            'from_date'     => $request->get('from_date'),
-            'to_date'       => $request->get('to_date'),
+            'from_date' => $request->get('from_date'),
+            'to_date' => $request->get('to_date'),
         ];
 
         $assignedUsers = User::query()
@@ -93,10 +95,10 @@ class InvoiceController extends Controller
         $this->applyInvoiceIndexFilters($base, $request, $companyId, false);
 
         $stats = [
-            'total'       => (clone $base)->count(),
-            'paid'        => (clone $base)->where('status', 'paid')->count(),
-            'pending'     => (clone $base)->where('status', 'pending')->count(),
-            'overdue'     => (clone $base)->where('status', 'overdue')->count(),
+            'total' => (clone $base)->count(),
+            'paid' => (clone $base)->where('status', 'paid')->count(),
+            'pending' => (clone $base)->where('status', 'pending')->count(),
+            'overdue' => (clone $base)->where('status', 'overdue')->count(),
             'roi_revenue' => (clone $base)->where('status', 'paid')->sum('amount'),
         ];
 
@@ -124,7 +126,7 @@ class InvoiceController extends Controller
         };
 
         if ($q !== '') {
-            $subtitle .= ' Search: "' . str($q)->limit(40) . '".';
+            $subtitle .= ' Search: "'.str($q)->limit(40).'".';
         }
 
         return [$title, $subtitle];
@@ -188,7 +190,7 @@ class InvoiceController extends Controller
         $invoiceDate = $data['invoice_date'] ?? now()->toDateString();
         $dueDate = $data['due_date'] ?? $invoiceDate;
 
-        $invoice = new Invoice();
+        $invoice = new Invoice;
 
         $invoice->company_id = $companyId;
         $invoice->client_id = $data['client_id'];
@@ -401,20 +403,15 @@ class InvoiceController extends Controller
 
         $path = $this->safeInvoiceFilePath($invoice);
 
-        abort_unless($path && Storage::disk('public')->exists($path), 404);
+        abort_unless($path, 404);
 
         $ext = pathinfo($path, PATHINFO_EXTENSION) ?: 'pdf';
         $number = $invoice->number ?? ($this->invoiceHasColumn('invoice_number') ? $invoice->invoice_number : null) ?? $invoice->id;
         $filename = "invoice-{$number}.{$ext}";
 
-        $mime = $invoice->mime
-            ?? $invoice->file_type
-            ?? (Storage::disk('public')->mimeType($path) ?: 'application/octet-stream');
+        $mime = $invoice->mime ?? $invoice->file_type;
 
-        return Storage::disk('public')->download($path, $filename, [
-            'Content-Type' => $mime,
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return $this->storage->download($invoice->storage_disk, $path, $filename, $mime);
     }
 
     public function view(Invoice $invoice)
@@ -423,22 +420,17 @@ class InvoiceController extends Controller
 
         $path = $this->safeInvoiceFilePath($invoice);
 
-        abort_unless($path && Storage::disk('public')->exists($path), 404);
+        abort_unless($path, 404);
 
-        $mime = $invoice->mime
-            ?? $invoice->file_type
-            ?? (Storage::disk('public')->mimeType($path) ?: 'application/pdf');
+        $mime = $invoice->mime ?? $invoice->file_type ?? 'application/pdf';
 
-        if (stripos($mime, 'pdf') === false) {
-            return Storage::disk('public')->download($path, null, [
-                'X-Content-Type-Options' => 'nosniff',
-            ]);
-        }
-
-        return response()->file(Storage::disk('public')->path($path), [
-            'Content-Type' => $mime,
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return $this->storage->download(
+            $invoice->storage_disk,
+            $path,
+            'invoice-'.($invoice->number ?: $invoice->id).'.pdf',
+            $mime,
+            inline: stripos($mime, 'pdf') !== false,
+        );
     }
 
     /*
@@ -484,7 +476,7 @@ class InvoiceController extends Controller
         $invoiceDate = $data['invoice_date'] ?? now()->toDateString();
         $dueDate = $data['due_date'] ?? $invoiceDate;
 
-        $invoice = new Invoice();
+        $invoice = new Invoice;
 
         $invoice->company_id = $companyId;
         $invoice->client_id = $job->client_id;
@@ -547,7 +539,7 @@ class InvoiceController extends Controller
         $invoiceDate = $data['invoice_date'] ?? now()->toDateString();
         $dueDate = $data['due_date'] ?? $invoiceDate;
 
-        $invoice = new Invoice();
+        $invoice = new Invoice;
 
         $invoice->company_id = $companyId;
         $invoice->client_id = $client->id;
@@ -680,6 +672,7 @@ class InvoiceController extends Controller
                     foreach (['lead_source', 'source', 'source_type', 'channel'] as $column) {
                         if (Schema::hasColumn('jobs', $column)) {
                             $jobQuery->where($column, $leadSource);
+
                             return;
                         }
                     }
@@ -699,6 +692,7 @@ class InvoiceController extends Controller
                     foreach (['assigned_to', 'assigned_user_id', 'user_id', 'owner_id'] as $column) {
                         if (Schema::hasColumn('jobs', $column)) {
                             $jobQuery->where($column, $assignedUser);
+
                             return;
                         }
                     }

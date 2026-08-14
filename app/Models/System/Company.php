@@ -2,11 +2,12 @@
 
 namespace App\Models\System;
 
+use App\Casts\EncryptedStoredString;
+use App\Models\Commercial\Subscription;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
-use App\Models\Commercial\Subscription;
 
 class Company extends Model
 {
@@ -56,6 +57,7 @@ class Company extends Model
         'meta_phone_number_id',
         'meta_access_token',
         'meta_verify_token',
+        'meta_verify_token_hash',
         'meta_waba_id',
         'meta_business_id',
         'meta_display_phone_number',
@@ -110,6 +112,8 @@ class Company extends Model
         'whatsapp_contact_sync_completed_at' => 'datetime',
         'whatsapp_history_sync_requested_at' => 'datetime',
         'whatsapp_history_sync_completed_at' => 'datetime',
+        'meta_access_token' => EncryptedStoredString::class,
+        'meta_verify_token' => EncryptedStoredString::class,
     ];
 
     protected $hidden = [
@@ -119,6 +123,35 @@ class Company extends Model
         'meta_waba_id',
         'meta_business_id',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Company $company): void {
+            if (! $company->isDirty('meta_verify_token')) {
+                return;
+            }
+
+            $ciphertext = $company->getAttributes()['meta_verify_token'] ?? null;
+            if (! is_string($ciphertext) || $ciphertext === '') {
+                $company->setAttribute('meta_verify_token_hash', null);
+
+                return;
+            }
+
+            try {
+                $plaintext = Crypt::decryptString($ciphertext);
+            } catch (\Throwable) {
+                $plaintext = $ciphertext;
+            }
+
+            $company->setAttribute('meta_verify_token_hash', self::metaVerifyTokenHash($plaintext));
+        });
+    }
+
+    public static function metaVerifyTokenHash(string $token): string
+    {
+        return hash_hmac('sha256', $token, (string) config('app.key'));
+    }
 
     /*
     |--------------------------------------------------------------------------

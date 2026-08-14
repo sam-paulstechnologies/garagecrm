@@ -25,8 +25,8 @@ use Illuminate\Support\Facades\Schema;
 class JobController extends Controller
 {
     public function __construct(
-        private DocumentUploadService $uploader = new DocumentUploadService(),
-        private JobNumberService $jobNumbers = new JobNumberService(),
+        private DocumentUploadService $uploader,
+        private JobNumberService $jobNumbers,
     ) {}
 
     protected function companyId(): int
@@ -153,12 +153,12 @@ class JobController extends Controller
             [$title, $subtitle] = match ($status) {
                 'pending' => ['Pending Jobs', 'Jobs waiting to start or awaiting technician action.'],
                 'in_progress' => ['In Progress Jobs', 'Jobs currently being worked on by the service team.'],
-                default => [ucwords(str_replace('_', ' ', $status)) . ' Jobs', 'Jobs filtered by the selected status.'],
+                default => [ucwords(str_replace('_', ' ', $status)).' Jobs', 'Jobs filtered by the selected status.'],
             };
         }
 
         if ($q !== '') {
-            $subtitle .= ' Search: "' . str($q)->limit(40) . '".';
+            $subtitle .= ' Search: "'.str($q)->limit(40).'".';
         }
 
         return [$title, $subtitle];
@@ -431,7 +431,7 @@ class JobController extends Controller
 
         unset($validated['invoice_number'], $validated['invoice_amount']);
 
-        DB::transaction(function () use ($job, $validated, $newStatus, $invoiceNumber, $invoiceAmount, $companyId) {
+        DB::transaction(function () use ($job, $validated, $newStatus, $invoiceNumber, $invoiceAmount) {
             $job->update($validated);
 
             if ($newStatus === 'completed') {
@@ -493,6 +493,7 @@ class JobController extends Controller
             'description' => $request->input('description'),
             'status' => 'uploaded',
             'file_path' => $meta['path'],
+            'storage_disk' => $meta['disk'],
             'file_type' => $meta['mime'],
             'assigned_to' => auth()->id(),
         ]);
@@ -508,6 +509,7 @@ class JobController extends Controller
             'mime' => $meta['mime'],
             'size' => $meta['size'],
             'path' => $meta['path'],
+            'storage_disk' => $meta['disk'],
             'url' => $meta['url'],
             'status' => 'assigned',
             'received_at' => now(),
@@ -737,9 +739,9 @@ class JobController extends Controller
     protected function detectJobServiceSignal($job): string
     {
         $jobText = strtolower(trim(
-            ($job->description ?? '') . ' ' .
-            ($job->work_summary ?? '') . ' ' .
-            ($job->issues_found ?? '') . ' ' .
+            ($job->description ?? '').' '.
+            ($job->work_summary ?? '').' '.
+            ($job->issues_found ?? '').' '.
             ($job->parts_used ?? '')
         ));
 
@@ -859,7 +861,7 @@ class JobController extends Controller
 
         $invoice = $job->invoice()
             ->where('company_id', $companyId)
-            ->first() ?: new Invoice();
+            ->first() ?: new Invoice;
 
         $invoice->company_id = $job->company_id;
         $invoice->client_id = $job->client_id;

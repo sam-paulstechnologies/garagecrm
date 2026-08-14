@@ -226,7 +226,7 @@
 
                             @if(!empty($document->file_path))
                                 <a
-                                    href="{{ asset('storage/' . $document->file_path) }}"
+                                    href="{{ route('admin.files.download', $document) }}"
                                     target="_blank"
                                     class="inline-flex w-fit rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs font-black text-blue-300 transition hover:bg-blue-500/15"
                                 >

@@ -182,7 +182,12 @@
     "2026_08_14_000001_harden_provider_subscription_reconciliation",
     "2026_08_14_000002_create_whatsapp_history_intelligence",
     "2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes",
-    "2026_08_14_000004_create_quick_scan_workspaces"
+    "2026_08_14_000004_create_quick_scan_workspaces",
+    "2026_08_15_000001_add_private_storage_metadata_to_uploaded_records",
+    "2026_08_15_000002_create_meta_pages_if_missing",
+    "2026_08_15_000003_create_client_documents_if_missing",
+    "2026_08_15_000004_create_company_settings_if_missing",
+    "2026_08_15_000005_add_company_meta_verify_token_hash"
   ],
   "production_only_migration_identifiers_excluded": [
     "2025_09_13_180003_create_job_documents_table"
@@ -534,12 +539,42 @@
       "classification": "pending and must run after baseline",
       "represented": false,
       "note": "Adds the temporary platform-created Quick Scan workspace, provider-session quarantine, candidate/message quarantine, idempotent provider-event ledger, and privacy-safe product audit without creating tenant CRM or subscription records."
+    },
+    {
+      "migration": "2026_08_15_000001_add_private_storage_metadata_to_uploaded_records",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds non-public storage-disk provenance to tenant upload records so authenticated downloads can migrate without public URLs."
+    },
+    {
+      "migration": "2026_08_15_000002_create_meta_pages_if_missing",
+      "classification": "pending compatibility migration; effect already represented in MySQL baseline",
+      "represented": false,
+      "note": "No-op after the canonical MySQL baseline; supplies the missing repository creation path for clean SQLite integration databases."
+    },
+    {
+      "migration": "2026_08_15_000003_create_client_documents_if_missing",
+      "classification": "pending compatibility migration; effect already represented in MySQL baseline",
+      "represented": false,
+      "note": "No-op after the canonical MySQL baseline; supplies the missing repository creation path for clean SQLite integration databases."
+    },
+    {
+      "migration": "2026_08_15_000004_create_company_settings_if_missing",
+      "classification": "pending compatibility migration; effect already represented in MySQL baseline",
+      "represented": false,
+      "note": "No-op after the canonical MySQL baseline; supplies the missing repository creation path for clean SQLite integration databases and encrypted-setting tests."
+    },
+    {
+      "migration": "2026_08_15_000005_add_company_meta_verify_token_hash",
+      "classification": "pending and must run after baseline",
+      "represented": false,
+      "note": "Adds a one-way keyed lookup hash for encrypted tenant webhook verification tokens, avoiding plaintext database comparisons."
     }
   ],
   "validation": {
     "status": "passed",
-    "cycle_one_fingerprint": "995333181942e36ee3b141d996aa71d12fc502133447f75eda7ebec817d51005",
-    "cycle_two_fingerprint": "995333181942e36ee3b141d996aa71d12fc502133447f75eda7ebec817d51005",
+    "cycle_one_fingerprint": "d086c533e6898a6a8bb5ac782585aeb7e7693da2cba5ebda2587c8d791c71b30",
+    "cycle_two_fingerprint": "d086c533e6898a6a8bb5ac782585aeb7e7693da2cba5ebda2587c8d791c71b30",
     "fingerprints_match": true
   },
   "staging_schema_baseline_approved": true

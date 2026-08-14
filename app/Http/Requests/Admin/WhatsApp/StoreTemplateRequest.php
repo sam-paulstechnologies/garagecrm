@@ -32,21 +32,21 @@ class StoreTemplateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'               => ['required', 'string', 'max:120'],
-            'provider_template'  => ['required', 'string', 'max:160'],
-            'language'           => ['required', 'string', 'max:20'],
-            'category'           => ['nullable', 'string', 'max:40'],
-            'header'             => ['nullable', 'string'],
-            'body'               => ['required', 'string'],
-            'footer'             => ['nullable', 'string'],
-            'status'             => ['required', Rule::in(['active','draft','archived'])],
+            'name' => ['required', 'string', 'max:120'],
+            'provider_template' => ['required', 'string', 'max:160'],
+            'language' => ['required', 'string', 'max:20'],
+            'category' => ['nullable', 'string', 'max:40'],
+            'header' => ['nullable', 'string'],
+            'body' => ['required', 'string'],
+            'footer' => ['nullable', 'string'],
+            'status' => ['required', Rule::in(['active', 'draft', 'archived'])],
 
             // Buttons: up to 3 (Meta limit for interactive template buttons)
-            'buttons'            => ['nullable', 'array', 'max:3'],
-            'buttons.*.type'     => ['required_with:buttons', Rule::in(['quick_reply','url','phone'])],
-            'buttons.*.text'     => ['required_with:buttons', 'string', 'max:25'],
-            'buttons.*.url'      => ['required_if:buttons.*.type,url', 'nullable', 'string', 'max:200'],
-            'buttons.*.phone'    => ['required_if:buttons.*.type,phone', 'nullable', 'string', 'max:20'],
+            'buttons' => ['nullable', 'array', 'max:3'],
+            'buttons.*.type' => ['required_with:buttons', Rule::in(['quick_reply', 'url', 'phone'])],
+            'buttons.*.text' => ['required_with:buttons', 'string', 'max:25'],
+            'buttons.*.url' => ['required_if:buttons.*.type,url', 'nullable', 'url:http,https', 'max:200'],
+            'buttons.*.phone' => ['required_if:buttons.*.type,phone', 'nullable', 'string', 'max:20'],
         ];
     }
 
@@ -62,8 +62,8 @@ class StoreTemplateRequest extends FormRequest
         return [
             'buttons.*.type.required_with' => 'Each button needs a type.',
             'buttons.*.text.required_with' => 'Each button needs text.',
-            'buttons.*.url.required_if'    => 'URL is required for URL buttons.',
-            'buttons.*.phone.required_if'  => 'Phone is required for phone buttons.',
+            'buttons.*.url.required_if' => 'URL is required for URL buttons.',
+            'buttons.*.phone.required_if' => 'Phone is required for phone buttons.',
         ];
     }
 }

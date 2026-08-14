@@ -387,7 +387,13 @@
 
             if(b.type === 'url' && b.url) {
                 btn.onclick = function() {
-                    window.open(b.url, '_blank');
+                    try {
+                        const destination = new URL(b.url);
+                        if (!['https:', 'http:'].includes(destination.protocol)) return;
+                        window.open(destination.href, '_blank', 'noopener,noreferrer');
+                    } catch (error) {
+                        return;
+                    }
                 };
             }
 

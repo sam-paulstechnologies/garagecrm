@@ -145,7 +145,7 @@
     <link rel="preload" href="/fonts/inter-latin-400-600.woff2" as="font" type="font/woff2" crossorigin>
 
     <script type="application/ld+json">
-        {!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) !!}
+        {!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}
     </script>
 
     @if($ga4MeasurementId)

@@ -3,18 +3,12 @@
 namespace App\Services\Documents\Ingestion;
 
 use App\Models\Job\JobDocument;
+use App\Security\Uploads\PrivateUploadStorage;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 
 class UploadIngestService
 {
-    protected string $disk;
-
-    public function __construct(?string $disk = null)
-    {
-        // Use configured disk or fall back to 'public'
-        $this->disk = $disk ?: config('document_ingest.public_disk', 'public');
-    }
+    public function __construct(private PrivateUploadStorage $storage) {}
 
     /**
      * Ingest an uploaded file (Admin UI).
@@ -24,15 +18,13 @@ class UploadIngestService
     {
         $companyId = (int) ($companyId ?? 0);
 
-        abort_if(!$companyId, 403, 'Missing company context for document upload.');
+        abort_if(! $companyId, 403, 'Missing company context for document upload.');
 
-        $ext  = strtolower($file->getClientOriginalExtension()) ?: 'bin';
-        $orig = $file->getClientOriginalName();
-        $mime = $file->getClientMimeType() ?: $file->getMimeType() ?: 'application/octet-stream';
-        $size = (int) ($file->getSize() ?? 0);
-
-        // Hash for dedupe
-        $hash = hash_file('sha256', $file->getRealPath());
+        $stored = $this->storage->storeUploadedFile(
+            $file,
+            "companies/{$companyId}/documents/".now()->format('Y/m')
+        );
+        $hash = $stored['hash'];
 
         if (config('document_ingest.auto_dedupe', true)) {
             $existing = JobDocument::where('company_id', $companyId)
@@ -44,31 +36,24 @@ class UploadIngestService
             }
         }
 
-        // Path: companies/{company_id}/docs/YYYY/MM/hash.ext
-        $subdir   = now()->format('Y/m');
-        $filename = $hash . '.' . $ext;
-        $path     = "companies/{$companyId}/docs/{$subdir}/{$filename}";
-
-        Storage::disk($this->disk)->put($path, file_get_contents($file->getRealPath()));
-        $url = Storage::disk($this->disk)->url($path);
-
         return JobDocument::create([
-            'company_id'          => $companyId,
-            'type'                => in_array($type, ['invoice','job_card','other'], true) ? $type : 'other',
-            'source'              => 'upload',
-            'sender_phone'        => null,
-            'sender_email'        => null,
+            'company_id' => $companyId,
+            'type' => in_array($type, ['invoice', 'job_card', 'other'], true) ? $type : 'other',
+            'source' => 'upload',
+            'sender_phone' => null,
+            'sender_email' => null,
             'provider_message_id' => null,
 
-            'hash'                => $hash,
-            'original_name'       => $orig,
-            'mime'                => $mime,
-            'size'                => $size,
-            'path'                => $path,
-            'url'                 => $url,
+            'hash' => $hash,
+            'original_name' => $stored['original_name'],
+            'mime' => $stored['mime'],
+            'size' => $stored['size'],
+            'path' => $stored['path'],
+            'storage_disk' => $stored['disk'],
+            'url' => null,
 
-            'status'              => 'needs_review',
-            'received_at'         => now(),
+            'status' => 'needs_review',
+            'received_at' => now(),
         ]);
     }
 
@@ -79,9 +64,14 @@ class UploadIngestService
     {
         $companyId = (int) ($meta['company_id'] ?? 0);
 
-        abort_if(!$companyId, 403, 'Missing company context for raw document ingestion.');
+        abort_if(! $companyId, 403, 'Missing company context for raw document ingestion.');
 
-        $hash = hash('sha256', $binary);
+        $stored = $this->storage->storeBinary(
+            $binary,
+            "companies/{$companyId}/documents/".now()->format('Y/m'),
+            (string) ($meta['original_name'] ?? 'attachment')
+        );
+        $hash = $stored['hash'];
 
         if (config('document_ingest.auto_dedupe', true)) {
             $existing = JobDocument::where('company_id', $companyId)
@@ -93,54 +83,26 @@ class UploadIngestService
             }
         }
 
-        $ext    = $this->inferExtension($meta['mime'] ?? null, $meta['original_name'] ?? null);
-        $subdir = now()->format('Y/m');
-        $path   = "companies/{$companyId}/docs/{$subdir}/{$hash}.{$ext}";
-
-        Storage::disk($this->disk)->put($path, $binary);
-        $url = Storage::disk($this->disk)->url($path);
-
         return JobDocument::create([
-            'company_id'          => $companyId,
-            'type'                => in_array(($meta['type'] ?? 'other'), ['invoice','job_card','other'], true)
+            'company_id' => $companyId,
+            'type' => in_array(($meta['type'] ?? 'other'), ['invoice', 'job_card', 'other'], true)
                 ? $meta['type']
                 : 'other',
-            'source'              => $meta['source'] ?? 'upload',
-            'sender_phone'        => $meta['sender_phone'] ?? null,
-            'sender_email'        => $meta['sender_email'] ?? null,
+            'source' => $meta['source'] ?? 'upload',
+            'sender_phone' => $meta['sender_phone'] ?? null,
+            'sender_email' => $meta['sender_email'] ?? null,
             'provider_message_id' => $meta['provider_message_id'] ?? null,
 
-            'hash'                => $hash,
-            'original_name'       => $meta['original_name'] ?? ($hash . '.' . $ext),
-            'mime'                => $meta['mime'] ?? null,
-            'size'                => $meta['size'] ?? strlen($binary),
-            'path'                => $path,
-            'url'                 => $url,
+            'hash' => $hash,
+            'original_name' => $stored['original_name'],
+            'mime' => $stored['mime'],
+            'size' => $stored['size'],
+            'path' => $stored['path'],
+            'storage_disk' => $stored['disk'],
+            'url' => null,
 
-            'status'              => 'needs_review',
-            'received_at'         => now(),
+            'status' => 'needs_review',
+            'received_at' => now(),
         ]);
-    }
-
-    protected function inferExtension(?string $mime, ?string $original): string
-    {
-        $map = [
-            'application/pdf' => 'pdf',
-            'image/jpeg'      => 'jpg',
-            'image/png'       => 'png',
-            'image/jpg'       => 'jpg',
-            'image/gif'       => 'gif',
-            'image/svg+xml'   => 'svg',
-        ];
-
-        if ($mime && isset($map[$mime])) {
-            return $map[$mime];
-        }
-
-        if ($original && str_contains($original, '.')) {
-            return strtolower(pathinfo($original, PATHINFO_EXTENSION)) ?: 'bin';
-        }
-
-        return 'bin';
     }
 }

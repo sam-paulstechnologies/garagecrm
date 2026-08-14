@@ -4,8 +4,8 @@ namespace App\Models\Shared;
 
 use App\Models\Client\Client;
 use App\Models\Job\Booking;
-use App\Models\Job\Job;
 use App\Models\Job\Invoice;
+use App\Models\Job\Job;
 use App\Models\System\Company;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,6 +28,7 @@ class File extends Model
         'invoice_id',
         'file_name',
         'file_path',
+        'storage_disk',
         'file_type',
         'category',
         'uploaded_by',

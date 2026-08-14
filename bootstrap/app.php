@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // unless the deployment explicitly sets TRUSTED_PROXIES (staging uses *).
         $middleware->trustProxies(at: env('TRUSTED_PROXIES'));
         $middleware->append(\App\Http\Middleware\ApplyStagingIdentity::class);
+        $middleware->append(\App\Http\Middleware\ApplySecurityHeaders::class);
 
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,

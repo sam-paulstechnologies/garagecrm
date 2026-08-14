@@ -6,6 +6,7 @@ use App\Jobs\ProcessInboundWhatsApp;
 use App\Commercial\Plans;
 use App\Commercial\SubscriptionManager;
 use App\Models\MessageLog;
+use App\Models\System\Company;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -377,12 +378,10 @@ class WhatsAppWebhookReliabilityTest extends TestCase
 
     private function company(array $overrides = []): int
     {
-        return (int) DB::table('companies')->insertGetId(array_merge([
+        return (int) Company::query()->create(array_merge([
             'name' => 'Webhook Garage',
             'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ], $overrides));
+        ], $overrides))->id;
     }
 
     private function prepareWebhookSchema(): void

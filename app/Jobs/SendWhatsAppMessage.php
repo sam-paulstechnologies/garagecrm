@@ -3,19 +3,20 @@
 namespace App\Jobs;
 
 use App\Support\Staging\StagingSafety;
-use Twilio\Rest\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Twilio\Rest\Client;
 
 class SendWhatsAppMessage implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
+
     public $backoff = [10, 30, 60];
 
     public function __construct(
@@ -32,20 +33,20 @@ class SendWhatsAppMessage implements ShouldQueue
 
             $companyId = (int) ($this->meta['company_id'] ?? 0);
 
-            $twilioSid   = config('services.twilio.sid');
+            $twilioSid = config('services.twilio.sid');
             $twilioToken = config('services.twilio.token');
-            $from        = config('services.twilio.whatsapp_from');
+            $from = config('services.twilio.whatsapp_from');
 
             $tw = new Client($twilioSid, $twilioToken);
 
             Log::info('[WA][Twilio] Sending message', [
                 'company_id' => $companyId ?: null,
                 'to' => $this->maskPhone($this->toE164),
-                'templateId' => $this->templateId
+                'templateId' => $this->templateId,
             ]);
 
             $msg = $tw->messages->create(
-                'whatsapp:' . $this->toE164,
+                'whatsapp:'.$this->toE164,
                 [
                     'from' => $from,
                     'body' => $this->body,
@@ -72,20 +73,20 @@ class SendWhatsAppMessage implements ShouldQueue
                 }
 
                 \App\Models\WhatsApp\WhatsAppMessage::create([
-                    'company_id'     => $companyId ?: null,
-                    'provider'      => 'twilio',
-                    'direction'     => 'outbound',
-                    'to_number'     => $this->toE164,
-                    'from_number'   => $from,
-                    'template'      => $templateName,
-                    'payload'       => json_encode(
+                    'company_id' => $companyId ?: null,
+                    'provider' => 'twilio',
+                    'direction' => 'outbound',
+                    'to_number' => $this->toE164,
+                    'from_number' => $from,
+                    'template' => $templateName,
+                    'payload' => json_encode(
                         $this->meta + [
                             'body' => $this->body,
-                            'sid'  => $msg->sid ?? null
+                            'sid' => $msg->sid ?? null,
                         ]
                     ),
-                    'status'        => 'queued',
-                    'error_code'    => null,
+                    'status' => 'queued',
+                    'error_code' => null,
                     'error_message' => null,
                 ]);
             }
@@ -94,8 +95,8 @@ class SendWhatsAppMessage implements ShouldQueue
 
             Log::error('[WA][Twilio] Send failed', [
                 'company_id' => $this->meta['company_id'] ?? null,
-                'to'  => $this->maskPhone($this->toE164),
-                'err' => $e->getMessage()
+                'to' => $this->maskPhone($this->toE164),
+                'exception' => $e::class,
             ]);
         }
     }

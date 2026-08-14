@@ -16,9 +16,11 @@ class SendWhatsAppMessageJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $to;
+
     public string $body;
 
-    public $tries   = 3;
+    public $tries = 3;
+
     public $backoff = [5, 20, 60];
 
     public function __construct(string $to, string $body)
@@ -32,9 +34,9 @@ class SendWhatsAppMessageJob implements ShouldQueue
     {
         app(StagingSafety::class)->assertWhatsAppOutboundAllowed($this->to);
 
-        $sid   = env('TWILIO_SID');
-        $token = env('TWILIO_TOKEN');
-        $from  = env('TWILIO_WHATSAPP_FROM');
+        $sid = config('services.twilio.sid');
+        $token = config('services.twilio.token');
+        $from = config('services.twilio.whatsapp_from');
 
         $tw = new Client($sid, $token);
 

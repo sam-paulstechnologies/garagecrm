@@ -31,16 +31,11 @@ class MetaWebhookController extends Controller
         }
 
         if ($key === 'verify_token') {
-            return config('services.meta.whatsapp_verify_token')
-                ?? env('META_LEADS_VERIFY_TOKEN')
-                ?? env('META_WHATSAPP_VERIFY_TOKEN')
-                ?? $default;
+            return config('services.meta.whatsapp_verify_token') ?? $default;
         }
 
         if ($key === 'app_secret') {
-            return config('services.meta.app_secret')
-                ?? env('META_APP_SECRET')
-                ?? $default;
+            return config('services.meta.app_secret') ?? $default;
         }
 
         return $default;
@@ -114,7 +109,7 @@ class MetaWebhookController extends Controller
         | In local/dev, allow unsigned payloads only for testing.
         |--------------------------------------------------------------------------
         */
-        if ($secret === '' && app()->environment('production')) {
+        if ($secret === '' && app()->environment(['production', 'staging'])) {
             Log::error('[META_LEADS][APP_SECRET_MISSING]', [
                 'environment' => app()->environment(),
                 'ip' => $request->ip(),
@@ -136,7 +131,7 @@ class MetaWebhookController extends Controller
                 return response()->noContent(Response::HTTP_UNAUTHORIZED);
             }
         } else {
-            Log::warning('[META_LEADS][SIGNATURE_SKIPPED_NON_PRODUCTION]', [
+            Log::warning('[META_LEADS][SIGNATURE_SKIPPED_LOCAL_TEST_ONLY]', [
                 'environment' => app()->environment(),
                 'ip' => $request->ip(),
             ]);
@@ -330,7 +325,7 @@ class MetaWebhookController extends Controller
             'campaign_name' => $row['campaign_name'] ?? null,
         ];
 
-        $payload = $this->filterForModel(new Lead(), $payload);
+        $payload = $this->filterForModel(new Lead, $payload);
 
         /*
         |--------------------------------------------------------------------------
@@ -455,7 +450,7 @@ class MetaWebhookController extends Controller
 
     private function createClientSafely(array $values): ?Client
     {
-        $data = $this->filterForModel(new Client(), $values);
+        $data = $this->filterForModel(new Client, $values);
 
         if (empty($data['company_id']) || empty($data['name'])) {
             return null;
@@ -603,7 +598,7 @@ class MetaWebhookController extends Controller
                 'phone_norm' => $phoneNorm,
                 'matched_on' => in_array($matchedOn, ['email', 'phone', 'both'], true) ? $matchedOn : 'phone',
                 'window_days' => 30,
-                'reason' => 'Meta lead matched existing CRM lead by ' . $matchedOn,
+                'reason' => 'Meta lead matched existing CRM lead by '.$matchedOn,
                 'payload' => json_encode($payload),
                 'detected_at' => now(),
             ]);

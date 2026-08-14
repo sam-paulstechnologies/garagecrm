@@ -23,7 +23,7 @@
                         <td>{{ $file->file_type }}</td>
                         <td>{{ $file->uploaded_at ? $file->uploaded_at->format('Y-m-d H:i') : '—' }}</td>
                         <td>
-                            <a href="{{ asset('storage/' . $file->file_path) }}" target="_blank" class="btn btn-sm btn-success">View</a>
+                            <a href="{{ route('admin.files.download', $file) }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">View</a>
                             <form action="{{ route('admin.clients.files.destroy', [$client->id, $file->id]) }}" method="POST" style="display:inline;">
                                 @csrf
                                 @method('DELETE')

@@ -75,9 +75,7 @@ $files = $safe($client, 'files')->take(3)->map(fn ($f) => [
     'who'  => $f->uploader->name ?? 'System',
     'title' => $f->file_name ?? $f->document_name ?? 'Document uploaded',
     'line' => ucfirst(str_replace('_', ' ', $f->file_type ?? $f->type ?? 'document')),
-    'url'  => ! empty($f->file_path)
-        ? asset($f->file_path)
-        : (! empty($f->document_path) ? asset('storage/' . $f->document_path) : null),
+    'url'  => ! empty($f->file_path) ? route('admin.files.download', $f) : null,
 ]);
 
 /** Leads */

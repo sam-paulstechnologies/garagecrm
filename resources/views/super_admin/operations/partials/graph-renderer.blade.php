@@ -404,7 +404,10 @@
     function showDetails(data) {
         const node = data.node;
         const technicalDetails = root.dataset.view === 'technical_map';
-        const page = node.url ? `<a class="mt-3 inline-flex rounded-2xl bg-emerald-500 px-4 py-2 text-xs font-black text-white" href="${node.url}">Open Page</a>` : '<p class="sa-label mt-3 text-xs font-bold">No safe direct page link for this node.</p>';
+        const safePageUrl = typeof node.url === 'string' && node.url.startsWith('/') && !node.url.startsWith('//')
+            ? node.url
+            : null;
+        const page = safePageUrl ? `<a class="mt-3 inline-flex rounded-2xl bg-emerald-500 px-4 py-2 text-xs font-black text-white" href="${escapeHtml(safePageUrl)}">Open Page</a>` : '<p class="sa-label mt-3 text-xs font-bold">No safe direct page link for this node.</p>';
         const internalRows = root.dataset.detailLevel === 'manager' || !technicalDetails ? '' : `
             ${row('Route', node.route_name || 'n/a')}
             ${row('Controller', node.controller || 'n/a')}

@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
+use App\Security\Uploads\PrivateUploadStorage;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class DocumentUploadService
 {
+    public function __construct(private PrivateUploadStorage $storage) {}
+
     /**
      * Store a file and return metadata.
      *
@@ -15,25 +16,10 @@ class DocumentUploadService
      */
     public function store(UploadedFile $file, string $dir, ?string $disk = null): array
     {
-        $disk = $disk ?: config('filesystems.default', 'public');
-        $dir  = trim($dir, '/');
+        abort_if($disk !== null && $disk !== config('security.private_upload_disk'), 500, 'Upload disk overrides are not permitted.');
 
-        // unique filename but also keep a content hash for de-dup if needed
-        $hash = sha1_file($file->getRealPath());
-        $ext  = $file->getClientOriginalExtension();
-        $name = Str::uuid()->toString().($ext ? '.'.$ext : '');
+        $stored = $this->storage->storeUploadedFile($file, $dir);
 
-        $path = Storage::disk($disk)->putFileAs($dir, $file, $name);
-        $url  = method_exists(Storage::disk($disk), 'url') ? Storage::disk($disk)->url($path) : null;
-
-        return [
-            'disk'          => $disk,
-            'path'          => $path,
-            'url'           => $url,
-            'mime'          => $file->getClientMimeType(),
-            'size'          => (int) $file->getSize(),
-            'original_name' => $file->getClientOriginalName(),
-            'hash'          => $hash,
-        ];
+        return $stored + ['url' => null];
     }
 }

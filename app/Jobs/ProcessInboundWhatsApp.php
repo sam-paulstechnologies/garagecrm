@@ -3,12 +3,12 @@
 namespace App\Jobs;
 
 use App\Commercial\EntitlementService;
-use App\Services\Ai\AiMonitoringMeter;
 use App\Models\MessageLog;
 use App\Models\Shared\Communication;
 use App\Models\System\Company;
 use App\Models\User;
 use App\Notifications\ManagerLeadHandoffNotification;
+use App\Services\Ai\AiMonitoringMeter;
 use App\Services\Ai\NlpService;
 use App\Services\Conversation\ConversationEngine;
 use App\Services\Conversation\ConversationGuard;
@@ -36,6 +36,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
+
     public $backoff = [5, 20, 60];
 
     public function __construct(
@@ -57,7 +58,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping('wa-inbound-' . $this->companyId . '-' . $this->from))
+            (new WithoutOverlapping('wa-inbound-'.$this->companyId.'-'.$this->from))
                 ->expireAfter(60),
         ];
     }
@@ -68,6 +69,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         if (! $companyId) {
             Log::warning('[WA] No company resolved');
+
             return;
         }
 
@@ -120,6 +122,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
         if ($text === '' && ! $hasMedia) {
             $recorder->markLifecycle($inboundLog, 'ignored_empty');
+
             return;
         }
 
@@ -144,6 +147,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             ]);
 
             $recorder->markLifecycle($inboundLog, 'lead_resolution_failed', 'lead_unavailable');
+
             return;
         }
 
@@ -155,6 +159,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             ]);
 
             $recorder->markLifecycle($inboundLog, 'tenant_mismatch', 'lead_company_mismatch');
+
             return;
         }
 
@@ -221,7 +226,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                     );
                 }
             } catch (\Throwable $e) {
-                Log::warning('[NlpService] Chat failed ' . $e->getMessage());
+                Log::warning('[NlpService] Chat failed', ['exception' => $e::class]);
 
                 if ($meteringDecision && isset($company)) {
                     app(AiMonitoringMeter::class)->recordRun(
@@ -281,7 +286,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             Log::warning('[WA] Communication log failed', [
                 'company_id' => $companyId,
                 'lead_id' => $lead->id,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
 
@@ -362,8 +367,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                     'company_id' => $companyId,
                     'lead_id' => $lead->id,
                     'conversation_id' => $conversationId,
-                    'body' => $text,
-                    'error' => $e->getMessage(),
+                    'exception' => $e::class,
                 ]);
             }
         }
@@ -422,11 +426,11 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 Log::error('[WA] Engine failed', [
                     'company_id' => $companyId,
                     'lead_id' => $lead->id,
-                    'error' => $e->getMessage(),
+                    'exception' => $e::class,
                 ]);
 
                 $response = app(ConversationGuard::class)
-                    ->escalateToManager($lead, 'System failure: ' . $e->getMessage());
+                    ->escalateToManager($lead, 'Automated processing was unavailable.');
             }
         }
 
@@ -473,14 +477,14 @@ class ProcessInboundWhatsApp implements ShouldQueue
             return;
         }
 
-        $actionLock = 'session:' . ($response['action'] ?? 'reply') . ':' . ($response['template'] ?? 'none') . ':' . sha1($sessionBody);
+        $actionLock = 'session:'.($response['action'] ?? 'reply').':'.($response['template'] ?? 'none').':'.sha1($sessionBody);
 
         if (! $this->acquireLastActionLock(
             companyId: $companyId,
             entityType: 'lead',
             entityId: (string) $lead->id,
             action: $actionLock,
-            actionKey: (string) ($this->sid ?: sha1($fromE164 . '|' . $text . '|' . $actionLock)),
+            actionKey: (string) ($this->sid ?: sha1($fromE164.'|'.$text.'|'.$actionLock)),
             ttlSeconds: 30
         )) {
             Log::info('[WA] Session response skipped by last-action lock', [
@@ -660,7 +664,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
         }
 
         $lockAction = $lockAction ?: $eventKey;
-        $lockKey = sha1($toE164 . '|' . $eventKey . '|' . ($vars['booking_id'] ?? '') . '|' . ($vars['job_id'] ?? ''));
+        $lockKey = sha1($toE164.'|'.$eventKey.'|'.($vars['booking_id'] ?? '').'|'.($vars['job_id'] ?? ''));
 
         if (! $this->acquireLastActionLock($companyId, 'lead', (string) $leadId, $lockAction, $lockKey, $lockTtlSeconds)) {
             Log::info('[WA] Mapped/fallback response skipped by last-action lock', [
@@ -688,7 +692,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'lead_id' => $leadId,
                 'conversation_id' => $conversationId,
                 'event_key' => $eventKey,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
 
@@ -815,7 +819,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'company_id' => $companyId,
                 'lead_id' => $lead->id ?? null,
                 'from' => $fromE164,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -884,7 +888,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'company_id' => $companyId,
                 'lead_id' => $lead->id ?? null,
                 'client_id' => $lead->client_id ?? null,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             return null;
@@ -953,7 +957,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'company_id' => $companyId,
                 'lead_id' => $leadId,
                 'state' => $state,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -970,7 +974,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             return true;
         }
 
-        $actionKey = sha1($companyId . '|' . $entityType . '|' . $entityId . '|' . $action . '|' . $actionKey);
+        $actionKey = sha1($companyId.'|'.$entityType.'|'.$entityId.'|'.$action.'|'.$actionKey);
 
         try {
             if (Schema::hasTable('automation_action_locks')) {
@@ -1013,11 +1017,11 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'entity_type' => $entityType,
                 'entity_id' => $entityId,
                 'action' => $action,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
 
-        return Cache::add('wa:last_action:' . $actionKey, true, $ttlSeconds);
+        return Cache::add('wa:last_action:'.$actionKey, true, $ttlSeconds);
     }
 
     protected function notifyManagers(int $companyId, $lead, string $fromE164, array $response): void
@@ -1057,7 +1061,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
             Log::error('[WA] Manager notify failed', [
                 'company_id' => $companyId,
                 'lead_id' => $lead->id ?? null,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -1153,7 +1157,7 @@ class ProcessInboundWhatsApp implements ShouldQueue
                 'company_id' => $companyId,
                 'lead_id' => $leadId,
                 'conversation_id' => $conversationId,
-                'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -1170,16 +1174,19 @@ class ProcessInboundWhatsApp implements ShouldQueue
 
             if (array_key_exists($name, $args)) {
                 $orderedArgs[] = $args[$name];
+
                 continue;
             }
 
             if ($parameter->isDefaultValueAvailable()) {
                 $orderedArgs[] = $parameter->getDefaultValue();
+
                 continue;
             }
 
             if ($parameter->allowsNull()) {
                 $orderedArgs[] = null;
+
                 continue;
             }
 

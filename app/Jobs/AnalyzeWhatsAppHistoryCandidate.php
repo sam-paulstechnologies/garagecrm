@@ -18,15 +18,19 @@ class AnalyzeWhatsAppHistoryCandidate implements ShouldQueue
 
     public array $backoff = [10, 60, 300];
 
-    public function __construct(public readonly int $candidateId)
-    {
+    public function __construct(
+        public readonly int $candidateId,
+        public readonly int $companyId,
+    ) {
         $this->onConnection('database');
         $this->onQueue('default');
     }
 
     public function handle(HistoryIntelligence $intelligence): void
     {
-        $candidate = WhatsAppHistoryCandidate::query()->find($this->candidateId);
+        $candidate = WhatsAppHistoryCandidate::query()
+            ->where('company_id', $this->companyId)
+            ->find($this->candidateId);
         if (! $candidate || in_array($candidate->review_decision, ['dont_track'], true)) {
             return;
         }
@@ -36,8 +40,11 @@ class AnalyzeWhatsAppHistoryCandidate implements ShouldQueue
 
     public function failed(): void
     {
-        WhatsAppHistoryCandidate::query()->whereKey($this->candidateId)->update([
-            'intelligence_status' => 'analysis_failed', 'updated_at' => now(),
-        ]);
+        WhatsAppHistoryCandidate::query()
+            ->where('company_id', $this->companyId)
+            ->whereKey($this->candidateId)
+            ->update([
+                'intelligence_status' => 'analysis_failed', 'updated_at' => now(),
+            ]);
     }
 }

@@ -2,17 +2,15 @@
 
 namespace App\Http\Controllers\Webhooks;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
-
 use App\Jobs\ProcessInboundWhatsApp;
 use App\Models\MessageLog;
 use App\Services\WhatsApp\InboundMessageRecorder;
-
-use Twilio\TwiML\MessagingResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Twilio\Security\RequestValidator;
+use Twilio\TwiML\MessagingResponse;
 
 class TwilioWhatsAppWebhookController
 {
@@ -23,25 +21,25 @@ class TwilioWhatsAppWebhookController
         | 🔐 STRICT SIGNATURE VALIDATION (MANDATORY)
         |--------------------------------------------------------------------------
         */
-        if (!$this->validateTwilioRequest($request)) {
+        if (! $this->validateTwilioRequest($request)) {
             return response('Unauthorized', 403);
         }
 
-        $from      = (string) $request->input('From');
-        $to        = (string) $request->input('To');
-        $body      = trim((string) $request->input('Body', ''));
-        $sid       = $request->input('SmsSid') ?? $request->input('MessageSid');
-        $numMedia  = (int) $request->input('NumMedia', 0);
-        $profile   = $request->input('ProfileName');
-        $payload   = $request->all();
+        $from = (string) $request->input('From');
+        $to = (string) $request->input('To');
+        $body = trim((string) $request->input('Body', ''));
+        $sid = $request->input('SmsSid') ?? $request->input('MessageSid');
+        $numMedia = (int) $request->input('NumMedia', 0);
+        $profile = $request->input('ProfileName');
+        $payload = $request->all();
 
         $fromRaw = preg_replace('/^whatsapp:/', '', $from);
-        $toRaw   = preg_replace('/^whatsapp:/', '', $to);
+        $toRaw = preg_replace('/^whatsapp:/', '', $to);
 
         Log::info('[Twilio WhatsApp] Inbound', [
-            'sid'  => $sid,
+            'sid' => $sid,
             'from' => $this->maskPhone($fromRaw),
-            'to'   => $this->maskPhone($toRaw),
+            'to' => $this->maskPhone($toRaw),
             'body_length' => mb_strlen($body),
         ]);
 
@@ -55,10 +53,11 @@ class TwilioWhatsAppWebhookController
             ->where('value', $toRaw)
             ->value('company_id');
 
-        if (!$companyId) {
+        if (! $companyId) {
             Log::warning('[Twilio WhatsApp] Company not resolved', [
                 'to' => $this->maskPhone($toRaw),
             ]);
+
             return response('OK', Response::HTTP_OK);
         }
 
@@ -98,7 +97,7 @@ class TwilioWhatsAppWebhookController
         | Twilio response
         |--------------------------------------------------------------------------
         */
-        $twiml = new MessagingResponse();
+        $twiml = new MessagingResponse;
 
         // Customer-facing replies are emitted only by the queued lifecycle after
         // commercial and environment safety checks. Twilio receives an empty
@@ -115,20 +114,20 @@ class TwilioWhatsAppWebhookController
         | 🔐 VALIDATE STATUS CALLBACK (CRITICAL)
         |--------------------------------------------------------------------------
         */
-        if (!$this->validateTwilioRequest($request)) {
+        if (! $this->validateTwilioRequest($request)) {
             return response('Unauthorized', 403);
         }
 
-        $sid    = $request->input('MessageSid');
+        $sid = $request->input('MessageSid');
         $status = strtolower((string) $request->input('MessageStatus'));
-        $error  = $request->input('ErrorCode');
+        $error = $request->input('ErrorCode');
 
         $fromRaw = preg_replace('/^whatsapp:/', '', (string) $request->input('From'));
-        $toRaw   = preg_replace('/^whatsapp:/', '', (string) $request->input('To'));
+        $toRaw = preg_replace('/^whatsapp:/', '', (string) $request->input('To'));
 
         Log::info('[Twilio WhatsApp] Status update', compact('sid', 'status', 'error'));
 
-        if (!$sid) {
+        if (! $sid) {
             return response('OK', Response::HTTP_OK);
         }
 
@@ -137,11 +136,11 @@ class TwilioWhatsAppWebhookController
             ->whereIn('value', array_filter([$fromRaw, $toRaw]))
             ->value('company_id');
 
-        if (!$companyId) {
+        if (! $companyId) {
             Log::warning('[Twilio WhatsApp] Status company not resolved', [
-                'sid'  => $sid,
+                'sid' => $sid,
                 'from' => $this->maskPhone($fromRaw),
-                'to'   => $this->maskPhone($toRaw),
+                'to' => $this->maskPhone($toRaw),
             ]);
 
             return response('OK', Response::HTTP_OK);
@@ -152,7 +151,7 @@ class TwilioWhatsAppWebhookController
             ->latest()
             ->first();
 
-        if (!$log) {
+        if (! $log) {
             return response('OK', Response::HTTP_OK);
         }
 
@@ -173,8 +172,9 @@ class TwilioWhatsAppWebhookController
         try {
             $signature = $request->header('X-Twilio-Signature');
 
-            if (!$signature) {
+            if (! $signature) {
                 Log::warning('[Twilio] Missing signature');
+
                 return false;
             }
 
@@ -188,7 +188,7 @@ class TwilioWhatsAppWebhookController
                 $request->all()
             );
 
-            if (!$valid) {
+            if (! $valid) {
                 Log::warning('[Twilio] Invalid signature');
             }
 
@@ -196,8 +196,9 @@ class TwilioWhatsAppWebhookController
 
         } catch (\Throwable $e) {
             Log::error('[Twilio] Validation error', [
-                'err' => $e->getMessage()
+                'exception' => $e::class,
             ]);
+
             return false;
         }
     }

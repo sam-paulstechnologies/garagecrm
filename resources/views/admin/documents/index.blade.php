@@ -70,8 +70,8 @@
                         <div class="truncate max-w-xs" title="{{ $doc->original_name }}">
                             {{ $doc->original_name }}
                         </div>
-                        @if($doc->public_url)
-                            <a href="{{ $doc->public_url }}" class="text-blue-600 underline" target="_blank">Open</a>
+                        @if($doc->path)
+                            <a href="{{ route('admin.documents.content', $doc) }}" class="text-blue-600 underline" target="_blank" rel="noopener">Open</a>
                         @endif
                     </td>
                     <td class="px-4 py-3">

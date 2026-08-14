@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedStringWithLegacyFallback;
 use Illuminate\Database\Eloquent\Model;
 
 class MetaPage extends Model
@@ -14,5 +15,11 @@ class MetaPage extends Model
         'page_name',
         'page_access_token',
         'forms_json',
+    ];
+
+    protected $hidden = ['page_access_token'];
+
+    protected $casts = [
+        'page_access_token' => EncryptedStringWithLegacyFallback::class,
     ];
 }

@@ -11,11 +11,6 @@
     $connectedMeta = $connectedMeta
         ?? \App\Models\MetaPage::where('company_id', $company->id)->first();
 
-    $forms = $forms
-        ?? ($connectedMeta ? (json_decode($connectedMeta->forms_json ?? '[]', true) ?: []) : []);
-
-    $defaultFormId = old('meta.form_id', $settings['meta.form_id'] ?? '');
-
     $cardClass = 'rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/20 overflow-hidden';
     $cardHeaderClass = 'border-b border-white/10 px-6 py-4 bg-slate-950/35';
     $cardBodyClass = 'px-6 py-6';
@@ -235,7 +230,7 @@
                                     {{ $connectedMeta->page_name }}
                                 </div>
                                 <div class="mt-1 text-xs font-semibold text-slate-500">
-                                    Page ID: {{ $connectedMeta->page_id }}
+                                    Provider identifiers are protected and managed by the connection flow.
                                 </div>
                             </div>
 
@@ -250,14 +245,9 @@
                             Default Lead Form
                         </label>
 
-                        <select name="meta[form_id]" class="{{ $inputClass }}">
+                        <select disabled class="{{ $inputClass }}">
                             <option value="">— Select a form —</option>
 
-                            @foreach($forms as $f)
-                                <option value="{{ $f['id'] ?? '' }}" @selected(($f['id'] ?? '') === $defaultFormId)>
-                                    {{ ($f['name'] ?? 'Untitled') . ' (' . ($f['id'] ?? '–') . ')' }}
-                                </option>
-                            @endforeach
                         </select>
 
                         <p class="mt-2 text-xs font-medium text-slate-500">
@@ -273,8 +263,8 @@
                         </label>
 
                         <input
-                            name="meta[app_id]"
-                            value="{{ old('meta.app_id', $settings['meta.app_id'] ?? '') }}"
+                            disabled
+                            value="Managed by secure connection"
                             class="{{ $inputClass }}"
                             placeholder="Optional">
                     </div>
@@ -285,8 +275,8 @@
                         </label>
 
                         <input
-                            name="meta[page_id]"
-                            value="{{ old('meta.page_id', $settings['meta.page_id'] ?? ($connectedMeta->page_id ?? '')) }}"
+                            disabled
+                            value="Managed by secure connection"
                             class="{{ $inputClass }}"
                             placeholder="Optional">
                     </div>
@@ -300,14 +290,14 @@
                             <input
                                 type="password"
                                 id="meta_access_token"
-                                name="meta[access_token]"
-                                value="{{ old('meta.access_token', $settings['meta.access_token'] ?? ($connectedMeta->page_access_token ?? '')) }}"
+                                disabled
+                                value=""
                                 class="{{ $inputClass }} pr-24"
                                 placeholder="EAAB..."
                                 autocomplete="off">
 
                             <button type="button"
-                                    data-toggle-visibility="#meta_access_token"
+                                    disabled
                                     class="absolute right-2 top-2 inline-flex rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs font-extrabold text-slate-300 transition hover:text-white">
                                 <span class="show">Show</span>
                                 <span class="hide hidden">Hide</span>
@@ -325,8 +315,8 @@
                         </label>
 
                         <input
-                            name="meta[form_ids]"
-                            value="{{ old('meta.form_ids', $settings['meta.form_ids'] ?? '') }}"
+                            disabled
+                            value="Managed by secure connection"
                             class="{{ $inputClass }}"
                             placeholder='["123","456"] or 123,456'>
 
@@ -365,8 +355,8 @@
                         </label>
 
                         <input
-                            name="twilio[account_sid]"
-                            value="{{ old('twilio.account_sid', $settings['twilio.account_sid'] ?? '') }}"
+                            disabled
+                            value="Managed by platform"
                             class="{{ $inputClass }}"
                             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
                     </div>
@@ -380,13 +370,13 @@
                             <input
                                 type="password"
                                 id="twilio_auth_token"
-                                name="twilio[auth_token]"
-                                value="{{ old('twilio.auth_token', $settings['twilio.auth_token'] ?? '') }}"
+                                disabled
+                                value=""
                                 class="{{ $inputClass }} pr-24"
                                 autocomplete="off">
 
                             <button type="button"
-                                    data-toggle-visibility="#twilio_auth_token"
+                                    disabled
                                     class="absolute right-2 top-2 inline-flex rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs font-extrabold text-slate-300 transition hover:text-white">
                                 <span class="show">Show</span>
                                 <span class="hide hidden">Hide</span>
@@ -394,7 +384,7 @@
                         </div>
 
                         <p class="mt-2 text-xs font-medium text-slate-500">
-                            Stored encrypted at rest.
+                            Managed in protected platform runtime configuration.
                         </p>
                     </div>
 
@@ -404,8 +394,8 @@
                         </label>
 
                         <input
-                            name="twilio[whatsapp_from]"
-                            value="{{ old('twilio.whatsapp_from', $settings['twilio.whatsapp_from'] ?? '') }}"
+                            disabled
+                            value="Managed by platform"
                             class="{{ $inputClass }}"
                             placeholder="whatsapp:+14155238886">
                     </div>

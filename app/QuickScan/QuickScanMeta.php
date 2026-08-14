@@ -120,7 +120,7 @@ final class QuickScanMeta
             ])->save();
             $scan->forceFill([
                 'status' => 'failed', 'failure_code' => 'meta_connection_failed',
-                'failure_detail' => $exception->getMessage(),
+                'failure_detail' => 'The provider connection could not be completed.',
             ])->save();
             $this->audit->record($scan, 'quick_scan.meta_connection_failed', context: [
                 'status' => 'failed', 'reason_code' => 'meta_connection_failed',

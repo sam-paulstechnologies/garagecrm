@@ -7,6 +7,7 @@ use App\Http\Requests\UploadDocumentRequest;
 use App\Models\Client\Client;
 use App\Models\Job\Job;
 use App\Models\Job\JobDocument;
+use App\Security\Uploads\PrivateUploadStorage;
 use App\Services\Documents\Ingestion\UploadIngestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +15,10 @@ use Illuminate\Validation\Rule;
 
 class DocumentInboxController extends Controller
 {
-    public function __construct(protected UploadIngestService $ingest) {}
+    public function __construct(
+        protected UploadIngestService $ingest,
+        private PrivateUploadStorage $storage,
+    ) {}
 
     /*
     |--------------------------------------------------------------------------
@@ -118,6 +122,19 @@ class DocumentInboxController extends Controller
             ->get(['id', 'job_code', 'client_id']);
 
         return view('admin.documents.show', compact('doc', 'clients', 'jobs'));
+    }
+
+    public function content(JobDocument $doc)
+    {
+        $this->authorizeDocument($doc);
+
+        return $this->storage->download(
+            $doc->storage_disk,
+            $doc->path,
+            $doc->original_name ?: 'document',
+            $doc->mime,
+            inline: in_array($doc->mime, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], true),
+        );
     }
 
     /*

@@ -159,7 +159,7 @@ COMMIT;
     $assertions = @(Invoke-MySql @'
 SELECT COUNT(*)=141 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE';
 SELECT COUNT(*)=2 FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE();
-SELECT COUNT(*)=54 FROM migrations;
+SELECT COUNT(*)=59 FROM migrations;
 SELECT COUNT(*)=6 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('whatsapp_history_import_batches','whatsapp_history_candidates','whatsapp_history_contact_usages','whatsapp_tracking_preferences','whatsapp_history_audit_logs','entitlement_usage_events');
 SELECT COUNT(*)=6 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('quick_scan_workspaces','quick_scan_provider_sessions','quick_scan_candidates','quick_scan_messages','quick_scan_provider_events','quick_scan_events');
 SELECT COUNT(*)=7 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('messaging_connections','messaging_phone_numbers','messaging_onboarding_sessions','messaging_consents','messaging_connection_checks','messaging_audit_logs','messaging_webhook_events');
@@ -249,14 +249,19 @@ try {
         '2026_08_14_000001_harden_provider_subscription_reconciliation',
         '2026_08_14_000002_create_whatsapp_history_intelligence',
         '2026_08_14_000003_reconcile_whatsapp_history_entitlement_modes',
-        '2026_08_14_000004_create_quick_scan_workspaces'
+        '2026_08_14_000004_create_quick_scan_workspaces',
+        '2026_08_15_000001_add_private_storage_metadata_to_uploaded_records',
+        '2026_08_15_000002_create_meta_pages_if_missing',
+        '2026_08_15_000003_create_client_documents_if_missing',
+        '2026_08_15_000004_create_company_settings_if_missing',
+        '2026_08_15_000005_add_company_meta_verify_token_hash'
     )
     if (@($script:manifest.pending_migrations).Count -ne $expectedPendingMigrations.Count `
         -or (Compare-Object @($script:manifest.pending_migrations) $expectedPendingMigrations)) {
         throw 'Manifest pending-migration cutoff is not approved.'
     }
 
-    $trackedMigrations = @(git ls-files 'database/migrations/*.php' | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
+    $trackedMigrations = @(git ls-files --cached --others --exclude-standard 'database/migrations/*.php' | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
     $classified = @($script:manifest.represented_migrations) + @($script:manifest.pending_migrations)
     $unclassified = @($trackedMigrations | Where-Object { $_ -notin $classified })
     if ($unclassified.Count -gt 0) { throw 'Tracked migration classification is incomplete.' }

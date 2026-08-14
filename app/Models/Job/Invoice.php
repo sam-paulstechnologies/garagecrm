@@ -31,6 +31,7 @@ class Invoice extends Model
         'source',        // enum: generated | upload
 
         'file_path',
+        'storage_disk',
         'url',
         'file_type',
         'mime',
@@ -55,11 +56,11 @@ class Invoice extends Model
      */
     protected $casts = [
         'invoice_date' => 'date',
-        'due_date'     => 'date',
-        'is_primary'   => 'boolean',
-        'amount'       => 'decimal:2',
-        'size'         => 'integer',
-        'version'      => 'integer',
+        'due_date' => 'date',
+        'is_primary' => 'boolean',
+        'amount' => 'decimal:2',
+        'size' => 'integer',
+        'version' => 'integer',
     ];
 
     /*
@@ -72,7 +73,7 @@ class Invoice extends Model
     {
         $companyId = (int) (auth()->user()?->company_id ?? 0);
 
-        if (!$companyId) {
+        if (! $companyId) {
             return null;
         }
 
@@ -137,12 +138,5 @@ class Invoice extends Model
     public function isUploaded(): bool
     {
         return $this->source === 'upload';
-    }
-
-    public function downloadUrl(): ?string
-    {
-        return $this->file_path
-            ? asset('storage/'.$this->file_path)
-            : null;
     }
 }

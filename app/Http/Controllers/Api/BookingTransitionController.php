@@ -8,6 +8,7 @@ use App\Services\Booking\BookingActionService;
 use App\Services\Booking\BookingStateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class BookingTransitionController extends Controller
@@ -24,7 +25,7 @@ class BookingTransitionController extends Controller
 
         $companyId = (int) ($request->user()?->company_id ?? 0);
 
-        abort_if(!$companyId, 403);
+        abort_if(! $companyId, 403);
 
         $booking = Booking::where('company_id', $companyId)
             ->findOrFail($id);
@@ -88,20 +89,27 @@ class BookingTransitionController extends Controller
             $updated = $this->svc->transition($booking, $data['to']);
         } catch (ValidationException $e) {
             return response()->json([
-                'ok'      => false,
+                'ok' => false,
                 'message' => $e->getMessage(),
-                'errors'  => $e->errors(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Throwable $e) {
+            Log::error('booking.transition.failed', [
+                'company_id' => $companyId,
+                'booking_id' => $booking->id,
+                'target_status' => $to,
+                'exception' => $e::class,
+            ]);
+
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage() ?: 'Unable to update booking status.',
+                'message' => 'Unable to update booking status.',
             ], 422);
         }
 
         return response()->json([
-            'ok'     => true,
-            'id'     => $updated->id,
+            'ok' => true,
+            'id' => $updated->id,
             'status' => $updated->status,
         ]);
     }

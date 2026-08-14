@@ -118,7 +118,7 @@
                         </div>
 
                         @if(!empty($doc->document_path))
-                            <a href="{{ asset('storage/'.$doc->document_path) }}"
+                            <a href="{{ route('admin.clients.documents.download', [$client, $doc]) }}"
                                target="_blank"
                                class="sf-link shrink-0">
                                 View

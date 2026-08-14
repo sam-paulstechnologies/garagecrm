@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Mail;
 use App\Mail\GenericEmail;
 use App\Models\AutomationRule;
 use App\Models\Template;
-use Twilio\Rest\Client;
 use App\Support\Staging\StagingSafety;
+use Illuminate\Support\Facades\Mail;
+use Twilio\Rest\Client;
 
 class CommunicationService
 {
@@ -15,7 +15,10 @@ class CommunicationService
 
     public function __construct()
     {
-        $this->twilioClient = new Client(env('TWILIO_SID'), env('TWILIO_AUTH_TOKEN'));
+        $this->twilioClient = new Client(
+            (string) config('services.twilio.sid'),
+            (string) config('services.twilio.token'),
+        );
     }
 
     public function sendEmail($to, $subject, $body, $templateId = null)
@@ -40,10 +43,15 @@ class CommunicationService
         $this->twilioClient->messages->create(
             "whatsapp:$to",
             [
-                'from' => "whatsapp:" . env('TWILIO_WHATSAPP_FROM'),
-                'body' => $message
+                'from' => $this->whatsappAddress((string) config('services.twilio.whatsapp_from')),
+                'body' => $message,
             ]
         );
+    }
+
+    private function whatsappAddress(string $number): string
+    {
+        return str_starts_with($number, 'whatsapp:') ? $number : 'whatsapp:'.$number;
     }
 
     public function applyTemplate($template, $content)
@@ -52,6 +60,7 @@ class CommunicationService
         foreach ($template->placeholders as $placeholder => $value) {
             $content = str_replace("{{{$placeholder}}}", $value, $content);
         }
+
         return $content;
     }
 

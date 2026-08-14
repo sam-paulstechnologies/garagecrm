@@ -118,11 +118,22 @@ return [
 
         'twilio' => [
             'base_uri' => env('TWILIO_BASE_URI', 'https://api.twilio.com'),
+            'sid' => env('TWILIO_SID'),
+            'token' => env('TWILIO_AUTH_TOKEN', env('TWILIO_TOKEN')),
+            'from' => env('TWILIO_WHATSAPP_FROM'),
+            'content_sids' => [],
         ],
 
         'gupshup' => [
             'base_uri' => env('GUPSHUP_BASE_URI', 'https://api.gupshup.io'),
         ],
+    ],
+
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'token' => env('TWILIO_AUTH_TOKEN'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
     ],
 
     /*

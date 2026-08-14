@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Client\Client;
 use App\Models\Shared\File;
+use App\Security\Uploads\PrivateUploadStorage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class FileController extends Controller
 {
+    public function __construct(private PrivateUploadStorage $storage) {}
+
     /*
     |--------------------------------------------------------------------------
     | Helpers
@@ -110,9 +112,9 @@ class FileController extends Controller
 
         $uploadedFile = $request->file('file');
 
-        $path = $uploadedFile->store(
-            "companies/{$companyId}/uploads/files",
-            'public'
+        $stored = $this->storage->storeUploadedFile(
+            $uploadedFile,
+            "companies/{$companyId}/uploads/files"
         );
 
         File::create([
@@ -122,7 +124,8 @@ class FileController extends Controller
             'category' => $data['category'] ?? null,
             'notes' => $data['notes'] ?? null,
             'file_name' => $data['file_name'] ?? $uploadedFile->getClientOriginalName(),
-            'file_path' => $path,
+            'file_path' => $stored['path'],
+            'storage_disk' => $stored['disk'],
             'uploaded_by' => auth()->id(),
             'uploaded_at' => now(),
         ]);
@@ -150,8 +153,8 @@ class FileController extends Controller
             );
         }
 
-        if ($file->file_path && Storage::disk('public')->exists($file->file_path)) {
-            Storage::disk('public')->delete($file->file_path);
+        if ($file->file_path) {
+            $this->storage->delete($file->storage_disk, $file->file_path);
         }
 
         $file->delete();
@@ -159,5 +162,16 @@ class FileController extends Controller
         return redirect()
             ->route('admin.files.index')
             ->with('success', 'File deleted successfully.');
+    }
+
+    public function download(File $file)
+    {
+        $this->authorizeCompany($file);
+
+        return $this->storage->download(
+            $file->storage_disk,
+            $file->file_path,
+            $file->file_name,
+        );
     }
 }

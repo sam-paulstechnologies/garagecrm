@@ -728,13 +728,15 @@ $(function () {
         fetch(`/admin/models/by-make/${makeId}`)
             .then(res => res.json())
             .then(data => {
-                let options = '<option value="">-- Select Model --</option>';
+                const modelSelect = document.getElementById('vehicle_model_id');
+                modelSelect.replaceChildren(new Option('-- Select Model --', ''));
 
                 data.forEach(model => {
-                    options += `<option value="${model.id}">${model.name}</option>`;
+                    const id = Number.parseInt(model.id, 10);
+                    if (Number.isSafeInteger(id) && id > 0) {
+                        modelSelect.add(new Option(String(model.name ?? ''), String(id)));
+                    }
                 });
-
-                $('#vehicle_model_id').html(options);
             });
     });
 

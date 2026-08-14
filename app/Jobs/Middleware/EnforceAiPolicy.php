@@ -18,7 +18,7 @@ class EnforceAiPolicy
         try {
             $companyId = (int) ($job->companyId ?? 0);
 
-            if (!$companyId) {
+            if (! $companyId) {
                 Log::warning('[AI][Policy] Missing company_id, failing closed.');
 
                 if (method_exists($job, 'policyHandoff')) {
@@ -30,22 +30,26 @@ class EnforceAiPolicy
 
             $policy = new AiPolicyService($companyId);
 
-            if (!$policy->enabled()) {
+            if (! $policy->enabled()) {
                 Log::info('[AI][Policy] Disabled, skipping enforcement.', ['company_id' => $companyId]);
+
                 return $next($job);
             }
 
             // Basic AI output structure assumed on job instance
             $nlp = $job->nlp ?? null;
-            if (!$nlp || !is_array($nlp)) {
-                Log::warning('[AI][Policy] No NLP data found, allowing by default.', ['company_id' => $companyId]);
-                return $next($job);
+            if (! $nlp || ! is_array($nlp)) {
+                Log::warning('[AI][Policy] No NLP data found, failing closed.', ['company_id' => $companyId]);
+
+                return method_exists($job, 'policyHandoff')
+                    ? $job->policyHandoff('policy_input_unavailable', 0)
+                    : null;
             }
 
-            $intent     = strtolower((string)($nlp['intent'] ?? 'fallback'));
-            $confidence = (float)($nlp['confidence'] ?? 0);
-            $text       = (string)($job->body ?? '');
-            $confTh     = $policy->confidence();
+            $intent = strtolower((string) ($nlp['intent'] ?? 'fallback'));
+            $confidence = (float) ($nlp['confidence'] ?? 0);
+            $text = (string) ($job->body ?? '');
+            $confTh = $policy->confidence();
 
             // --- Forbidden Topics ---
             foreach ($policy->forbiddenTopics() as $topic) {
@@ -53,8 +57,9 @@ class EnforceAiPolicy
                     Log::notice('[AI][Policy] Forbidden topic detected', [
                         'company_id' => $companyId,
                         'topic' => $topic,
-                        'intent' => $intent
+                        'intent' => $intent,
                     ]);
+
                     return $job->policyBlock("Sorry, I’m not allowed to discuss {$topic}. Our manager will assist you shortly.");
                 }
             }
@@ -65,7 +70,8 @@ class EnforceAiPolicy
                     'company_id' => $companyId,
                     'intent' => $intent,
                 ]);
-                return $job->policyBlock("Sorry, I can’t handle that. I’ll connect you to our manager.");
+
+                return $job->policyBlock('Sorry, I can’t handle that. I’ll connect you to our manager.');
             }
 
             if (in_array($intent, $policy->intentsHandoff(), true) || $confidence < $confTh) {
@@ -73,8 +79,9 @@ class EnforceAiPolicy
                     'company_id' => $companyId,
                     'intent' => $intent,
                     'confidence' => $confidence,
-                    'threshold' => $confTh
+                    'threshold' => $confTh,
                 ]);
+
                 return $job->policyHandoff($intent, $confidence);
             }
 
@@ -83,15 +90,23 @@ class EnforceAiPolicy
                     'company_id' => $companyId,
                     'intent' => $intent,
                 ]);
+
                 return $next($job);
             }
 
-            // Default fallback: allow
-            return $next($job);
+            // Unknown decisions require human review rather than autonomous action.
+            return method_exists($job, 'policyHandoff')
+                ? $job->policyHandoff('policy_decision_unavailable', $confidence)
+                : null;
 
         } catch (\Throwable $e) {
-            Log::error('[AI][PolicyMiddleware] '.$e->getMessage());
-            return $next($job);
+            Log::error('[AI][PolicyMiddleware] policy evaluation failed closed', [
+                'exception' => $e::class,
+            ]);
+
+            return method_exists($job, 'policyHandoff')
+                ? $job->policyHandoff('policy_evaluation_failed', 0)
+                : null;
         }
     }
 }

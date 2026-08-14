@@ -4,6 +4,10 @@
 
 {{-- Initial data for React (optional) --}}
 <script>
+    const escapeConversationText = (value) => String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[character]));
+
     window.__CONV_DATA__ = {
         conversations: @json($conversations->items())
     };
@@ -21,17 +25,20 @@
         list.innerHTML = "";
 
         items.forEach(conv => {
+            const conversationId = Number.parseInt(conv.id, 10);
+            if (!Number.isSafeInteger(conversationId) || conversationId < 1) return;
+            const unreadCount = Math.max(0, Number.parseInt(conv.unread_count, 10) || 0);
             list.innerHTML += `
-                <a href="/admin/chat/${conv.id}" 
+                <a href="/admin/chat/${conversationId}"
                    class="block border-b px-3 py-2.5 text-sm hover:bg-slate-50">
 
                     <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
                             <div class="font-semibold text-gray-800 truncate">
-                                ${conv.customer_name || "Unknown"}
+                                ${escapeConversationText(conv.customer_name || "Unknown")}
                             </div>
                             <div class="text-xs text-gray-500 truncate">
-                                ${conv.customer_phone || "-"}
+                                ${escapeConversationText(conv.customer_phone || "-")}
                             </div>
                         </div>
 
@@ -40,16 +47,16 @@
                                 ${conv.last_message_at ? new Date(conv.last_message_at).toLocaleString() : ""}
                             </div>
 
-                            ${conv.unread_count > 0 
+                            ${unreadCount > 0
                                 ? `<span class="inline-flex rounded-full bg-sky-600 text-white text-[11px] px-2 py-0.5">
-                                     ${conv.unread_count}
+                                     ${unreadCount}
                                    </span>`
                                 : ""}
                         </div>
                     </div>
 
                     <div class="mt-1 text-xs text-gray-500 line-clamp-2">
-                        ${conv.last_message_preview || ""}
+                        ${escapeConversationText(conv.last_message_preview || "")}
                     </div>
                 `;
         });

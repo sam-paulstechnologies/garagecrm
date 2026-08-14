@@ -50,9 +50,9 @@ class MetaWhatsAppWebhookController extends Controller
         $tenantMatchCount = 0;
         if (! $matchesGlobalToken
             && Schema::hasTable('companies')
-            && Schema::hasColumn('companies', 'meta_verify_token')) {
+            && Schema::hasColumn('companies', 'meta_verify_token_hash')) {
             $tenantMatchCount = Company::query()
-                ->where('meta_verify_token', $token)
+                ->where('meta_verify_token_hash', Company::metaVerifyTokenHash((string) $token))
                 ->limit(2)
                 ->count();
         }

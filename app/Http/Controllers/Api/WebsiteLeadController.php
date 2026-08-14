@@ -20,10 +20,10 @@ class WebsiteLeadController extends Controller
             ->firstOrFail();
 
         $data = $request->validate([
-            'name'    => 'required|string|max:255',
-            'phone'   => 'required|string|max:32',
-            'email'   => 'nullable|email|max:150',
-            'message' => 'nullable|string',
+            'name' => 'required|string|max:255',
+            'phone' => 'required|string|max:32',
+            'email' => 'nullable|email|max:150',
+            'message' => 'nullable|string|max:2000',
         ]);
 
         $lead = null;
@@ -42,14 +42,14 @@ class WebsiteLeadController extends Controller
             $leadResolver = app(LeadResolver::class);
 
             $lead = $leadResolver->resolve([
-                'name'            => $data['name'],
-                'phone'           => $data['phone'],
-                'email'           => $data['email'] ?? null,
-                'source'          => 'website',
+                'name' => $data['name'],
+                'phone' => $data['phone'],
+                'email' => $data['email'] ?? null,
+                'source' => 'website',
                 'external_source' => 'website',
             ], $source->company_id);
 
-            if (!$lead) {
+            if (! $lead) {
                 throw new \Exception('Lead creation failed');
             }
 
@@ -60,17 +60,17 @@ class WebsiteLeadController extends Controller
             */
 
             $lead->update([
-                'notes'             => $data['message'] ?? $lead->notes,
-                'external_source'   => 'website',
-                'external_form_id'  => $source->form_token,
-                'external_payload'  => $data,
+                'notes' => $data['message'] ?? $lead->notes,
+                'external_source' => 'website',
+                'external_form_id' => $source->form_token,
+                'external_payload' => $data,
                 'preferred_channel' => 'phone',
             ]);
 
             Log::info('[WebsiteLead] Lead captured', [
-                'lead_id'    => $lead->id,
+                'lead_id' => $lead->id,
                 'company_id' => $lead->company_id,
-                'source'     => $lead->source,
+                'source' => $lead->source,
             ]);
         });
 

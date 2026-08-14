@@ -24,6 +24,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
+
     public $backoff = [10, 30, 60];
 
     protected const ACTIONS = [
@@ -121,10 +122,10 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $conversationId = $conversation?->id;
 
         $ctx = array_merge($this->context, [
-            'company_id'      => $this->companyId,
-            'lead_id'         => $this->leadId,
+            'company_id' => $this->companyId,
+            'lead_id' => $this->leadId,
             'conversation_id' => $conversationId,
-            'action'          => $this->action,
+            'action' => $this->action,
             'commercial_purpose' => $this->action === 'manual_reply'
                 ? OutboundEntitlementPolicy::MANUAL
                 : OutboundEntitlementPolicy::TRANSACTIONAL,
@@ -154,9 +155,9 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         )) {
             Log::info('[WA][Send] skipped duplicate', [
                 'company_id' => $this->companyId,
-                'lead_id'  => $this->leadId,
+                'lead_id' => $this->leadId,
                 'template' => $this->templateName,
-                'action'   => $this->action,
+                'action' => $this->action,
             ]);
 
             return;
@@ -242,10 +243,10 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 if ($sessionOpen) {
                     Log::info('[WA] Sending session message', [
                         'company_id' => $this->companyId,
-                        'lead_id'  => $this->leadId,
+                        'lead_id' => $this->leadId,
                         'template' => $this->templateName,
-                        'action'   => $this->action,
-                        'to'       => $this->toNumberE164,
+                        'action' => $this->action,
+                        'to' => $this->toNumberE164,
                     ]);
 
                     $res = $wa->sendText(
@@ -258,11 +259,11 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                     $resArr = $this->normalizeProviderResponse($res);
                 } else {
                     Log::info('[WA] Sending template message', [
-                        'company_id'     => $this->companyId,
-                        'lead_id'        => $this->leadId,
-                        'template'       => $this->templateName,
-                        'action'         => $this->action,
-                        'to'             => $this->toNumberE164,
+                        'company_id' => $this->companyId,
+                        'lead_id' => $this->leadId,
+                        'template' => $this->templateName,
+                        'action' => $this->action,
+                        'to' => $this->toNumberE164,
                         'force_template' => $forceTemplate,
                     ]);
 
@@ -279,13 +280,14 @@ class SendWhatsAppFromTemplate implements ShouldQueue
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('[WA][Send] provider exception ' . $e->getMessage(), [
+            Log::error('[WA][Send] provider exception', [
+                'exception' => $e::class,
                 'company_id' => $this->companyId,
-                'lead_id'  => $this->leadId,
+                'lead_id' => $this->leadId,
                 'template' => $this->templateName,
-                'action'   => $this->action,
-                'mode'     => $sendMode,
-                'to'       => $this->toNumberE164,
+                'action' => $this->action,
+                'mode' => $sendMode,
+                'to' => $this->toNumberE164,
             ]);
 
             throw $e;
@@ -300,18 +302,18 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         */
         try {
             MessageLog::out([
-                'company_id'      => $this->companyId,
-                'lead_id'         => $this->leadId,
+                'company_id' => $this->companyId,
+                'lead_id' => $this->leadId,
                 'conversation_id' => $conversationId,
-                'channel'         => 'whatsapp',
-                'direction'       => 'out',
-                'to_number'       => $this->toNumberE164,
-                'from_number'     => $from ?: null,
-                'template'        => $this->templateName,
-                'body'            => $text,
+                'channel' => 'whatsapp',
+                'direction' => 'out',
+                'to_number' => $this->toNumberE164,
+                'from_number' => $from ?: null,
+                'template' => $this->templateName,
+                'body' => $text,
                 'provider_message_id' => $resArr['sid'] ?? ($resArr['id'] ?? ($resArr['message_id'] ?? null)),
-                'provider_status'     => $resArr['status'] ?? 'queued',
-                'source'              => $this->action === 'manual_reply' ? 'human' : 'bot',
+                'provider_status' => $resArr['status'] ?? 'queued',
+                'source' => $this->action === 'manual_reply' ? 'human' : 'bot',
                 'meta' => array_merge($ctx, [
                     'send_mode' => $sendMode,
                     'force_template' => $forceTemplate,
@@ -322,12 +324,13 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
             $localLogCompleted = true;
         } catch (\Throwable $e) {
-            Log::error('[WA][Send] local log failed after provider send - NOT retrying to avoid duplicate ' . $e->getMessage(), [
+            Log::error('[WA][Send] local log failed after provider send - NOT retrying to avoid duplicate', [
+                'exception' => $e::class,
                 'company_id' => $this->companyId,
-                'lead_id'  => $this->leadId,
+                'lead_id' => $this->leadId,
                 'template' => $this->templateName,
-                'action'   => $this->action,
-                'mode'     => $sendMode,
+                'action' => $this->action,
+                'mode' => $sendMode,
                 'provider_response' => $resArr,
             ]);
 
@@ -388,11 +391,12 @@ class SendWhatsAppFromTemplate implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        Log::error('[WA][JobFailed] ' . $e->getMessage(), [
+        Log::error('[WA][JobFailed]', [
+            'exception' => $e::class,
             'company_id' => $this->companyId,
-            'lead_id'  => $this->leadId,
+            'lead_id' => $this->leadId,
             'template' => $this->templateName,
-            'action'   => $this->action,
+            'action' => $this->action,
         ]);
     }
 
@@ -444,7 +448,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             Log::error('[WA] Conversation create failed', [
                 'company_id' => $this->companyId,
                 'lead_id' => $lead->id,
-                'err' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             return null;
@@ -466,7 +470,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             Log::warning('[WA] Conversation update failed', [
                 'company_id' => $this->companyId,
                 'conversation_id' => $conversation->id,
-                'err' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -495,7 +499,7 @@ class SendWhatsAppFromTemplate implements ShouldQueue
             Log::warning('[WA] Conversation attention update failed', [
                 'company_id' => $this->companyId,
                 'conversation_id' => $conversation->id,
-                'err' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         }
     }
@@ -590,11 +594,11 @@ class SendWhatsAppFromTemplate implements ShouldQueue
         $number = preg_replace('/\D+/', '', $number);
 
         if (str_starts_with($number, '05')) {
-            $number = '971' . substr($number, 1);
+            $number = '971'.substr($number, 1);
         }
 
         if (str_starts_with($number, '9710')) {
-            $number = '971' . substr($number, 3);
+            $number = '971'.substr($number, 3);
         }
 
         return $number;
