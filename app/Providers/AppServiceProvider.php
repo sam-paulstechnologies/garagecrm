@@ -88,6 +88,16 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
 
+        // Fable H2: surface a degraded/critical MFA-enforcement baseline once at
+        // boot so monitoring notices a protected environment that lost its
+        // TWO_FACTOR_ENFORCEMENT setting (which now fails closed rather than
+        // silently disabling privileged MFA). No secrets are logged.
+        $securityConfig = app(\App\Security\SecurityConfigurationValidator::class);
+        if ($securityConfig->status() !== 'ok') {
+            $level = $securityConfig->status() === 'critical' ? 'critical' : 'warning';
+            Log::log($level, 'Security configuration baseline degraded.', $securityConfig->readiness());
+        }
+
         if (app()->environment('staging')) {
             Log::withContext(['environment' => 'staging']);
 

@@ -39,12 +39,14 @@ summaries, not hidden reasoning or chain-of-thought. Use none for retention unle
 customer/service relationship is supported.
 PROMPT;
 
+        $redactedText = PromptPiiMinimizer::redact($text);
+
         try {
             $response = $this->http()->post($this->base().'/chat/completions', [
                 'model' => $this->model(),
                 'messages' => [
                     ['role' => 'system', 'content' => $system],
-                    ['role' => 'user', 'content' => "Days since last message: {$daysSinceLastMessage}\nConversation:\n<<<{$text}>>>"],
+                    ['role' => 'user', 'content' => "Days since last message: {$daysSinceLastMessage}\nConversation:\n<<<{$redactedText}>>>"],
                 ],
                 'response_format' => ['type' => 'json_object'],
                 'temperature' => 0.1,
@@ -151,11 +153,10 @@ STRICT rules:
 Output ONLY the WhatsApp message text.
 SYS;
 
+        // Neutral, non-identifying lead context only. The customer name is
+        // intentionally omitted so it is never sent to the model.
         $leadSummary = [];
 
-        if ($known['name']) {
-            $leadSummary[] = "name={$known['name']}";
-        }
         if ($known['make_id'] || $known['other_make']) {
             $leadSummary[] = 'make=known';
         }
@@ -174,8 +175,10 @@ SYS;
             }
         }
 
+        $redactedBody = PromptPiiMinimizer::redact($body);
+
         $user =
-            "Customer said: <<<{$body}>>>\n".
+            "Customer said: <<<{$redactedBody}>>>\n".
             'Lead context: '.($leadSummary ? implode(', ', $leadSummary) : 'none')."\n".
             'Detected entities: '.($nluSummary ? implode(', ', $nluSummary) : 'none')."\n".
             'Capabilities: offer_pickup_drop='.($caps['offer_pickup_drop'] ? 'true' : 'false');
@@ -225,18 +228,14 @@ Return JSON ONLY with:
 intent, sentiment, confidence, language,
 entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,plate,vin,note}.';
 
+        // Neutral, non-identifying lead context only. Customer name and phone
+        // are intentionally omitted so they are never sent to the model.
         $leadBits = [];
 
         if (! empty($context['lead'])) {
 
             $l = $context['lead'];
 
-            if (! empty($l['name'])) {
-                $leadBits[] = "name={$l['name']}";
-            }
-            if (! empty($l['phone'])) {
-                $leadBits[] = "phone={$l['phone']}";
-            }
             if (! empty($l['last_intent'])) {
                 $leadBits[] = "last_intent={$l['last_intent']}";
             }
@@ -244,10 +243,12 @@ entities{vehicle_make,vehicle_model,vehicle_year,preferred_date,preferred_time,p
 
         $leadLine = $leadBits ? ('Lead context: '.implode(', ', $leadBits)."\n") : '';
 
+        $redactedText = PromptPiiMinimizer::redact($text);
+
         $user =
             "Classify and extract.\n".
             $leadLine.
-            "Message: <<<{$text}>>>\n".
+            "Message: <<<{$redactedText}>>>\n".
             "Rules:\n".
             "- appointment or service request → booking\n".
             "- change time → reschedule\n".

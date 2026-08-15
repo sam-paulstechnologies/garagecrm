@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Security\SecurityConfigurationValidator;
 use App\Security\SecurityStepUp;
 use App\Security\TwoFactorPolicy;
 use Closure;
@@ -14,8 +15,12 @@ class RequireRecentSecurityStepUp
     {
         $policy = app(TwoFactorPolicy::class);
 
+        // Fail-closed: only pass an unconfirmed user through when verification is
+        // genuinely not required (local/testing, or an explicit "audit" stage).
+        // In a protected environment with unset/invalid enforcement this now
+        // enforces instead of silently allowing the sensitive action (H2).
         if (! $policy->isConfirmed($request->user())
-            && $policy->enforcementMode() !== 'required_admins') {
+            && ! app(SecurityConfigurationValidator::class)->sensitiveActionsRequireVerification()) {
             return $next($request);
         }
 

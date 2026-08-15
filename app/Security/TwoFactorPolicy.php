@@ -19,7 +19,9 @@ class TwoFactorPolicy
             return true;
         }
 
-        if ($this->enforcementMode() !== 'required_admins') {
+        // Fail-closed: in a protected environment an unset/invalid enforcement
+        // value forces privileged MFA rather than silently disabling it (H2).
+        if (! app(SecurityConfigurationValidator::class)->privilegedMfaMandatory()) {
             return false;
         }
 
