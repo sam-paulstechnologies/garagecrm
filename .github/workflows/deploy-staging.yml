@@ -96,6 +96,8 @@ jobs:
           php ops/security/generate-sbom.php --output=storage/app/security/sbom.cdx.json
           npm run build
           test -f public/build/manifest.json
+          # Fable remediation (Phase 6): scan the built browser bundles for leaked secrets.
+          php ops/security/scan-secrets.php --include-build --build-json=storage/app/security/secret-scan-build.json
 
       - name: Preserve security gate evidence
         uses: actions/upload-artifact@v4
