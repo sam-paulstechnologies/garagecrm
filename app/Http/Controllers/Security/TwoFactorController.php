@@ -137,8 +137,15 @@ class TwoFactorController extends Controller
     {
         $user = $request->user();
         $disable($user);
-        $user->forceFill(['two_factor_recovery_codes_acknowledged_at' => null])->save();
+        $reenrollment = app(TwoFactorPolicy::class)->isMandatory($user) ? now() : null;
+        $user->forceFill([
+            'two_factor_recovery_codes_acknowledged_at' => null,
+            'two_factor_reenrollment_required_at' => $reenrollment,
+        ])->save();
         $request->session()->forget(['security_step_up_at', 'auth.password_confirmed_at']);
+
+        // M5: terminate the user's other sessions and API tokens on self-disable.
+        app(\App\Security\SecuritySessionInvalidator::class)->afterSelfTwoFactorDisable($user, $request);
 
         app(SecurityAudit::class)->record('two_factor.disabled', $user, $user, [], $request);
 

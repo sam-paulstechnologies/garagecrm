@@ -20,9 +20,13 @@ class PasswordController extends Controller
             'password' => ['required', Password::defaults(), 'confirmed'],
         ]);
 
-        $request->user()->update([
+        $user = $request->user();
+        $user->update([
             'password' => Hash::make($validated['password']),
         ]);
+
+        // M5: keep the current session, terminate other sessions + API tokens.
+        app(\App\Security\SecuritySessionInvalidator::class)->afterPasswordChange($user, $request);
 
         return back();
     }
