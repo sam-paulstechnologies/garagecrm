@@ -5,12 +5,16 @@ namespace App\Models\Job;
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
 use App\Models\Client\Opportunity;
+use App\Models\Contracts\TenantOwned;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Invoice extends Model
+// M7: marked tenant-owned. Manual company_id checks are retained; the automatic
+// global-scope backstop is deferred for this join-intermediate model because a
+// bare-column scope is ambiguous and a qualified one needs per-relation review.
+class Invoice extends Model implements TenantOwned
 {
     use SoftDeletes;
 

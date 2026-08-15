@@ -34,6 +34,9 @@ class AppServiceProvider extends ServiceProvider
         // its audited TOTP, recovery-code, encryption, and QR primitives.
         Fortify::ignoreRoutes();
 
+        // M7: shared tenant context for the isolation backstop global scope.
+        $this->app->singleton(\App\Support\Tenancy\TenantContext::class);
+
         $this->app->singleton(BillingGateway::class, fn ($app): BillingGateway => $app->make(BillingGatewayResolver::class)->configured()
         );
 

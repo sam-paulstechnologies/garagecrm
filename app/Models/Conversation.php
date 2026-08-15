@@ -4,11 +4,14 @@ namespace App\Models;
 
 use App\Models\Client\Client;
 use App\Models\Client\Lead;
+use App\Models\Contracts\TenantOwned;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
-class Conversation extends Model
+// M7: marked tenant-owned; manual/policy checks retained. Automatic global-scope
+// backstop deferred (join-heavy inbox queries need qualified-column review).
+class Conversation extends Model implements TenantOwned
 {
     protected $fillable = [
         'company_id',
