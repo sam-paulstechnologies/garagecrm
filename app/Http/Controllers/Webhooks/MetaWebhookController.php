@@ -103,13 +103,15 @@ class MetaWebhookController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Signature hardening
+        | Signature hardening (fail closed in ALL environments)
         |--------------------------------------------------------------------------
-        | In production, Meta app secret must be configured.
-        | In local/dev, allow unsigned payloads only for testing.
+        | The X-Hub-Signature-256 HMAC is mandatory everywhere. If the Meta app
+        | secret is not configured we cannot verify authenticity, so we reject
+        | rather than accept an unsigned payload. Signature verification is never
+        | skipped based on the environment.
         |--------------------------------------------------------------------------
         */
-        if ($secret === '' && app()->environment(['production', 'staging'])) {
+        if ($secret === '') {
             Log::error('[META_LEADS][APP_SECRET_MISSING]', [
                 'environment' => app()->environment(),
                 'ip' => $request->ip(),
@@ -118,23 +120,16 @@ class MetaWebhookController extends Controller
             return response()->noContent(Response::HTTP_UNAUTHORIZED);
         }
 
-        if ($secret !== '') {
-            $signature = (string) $request->header('X-Hub-Signature-256', '');
+        $signature = (string) $request->header('X-Hub-Signature-256', '');
 
-            if (! $this->validSignature($signature, $request->getContent(), $secret)) {
-                Log::warning('[META_LEADS][INVALID_SIGNATURE]', [
-                    'has_signature' => $signature !== '',
-                    'ip' => $request->ip(),
-                    'content_length' => strlen($request->getContent()),
-                ]);
-
-                return response()->noContent(Response::HTTP_UNAUTHORIZED);
-            }
-        } else {
-            Log::warning('[META_LEADS][SIGNATURE_SKIPPED_LOCAL_TEST_ONLY]', [
-                'environment' => app()->environment(),
+        if (! $this->validSignature($signature, $request->getContent(), $secret)) {
+            Log::warning('[META_LEADS][INVALID_SIGNATURE]', [
+                'has_signature' => $signature !== '',
                 'ip' => $request->ip(),
+                'content_length' => strlen($request->getContent()),
             ]);
+
+            return response()->noContent(Response::HTTP_UNAUTHORIZED);
         }
 
         $entries = (array) $request->json('entry', []);
