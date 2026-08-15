@@ -263,9 +263,11 @@ class QuickScanTest extends TestCase
     {
         $created = app(QuickScanSyntheticFixture::class)->create($this->platformUser(), 8);
         $token = $created['token'];
+        // M34: token is handed off via the server-side session, not the URL.
         $this->post(route('quick-scan.accept', ['token' => $token]))
-            ->assertRedirect(route('register', ['quick_scan' => $token]));
-        $this->get(route('register', ['quick_scan' => $token]))->assertOk()->assertSee('History stays quarantined');
+            ->assertRedirect(route('register'))
+            ->assertSessionHas(\App\Http\Controllers\QuickScanController::HANDOFF_SESSION_KEY, $token);
+        $this->get(route('register'))->assertOk()->assertSee('History stays quarantined');
         $this->post(route('register'), [
             'garage_name' => 'Converted Quick Scan Garage', 'name' => 'Converted Admin',
             'email' => 'converted-quick-scan@example.test', 'phone' => '+971 50 000 8820',

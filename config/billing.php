@@ -10,7 +10,10 @@ return [
         'grace_days' => (int) env('BILLING_FAILED_PAYMENT_GRACE_DAYS', 7),
     ],
     'fake' => [
-        'webhook_secret' => env('BILLING_FAKE_WEBHOOK_SECRET') ?: env('APP_KEY'),
+        // Dedicated secret only. Never fall back to APP_KEY: an empty secret must
+        // fail closed in FakeBillingGateway::verifyWebhook, not silently reuse the
+        // application key as a signing secret.
+        'webhook_secret' => env('BILLING_FAKE_WEBHOOK_SECRET'),
     ],
     'stripe' => [
         'secret_key' => env('STRIPE_SECRET_KEY'),

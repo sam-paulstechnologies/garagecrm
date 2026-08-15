@@ -6,6 +6,29 @@ use RuntimeException;
 
 class StagingSafety
 {
+    /**
+     * Environments we can positively recognise as *not* a staging box and safe
+     * to leave unguarded. Anything outside this set (a blank/typo'd APP_ENV, a
+     * mislabeled 'sandbox'/'uat'/'prod' box, etc.) is treated as ambiguous and
+     * fails closed for outbound + provider-asset assertions. See
+     * {@see self::outboundGuardActive()}.
+     */
+    private const RECOGNISED_UNGUARDED_ENVIRONMENTS = ['production', 'local', 'testing'];
+
+    /**
+     * Required production denylists. Emptiness is a configuration failure while
+     * the guard is active. The operator MUST populate these with the REAL
+     * production identifiers via the following env keys:
+     *   - production_database_hosts   => STAGING_PRODUCTION_DB_HOST_DENYLIST
+     *   - production_waba_ids         => STAGING_META_PRODUCTION_WABA_ID_DENYLIST
+     *   - production_phone_number_ids => STAGING_META_PRODUCTION_PHONE_NUMBER_ID_DENYLIST
+     */
+    private const REQUIRED_DENYLISTS = [
+        'production_database_hosts' => 'staging.production.database_hosts',
+        'production_waba_ids' => 'staging.production.waba_ids',
+        'production_phone_number_ids' => 'staging.production.phone_number_ids',
+    ];
+
     public function assertRuntimeIsolated(bool $destructive = false): void
     {
         if (! app()->environment('staging')) {
@@ -62,9 +85,15 @@ class StagingSafety
 
     public function assertProviderAssetsAllowed(?string $wabaId, ?string $phoneNumberId): void
     {
-        if (! app()->environment('staging')) {
+        if (! $this->outboundGuardActive()) {
             return;
         }
+
+        // Defence in depth (M8): when the guard is active, the production
+        // provider denylists MUST be populated. An empty required denylist is a
+        // configuration failure, not an implicit "allow", even when the asset id
+        // is absent — otherwise the assertion would silently complete.
+        $this->assertRequiredDenylistsReady(['production_waba_ids', 'production_phone_number_ids']);
 
         $this->assertAssetAllowed(
             $wabaId,
@@ -82,7 +111,7 @@ class StagingSafety
 
     public function assertWhatsAppOutboundAllowed(string $recipient, ?string $wabaId = null, ?string $phoneNumberId = null): void
     {
-        if (! app()->environment('staging')) {
+        if (! $this->outboundGuardActive()) {
             return;
         }
 
@@ -96,7 +125,7 @@ class StagingSafety
 
     public function assertSmsOutboundAllowed(string $recipient): void
     {
-        if (! app()->environment('staging')) {
+        if (! $this->outboundGuardActive()) {
             return;
         }
 
@@ -109,7 +138,7 @@ class StagingSafety
 
     public function emailRecipientsAreAllowed(array $addresses): bool
     {
-        if (! app()->environment('staging')) {
+        if (! $this->outboundGuardActive()) {
             return true;
         }
 
@@ -132,7 +161,117 @@ class StagingSafety
 
     public function legacyCompanyResolutionAllowed(): bool
     {
-        return ! app()->environment('staging') || (bool) config('staging.meta.allow_legacy_company_resolution');
+        return ! $this->outboundGuardActive() || (bool) config('staging.meta.allow_legacy_company_resolution');
+    }
+
+    /**
+     * Report whether every required production denylist is populated.
+     *
+     * Emptiness is made VISIBLE here so readiness/connection controls can fail
+     * closed instead of silently completing (M8). No production values are ever
+     * invented; the operator must supply them via the env keys documented on
+     * {@see self::REQUIRED_DENYLISTS}.
+     *
+     * @return array{guard_active:bool,ready:bool,required:array<int,string>,empty:array<int,string>,env_keys:array<string,string>}
+     */
+    public function denylistReadiness(): array
+    {
+        $empty = [];
+        foreach (self::REQUIRED_DENYLISTS as $name => $configKey) {
+            if ($this->csv(config($configKey)) === []) {
+                $empty[] = $name;
+            }
+        }
+
+        return [
+            'guard_active' => $this->outboundGuardActive(),
+            'ready' => $empty === [],
+            'required' => array_keys(self::REQUIRED_DENYLISTS),
+            'empty' => $empty,
+            'env_keys' => [
+                'production_database_hosts' => 'STAGING_PRODUCTION_DB_HOST_DENYLIST',
+                'production_waba_ids' => 'STAGING_META_PRODUCTION_WABA_ID_DENYLIST',
+                'production_phone_number_ids' => 'STAGING_META_PRODUCTION_PHONE_NUMBER_ID_DENYLIST',
+            ],
+        ];
+    }
+
+    /**
+     * The outbound / provider-asset safety guard.
+     *
+     * Safety does NOT rest on a single APP_ENV string (M31). The guard is ACTIVE
+     * (staging restrictions apply / fail closed) whenever we cannot positively
+     * prove the box is a recognised, safe, non-staging environment:
+     *   - APP_ENV is 'staging'                                  -> active
+     *   - an explicit safety flag is set (STAGING_SAFETY_ENFORCED) -> active
+     *   - the expected staging host or database identity matches -> active
+     *   - the environment is ambiguous/unknown (mislabeled box)  -> active (fail closed)
+     *   - a recognised safe environment with no staging signals  -> inactive (allow)
+     *
+     * A mislabeled staging box (APP_ENV unset -> Laravel reports 'production',
+     * or set to some other string) therefore still guards outbound as long as
+     * either the explicit flag or the host/DB identity points at staging, and an
+     * unrecognised environment name always fails closed.
+     */
+    public function outboundGuardActive(): bool
+    {
+        if (app()->environment('staging')) {
+            return true;
+        }
+
+        if ($this->safetyModeEnforced()) {
+            return true;
+        }
+
+        [$hostIndicatesStaging, $databaseIndicatesStaging] = $this->stagingIdentityIndicators();
+        if ($hostIndicatesStaging || $databaseIndicatesStaging) {
+            return true;
+        }
+
+        // Positively recognised, safe, non-staging environment: allow.
+        if (app()->environment(self::RECOGNISED_UNGUARDED_ENVIRONMENTS)) {
+            return false;
+        }
+
+        // Ambiguous / unknown environment: fail closed.
+        return true;
+    }
+
+    private function safetyModeEnforced(): bool
+    {
+        return (bool) config('staging.safety_mode');
+    }
+
+    /**
+     * @return array{0:bool,1:bool} [hostIndicatesStaging, databaseIndicatesStaging]
+     */
+    private function stagingIdentityIndicators(): array
+    {
+        $expectedHost = strtolower(trim((string) config('staging.expected_host')));
+        $actualHost = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+        $hostIndicatesStaging = $expectedHost !== '' && $actualHost !== '' && hash_equals($expectedHost, $actualHost);
+
+        $connection = (string) config('database.default');
+        $database = trim((string) config("database.connections.{$connection}.database"));
+        $expectedDatabase = trim((string) config('staging.expected_database'));
+        $databaseIndicatesStaging = $expectedDatabase !== '' && $database !== '' && hash_equals($expectedDatabase, $database);
+
+        return [$hostIndicatesStaging, $databaseIndicatesStaging];
+    }
+
+    /**
+     * @param  array<int,string>  $names  keys of self::REQUIRED_DENYLISTS
+     */
+    private function assertRequiredDenylistsReady(array $names): void
+    {
+        foreach ($names as $name) {
+            $configKey = self::REQUIRED_DENYLISTS[$name] ?? null;
+            if ($configKey !== null && $this->csv(config($configKey)) === []) {
+                throw new RuntimeException(
+                    'Staging provider validation is not configured: a required production denylist is empty; operation refused.'
+                );
+            }
+        }
     }
 
     private function assertAssetAllowed(?string $assetId, array $denylist, array $allowlist, string $label): void

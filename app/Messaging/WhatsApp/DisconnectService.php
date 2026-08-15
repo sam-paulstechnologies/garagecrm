@@ -7,7 +7,11 @@ use App\Messaging\Models\MessagingConnection;
 use App\Messaging\Models\MessagingConsent;
 use App\Messaging\Services\MessagingAuditService;
 use App\Models\User;
+use App\Models\WhatsApp\WhatsAppHistoryCandidate;
+use App\Models\WhatsApp\WhatsAppHistoryMessage;
+use App\Models\WhatsApp\WhatsAppSyncedContact;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DisconnectService
 {
@@ -38,8 +42,81 @@ class DisconnectService
                 ])->save();
             }
 
+            $purged = $this->purgeUnreviewedHistoryQuarantine(
+                (int) $company->id,
+                (int) $locked->id,
+                $phone?->phone_number_id !== null ? (string) $phone->phone_number_id : null,
+            );
+
             $this->audit->record($company->id, $locked->id, $user->id, $locked->product_key,
-                'connection_disconnected_locally', 'success', ['external_assets_deleted' => false]);
+                'connection_disconnected_locally', 'success', [
+                    'external_assets_deleted' => false,
+                    'history_quarantine_purged' => $purged,
+                ]);
         });
+    }
+
+    /**
+     * Enforce explicit retention on WhatsApp disconnect (M11).
+     *
+     * Physically PURGES unreviewed quarantine / history-sync material that was
+     * never promoted to the CRM:
+     *   - whatsapp_synced_contacts (raw contact sync staging)
+     *   - whatsapp_history_messages not attached to an imported candidate
+     *   - pending-review whatsapp_history_candidates that were never imported
+     *
+     * PRESERVES everything the tenant explicitly kept: imported CRM records
+     * (Client/Conversation/MessageLog created via an approved Track) and the
+     * candidate rows behind them, plus Don't-Track suppression preferences
+     * (whatsapp_tracking_preferences). Never touches invoices/jobs/bookings/leads.
+     *
+     * @return array<string,int> counts of physically deleted quarantine rows
+     */
+    private function purgeUnreviewedHistoryQuarantine(int $companyId, ?int $connectionId, ?string $phoneNumberId): array
+    {
+        $deleted = ['candidates' => 0, 'history_messages' => 0, 'synced_contacts' => 0];
+
+        // Candidates promoted to the CRM (an explicit Track import) are kept, and
+        // so is any staged history physically attached to them.
+        $importedCandidateIds = Schema::hasTable('whatsapp_history_candidates')
+            ? WhatsAppHistoryCandidate::query()
+                ->where('company_id', $companyId)
+                ->whereNotNull('imported_client_id')
+                ->pluck('id')
+                ->all()
+            : [];
+
+        if (Schema::hasTable('whatsapp_history_messages')) {
+            $deleted['history_messages'] = (int) WhatsAppHistoryMessage::query()
+                ->where('company_id', $companyId)
+                ->when($phoneNumberId !== null && $phoneNumberId !== '', fn ($query) => $query->where('phone_number_id', $phoneNumberId))
+                ->where(function ($query) use ($importedCandidateIds): void {
+                    $query->whereNull('whatsapp_history_candidate_id');
+                    if ($importedCandidateIds !== []) {
+                        $query->orWhereNotIn('whatsapp_history_candidate_id', $importedCandidateIds);
+                    }
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('whatsapp_synced_contacts')) {
+            $deleted['synced_contacts'] = (int) WhatsAppSyncedContact::query()
+                ->where('company_id', $companyId)
+                ->when($phoneNumberId !== null && $phoneNumberId !== '', fn ($query) => $query->where('phone_number_id', $phoneNumberId))
+                ->delete();
+        }
+
+        if (Schema::hasTable('whatsapp_history_candidates')) {
+            $deleted['candidates'] = (int) WhatsAppHistoryCandidate::query()
+                ->where('company_id', $companyId)
+                ->where('review_decision', 'pending')
+                ->whereNull('imported_client_id')
+                ->when($connectionId !== null, fn ($query) => $query->where(function ($scoped) use ($connectionId): void {
+                    $scoped->whereNull('messaging_connection_id')->orWhere('messaging_connection_id', $connectionId);
+                }))
+                ->delete();
+        }
+
+        return $deleted;
     }
 }

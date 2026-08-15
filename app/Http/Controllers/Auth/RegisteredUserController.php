@@ -33,15 +33,22 @@ class RegisteredUserController extends Controller
             dedupeKey: 'registration-started:'.hash('sha256', $request->session()->getId()),
         );
 
+        // M34: prefer the single-use server-side handoff (token kept out of the
+        // URL/browser history/referrer); fall back to the legacy query param.
+        $handoffToken = $request->session()->pull(\App\Http\Controllers\QuickScanController::HANDOFF_SESSION_KEY)
+            ?? $request->query('quick_scan');
+
         $quickScan = null;
-        if ($request->filled('quick_scan')) {
-            $quickScan = $quickScanAccess->resolve((string) $request->query('quick_scan'));
+        $quickScanToken = null;
+        if (filled($handoffToken)) {
+            $quickScan = $quickScanAccess->resolve((string) $handoffToken);
             abort_unless($quickScan->status === 'accepted' && ! $quickScan->converted_company_id, 404);
+            $quickScanToken = (string) $handoffToken;
         }
 
         return view('auth.register', [
             'quickScan' => $quickScan,
-            'quickScanToken' => $quickScan ? (string) $request->query('quick_scan') : null,
+            'quickScanToken' => $quickScanToken,
         ]);
     }
 

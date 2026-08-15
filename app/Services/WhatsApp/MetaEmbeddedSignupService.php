@@ -625,20 +625,92 @@ class MetaEmbeddedSignupService
     public function disconnectCompany(Company $company, ?int $userId = null): Company
     {
         $mode = $this->normalizeConnectionMode($company->whatsapp_connection_mode ?? null);
+        $phoneNumberId = trim((string) ($company->meta_phone_number_id ?? ''));
 
-        $company->forceFill([
-            'is_whatsapp_active' => false,
-            'meta_access_token' => null,
-            'meta_token_expires_at' => null,
-            'whatsapp_connection_mode' => 'manual',
-            'whatsapp_coexistence_enabled' => false,
-            'whatsapp_coexistence_status' => 'disconnected',
-            'whatsapp_webhook_subscription_status' => 'unknown',
-        ])->save();
+        return DB::transaction(function () use ($company, $userId, $mode, $phoneNumberId): Company {
+            // Revoke provider connection state and clear provider credentials.
+            $company->forceFill([
+                'is_whatsapp_active' => false,
+                'meta_access_token' => null,
+                'meta_token_expires_at' => null,
+                'whatsapp_connection_mode' => 'manual',
+                'whatsapp_coexistence_enabled' => false,
+                'whatsapp_coexistence_status' => 'disconnected',
+                'whatsapp_webhook_subscription_status' => 'unknown',
+            ])->save();
 
-        $this->audit((int) $company->id, $userId, 'connection_disabled_locally', 'success', $mode);
+            $purged = $this->purgeUnreviewedHistoryQuarantine(
+                (int) $company->id,
+                $phoneNumberId !== '' ? $phoneNumberId : null,
+            );
 
-        return $company->fresh();
+            $this->audit(
+                (int) $company->id,
+                $userId,
+                'connection_disabled_locally',
+                'success',
+                $mode,
+                context: ['history_quarantine_purged' => $purged],
+            );
+
+            return $company->fresh();
+        });
+    }
+
+    /**
+     * Enforce explicit retention on WhatsApp disconnect (M11).
+     *
+     * Physically PURGES unreviewed quarantine / history-sync material that was
+     * never promoted to the CRM: raw synced contacts, staged history messages
+     * not attached to an imported candidate, and pending-review candidates that
+     * were never imported. PRESERVES imported CRM records (Client/Conversation/
+     * MessageLog created via an approved Track) and the candidate rows behind
+     * them, plus Don't-Track suppression preferences (whatsapp_tracking_
+     * preferences). Never touches invoices/jobs/bookings/leads.
+     *
+     * @return array<string,int> counts of physically deleted quarantine rows
+     */
+    private function purgeUnreviewedHistoryQuarantine(int $companyId, ?string $phoneNumberId): array
+    {
+        $deleted = ['candidates' => 0, 'history_messages' => 0, 'synced_contacts' => 0];
+
+        $importedCandidateIds = Schema::hasTable('whatsapp_history_candidates')
+            ? \App\Models\WhatsApp\WhatsAppHistoryCandidate::query()
+                ->where('company_id', $companyId)
+                ->whereNotNull('imported_client_id')
+                ->pluck('id')
+                ->all()
+            : [];
+
+        if (Schema::hasTable('whatsapp_history_messages')) {
+            $deleted['history_messages'] = (int) \App\Models\WhatsApp\WhatsAppHistoryMessage::query()
+                ->where('company_id', $companyId)
+                ->when($phoneNumberId !== null && $phoneNumberId !== '', fn ($query) => $query->where('phone_number_id', $phoneNumberId))
+                ->where(function ($query) use ($importedCandidateIds): void {
+                    $query->whereNull('whatsapp_history_candidate_id');
+                    if ($importedCandidateIds !== []) {
+                        $query->orWhereNotIn('whatsapp_history_candidate_id', $importedCandidateIds);
+                    }
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('whatsapp_synced_contacts')) {
+            $deleted['synced_contacts'] = (int) \App\Models\WhatsApp\WhatsAppSyncedContact::query()
+                ->where('company_id', $companyId)
+                ->when($phoneNumberId !== null && $phoneNumberId !== '', fn ($query) => $query->where('phone_number_id', $phoneNumberId))
+                ->delete();
+        }
+
+        if (Schema::hasTable('whatsapp_history_candidates')) {
+            $deleted['candidates'] = (int) \App\Models\WhatsApp\WhatsAppHistoryCandidate::query()
+                ->where('company_id', $companyId)
+                ->where('review_decision', 'pending')
+                ->whereNull('imported_client_id')
+                ->delete();
+        }
+
+        return $deleted;
     }
 
     public function connectionStatus(Company $company): array
