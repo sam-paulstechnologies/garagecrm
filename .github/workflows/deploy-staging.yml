@@ -96,6 +96,8 @@ jobs:
           php ops/security/generate-sbom.php --output=storage/app/security/sbom.cdx.json
           npm run build
           test -f public/build/manifest.json
+          # Fable remediation (Phase 6): scan the built browser bundles for leaked secrets.
+          php ops/security/scan-secrets.php --include-build --build-json=storage/app/security/secret-scan-build.json
 
       - name: Preserve security gate evidence
         uses: actions/upload-artifact@v4
@@ -128,7 +130,7 @@ jobs:
           done
           cp artisan composer.json composer.lock "$package/"
           printf '%s\n' "$GITHUB_SHA" > "$package/bootstrap/deployed-commit"
-          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat sayaraforce-staging-quick-scan-uat; do
+          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat sayaraforce-staging-quick-scan-uat sayaraforce-staging-security-maintenance; do
             target="$package/App_Data/jobs/triggered/$job"
             mkdir -p "$target"
             cp "ops/azure/staging/webjobs/$job/"* "$target/"
@@ -142,6 +144,7 @@ jobs:
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-smoke/run.php'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-history-uat/run.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-quick-scan-uat/run.sh'
+          unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-security-maintenance/run.sh'
           if unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-scheduler/'; then
             echo 'Staging scheduler must not be packaged during initial bring-up.' >&2
             exit 1

@@ -2,28 +2,33 @@
 
 namespace App\Models\Traits;
 
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
 
 trait BelongsToCompany
 {
     protected static function bootBelongsToCompany()
     {
-        // Apply scope ONLY when authenticated
+        // M7 backstop: scope by the effective tenant context. This is backward
+        // compatible — with no explicit context it resolves to the authenticated
+        // tenant user's company (as before) — while also honouring an explicit
+        // TenantContext::forTenant()/runAsPlatform() declared by jobs/services.
         static::addGlobalScope('company', function (Builder $builder) {
-            if (Auth::check() && Auth::user()?->company_id) {
-                $builder->where('company_id', Auth::user()->company_id);
+            $tenantId = app(TenantContext::class)->effectiveTenantId();
+            if ($tenantId !== null) {
+                // Bare column matches the original proven behaviour (resolves via
+                // the model's own table / active join context); qualifying it
+                // regressed models queried through joins.
+                $builder->where('company_id', $tenantId);
             }
         });
 
-        // Auto-fill ONLY when authenticated
         static::creating(function ($model) {
-            if (
-                empty($model->company_id) &&
-                Auth::check() &&
-                Auth::user()?->company_id
-            ) {
-                $model->company_id = Auth::user()->company_id;
+            if (empty($model->company_id)) {
+                $tenantId = app(TenantContext::class)->effectiveTenantId();
+                if ($tenantId !== null) {
+                    $model->company_id = $tenantId;
+                }
             }
         });
     }

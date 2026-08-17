@@ -15,7 +15,21 @@ return [
     'schema_baseline_approved' => filter_var(env('STAGING_SCHEMA_BASELINE_APPROVED', false), FILTER_VALIDATE_BOOL),
     'schema_validation_mode' => filter_var(env('STAGING_SCHEMA_VALIDATION_MODE', false), FILTER_VALIDATE_BOOL),
 
+    // Defence-in-depth safety flag (M31). Set STAGING_SAFETY_ENFORCED=true on any
+    // box that must behave as staging-guarded regardless of APP_ENV. This keeps
+    // outbound + provider-asset guards ACTIVE even if APP_ENV drifts (unset,
+    // mislabeled) so safety never rests on a single environment string.
+    'safety_mode' => filter_var(env('STAGING_SAFETY_ENFORCED', false), FILTER_VALIDATE_BOOL),
+
     'production' => [
+        // Denylists of REAL production identifiers. The operator MUST populate
+        // these on the staging box; while the guard is active an empty required
+        // denylist is treated as a configuration failure (fail closed) — see
+        // App\Support\Staging\StagingSafety::denylistReadiness(). No production
+        // values are shipped in the repository. Populate via:
+        //   database_hosts    => STAGING_PRODUCTION_DB_HOST_DENYLIST
+        //   waba_ids          => STAGING_META_PRODUCTION_WABA_ID_DENYLIST
+        //   phone_number_ids  => STAGING_META_PRODUCTION_PHONE_NUMBER_ID_DENYLIST
         'app_urls' => env('STAGING_PRODUCTION_APP_URL_DENYLIST', 'https://sayaraforce.com,https://app.sayaraforce.com'),
         'database_hosts' => env('STAGING_PRODUCTION_DB_HOST_DENYLIST', ''),
         'waba_ids' => env('STAGING_META_PRODUCTION_WABA_ID_DENYLIST', ''),

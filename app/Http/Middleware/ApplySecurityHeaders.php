@@ -18,6 +18,12 @@ final class ApplySecurityHeaders
         /** @var Response $response */
         $response = $next($request);
 
+        // M20: do not disclose the PHP version.
+        $response->headers->remove('X-Powered-By');
+        if (! headers_sent()) {
+            @header_remove('X-Powered-By');
+        }
+
         $response->headers->set('X-Request-ID', $requestId);
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
@@ -25,9 +31,17 @@ final class ApplySecurityHeaders
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), usb=()');
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 
+        // Baseline enforced CSP (clickjacking/base/form protections).
         $policy = trim((string) config('security.content_security_policy'));
         if ($policy !== '') {
             $response->headers->set('Content-Security-Policy', $policy);
+        }
+
+        // M3: strong policy. Report-Only by default; when enforced it supersedes
+        // the baseline enforced header above with the stronger directives.
+        $csp = app(\App\Security\ContentSecurityPolicy::class);
+        if ($csp->enabled()) {
+            $response->headers->set($csp->headerName(), $csp->policyString());
         }
 
         if ($request->isSecure()) {

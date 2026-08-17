@@ -9,6 +9,7 @@ use App\Security\SecurityStepUp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -60,14 +61,33 @@ class TwoFactorChallengeController extends Controller
             );
         } else {
             $submitted = trim((string) $request->input('recovery_code'));
-            $matched = collect($user->recoveryCodes())->first(
-                fn (string $stored): bool => hash_equals($stored, $submitted)
-            );
 
-            if ($matched !== null) {
-                $user->replaceRecoveryCode($matched);
-                $valid = true;
-                $usedRecoveryCode = true;
+            // M6: consume the recovery code atomically. A row lock + transaction
+            // serialises concurrent submissions of the same code so exactly one
+            // succeeds; the loser re-reads the row after the winner commits and
+            // finds the code already replaced. Prevents the double-use race.
+            [$valid, $usedRecoveryCode] = DB::transaction(function () use ($user, $submitted): array {
+                $locked = User::query()->whereKey($user->getKey())->lockForUpdate()->first();
+
+                if ($locked === null) {
+                    return [false, false];
+                }
+
+                $matched = collect($locked->recoveryCodes())->first(
+                    fn (string $stored): bool => hash_equals($stored, $submitted)
+                );
+
+                if ($matched === null) {
+                    return [false, false];
+                }
+
+                $locked->replaceRecoveryCode($matched);
+
+                return [true, true];
+            });
+
+            if ($valid) {
+                $user->refresh();
             }
         }
 

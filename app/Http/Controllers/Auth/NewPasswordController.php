@@ -51,6 +51,10 @@ class NewPasswordController extends Controller
                     'remember_token' => Str::random(60),
                 ])->save();
 
+                // M5: a reset terminates every existing session and API token so a
+                // hijacked session cannot survive the victim's password reset.
+                app(\App\Security\SecuritySessionInvalidator::class)->afterPasswordReset($user);
+
                 event(new PasswordReset($user));
             }
         );

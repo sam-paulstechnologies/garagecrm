@@ -26,7 +26,10 @@ class TwoFactorAdministrativeResetController extends Controller
             'two_factor_recovery_codes_acknowledged_at' => null,
             'two_factor_reenrollment_required_at' => now(),
         ])->save();
-        $user->tokens()->delete();
+
+        // M5: preserve the existing token revocation and additionally terminate
+        // the target user's live sessions (routed through the canonical service).
+        app(\App\Security\SecuritySessionInvalidator::class)->afterAdministrativeReset($user);
 
         app(SecurityAudit::class)->record(
             'two_factor.administratively_reset',

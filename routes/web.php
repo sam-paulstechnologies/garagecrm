@@ -76,6 +76,17 @@ Route::get('/healthz', function (Request $request) {
         abort(403);
     }
 
+    // Security readiness surface (Fable H2): liveness stays 200 "OK"; the
+    // optional deep check reports the two-factor enforcement baseline without
+    // exposing any secret, and returns 503 when the baseline is failing closed
+    // due to misconfiguration so monitoring can alert.
+    if ($request->query('check') === 'security') {
+        $readiness = app(\App\Security\SecurityConfigurationValidator::class)->readiness();
+        $httpStatus = $readiness['status'] === 'critical' ? 503 : 200;
+
+        return response()->json(['status' => $readiness['status'], 'security' => $readiness], $httpStatus);
+    }
+
     return response('OK', 200);
 });
 

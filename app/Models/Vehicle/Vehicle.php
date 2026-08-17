@@ -3,12 +3,16 @@
 namespace App\Models\Vehicle;
 
 use App\Models\Client\Client;
+use App\Models\Contracts\TenantOwned;
+use App\Models\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Vehicle extends Model
+class Vehicle extends Model implements TenantOwned
 {
+    use BelongsToCompany;
+
     protected $fillable = [
         'company_id',
         'client_id',

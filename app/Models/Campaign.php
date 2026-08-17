@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Contracts\TenantOwned;
+use App\Models\Traits\BelongsToCompany;
 use App\Models\WhatsApp\WhatsAppTemplate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Campaign extends Model
+class Campaign extends Model implements TenantOwned
 {
+    use BelongsToCompany;
+
     protected $fillable = [
         'company_id',
         'name',

@@ -3,11 +3,12 @@
 namespace App\Models;
 
 use App\Models\Client\Lead;
+use App\Models\Contracts\TenantOwned;
 use Illuminate\Database\Eloquent\Model;     // 🔥 ADDED
 
-// 🔥 ADDED
-
-class MessageLog extends Model
+// M7: marked tenant-owned; manual/policy checks retained. Automatic global-scope
+// backstop deferred (join-heavy inbox queries need qualified-column review).
+class MessageLog extends Model implements TenantOwned
 {
     protected $fillable = [
         'company_id', 'lead_id', 'conversation_id', 'user_id',

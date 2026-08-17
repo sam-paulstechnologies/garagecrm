@@ -2,14 +2,17 @@
 
 namespace App\Models\Client;
 
+use App\Models\Contracts\TenantOwned;
 use App\Models\Shared\File;
+use App\Models\Traits\BelongsToCompany;
 use App\Services\PhoneNumberService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Client extends Model
+class Client extends Model implements TenantOwned
 {
+    use BelongsToCompany;
     use HasFactory;
 
     protected $table = 'clients';

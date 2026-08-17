@@ -16,4 +16,17 @@
 6. **Notify:** privacy/legal decides regulator/customer/supplier/insurer/law-enforcement obligations and timing. Engineering does not make legal notification decisions.
 7. **Close/learn:** root cause, timeline, impact, controls, residual risk, actions/owners/dates and effectiveness review.
 
+## Scenario playbooks
+
+Threat-specific playbooks (detect, contain, preserve evidence, revoke/rotate, assess
+scope, restore, communicate, provider escalation, post-incident review) are in
+`incident-scenario-playbooks.md`, covering: (1) Meta App Secret exposure,
+(2) cross-tenant data disclosure, (3) Stripe webhook-secret compromise,
+(4) privileged account takeover, (5) Quick Scan deletion failure, (6) Azure
+credential compromise, (7) database compromise, and (8) lost/invalid `APP_KEY` or
+inability to decrypt application fields.
+
+Jurisdiction-specific regulatory/customer notification obligations and deadlines are
+**LEGAL REVIEW REQUIRED** — decided by privacy/legal, never asserted by engineering.
+
 Contacts and alternates must be maintained outside this repository. Conduct a tabletop at least annually and after material architecture change. Never claim absence of impact before evidence supports it.

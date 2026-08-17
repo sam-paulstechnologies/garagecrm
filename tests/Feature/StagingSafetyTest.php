@@ -49,6 +49,87 @@ class StagingSafetyTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_ambiguous_environment_still_guards_outbound(): void
+    {
+        // A mislabeled staging box (APP_ENV set to an unrecognised value) must
+        // never silently allow production-like outbound: the guard fails closed.
+        $this->app->detectEnvironment(fn (): string => 'sandbox');
+        config(['staging.safety_mode' => false]);
+        $guard = app(StagingSafety::class);
+
+        $this->assertTrue($guard->outboundGuardActive());
+
+        // A production provider asset is rejected exactly as under staging.
+        try {
+            $guard->assertProviderAssetsAllowed('prod-waba', 'test-phone');
+            $this->fail('Ambiguous environment allowed a production WABA.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Staging', $exception->getMessage());
+        }
+
+        // An unknown email recipient is refused (no implicit allow).
+        $this->assertFalse($guard->emailRecipientsAreAllowed(['customer@example.com']));
+
+        // Enabling outbound still refuses a non-allowlisted recipient.
+        config(['staging.communications.whatsapp_outbound_enabled' => true]);
+        $this->expectException(RuntimeException::class);
+        $guard->assertWhatsAppOutboundAllowed('+971509999999', 'test-waba', 'test-phone');
+    }
+
+    public function test_recognised_production_environment_is_not_guarded(): void
+    {
+        // A genuine production box (recognised APP_ENV, no staging host/DB
+        // identity, no safety flag) is left unguarded so production keeps sending.
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config(['staging.safety_mode' => false]);
+        $guard = app(StagingSafety::class);
+
+        $this->assertFalse($guard->outboundGuardActive());
+        $guard->assertProviderAssetsAllowed('prod-waba', 'prod-phone'); // no-op
+        $this->assertTrue($guard->emailRecipientsAreAllowed(['anyone@anywhere.example']));
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_safety_flag_keeps_guard_active_on_a_mislabeled_production_box(): void
+    {
+        // APP_ENV drifted to 'production' but the operator pinned the explicit
+        // safety flag: outbound stays guarded (defence in depth).
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config(['staging.safety_mode' => true]);
+        $guard = app(StagingSafety::class);
+
+        $this->assertTrue($guard->outboundGuardActive());
+        $this->expectException(RuntimeException::class);
+        $guard->assertProviderAssetsAllowed('prod-waba', 'test-phone');
+    }
+
+    public function test_empty_required_denylist_is_reported_and_provider_assertion_fails_closed(): void
+    {
+        $guard = app(StagingSafety::class);
+
+        // setUp populates the WABA/phone denylists but not the production DB-host
+        // denylist, so readiness must surface it as not-ready under the guard.
+        $readiness = $guard->denylistReadiness();
+        $this->assertTrue($readiness['guard_active']);
+        $this->assertFalse($readiness['ready']);
+        $this->assertContains('production_database_hosts', $readiness['empty']);
+
+        // Emptying the provider denylists must fail the provider-asset path
+        // closed rather than silently completing, even with absent asset ids.
+        config([
+            'staging.production.waba_ids' => '',
+            'staging.production.phone_number_ids' => '',
+        ]);
+        $this->assertEqualsCanonicalizing(
+            ['production_database_hosts', 'production_waba_ids', 'production_phone_number_ids'],
+            $guard->denylistReadiness()['empty']
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('required production denylist is empty');
+        $guard->assertProviderAssetsAllowed(null, null);
+    }
+
     public function test_outbound_whatsapp_and_sms_are_disabled_by_default(): void
     {
         $guard = app(StagingSafety::class);

@@ -33,6 +33,16 @@ class Kernel extends ConsoleKernel
             ->dailyAt('08:00')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // 🔒 Isolated security/retention maintenance (M1/M2). Runs billing grace
+        // enforcement + Quick Scan retention purge ONLY — no outbound messaging.
+        // In staging the general scheduler stays disabled for outbound safety; a
+        // dedicated security-maintenance webjob invokes `security:run-maintenance`
+        // instead (see ops/azure/staging/webjobs/sayaraforce-staging-security-maintenance).
+        $schedule->command('security:run-maintenance')
+            ->hourly()
+            ->onOneServer()
+            ->withoutOverlapping();
     }
 
     protected function commands(): void

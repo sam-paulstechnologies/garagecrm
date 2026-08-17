@@ -34,6 +34,9 @@ class AppServiceProvider extends ServiceProvider
         // its audited TOTP, recovery-code, encryption, and QR primitives.
         Fortify::ignoreRoutes();
 
+        // M7: shared tenant context for the isolation backstop global scope.
+        $this->app->singleton(\App\Support\Tenancy\TenantContext::class);
+
         $this->app->singleton(BillingGateway::class, fn ($app): BillingGateway => $app->make(BillingGatewayResolver::class)->configured()
         );
 
@@ -86,6 +89,16 @@ class AppServiceProvider extends ServiceProvider
         */
         if (app()->environment(['production', 'staging'])) {
             URL::forceScheme('https');
+        }
+
+        // Fable H2: surface a degraded/critical MFA-enforcement baseline once at
+        // boot so monitoring notices a protected environment that lost its
+        // TWO_FACTOR_ENFORCEMENT setting (which now fails closed rather than
+        // silently disabling privileged MFA). No secrets are logged.
+        $securityConfig = app(\App\Security\SecurityConfigurationValidator::class);
+        if ($securityConfig->status() !== 'ok') {
+            $level = $securityConfig->status() === 'critical' ? 'critical' : 'warning';
+            Log::log($level, 'Security configuration baseline degraded.', $securityConfig->readiness());
         }
 
         if (app()->environment('staging')) {

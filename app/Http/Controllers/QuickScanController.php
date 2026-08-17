@@ -16,6 +16,16 @@ use Illuminate\View\View;
 
 class QuickScanController extends Controller
 {
+    /**
+     * Server-side session key used to hand the accepted Quick Scan token off to
+     * the registration flow WITHOUT placing the 64-char token in the URL (which
+     * would leak into browser history, Referer headers and access logs).
+     *
+     * The registration flow (RegisteredUserController::create) must read/pull
+     * this key from the session and prefer it over any `quick_scan` query param.
+     */
+    public const HANDOFF_SESSION_KEY = 'quick_scan_handoff';
+
     public function __construct(
         private readonly QuickScanAccess $access,
         private readonly QuickScanAudit $audit,
@@ -111,12 +121,18 @@ class QuickScanController extends Controller
         ]);
     }
 
-    public function accept(string $token, QuickScanConversion $conversion): RedirectResponse
+    public function accept(Request $request, string $token, QuickScanConversion $conversion): RedirectResponse
     {
         $this->assertEnabled();
         $scan = $conversion->accept($this->access->resolve($token));
 
-        return redirect()->route('register', ['quick_scan' => $token])
+        // Hand the token off via the server-side session instead of the URL so it
+        // never appears in browser history / Referer / access logs. The token is
+        // single-use on the registration side (pulled from the session there) and
+        // its expiry is still enforced by QuickScanAccess::resolve().
+        $request->session()->put(self::HANDOFF_SESSION_KEY, $token);
+
+        return redirect()->route('register')
             ->with('success', 'Continue with normal SayaraForce onboarding. No payment or CRM import has occurred.');
     }
 

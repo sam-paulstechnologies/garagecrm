@@ -1,105 +1,244 @@
-name: Deploy Laravel to Azure App Service
+name: Deploy SayaraForce Production
+
+# ---------------------------------------------------------------------------
+# HARDENED PRODUCTION DEPLOYMENT WORKFLOW (Fable remediation H1)
+#
+# This workflow brings the production deploy path up to the proven staging
+# standard: least-privilege token, OIDC federated identity (no static publish
+# profile), pre-deploy test + security + dependency + secret gates, target
+# identity assertion, artifact hygiene, deployment marker, post-deploy health
+# verification and documented rollback semantics.
+#
+# STATUS: PREPARED, NOT YET ADOPTED ON main.
+#   * It is manual-only (workflow_dispatch) and gated on refs/heads/main.
+#   * It requires the production OIDC federated identity + role assignment that
+#     does NOT exist yet. See ops/azure/production/production-deploy-hardening.md
+#     for the exact `az` provisioning commands (run by a human, out of scope for
+#     the staging remediation sprint).
+#   * Until those secrets exist, running this workflow fails closed at the
+#     azure/login step rather than deploying with a weaker credential.
+#
+# Third-party actions: pin to a full commit SHA before adopting on main (see the
+# hardening doc for the resolution command). Version tags are retained here only
+# because SHAs cannot be resolved offline during the remediation sprint.
+# ---------------------------------------------------------------------------
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type "deploy-production" to confirm a production release'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sayaraforce-production
+  cancel-in-progress: false
+
+env:
+  AZURE_RESOURCE_GROUP: rg-garagecrm-prod
+  AZURE_WEBAPP_NAME: app-sayaraforce
 
 jobs:
-  build-and-deploy:
+  test-build-deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Guard explicit production confirmation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ github.event.inputs.confirm_production }}" != "deploy-production" ]]; then
+            echo 'Refusing to deploy: confirm_production input was not "deploy-production".' >&2
+            exit 1
+          fi
+
+      - name: Check out the exact production commit
+        uses: actions/checkout@v4 # TODO(H1): pin to commit SHA before main adoption
+
+      - name: Assert production-only targets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$AZURE_RESOURCE_GROUP" == "rg-garagecrm-prod" ]]
+          [[ "$AZURE_WEBAPP_NAME" == "app-sayaraforce" ]]
+          [[ "$AZURE_WEBAPP_NAME" != "app-sayaraforce-staging" ]]
 
       - name: Set up PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@v2 # TODO(H1): pin to commit SHA
         with:
           php-version: '8.3'
-          extensions: mbstring, intl, pdo_mysql, bcmath, gd, curl, zip, xml
+          extensions: mbstring, intl, pdo_mysql, pdo_sqlite, bcmath, gd, curl, zip, xml
           coverage: none
+          tools: composer:2.8.12
 
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache/files
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
-
-      - name: Create Laravel directories
+      - name: Prepare ephemeral test application key
+        shell: bash
         run: |
-          mkdir -p storage/framework/cache
-          mkdir -p storage/framework/sessions
-          mkdir -p storage/framework/views
-          mkdir -p bootstrap/cache
+          set -Eeuo pipefail
+          mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+          : > .env
+          test_key="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"
+          printf 'APP_KEY=%s\n' "$test_key" >> "$GITHUB_ENV"
+          unset test_key
 
-      - name: Install PHP dependencies
+      - name: Install test dependencies
+        run: composer install --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: PHP dependency and secret security gates
+        shell: bash
         run: |
-          composer install \
-            --no-dev \
-            --prefer-dist \
-            --no-interaction \
-            --optimize-autoloader
+          set -Eeuo pipefail
+          mkdir -p storage/app/security
+          composer validate --strict --no-interaction
+          composer audit --locked --format=json | tee storage/app/security/composer-audit.json
+          php ops/security/scan-secrets.php --json=storage/app/security/secret-scan.json
+
+      - name: PHP lint
+        shell: bash
+        run: find app config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Security and tenant-isolation suite
+        run: php artisan test --testsuite=Feature --group=security --no-ansi || php artisan test tests/Feature/Security --no-ansi
+
+      - name: Full automated suite
+        run: php artisan test --no-ansi
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # TODO(H1): pin to commit SHA
         with:
           node-version: '20'
           cache: npm
 
-      - name: Install frontend dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Remove stale frontend build
-        run: rm -rf public/build
-
-      - name: Build frontend assets
-        run: npm run build
-
-      - name: Verify frontend build
+      - name: Build frontend assets and scan build output
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --json | tee storage/app/security/npm-audit.json
+          php ops/security/generate-sbom.php --output=storage/app/security/sbom.cdx.json
+          rm -rf public/build
+          npm run build
           test -f public/build/manifest.json
+          # Secret scan MUST include the freshly built browser bundles (Fable build-dir blind spot).
+          php ops/security/scan-secrets.php --include-build --json=storage/app/security/secret-scan-build.json
 
-          echo "=== Vite manifest ==="
-          cat public/build/manifest.json
-
-          echo "=== Verify latest Inbox UI ==="
-          grep -R -F "Connected WhatsApp Channel" public/build/assets \
-            || {
-              echo "ERROR: Latest Inbox UI was not found in built assets."
-              exit 1
-            }
-
-      - name: Prepare Laravel application
-        run: |
-          php artisan config:clear
-          php artisan route:clear
-          php artisan view:clear
-          rm -f .env
-
-      - name: Create deployment package
-        run: |
-          zip -r release.zip . \
-            -x "*.git*" \
-            -x "node_modules/*" \
-            -x "release.zip" \
-            -x "storage/logs/*"
-
-      - name: Verify deployment package
-        run: |
-          echo "=== public/build files inside ZIP ==="
-          unzip -l release.zip | grep "public/build/manifest.json"
-          unzip -l release.zip | grep "public/build/assets/"
-
-          echo "=== Azure queue WebJob files inside ZIP ==="
-          unzip -l release.zip | grep "App_Data/jobs/continuous/sayaraforce-queue/run.sh"
-          unzip -l release.zip | grep "App_Data/jobs/continuous/sayaraforce-queue/settings.job"
-
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+      - name: Preserve security gate evidence
+        uses: actions/upload-artifact@v4 # TODO(H1): pin to commit SHA
         with:
-          app-name: app-sayaraforce
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
-          package: release.zip
+          name: sayaraforce-production-security-evidence-${{ github.sha }}
+          path: storage/app/security/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Install production PHP dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Remove ephemeral test environment file
+        shell: bash
+        run: |
+          rm -f .env
+          test ! -e .env
+
+      - name: Package required runtime files only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          package="$RUNNER_TEMP/sayaraforce-package"
+          mkdir -p "$package/storage/framework/cache" "$package/storage/framework/sessions" "$package/storage/framework/views" "$package/storage/logs"
+          # Ship runtime only. Exclude tests/, docs/, and dev tooling from the production artifact.
+          for path in app bootstrap config database public resources/views routes vendor; do
+            if [[ -e "$path" ]]; then
+              mkdir -p "$package/$(dirname "$path")"
+              cp -a "$path" "$package/$path"
+            fi
+          done
+          # ops/ carries production runtime scripts only if operationally required; ship the minimum.
+          if [[ -d ops/azure/production/runtime ]]; then
+            mkdir -p "$package/ops/azure/production"
+            cp -a ops/azure/production/runtime "$package/ops/azure/production/runtime"
+          fi
+          cp artisan composer.json composer.lock "$package/"
+          printf '%s\n' "$GITHUB_SHA" > "$package/bootstrap/deployed-commit"
+          (cd "$package" && zip -qr "$GITHUB_WORKSPACE/release.zip" .)
+          unzip -l release.zip | grep -F 'public/build/manifest.json'
+          unzip -p release.zip bootstrap/deployed-commit | grep -Fx "$GITHUB_SHA"
+          # Artifact hygiene: fail if any sensitive/dev path leaked into the package.
+          if unzip -l release.zip | grep -E '(^|/)(\.env|tests|docs|\.git|node_modules|phpunit\.xml)(/|$)'; then
+            echo 'Unsafe file found in production package.' >&2
+            exit 1
+          fi
+
+      - name: Sign in to Azure with production OIDC identity
+        uses: azure/login@v2 # TODO(H1): pin to commit SHA
+        with:
+          client-id: ${{ secrets.AZURE_PROD_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_PROD_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_PROD_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure target identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          app_id="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query id --output tsv)"
+          [[ "$app_id" == */resourceGroups/rg-garagecrm-prod/providers/Microsoft.Web/sites/app-sayaraforce ]]
+
+      - name: Capture current release for rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Record the currently deployed commit so a failed health check can be
+          # rolled back by re-dispatching this workflow at the previous SHA.
+          current="$(az webapp config appsettings list --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query "[?name=='DEPLOYED_COMMIT'].value | [0]" --output tsv || true)"
+          echo "PREVIOUS_DEPLOYED_COMMIT=${current:-unknown}" >> "$GITHUB_ENV"
+          echo "Previous production commit: ${current:-unknown}"
+
+      - name: Deploy package to production only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --src-path release.zip \
+            --type zip --clean true --restart false --track-status false \
+            --only-show-errors --output none
+
+      - name: Record deployed build marker on production
+        shell: bash
+        run: |
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings DEPLOYED_BRANCH=main DEPLOYED_COMMIT="$GITHUB_SHA" DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --only-show-errors --output none
+
+      - name: Restart production and verify health (rollback on failure)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --only-show-errors
+          host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query defaultHostName --output tsv)"
+          healthy=false
+          for attempt in {1..48}; do
+            if curl --fail --silent --show-error --max-time 20 "https://$host/healthz" >/dev/null; then
+              healthy=true
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$healthy" != true ]]; then
+            echo "Production health check FAILED after deploy. Rollback required." >&2
+            echo "Re-dispatch this workflow at PREVIOUS_DEPLOYED_COMMIT=${PREVIOUS_DEPLOYED_COMMIT} to roll back." >&2
+            exit 1
+          fi
+
+      - name: Azure logout
+        if: always()
+        run: az account show >/dev/null 2>&1 && az logout || true
