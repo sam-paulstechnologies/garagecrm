@@ -45,3 +45,31 @@ selected high-risk fields; platform TLS/at-rest encryption is relied upon. Indep
 VAPT, legal/DPA decisions, named-role approvals and witnessed restore/decryption
 evidence remain open (see `security-gap-register.md`, `risk-register.md`,
 `assurance/external-vapt-handoff.md`).
+
+## Fable final technical sprint (post-retest)
+
+Internal engineering self-assessment. Targeted technical fixes only (see
+`assurance/FABLE_FINAL_TECHNICAL_RETEST.md`). No management/legal item is closed here.
+
+| Area | Change | Evidence (code/tests) | Status |
+|---|---|---|---|
+| M2 Quick Scan retention | Canonical `customer_data_expires_at` + stalled/orphaned sweep buckets + backfill | `app/QuickScan/QuickScanRetentionEnforcer.php`, `QuickScanIngestion.php`, migration `2026_08_20_000001_*`, `QuickScanRetentionEnforcerTest` | Implemented |
+| M11 disconnect orphans | Empty import set purges all connection-scoped unreviewed history | `DisconnectService.php`, `MetaEmbeddedSignupService.php`, `WhatsAppDisconnectRetentionTest` | Implemented |
+| M31 env fail-closed | Guards gate on `outboundGuardActive()`; `STAGING_SAFETY_ENFORCED=true` provisioned | `AppServiceProvider.php`, `main.bicep`, `StagingSafetyTest` | Implemented |
+| M6 recovery codes | Hashed at rest + one-time display + legacy migration; atomicity preserved | `app/Security/RecoveryCodeService.php`, `RecoveryCodeHashingTest` | Implemented |
+| Quick Scan URL token | Legacy `?quick_scan=` fallback removed | `RegisteredUserController.php`, `QuickScanTokenHandoffTest` | Implemented |
+| Security maintenance | Continuous webjob (unaffected by `WEBJOBS_DISABLE_SCHEDULE`), no outbound | `webjobs/sayaraforce-staging-security-maintenance/*`, `deploy-staging.yml`, `SecurityMaintenanceTest` | Implemented (deploys next release) |
+| Meta denylist | Fails closed; operator handoff prepared (no IDs guessed) | `ops/azure/staging/meta-production-denylist-handoff.md` | Technical control done / operator config OPEN |
+| Encrypted-field restore | Read-only decryption verification command + evidence template | `staging:verify-encrypted-recovery`, `EncryptedFieldRecoveryTest`, `runbooks/backup-restore-runbook.md` | Tooling delivered / witnessed drill pending |
+| Secret scanner | Meta `EAA` build rule; narrow Stripe fixture handling; self-tests | `ops/security/scan-secrets.php`, `SecretScannerTest` | Implemented |
+| Session cookie | Fail-closed secure default in protected environments | `config/session.php`, `SessionCookieSecurityTest` | Implemented |
+
+### Still explicitly OPEN (unchanged by this sprint)
+
+- **M7 tenant-isolation architecture** — residual (partial backstop); external VAPT target. No live IDOR.
+- **CSP** — Report-Only until Meta/Stripe UAT.
+- **Azure Owner/PIM** — MANAGEMENT ACTION REQUIRED.
+- **Geo-redundant backups / RPO/RTO** — MANAGEMENT/DR DECISION.
+- **OpenAI DPA** — LEGAL/MANAGEMENT ACTION REQUIRED (minimization is compensating only).
+- **UAE PDPL** — LEGAL REVIEW REQUIRED.
+- **External VAPT / ISO 27001 certification** — NOT DONE.
