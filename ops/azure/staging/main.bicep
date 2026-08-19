@@ -417,6 +417,10 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'STAGING_EXPECTED_HOST', value: initialWebHost }
         { name: 'STAGING_EXPECTED_DB_DATABASE', value: mysqlDatabaseName }
         { name: 'STAGING_SCHEMA_BASELINE_APPROVED', value: 'true' }
+        // Fable M31 (final): explicit defence-in-depth safety flag. Keeps every
+        // staging outbound/provider-asset/email safeguard active even if APP_ENV
+        // or the host/DB identity ever drifts.
+        { name: 'STAGING_SAFETY_ENFORCED', value: 'true' }
         { name: 'STAGING_PRODUCTION_APP_URL_DENYLIST', value: 'https://sayaraforce.com,https://app.sayaraforce.com' }
         { name: 'STAGING_PRODUCTION_DB_HOST_DENYLIST', value: productionDatabaseHostDenylist }
         { name: 'STAGING_META_PRODUCTION_WABA_ID_DENYLIST', value: productionWabaIdDenylist }
@@ -446,7 +450,11 @@ resource web 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'WEBSITE_HTTPLOGGING_RETENTION_DAYS', value: '7' }
         { name: 'WEBSITE_SKIP_RUNNING_KUDUAGENT', value: 'false' }
         { name: 'WEBJOBS_STOPPED', value: '0' }
+        // The general (outbound-capable) triggered scheduler stays disabled. The
+        // isolated security/retention maintenance now runs as a CONTINUOUS
+        // webjob (not gated by this flag) on the interval below (M1/M2 final).
         { name: 'WEBJOBS_DISABLE_SCHEDULE', value: '1' }
+        { name: 'SECURITY_MAINTENANCE_INTERVAL_SECONDS', value: '3600' }
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
       ]
     }
