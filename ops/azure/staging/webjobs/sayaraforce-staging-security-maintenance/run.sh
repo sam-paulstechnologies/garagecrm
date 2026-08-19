@@ -5,12 +5,11 @@ cd /home/site/wwwroot
 
 # Fable M1/M2 (final): dedicated CONTINUOUS security/retention maintenance.
 #
-# Runs ONLY `security:run-maintenance` (billing grace enforcement + Quick Scan
-# retention purge) on a fixed interval. A CONTINUOUS WebJob is NOT gated by
-# WEBJOBS_DISABLE_SCHEDULE, so retention/grace enforcement now runs
-# automatically WITHOUT enabling the general, outbound-capable Laravel scheduler
-# (`schedule:work`), which stays unpackaged. This job never sends any outbound
-# customer communication.
+# Runs isolated security and retention maintenance only (billing grace
+# enforcement + Quick Scan retention purge) on a fixed interval. A CONTINUOUS
+# WebJob is NOT gated by WEBJOBS_DISABLE_SCHEDULE, so this maintenance runs
+# automatically without enabling the general outbound-capable task runner, which
+# stays unpackaged. It never sends any outbound customer communication.
 if [[ "${APP_ENV:-}" != "staging" || "${WEBSITE_SITE_NAME:-}" != "app-sayaraforce-staging" ]]; then
   echo "Refused: security maintenance identity check failed." >&2
   exit 40
