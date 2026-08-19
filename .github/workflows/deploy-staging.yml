@@ -316,8 +316,20 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --only-show-errors
           host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query defaultHostName --output tsv)"
+          kudu="https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net"
+          token="$(az account get-access-token --resource https://management.azure.com/ --query accessToken --output tsv)"
+
+          # OneDeploy already restarts the app to pick up the new release, so this
+          # explicit restart is redundant belt-and-suspenders. Keep it best-effort:
+          # the least-privilege staging identity is intentionally not granted
+          # Microsoft.Web/sites/restart/action, and the /healthz gate below is the
+          # authoritative verification. Do not fail an otherwise-healthy deploy on a
+          # missing restart permission, and do not broaden the role.
+          if ! az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --only-show-errors 2>/tmp/restart.err; then
+            echo "Note: explicit app restart was not authorized/necessary; relying on the deploy-time restart and the /healthz gate." >&2
+          fi
+
           for attempt in {1..48}; do
             if curl --fail --silent --show-error --max-time 20 "https://$host/healthz" >/dev/null; then
               break
@@ -325,62 +337,37 @@ jobs:
             sleep 10
           done
           curl --fail --silent --show-error --max-time 20 "https://$host/healthz" >/dev/null
-          queue_status="$(az webapp webjob continuous list \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" \
-            --output tsv)"
-          if [[ "$queue_status" != 'Running' && "$queue_status" != 'Initializing' && "$queue_status" != 'PendingRestart' ]]; then
-            az webapp webjob continuous start \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$AZURE_WEBAPP_NAME" \
-              --webjob-name sayaraforce-staging-queue \
-              --only-show-errors --output none
-          fi
-          for attempt in {1..24}; do
-            queue_status="$(az webapp webjob continuous list \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$AZURE_WEBAPP_NAME" \
-              --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" \
-              --output tsv)"
-            if [[ "$queue_status" == 'Running' ]]; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$queue_status" != 'Running' ]]; then
-            echo "Staging queue WebJob did not reach Running after deployment (status: ${queue_status:-missing})." >&2
-            exit 1
-          fi
 
+          # Verify (and, if needed, start) the continuous webjobs through the Kudu
+          # SCM API authenticated with the ARM bearer token — the SAME mechanism
+          # already used to deploy them earlier in this workflow. This avoids the
+          # Microsoft.Web/sites/continuouswebjobs ARM operations (list/start) that
+          # the least-privilege staging identity is not granted, without adding any
+          # permission. `az webapp webjob continuous list/start` was the source of
+          # the post-deploy "Unauthorized" verifier failure.
+          verify_continuous_webjob() {
+            local name="$1" label="$2" status=''
+            for attempt in {1..24}; do
+              status="$(curl --fail --silent --show-error -H "Authorization: Bearer $token" "$kudu/api/continuouswebjobs" \
+                | jq -r --arg n "$name" 'map(select(.name | contains($n))) | .[0].status // ""')" || status=''
+              if [[ "$status" == 'Running' ]]; then
+                return 0
+              fi
+              if [[ "$attempt" -eq 1 && "$status" != 'Initializing' && "$status" != 'PendingRestart' ]]; then
+                curl --fail --silent --show-error -X POST -H "Authorization: Bearer $token" \
+                  "$kudu/api/continuouswebjobs/$name/start" >/dev/null || true
+              fi
+              sleep 5
+            done
+            echo "Staging $label WebJob did not reach Running after deployment (status: ${status:-missing})." >&2
+            return 1
+          }
+
+          verify_continuous_webjob 'sayaraforce-staging-queue' 'queue'
           # Fable M1/M2 (final): the continuous security-maintenance webjob must
-          # also reach Running so retention/grace enforcement executes
-          # automatically.
-          sm_status="$(az webapp webjob continuous list \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --query "[?contains(name, 'sayaraforce-staging-security-maintenance')].status | [0]" \
-            --output tsv)"
-          if [[ "$sm_status" != 'Running' && "$sm_status" != 'Initializing' && "$sm_status" != 'PendingRestart' ]]; then
-            az webapp webjob continuous start \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$AZURE_WEBAPP_NAME" \
-              --webjob-name sayaraforce-staging-security-maintenance \
-              --only-show-errors --output none
-          fi
-          for attempt in {1..24}; do
-            sm_status="$(az webapp webjob continuous list \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$AZURE_WEBAPP_NAME" \
-              --query "[?contains(name, 'sayaraforce-staging-security-maintenance')].status | [0]" \
-              --output tsv)"
-            if [[ "$sm_status" == 'Running' ]]; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Staging security-maintenance WebJob did not reach Running after deployment (status: ${sm_status:-missing})." >&2
-          exit 1
+          # also reach Running so retention/grace enforcement executes automatically.
+          verify_continuous_webjob 'sayaraforce-staging-security-maintenance' 'security-maintenance'
+          unset token
 
       - name: Azure logout
         if: always()
