@@ -169,7 +169,17 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Fable final: fail closed to a secure cookie in protected environments.
+    // If SESSION_SECURE_COOKIE is omitted, default to secure everywhere EXCEPT
+    // local/testing so a config drift on a staging/production HTTPS box (or an
+    // omitted APP_ENV, which falls back to 'production') can never silently emit
+    // an insecure session cookie. Local HTTP development still works (defaults to
+    // false there); an operator may still set it explicitly. Uses env() only so
+    // it is safe during config bootstrap.
+    'secure' => env(
+        'SESSION_SECURE_COOKIE',
+        ! in_array(strtolower((string) env('APP_ENV', 'production')), ['local', 'testing'], true),
+    ),
 
     /*
     |--------------------------------------------------------------------------

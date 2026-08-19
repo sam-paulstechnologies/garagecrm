@@ -33,10 +33,12 @@ class RegisteredUserController extends Controller
             dedupeKey: 'registration-started:'.hash('sha256', $request->session()->getId()),
         );
 
-        // M34: prefer the single-use server-side handoff (token kept out of the
-        // URL/browser history/referrer); fall back to the legacy query param.
-        $handoffToken = $request->session()->pull(\App\Http\Controllers\QuickScanController::HANDOFF_SESSION_KEY)
-            ?? $request->query('quick_scan');
+        // M34 / Fable final: the Quick Scan bearer token is handed off ONLY via
+        // the single-use server-side session (kept out of the URL, browser
+        // history, referrer and analytics). The legacy `?quick_scan=<token>`
+        // query fallback has been removed; a crafted query token is ignored and
+        // simply binds no scan.
+        $handoffToken = $request->session()->pull(\App\Http\Controllers\QuickScanController::HANDOFF_SESSION_KEY);
 
         $quickScan = null;
         $quickScanToken = null;
