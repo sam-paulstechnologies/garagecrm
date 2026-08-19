@@ -62,6 +62,11 @@ $buildRules = [
     'private-key' => '/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/',
     'laravel-app-key' => '/base64:[A-Za-z0-9+\/=]{43}=?/',
     'openai-key' => '/\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/',
+    // Bare Meta access token. A real leaked EAA token is long (~150+ chars); the
+    // high minimum length + word boundary avoids the base64 font-glyph false
+    // positives that a short EAA match produces in minified bundles, while still
+    // catching a genuine token that is NOT adjacent to a telltale key name.
+    'meta-access-token' => '/\bEAA[A-Za-z0-9_-]{80,}\b/',
     // Meta app secret / generic assigned secret bound to a sensitive key name.
     'assigned-secret' => '/(?:app_?secret|client_?secret|api[_-]?key|access_?token|webhook_?secret|private_?key)["\'\s:=]{1,4}["\']?[A-Za-z0-9_\-]{24,}["\']?/i',
 ];
@@ -69,8 +74,8 @@ $buildRules = [
 $excludedPrefixes = ['vendor/', 'node_modules/', 'storage/', 'public/build/'];
 
 /**
- * @param array<string,string> $rules
- * @param array<string,int>    $allowlist
+ * @param  array<string,string>  $rules
+ * @param  array<string,int>  $allowlist
  * @return list<array{file:string,line:int,rule:string,match:string}>
  */
 function scanContents(string $normalized, string $contents, array $rules, array $allowlist): array
@@ -78,13 +83,20 @@ function scanContents(string $normalized, string $contents, array $rules, array 
     $findings = [];
     foreach (preg_split('/\R/', $contents) ?: [] as $index => $line) {
         foreach ($rules as $rule => $pattern) {
-            // Fixture/example allowlisting for the Stripe rules (negative tests).
-            if (in_array($rule, ['stripe-secret', 'stripe-webhook-secret'], true)
-                && preg_match('/(?:fixture|example|placeholder|sandbox_guard|forbidden)/i', $line) === 1) {
-                continue;
-            }
             if (preg_match($pattern, $line, $m) === 1) {
                 $matched = $m[0];
+
+                // Narrowly-scoped fixture handling for the Stripe rules: skip
+                // ONLY when the matched VALUE itself embeds an explicit test
+                // fixture marker (e.g. sk_test_fixture_...). A real secret is
+                // never skipped merely because the surrounding line mentions
+                // "example", and live-mode keys are never skipped at all.
+                if (in_array($rule, ['stripe-secret', 'stripe-webhook-secret'], true)
+                    && stripos($matched, '_live_') === false
+                    && preg_match('/(?:fixture|example|placeholder|sandbox_guard|forbidden|dummy|sample)/i', $matched) === 1) {
+                    continue;
+                }
+
                 if (isset($allowlist[$matched])) {
                     continue;
                 }

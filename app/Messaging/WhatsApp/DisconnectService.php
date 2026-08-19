@@ -15,9 +15,7 @@ use Illuminate\Support\Facades\Schema;
 
 class DisconnectService
 {
-    public function __construct(private readonly MessagingAuditService $audit)
-    {
-    }
+    public function __construct(private readonly MessagingAuditService $audit) {}
 
     public function disconnect(MessagingConnection $connection, User $user): void
     {
@@ -91,10 +89,20 @@ class DisconnectService
                 ->where('company_id', $companyId)
                 ->when($phoneNumberId !== null && $phoneNumberId !== '', fn ($query) => $query->where('phone_number_id', $phoneNumberId))
                 ->where(function ($query) use ($importedCandidateIds): void {
-                    $query->whereNull('whatsapp_history_candidate_id');
-                    if ($importedCandidateIds !== []) {
-                        $query->orWhereNotIn('whatsapp_history_candidate_id', $importedCandidateIds);
+                    // When nothing was imported to the CRM, every staged history
+                    // message for this connection is unreviewed quarantine and
+                    // must be purged (empty nested clause = no extra constraint,
+                    // so the outer company/phone scope purges all). Previously an
+                    // empty import set only deleted NULL-candidate rows, orphaning
+                    // message bodies attached to pending candidates (M11).
+                    if ($importedCandidateIds === []) {
+                        return;
                     }
+
+                    // Otherwise keep only history physically attached to an
+                    // imported candidate; purge NULL-candidate and non-imported.
+                    $query->whereNull('whatsapp_history_candidate_id')
+                        ->orWhereNotIn('whatsapp_history_candidate_id', $importedCandidateIds);
                 })
                 ->delete();
         }

@@ -101,8 +101,14 @@ class AppServiceProvider extends ServiceProvider
             Log::log($level, 'Security configuration baseline degraded.', $securityConfig->readiness());
         }
 
-        if (app()->environment('staging')) {
-            Log::withContext(['environment' => 'staging']);
+        // Fable M31: staging safety hooks must NOT hinge on a single APP_ENV
+        // string. Register them whenever the multi-signal staging guard is active
+        // (APP_ENV=staging, STAGING_SAFETY_ENFORCED, matching staging host/DB
+        // identity, or an ambiguous/mislabeled environment that fails closed).
+        // An APP_ENV drift can no longer silently drop the email recipient
+        // allowlist or the provider-asset save guards.
+        if (app(StagingSafety::class)->outboundGuardActive()) {
+            Log::withContext(['environment' => app()->environment()]);
 
             Company::saving(function (Company $company): void {
                 app(StagingSafety::class)->assertProviderAssetsAllowed(

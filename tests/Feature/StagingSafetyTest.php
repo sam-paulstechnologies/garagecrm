@@ -76,6 +76,42 @@ class StagingSafetyTest extends TestCase
         $guard->assertWhatsAppOutboundAllowed('+971509999999', 'test-waba', 'test-phone');
     }
 
+    public function test_app_env_drift_to_production_still_guards_when_safety_flag_set(): void
+    {
+        // APP_ENV silently drifts to a recognised value, but the explicit
+        // STAGING_SAFETY_ENFORCED flag keeps every staging safeguard active so
+        // the email allowlist and provider-asset guards cannot be dropped.
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config([
+            'staging.safety_mode' => true,
+            'app.url' => 'http://localhost',
+            'staging.expected_host' => 'staging.sayaraforce.com',
+        ]);
+        $guard = app(StagingSafety::class);
+
+        $this->assertTrue($guard->outboundGuardActive());
+        $this->assertFalse($guard->emailRecipientsAreAllowed(['customer@example.com']));
+
+        $this->expectException(RuntimeException::class);
+        $guard->assertProviderAssetsAllowed('prod-waba', 'test-phone');
+    }
+
+    public function test_app_env_drift_still_guards_when_staging_host_identity_matches(): void
+    {
+        // No safety flag, but APP_URL still points at the approved staging host,
+        // so a mislabeled APP_ENV cannot open outbound.
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config([
+            'staging.safety_mode' => false,
+            'app.url' => 'https://staging.sayaraforce.com',
+            'staging.expected_host' => 'staging.sayaraforce.com',
+        ]);
+        $guard = app(StagingSafety::class);
+
+        $this->assertTrue($guard->outboundGuardActive());
+        $this->assertFalse($guard->emailRecipientsAreAllowed(['customer@example.com']));
+    }
+
     public function test_recognised_production_environment_is_not_guarded(): void
     {
         // A genuine production box (recognised APP_ENV, no staging host/DB

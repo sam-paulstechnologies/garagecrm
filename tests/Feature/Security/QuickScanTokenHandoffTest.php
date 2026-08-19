@@ -58,4 +58,24 @@ class QuickScanTokenHandoffTest extends TestCase
         // The scan itself was accepted (expiry/state still enforced by QuickScanAccess).
         $this->assertSame('accepted', $created['scan']->fresh()->status);
     }
+
+    public function test_crafted_query_token_is_ignored_by_registration(): void
+    {
+        $platform = User::query()->firstOrCreate(['email' => 'handoff-crafted@example.test'], [
+            'name' => 'Quick Scan Platform Owner', 'password' => 'Strong-Password-2026!',
+            'role' => 'super_admin', 'status' => true, 'must_change_password' => false,
+        ]);
+        $created = app(QuickScanSyntheticFixture::class)->create($platform, 4);
+        $created['scan']->forceFill(['status' => 'accepted', 'accepted_at' => now()])->save();
+        $token = $created['token'];
+        config(['registration.public_enabled' => true]);
+
+        // A hand-crafted/bookmarked ?quick_scan=<token> link (the removed legacy
+        // fallback) must NOT bind the scan — the token in the URL is ignored.
+        $response = $this->get(route('register', ['quick_scan' => $token]));
+
+        $response->assertOk();
+        $response->assertViewHas('quickScan', null);
+        $response->assertViewHas('quickScanToken', null);
+    }
 }

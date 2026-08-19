@@ -60,6 +60,105 @@ class WhatsAppDisconnectRetentionTest extends TestCase
         $this->assertNull($company->fresh()->meta_access_token);
     }
 
+    public function test_admin_disconnect_with_zero_imports_purges_all_pending_history_messages(): void
+    {
+        // Reproduces M11: a tenant that never imported anything to the CRM. The
+        // previous cleanup left message bodies attached to pending candidates.
+        [$company, $phoneNumberId] = $this->tenantWithConnection('PN-ZERO-100');
+        $connection = MessagingConnection::query()->where('company_id', $company->id)->firstOrFail();
+        $admin = $this->admin($company);
+
+        $seed = $this->seedZeroImportScenario($company, $phoneNumberId, $connection->id);
+        $neighbour = $this->seedNeighbourTenant();
+
+        app(DisconnectService::class)->disconnect($connection, $admin);
+
+        $this->assertZeroImportOutcome($company, $seed);
+        $this->assertNeighbourUntouched($neighbour);
+        $this->assertSame(ConnectionStatus::Disconnected, $connection->fresh()->status);
+    }
+
+    public function test_company_level_disconnect_with_zero_imports_purges_all_pending_history_messages(): void
+    {
+        [$company, $phoneNumberId] = $this->tenantWithConnection('PN-ZERO-200');
+        $company->forceFill(['meta_access_token' => 'tok'])->save();
+
+        $seed = $this->seedZeroImportScenario($company, $phoneNumberId, null);
+        $neighbour = $this->seedNeighbourTenant();
+
+        app(MetaEmbeddedSignupService::class)->disconnectCompany($company->fresh());
+
+        $this->assertZeroImportOutcome($company, $seed);
+        $this->assertNeighbourUntouched($neighbour);
+    }
+
+    /**
+     * Seeds ONLY unreviewed quarantine (no imported candidates at all) plus a
+     * Don't-Track preference that must survive.
+     *
+     * @return array<string,mixed>
+     */
+    private function seedZeroImportScenario(Company $company, string $phoneNumberId, ?int $connectionId): array
+    {
+        $batch = WhatsAppHistoryImportBatch::query()->create([
+            'company_id' => $company->id,
+            'messaging_connection_id' => $connectionId,
+            'connection_scope_hash' => str_repeat('c', 64),
+            'status' => 'awaiting_review',
+        ]);
+
+        $pending = WhatsAppHistoryCandidate::query()->create([
+            'company_id' => $company->id,
+            'whatsapp_history_import_batch_id' => $batch->id,
+            'messaging_connection_id' => $connectionId,
+            'external_identity_hash' => hash('sha256', 'zero-pending-'.$company->id),
+            'review_decision' => 'pending',
+            'intelligence_status' => 'unselected',
+        ]);
+        foreach (['zero-a', 'zero-b', 'zero-c'] as $fingerprint) {
+            WhatsAppHistoryMessage::query()->create([
+                'company_id' => $company->id,
+                'whatsapp_history_import_batch_id' => $batch->id,
+                'whatsapp_history_candidate_id' => $pending->id,
+                'phone_number_id' => $phoneNumberId,
+                'source_fingerprint' => $fingerprint.'-'.$company->id,
+                'direction' => 'in',
+                'message_type' => 'text',
+                'body' => 'Orphan-risk body',
+                'message_timestamp' => now()->subDays(30),
+            ]);
+        }
+
+        $preference = WhatsAppTrackingPreference::query()->create([
+            'company_id' => $company->id,
+            'external_identity_hash' => hash('sha256', 'zero-dont-track-'.$company->id),
+            'decision' => 'dont_track',
+            'decided_at' => now(),
+        ]);
+
+        return [
+            'pending_candidate_id' => $pending->id,
+            'preference_id' => $preference->id,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $seed
+     */
+    private function assertZeroImportOutcome(Company $company, array $seed): void
+    {
+        // No orphaned message bodies survive, and the pending candidate is gone.
+        $this->assertDatabaseMissing('whatsapp_history_candidates', ['id' => $seed['pending_candidate_id']]);
+        $this->assertSame(0, WhatsAppHistoryMessage::query()->where('company_id', $company->id)->count());
+        $this->assertSame(0, WhatsAppSyncedContact::query()->where('company_id', $company->id)->count());
+
+        // Don't-Track preference still survives even with zero imports.
+        $this->assertDatabaseHas('whatsapp_tracking_preferences', [
+            'id' => $seed['preference_id'],
+            'decision' => 'dont_track',
+        ]);
+    }
+
     /**
      * @return array{0:Company,1:string}
      */

@@ -130,11 +130,15 @@ jobs:
           done
           cp artisan composer.json composer.lock "$package/"
           printf '%s\n' "$GITHUB_SHA" > "$package/bootstrap/deployed-commit"
-          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat sayaraforce-staging-quick-scan-uat sayaraforce-staging-security-maintenance; do
+          for job in sayaraforce-staging-postdeploy sayaraforce-staging-verify sayaraforce-staging-smoke sayaraforce-staging-history-uat sayaraforce-staging-quick-scan-uat; do
             target="$package/App_Data/jobs/triggered/$job"
             mkdir -p "$target"
             cp "ops/azure/staging/webjobs/$job/"* "$target/"
           done
+          # Fable M1/M2 (final): security-maintenance is deployed as a CONTINUOUS
+          # WebJob (see the migration step), NOT triggered, so it runs regardless
+          # of WEBJOBS_DISABLE_SCHEDULE without enabling the outbound scheduler.
+          # It is intentionally NOT packaged into the immutable release zip.
           (cd "$package" && zip -qr "$GITHUB_WORKSPACE/release.zip" .)
           unzip -l release.zip | grep -F 'public/build/manifest.json'
           unzip -l release.zip | grep -F 'ops/azure/staging/post-deploy.sh'
@@ -144,7 +148,19 @@ jobs:
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-smoke/run.php'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-history-uat/run.sh'
           unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-quick-scan-uat/run.sh'
-          unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-security-maintenance/run.sh'
+          # security-maintenance must NOT be packaged as a triggered job (it is a
+          # continuous webjob deployed separately after migration).
+          if unzip -l release.zip | grep -F 'App_Data/jobs/triggered/sayaraforce-staging-security-maintenance/'; then
+            echo 'security-maintenance must be a continuous webjob, not triggered.' >&2
+            exit 1
+          fi
+          # The continuous security-maintenance webjob must run ONLY the isolated
+          # security:run-maintenance command and never the outbound scheduler.
+          grep -F 'security:run-maintenance' ops/azure/staging/webjobs/sayaraforce-staging-security-maintenance/run.sh
+          if grep -E 'schedule:(work|run)|send-reminders|journeys:tick' ops/azure/staging/webjobs/sayaraforce-staging-security-maintenance/run.sh; then
+            echo 'security-maintenance webjob must not run any outbound/scheduler command.' >&2
+            exit 1
+          fi
           if unzip -l release.zip | grep -F 'App_Data/jobs/continuous/sayaraforce-staging-scheduler/'; then
             echo 'Staging scheduler must not be packaged during initial bring-up.' >&2
             exit 1
@@ -271,6 +287,20 @@ jobs:
             -H "Authorization: Bearer $token" -H 'Content-Type: application/zip' \
             --data-binary "@$queue_job_zip" \
             "$kudu/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-queue/" >/dev/null
+
+          # Fable M1/M2 (final): deploy security-maintenance as a CONTINUOUS
+          # webjob AFTER migration so retention/grace enforcement runs
+          # automatically (unaffected by WEBJOBS_DISABLE_SCHEDULE) without the
+          # general outbound scheduler.
+          sm_job_zip="$RUNNER_TEMP/sayaraforce-staging-security-maintenance.zip"
+          (
+            cd ops/azure/staging/webjobs/sayaraforce-staging-security-maintenance
+            zip -q "$sm_job_zip" run.sh settings.job
+          )
+          curl --fail --silent --show-error -X PUT \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/zip' \
+            --data-binary "@$sm_job_zip" \
+            "$kudu/api/zip/site/wwwroot/App_Data/jobs/continuous/sayaraforce-staging-security-maintenance/" >/dev/null
           unset token
 
       - name: Record deployed build marker on staging
@@ -314,11 +344,42 @@ jobs:
               --query "[?contains(name, 'sayaraforce-staging-queue')].status | [0]" \
               --output tsv)"
             if [[ "$queue_status" == 'Running' ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$queue_status" != 'Running' ]]; then
+            echo "Staging queue WebJob did not reach Running after deployment (status: ${queue_status:-missing})." >&2
+            exit 1
+          fi
+
+          # Fable M1/M2 (final): the continuous security-maintenance webjob must
+          # also reach Running so retention/grace enforcement executes
+          # automatically.
+          sm_status="$(az webapp webjob continuous list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --query "[?contains(name, 'sayaraforce-staging-security-maintenance')].status | [0]" \
+            --output tsv)"
+          if [[ "$sm_status" != 'Running' && "$sm_status" != 'Initializing' && "$sm_status" != 'PendingRestart' ]]; then
+            az webapp webjob continuous start \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --webjob-name sayaraforce-staging-security-maintenance \
+              --only-show-errors --output none
+          fi
+          for attempt in {1..24}; do
+            sm_status="$(az webapp webjob continuous list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query "[?contains(name, 'sayaraforce-staging-security-maintenance')].status | [0]" \
+              --output tsv)"
+            if [[ "$sm_status" == 'Running' ]]; then
               exit 0
             fi
             sleep 5
           done
-          echo "Staging queue WebJob did not reach Running after deployment (status: ${queue_status:-missing})." >&2
+          echo "Staging security-maintenance WebJob did not reach Running after deployment (status: ${sm_status:-missing})." >&2
           exit 1
 
       - name: Azure logout
