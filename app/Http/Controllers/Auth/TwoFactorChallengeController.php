@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Security\RecoveryCodeService;
 use App\Security\SecurityAudit;
 use App\Security\SecurityStepUp;
 use Illuminate\Http\RedirectResponse;
@@ -65,7 +66,9 @@ class TwoFactorChallengeController extends Controller
             // M6: consume the recovery code atomically. A row lock + transaction
             // serialises concurrent submissions of the same code so exactly one
             // succeeds; the loser re-reads the row after the winner commits and
-            // finds the code already replaced. Prevents the double-use race.
+            // finds the code already consumed. Prevents the double-use race.
+            // Codes are hashed at rest (RecoveryCodeService), with legacy
+            // plaintext codes still accepted and migrated to hashes on use.
             [$valid, $usedRecoveryCode] = DB::transaction(function () use ($user, $submitted): array {
                 $locked = User::query()->whereKey($user->getKey())->lockForUpdate()->first();
 
@@ -73,17 +76,9 @@ class TwoFactorChallengeController extends Controller
                     return [false, false];
                 }
 
-                $matched = collect($locked->recoveryCodes())->first(
-                    fn (string $stored): bool => hash_equals($stored, $submitted)
-                );
+                $consumed = app(RecoveryCodeService::class)->consume($locked, $submitted);
 
-                if ($matched === null) {
-                    return [false, false];
-                }
-
-                $locked->replaceRecoveryCode($matched);
-
-                return [true, true];
+                return [$consumed, $consumed];
             });
 
             if ($valid) {

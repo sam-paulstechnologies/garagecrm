@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Security;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Security\RecoveryCodeService;
 use App\Security\SecurityAudit;
 use App\Security\TwoFactorPolicy;
 use Illuminate\Http\RedirectResponse;
@@ -13,7 +14,6 @@ use Illuminate\View\View;
 use Laravel\Fortify\Actions\ConfirmTwoFactorAuthentication;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
-use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 
 class TwoFactorController extends Controller
 {
@@ -73,7 +73,7 @@ class TwoFactorController extends Controller
     public function confirm(
         Request $request,
         ConfirmTwoFactorAuthentication $confirm,
-        GenerateNewRecoveryCodes $generate,
+        RecoveryCodeService $recovery,
     ): RedirectResponse {
         $validated = $request->validate(['code' => ['required', 'digits:6']]);
         $user = $request->user();
@@ -84,9 +84,11 @@ class TwoFactorController extends Controller
                 'code' => 'The authentication code was invalid.',
             ]);
         }
-        $generate($user);
+        // Hash at rest; hold the plaintext in the session for a single display.
+        $plaintext = $recovery->generateForUser($user);
         $user->forceFill(['two_factor_recovery_codes_acknowledged_at' => null])->save();
         $request->session()->put('security.show_recovery_codes', true);
+        $request->session()->put('security.recovery_codes_plaintext', $plaintext);
 
         app(SecurityAudit::class)->record('two_factor.confirmed', $user, $user, [], $request);
 
@@ -99,8 +101,10 @@ class TwoFactorController extends Controller
             return redirect()->route('security.two-factor.show');
         }
 
+        // Plaintext codes exist only in the session for this one-time display;
+        // the database stores hashes only.
         return view('security.recovery-codes', [
-            'recoveryCodes' => $request->user()->recoveryCodes(),
+            'recoveryCodes' => (array) $request->session()->get('security.recovery_codes_plaintext', []),
         ]);
     }
 
@@ -113,6 +117,8 @@ class TwoFactorController extends Controller
             'two_factor_recovery_codes_acknowledged_at' => now(),
             'two_factor_reenrollment_required_at' => null,
         ])->save();
+        // Discard the one-time plaintext codes from the session.
+        $request->session()->forget('security.recovery_codes_plaintext');
         $request->session()->forget('security.enrollment_gate_audited');
 
         app(SecurityAudit::class)->record('two_factor.recovery_codes_acknowledged', $user, $user, [], $request);
@@ -120,13 +126,14 @@ class TwoFactorController extends Controller
         return redirect()->route('dashboard')->with('success', 'Two-factor authentication is active.');
     }
 
-    public function regenerate(Request $request, GenerateNewRecoveryCodes $generate): RedirectResponse
+    public function regenerate(Request $request, RecoveryCodeService $recovery): RedirectResponse
     {
         $user = $request->user();
         abort_unless($user->hasConfirmedTwoFactorAuthentication(), 403);
-        $generate($user);
+        $plaintext = $recovery->generateForUser($user);
         $user->forceFill(['two_factor_recovery_codes_acknowledged_at' => null])->save();
         $request->session()->put('security.show_recovery_codes', true);
+        $request->session()->put('security.recovery_codes_plaintext', $plaintext);
 
         app(SecurityAudit::class)->record('two_factor.recovery_codes_regenerated', $user, $user, [], $request);
 
