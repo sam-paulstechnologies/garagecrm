@@ -53,7 +53,7 @@ Internal engineering self-assessment. Targeted technical fixes only (see
 
 | Area | Change | Evidence (code/tests) | Status |
 |---|---|---|---|
-| M2 Quick Scan retention | Canonical `customer_data_expires_at` + stalled/orphaned sweep buckets + backfill | `app/QuickScan/QuickScanRetentionEnforcer.php`, `QuickScanIngestion.php`, migration `2026_08_20_000001_*`, `QuickScanRetentionEnforcerTest` | Implemented |
+| M2 Quick Scan retention | Derived retention deadline (anchor `history_sync_started_at`/`created_at` + window) + stalled sweep bucket (no schema change) | `app/QuickScan/QuickScanRetentionEnforcer.php`, `QuickScanIngestion.php`, `QuickScanRetentionEnforcerTest` | Implemented |
 | M11 disconnect orphans | Empty import set purges all connection-scoped unreviewed history | `DisconnectService.php`, `MetaEmbeddedSignupService.php`, `WhatsAppDisconnectRetentionTest` | Implemented |
 | M31 env fail-closed | Guards gate on `outboundGuardActive()`; `STAGING_SAFETY_ENFORCED=true` provisioned | `AppServiceProvider.php`, `main.bicep`, `StagingSafetyTest` | Implemented |
 | M6 recovery codes | Hashed at rest + one-time display + legacy migration; atomicity preserved | `app/Security/RecoveryCodeService.php`, `RecoveryCodeHashingTest` | Implemented |

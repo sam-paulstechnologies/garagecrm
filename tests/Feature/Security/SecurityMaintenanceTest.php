@@ -37,7 +37,7 @@ class SecurityMaintenanceTest extends TestCase
             'status' => 'failed',
             'report_expires_at' => null,
             'purge_scheduled_at' => null,
-            'customer_data_expires_at' => now()->subHour(),
+            'history_sync_started_at' => now()->subHours(200),
         ])->save();
         $this->assertGreaterThan(0, $scan->messages()->count());
 

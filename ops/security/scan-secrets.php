@@ -74,8 +74,8 @@ $buildRules = [
 $excludedPrefixes = ['vendor/', 'node_modules/', 'storage/', 'public/build/'];
 
 /**
- * @param array<string,string> $rules
- * @param array<string,int>    $allowlist
+ * @param  array<string,string>  $rules
+ * @param  array<string,int>  $allowlist
  * @return list<array{file:string,line:int,rule:string,match:string}>
  */
 function scanContents(string $normalized, string $contents, array $rules, array $allowlist): array

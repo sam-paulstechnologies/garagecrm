@@ -15,9 +15,7 @@ use Illuminate\Support\Facades\Schema;
 
 class DisconnectService
 {
-    public function __construct(private readonly MessagingAuditService $audit)
-    {
-    }
+    public function __construct(private readonly MessagingAuditService $audit) {}
 
     public function disconnect(MessagingConnection $connection, User $user): void
     {

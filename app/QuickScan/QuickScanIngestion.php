@@ -18,15 +18,14 @@ final class QuickScanIngestion
             throw new RuntimeException('Quick Scan history ingestion is no longer available.');
         }
 
-        // Fable M2: stamp the canonical retention deadline as soon as customer
-        // history begins flowing in, so a scan that stalls or fails before
-        // report_ready still has a deterministic, enforceable purge deadline.
-        $retentionHours = max(1, (int) config('quick_scan.customer_data_retention_hours', 96));
-
+        // Fable M2: record when customer history begins flowing in. This is the
+        // canonical retention anchor — the reconciliation sweep derives a
+        // deterministic purge deadline (anchor + retention window) from it, so a
+        // scan that stalls or fails before report_ready can never retain customer
+        // data indefinitely.
         $scan->forceFill([
             'status' => 'history_syncing',
             'history_sync_started_at' => $scan->history_sync_started_at ?? now(),
-            'customer_data_expires_at' => $scan->customer_data_expires_at ?? now()->addHours($retentionHours),
             'failure_code' => null,
         ])->save();
 

@@ -12,11 +12,12 @@ self-assessment; no external VAPT or ISO certification has been performed.
 
 1. **M2 — Quick Scan stuck/failed retention.** A scan may ingest customer history
    then stall/fail before `report_ready`, leaving `report_expires_at` and
-   `purge_scheduled_at` NULL. Fix: canonical `customer_data_expires_at` stamped at
-   ingestion (`QuickScanIngestion`), plus reconciliation buckets for
-   `stalled`/`orphaned` scans (`QuickScanRetentionEnforcer`), plus a backfill
-   migration. Verify stuck/failed scans are physically purged and accepted/
-   converted scans are never swept.
+   `purge_scheduled_at` NULL. Fix (no schema change): the reconciliation sweep
+   (`QuickScanRetentionEnforcer`) derives a deterministic purge deadline from the
+   retention anchor — `history_sync_started_at` (set at ingestion), else
+   `created_at` — plus `quick_scan.customer_data_retention_hours`, and a `stalled`
+   bucket purges any data-bearing scan past that deadline. Verify stuck/failed
+   scans are physically purged and accepted/converted scans are never swept.
    Tests: `tests/Feature/QuickScan/QuickScanRetentionEnforcerTest.php`.
 
 2. **M11 — WhatsApp disconnect zero-import orphans.** With zero imported

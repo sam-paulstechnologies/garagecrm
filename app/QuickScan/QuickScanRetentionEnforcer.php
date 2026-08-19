@@ -31,7 +31,7 @@ final class QuickScanRetentionEnforcer
     ) {}
 
     /**
-     * @return array{due:int, abandoned:int, stalled:int, orphaned:int, purged:int, errors:int, dry_run:bool}
+     * @return array{due:int, abandoned:int, stalled:int, purged:int, errors:int, dry_run:bool}
      */
     public function enforce(bool $dryRun = false, int $batch = 200): array
     {
@@ -39,7 +39,12 @@ final class QuickScanRetentionEnforcer
         $now = now();
         $graceHours = max(0, (int) config('quick_scan.abandoned_purge_grace_hours', 24));
         $retentionHours = max(1, (int) config('quick_scan.customer_data_retention_hours', 96));
-        $legacyCutoff = $now->copy()->subHours($retentionHours);
+
+        // Canonical customer-data deadline (derived, no schema change): a scan
+        // must be purged once its retention anchor is older than the retention
+        // window. The anchor is when customer history began flowing in
+        // (history_sync_started_at, set at ingestion), falling back to created_at.
+        $deadlineCutoff = $now->copy()->subHours($retentionHours);
 
         // Bucket 1: a purge was scheduled and is due, but the scan is not purged
         // (e.g. the delayed job was lost or exhausted its retries).
@@ -61,30 +66,26 @@ final class QuickScanRetentionEnforcer
             ->orderBy('id')->limit($batch)->get();
 
         // Bucket 3: stalled/failed/abandoned scans that ingested customer history
-        // but never reached report_ready (so report_expires_at is NULL) and never
-        // had a purge scheduled. The canonical customer-data deadline is the
-        // catch-all that guarantees these can never be retained forever.
+        // but never reached report_ready (report_expires_at NULL) and never had a
+        // purge scheduled. Gated on actually holding customer data, and swept once
+        // the derived retention deadline passes so PII can never be retained
+        // forever. The anchor comparison keeps in-flight scans inside the window.
         $stalled = QuickScanWorkspace::query()
             ->whereNull('purge_scheduled_at')
             ->whereNull('converted_company_id')
             ->whereNull('report_expires_at')
             ->whereNotIn('status', self::PROTECTED_STATUSES)
-            ->whereNotNull('customer_data_expires_at')
-            ->where('customer_data_expires_at', '<=', $now)
-            ->orderBy('id')->limit($batch)->get();
-
-        // Bucket 4: defensive fallback for legacy/edge rows that hold customer
-        // data but never received a canonical deadline. Bounded by created_at so
-        // no in-flight scan inside the retention window is ever swept.
-        $orphaned = QuickScanWorkspace::query()
-            ->whereNull('purge_scheduled_at')
-            ->whereNull('converted_company_id')
-            ->whereNull('report_expires_at')
-            ->whereNull('customer_data_expires_at')
-            ->whereNotIn('status', self::PROTECTED_STATUSES)
-            ->where('created_at', '<=', $legacyCutoff)
             ->where(function ($query): void {
                 $query->whereHas('messages')->orWhereHas('candidates');
+            })
+            ->where(function ($query) use ($deadlineCutoff): void {
+                $query->where(function ($anchored) use ($deadlineCutoff): void {
+                    $anchored->whereNotNull('history_sync_started_at')
+                        ->where('history_sync_started_at', '<=', $deadlineCutoff);
+                })->orWhere(function ($fallback) use ($deadlineCutoff): void {
+                    $fallback->whereNull('history_sync_started_at')
+                        ->where('created_at', '<=', $deadlineCutoff);
+                });
             })
             ->orderBy('id')->limit($batch)->get();
 
@@ -92,7 +93,6 @@ final class QuickScanRetentionEnforcer
             'due' => $due->count(),
             'abandoned' => $abandoned->count(),
             'stalled' => $stalled->count(),
-            'orphaned' => $orphaned->count(),
             'purged' => 0,
             'errors' => 0,
             'dry_run' => $dryRun,
@@ -115,7 +115,6 @@ final class QuickScanRetentionEnforcer
         foreach ([
             'abandoned_expired' => $abandoned,
             'stalled_no_report' => $stalled,
-            'orphaned_legacy' => $orphaned,
         ] as $reasonCode => $scans) {
             foreach ($scans as $scan) {
                 try {

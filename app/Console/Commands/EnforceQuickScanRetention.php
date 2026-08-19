@@ -16,11 +16,10 @@ class EnforceQuickScanRetention extends Command
         $result = $enforcer->enforce((bool) $this->option('dry-run'), (int) $this->option('batch'));
 
         $this->info(sprintf(
-            'Quick Scan retention: due=%d abandoned=%d stalled=%d orphaned=%d purged=%d errors=%d%s',
+            'Quick Scan retention: due=%d abandoned=%d stalled=%d purged=%d errors=%d%s',
             $result['due'],
             $result['abandoned'],
             $result['stalled'],
-            $result['orphaned'],
             $result['purged'],
             $result['errors'],
             $result['dry_run'] ? ' (dry-run)' : '',
